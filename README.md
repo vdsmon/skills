@@ -1,15 +1,27 @@
 # claude-skills
 
-Personal Claude Code skills by [@vdsmon](https://github.com/vdsmon).
+Personal Claude Code plugins by [@vdsmon](https://github.com/vdsmon).
+
+Each skill ships as its own plugin so you can install only what you want.
 
 ## Install
 
-```
+Register the marketplace once:
+
+```bash
 /plugin marketplace add vdsmon/claude-skills
-/plugin install vdsmon-skills@vdsmon-skills
 ```
 
-## Skills
+Then install whichever plugins you want:
+
+```bash
+/plugin install skill-polish@vdsmon-skills
+/plugin install tokenomics@vdsmon-skills
+/plugin install pre-compact@vdsmon-skills
+/plugin install humanizer@vdsmon-skills
+```
+
+## Plugins
 
 ### `skill-polish`
 
@@ -43,31 +55,39 @@ Remove signs of AI-generated writing from text. Detects and fixes patterns inclu
 
 Trigger: `humanize`, `humanizer`, `sounds too AI`, `make this more human`, or when editing/reviewing text to reduce AI-writing tells.
 
-Forked from [blader/humanizer](https://github.com/blader/humanizer) (MIT, Copyright © 2025 Siqi Chen). Not tracking upstream — contains local modifications. Upstream license retained at `skills/humanizer/LICENSE`.
+Forked from [blader/humanizer](https://github.com/blader/humanizer) (MIT, Copyright © 2025 Siqi Chen). Not tracking upstream — contains local modifications. Upstream license retained at `plugins/humanizer/skills/humanizer/LICENSE`.
 
 ## Layout
 
 ```
 .claude-plugin/
-  plugin.json          # Plugin manifest (declares SessionStart hook)
-  marketplace.json     # Self-hosted marketplace entry
-hooks/
-  tokenomics-keepalive.sh  # Opt-in SessionStart hook (flag-gated)
-skills/
+  marketplace.json           # Lists all plugins shipped by this marketplace
+plugins/
   skill-polish/
-    SKILL.md
+    .claude-plugin/plugin.json
+    skills/skill-polish/SKILL.md
   tokenomics/
-    SKILL.md
-    scripts/
-      token-report.py
+    .claude-plugin/plugin.json          # Declares SessionStart hook
+    skills/tokenomics/SKILL.md + scripts/token-report.py
+    hooks/tokenomics-keepalive.sh       # Opt-in, flag-gated
   pre-compact/
-    SKILL.md
+    .claude-plugin/plugin.json
+    skills/pre-compact/SKILL.md
   humanizer/
-    SKILL.md
-    README.md
-    LICENSE            # Upstream MIT (Siqi Chen)
+    .claude-plugin/plugin.json
+    skills/humanizer/SKILL.md + README.md + LICENSE
+```
+
+## Migrating from v0.x (monolithic `vdsmon-skills` plugin)
+
+Earlier versions shipped a single `vdsmon-skills` plugin bundling all skills. If you installed that, uninstall and reinstall only what you want:
+
+```bash
+claude plugin uninstall vdsmon-skills@vdsmon-skills
+claude plugin install tokenomics@vdsmon-skills
+# ... etc
 ```
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE). The humanizer plugin contains a vendored MIT-licensed skill from blader/humanizer; that license is preserved alongside the skill.

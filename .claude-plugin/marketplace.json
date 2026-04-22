@@ -1,7 +1,7 @@
 {
   "name": "vdsmon-skills",
   "metadata": {
-    "description": "Personal Claude Code skills marketplace by vdsmon. Ships skill-polish and future skills."
+    "description": "Personal Claude Code plugins by vdsmon. Each skill ships as its own plugin so users can pick and choose."
   },
   "owner": {
     "name": "Victor De Simone",
@@ -10,10 +10,28 @@
   },
   "plugins": [
     {
-      "name": "vdsmon-skills",
-      "source": "./",
-      "description": "Personal Claude Code skills by vdsmon.",
-      "version": "0.3.2"
+      "name": "skill-polish",
+      "source": "./plugins/skill-polish",
+      "description": "Post-mortem for any skill — scans a session for friction and applies concrete edits to the responsible skill file.",
+      "version": "1.0.0"
+    },
+    {
+      "name": "tokenomics",
+      "source": "./plugins/tokenomics",
+      "description": "Token usage, cache hit rates, and Max plan consumption analyzer. Ships an opt-in SessionStart hook for prompt-cache keepalive.",
+      "version": "1.0.0"
+    },
+    {
+      "name": "pre-compact",
+      "source": "./plugins/pre-compact",
+      "description": "Audit in-flight state before /compact truncates context; produce a copy-paste focus message for the next session.",
+      "version": "1.0.0"
+    },
+    {
+      "name": "humanizer",
+      "source": "./plugins/humanizer",
+      "description": "Remove signs of AI-generated writing from text. Forked from blader/humanizer (MIT).",
+      "version": "1.0.0"
     }
   ]
 }

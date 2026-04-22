@@ -1,7 +1,7 @@
 {
-  "name": "vdsmon-skills",
-  "version": "0.3.2",
-  "description": "Personal Claude Code skills by vdsmon.",
+  "name": "tokenomics",
+  "version": "1.0.0",
+  "description": "Token usage, cache hit rates, and Max plan consumption analyzer for Claude Code sessions. Ships an opt-in SessionStart hook that schedules a /loop to keep the prompt cache warm.",
   "author": {
     "name": "Victor De Simone",
     "email": "victorsmoliveira@gmail.com",

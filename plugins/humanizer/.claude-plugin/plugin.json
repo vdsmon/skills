@@ -1,0 +1,14 @@
+{
+  "name": "humanizer",
+  "version": "1.0.0",
+  "description": "Remove signs of AI-generated writing from text. Detects and fixes inflated symbolism, promotional language, em dash overuse, rule of three, AI vocabulary words, and more. Forked from blader/humanizer (MIT, Siqi Chen).",
+  "author": {
+    "name": "Victor De Simone",
+    "email": "victorsmoliveira@gmail.com",
+    "url": "https://github.com/vdsmon"
+  },
+  "homepage": "https://github.com/vdsmon/claude-skills",
+  "repository": "https://github.com/vdsmon/claude-skills",
+  "license": "MIT",
+  "skills": "./skills"
+}
