@@ -10,5 +10,19 @@
   "homepage": "https://github.com/vdsmon/claude-skills",
   "repository": "https://github.com/vdsmon/claude-skills",
   "license": "MIT",
-  "skills": "./skills"
+  "skills": "./skills",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/tokenomics-keepalive.sh\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
 }
