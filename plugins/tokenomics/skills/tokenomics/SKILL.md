@@ -6,23 +6,23 @@ user-invocable: true
 
 # Tokenomics — Token & Plan Usage Analysis
 
-Analyze token consumption, cache efficiency, and plan usage for Claude Code sessions.
+Analyze token use, cache efficiency, plan use for Claude Code sessions.
 
 ## Step 1: Collect Data
 
-Run the bundled script:
+Run bundled script:
 
 ```bash
 python3 ~/.claude/skills/tokenomics/scripts/token-report.py
 ```
 
-Options: `--all` for all sessions, or pass a specific `.jsonl` path.
+Options: `--all` for all sessions, or pass specific `.jsonl` path.
 
-The script outputs raw numbers: per-turn token breakdown, totals, cache ratio, and live plan usage from the Anthropic API.
+Script output raw numbers: per-turn token breakdown, totals, cache ratio, live plan use from Anthropic API.
 
 ## Step 2: Present as a Dashboard
 
-Parse the script output and present it as a compact, visual dashboard. Include the current date/time.
+Parse script output. Present as compact visual dashboard. Include current date/time.
 
 ### Format
 
@@ -46,11 +46,11 @@ EXTRA USAGE
   █░░░░░░░░░░░░░░░░░░░
 ```
 
-Progress bars: 20 chars wide using █ and ░. Plan usage first — it's the thing the user cares about most.
+Progress bars: 20 chars wide, █ and ░. Plan use first — user care most.
 
 ## Step 3: Add Insights
 
-After the dashboard, add 2-3 short insights based on the data. Think about what's interesting or actionable. Examples of the kind of analysis to do:
+After dashboard, add 2-3 short insights from data. Think what interesting or actionable. Example analysis:
 
 **Cache behavior:**
 - "Cache hit rate is 98.8% — essentially optimal. Your system prompt and context are being fully cached between turns."
@@ -70,11 +70,11 @@ After the dashboard, add 2-3 short insights based on the data. Think about what'
 - "98.8% cache hit means almost every token is served from cache — both cheap and quota-friendly."
 - "Extra usage is at $34.79 — at this rate you'll use ~$120 this month."
 
-Pick insights that are relevant to the actual numbers. Don't repeat all of these — just the 2-3 that matter given the current data. Be concise — one line each.
+Pick insights relevant to actual numbers. No repeat all — only 2-3 that matter given current data. One line each.
 
 ## Step 4: Trend (if --all or multiple data points)
 
-When showing all sessions or when the user asks about trends, show a simple ASCII sparkline of cache hit rates or plan usage across sessions:
+When showing all sessions or user ask about trends, show simple ASCII sparkline of cache hit rates or plan use across sessions:
 
 ```
 Cache hit trend (last 5 sessions):
@@ -83,11 +83,11 @@ Cache hit trend (last 5 sessions):
 
 ## Token Economics Reference
 
-This section documents how Claude Code token billing and rate limits actually work, based on official Anthropic docs and empirical testing.
+Section document how Claude Code token billing and rate limits work. From official Anthropic docs + empirical testing.
 
 ### The Three Token Types
 
-Every API call produces three categories of input tokens:
+Every API call produce three categories of input tokens:
 
 | Type | What it is | Counts toward ITPM rate limit? | Counts toward Max plan quota? | Cost (API) |
 |------|-----------|-------------------------------|------------------------------|------------|
@@ -97,11 +97,11 @@ Every API call produces three categories of input tokens:
 
 **Source**: [Anthropic Rate Limits docs](https://platform.claude.com/docs/en/api/rate-limits) — "For most Claude models, only uncached input tokens count towards your ITPM rate limits."
 
-**Note**: Older models (Haiku 3, Haiku 3.5, marked with † in Anthropic's tables) DO count cache reads toward ITPM. Current models (Opus 4.x, Sonnet 4.x, Haiku 4.5) do NOT.
+**Note**: Old models (Haiku 3, Haiku 3.5, marked † in Anthropic tables) DO count cache reads toward ITPM. Current models (Opus 4.x, Sonnet 4.x, Haiku 4.5) do NOT.
 
 ### What This Means for Max Plan Users
 
-Cache reads are essentially **free in every dimension** — cheap in dollars (10% rate) AND free toward your quota. This was confirmed empirically:
+Cache reads **free every dimension** — cheap dollars (10% rate) AND free toward quota. Confirmed empirically:
 
 - **Experiment**: 20+ rapid ping/pong turns at ~435k context (98%+ cache reads) → plan usage did NOT move
 - **Counter-experiment**: 15 file reads injecting new content → plan usage spiked from 0% to 41%
@@ -111,68 +111,68 @@ Cache reads are essentially **free in every dimension** — cheap in dollars (10
 
 **Expensive (burns quota fast):**
 - **Resuming a session** (`claude --resume`) — full cache rebuild, zero cache hits on first message. Claude Code warns: "tokens will be rebuilt from scratch (no cache)". In testing, each resume cost ~410k cache_creation tokens and ~10% of the 5h window.
-- **Switching models and sending a message** (`/model`) — caches are model-isolated. Sending a message on a different model then switching back forces a full cache rebuild on the original model. Empirically: Opus→Sonnet(msg)→Opus dropped cache to 2.1% and burned 11% of the 5h window. Note: even a failed message (context limit exceeded) counts. Whether just toggling `/model` without sending a message kills cache is **unverified** (pending test #6).
-- Reading new files (each file's content = cache_creation tokens on first read)
-- Editing CLAUDE.md or system prompt (invalidates the entire cached prefix, forces re-creation)
-- Starting a new session (full cache creation on first message)
+- **Switching models and sending a message** (`/model`) — caches model-isolated. Sending msg on different model then switching back force full cache rebuild on original model. Empirical: Opus→Sonnet(msg)→Opus dropped cache to 2.1%, burned 11% of 5h window. Note: even failed message (context limit exceeded) counts. Whether toggling `/model` without sending msg kills cache **unverified** (pending test #6).
+- Read new files (each file content = cache_creation tokens on first read)
+- Edit CLAUDE.md or system prompt (invalidates entire cached prefix, forces re-creation)
+- Start new session (full cache creation on first message)
 - Long idle gaps beyond cache TTL (1h Max, 5m Pro) — next message re-creates everything
-- Spawning subagents (each gets its own context window and cache)
+- Spawn subagents (each gets own context window + cache)
 
 **Cheap (barely moves quota):**
-- Normal conversation after the first few turns (almost all cache reads)
+- Normal conversation after first few turns (almost all cache reads)
 - Short messages back and forth (small output tokens, cache reads dominate)
-- Tool calls that return small results (grep, ls, etc.)
-- The /tokenomics report itself (~500 tokens per run)
+- Tool calls returning small results (grep, ls, etc.)
+- /tokenomics report itself (~500 tokens per run)
 
 **Free (zero quota impact):**
 - Idle time (no API calls = no tokens)
-- Status line updates (handled client-side)
-- Reading files that are already in context (deduplicated by harness)
+- Status line updates (client-side)
+- Read files already in context (dedup by harness)
 
 ### Cache Lifecycle
 
 1. **First message**: Full cache creation (~20-50k tokens for system prompt + CLAUDE.md + skills). Expensive.
-2. **Subsequent messages**: Cache reads for the prefix + small cache creation for new conversation turns. Cheap.
+2. **Subsequent messages**: Cache reads for prefix + small cache creation for new conversation turns. Cheap.
 3. **Cache expires**: Next message re-creates everything. Expensive.
 4. **Editing CLAUDE.md**: Invalidates prefix cache. Next message re-creates from scratch.
-5. **Auto-compaction**: When context approaches the limit, older messages get summarized. Creates new cache entries but reduces total context size.
-6. **Resume (`claude --resume`)**: Reconstructs conversation from JSONL transcript. Produces a different token sequence than the original → **entire cache is invalidated**. First message after resume has 0% cache hit rate and pays full cache_creation cost. Claude Code itself warns about this: "tokens will be rebuilt from scratch (no cache). Consider /clear for a cheaper fresh start."
+5. **Auto-compaction**: Context near limit → older messages summarized. Creates new cache entries but reduces total context size.
+6. **Resume (`claude --resume`)**: Reconstructs conversation from JSONL transcript. Different token sequence than original → **entire cache invalidated**. First message after resume has 0% cache hit rate, pays full cache_creation cost. Claude Code warns: "tokens will be rebuilt from scratch (no cache). Consider /clear for a cheaper fresh start."
 
 ### Cache TTL by Plan
 
 | Plan | Cache TTL | Cache write cost | Keepalive strategy |
 |------|-----------|-----------------|-------------------|
-| **Max** | **1 hour** | 2x base input price | `/loop every 30m` — the only viable interval. 60-min **does not work** (TTL + jitter causes consistent misses, verified test #5b). Intermediate values like 45-min can't be expressed in cron (only divisors of 60 work: 1,2,3,4,5,6,10,12,15,20,30). So it's 30 or bust. |
-| **Pro** | 5 minutes | 1.25x base input price | Would need ~3-4 min loop (aggressive) |
+| **Max** | **1 hour** | 2x base input price | `/loop every 30m` — only viable interval. 60-min **does not work** (TTL + jitter = consistent misses, verified test #5b). Intermediate values like 45-min can't express in cron (only divisors of 60 work: 1,2,3,4,5,6,10,12,15,20,30). So 30 or bust. |
+| **Pro** | 5 minutes | 1.25x base input price | Need ~3-4 min loop (aggressive) |
 | **API** | 5 minutes | 1.25x base input price | Implement in application logic |
 
-The Max plan's 1h TTL is a massive advantage — you can take a 50-minute break and the cache survives. On Pro, a 6-minute pause to think kills the cache and triggers a full rebuild.
+Max plan 1h TTL massive advantage — 50-min break, cache survive. On Pro, 6-min pause kills cache, trigger full rebuild.
 
-**Cache keepalive loop**: The `/loop every 30m: /tokenomics` serves dual purpose — monitoring AND keeping the cache warm. Each loop iteration is an API call that resets the 1h TTL. Without it, idle time >1h triggers a full cache rebuild costing hundreds of thousands of cache_creation tokens.
+**Cache keepalive loop**: `/loop every 30m: /tokenomics` dual purpose — monitor AND keep cache warm. Each loop iteration = API call that resets 1h TTL. Without it, idle >1h triggers full cache rebuild costing hundreds of thousands cache_creation tokens.
 
 ### The 5-Hour Window
 
-- Rolling window that starts when you send your first message (floored to the hour)
+- Rolling window, starts when first message sent (floored to hour)
 - Counts `input_tokens` + `cache_creation_input_tokens` (NOT cache reads)
-- Resets completely when the window expires
-- **Warmup trick**: Send a minimal message early (e.g., via [claude-warmup](https://github.com/vdsmon/claude-warmup)) to anchor the window reset at a convenient time
+- Resets fully when window expires
+- **Warmup trick**: Send minimal message early (e.g., via [claude-warmup](https://github.com/vdsmon/claude-warmup)) to anchor window reset at convenient time
 
 ### The 7-Day Window
 
-- Weekly rolling quota, separate from the 5h window
-- Same counting rules as 5h (cache reads don't count)
-- Max 5x plan has 5x the Pro quota; Max 20x has 20x
+- Weekly rolling quota, separate from 5h window
+- Same count rules as 5h (cache reads no count)
+- Max 5x plan = 5x Pro quota; Max 20x = 20x
 
 ### Optimization Strategies
 
-1. **Keep the cache alive, never resume** — On Max plan, cache lives for 1 hour. A `/loop every 30m` keeps it warm indefinitely. The cost of the keepalive loop is negligible: each poll is ~26k input tokens but 99%+ are cache reads (~200 uncached tokens per poll). Over 120+ iterations at 1-min intervals, plan usage barely moved. At 30-min intervals, a session can run for days without meaningful quota impact. **Never quit and resume** — resume invalidates the entire cache (confirmed empirically: 0% hit rate, full rebuild at ~410k cache_creation tokens, ~10% of 5h window per resume). If you must leave, keep the session running. If the session dies, `/clear` and start fresh is cheaper than resuming a large conversation.
-2. **Avoid bulk file reads** — Each new file = cache_creation tokens. Use targeted reads (specific lines) instead of reading entire files.
-3. **Don't edit CLAUDE.md mid-session** — It invalidates the entire cache prefix. Edit between sessions if possible.
-4. **Use /clear wisely** — Clears context but the next message re-creates the cache. Good when switching tasks, expensive if you're continuing the same work.
-5. **Never switch models mid-session** (`/model`) — caches are model-isolated. Even toggling back to the same model destroys the cache. Empirically cost us 11% of the 5h window in one turn. If you need a different model, use a subagent or a separate session.
-6. **Anchor your 5h window** — Use the warmup trick to schedule resets at convenient times.
-7. **Delegate verbose operations to subagents** — The output stays in the subagent's context, not yours.
-8. **Keep CLAUDE.md lean** — Every token in CLAUDE.md is re-cached on every prefix invalidation. 200 lines max.
+1. **Keep the cache alive, never resume** — Max plan, cache live 1 hour. `/loop every 30m` keep warm forever. Keepalive cost negligible: each poll ~26k input tokens but 99%+ cache reads (~200 uncached tokens per poll). Over 120+ iterations at 1-min intervals, plan use barely moved. At 30-min intervals, session run days without meaningful quota impact. **Never quit and resume** — resume invalidates entire cache (confirmed: 0% hit rate, full rebuild ~410k cache_creation tokens, ~10% of 5h window per resume). Must leave → keep session running. Session dies → `/clear` and start fresh cheaper than resuming large conversation.
+2. **Avoid bulk file reads** — Each new file = cache_creation tokens. Use targeted reads (specific lines) instead of reading whole files.
+3. **Don't edit CLAUDE.md mid-session** — Invalidates entire cache prefix. Edit between sessions if possible.
+4. **Use /clear wisely** — Clears context, next message re-creates cache. Good for task switch, expensive if continuing same work.
+5. **Never switch models mid-session** (`/model`) — caches model-isolated. Even toggle back to same model destroys cache. Empirical: cost 11% of 5h window in one turn. Need different model → use subagent or separate session.
+6. **Anchor your 5h window** — Use warmup trick to schedule resets at convenient times.
+7. **Delegate verbose operations to subagents** — Output stay in subagent context, not yours.
+8. **Keep CLAUDE.md lean** — Every token in CLAUDE.md re-cached on every prefix invalidation. 200 lines max.
 
 ## Data Sources
 
@@ -183,11 +183,11 @@ The Max plan's 1h TTL is a massive advantage — you can take a 50-minute break 
 
 ## Recurring Monitoring
 
-To set up periodic reporting: `/loop every 30m: /tokenomics`
+Set up periodic reporting: `/loop every 30m: /tokenomics`
 
 ## Empirical Test Lab
 
-Findings we've verified ourselves, and tests still pending. Only move items to the main knowledge sections after empirical confirmation.
+Findings verified ourselves, tests pending. Only move items to main knowledge sections after empirical confirmation.
 
 ### Verified (with data)
 
