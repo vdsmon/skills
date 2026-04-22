@@ -11,3 +11,6 @@
 .claude/history/
 .claude/statsig/
 .claude/projects/
+
+# /caveman:compress backups
+*.original.md
