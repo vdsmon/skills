@@ -28,9 +28,9 @@
       "version": "1.0.0"
     },
     {
-      "name": "humanizer",
-      "source": "./plugins/humanizer",
-      "description": "Remove signs of AI-generated writing from text. Forked from blader/humanizer (MIT).",
+      "name": "humanize",
+      "source": "./plugins/humanize",
+      "description": "Strip AI-writing tells from text. Detects em-dash overuse, AI vocabulary, inflated significance, rule-of-three, sycophancy, and 20+ more patterns.",
       "version": "1.0.0"
     },
     {
