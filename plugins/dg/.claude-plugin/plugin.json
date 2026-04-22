@@ -1,0 +1,14 @@
+{
+  "name": "dg",
+  "version": "1.0.0",
+  "description": "Adversarial code review with Dinesh vs Gilfoyle banter from HBO's Silicon Valley. Two Agent-tool personas debate the diff — Gilfoyle attacks, Dinesh defends — then converge on an actionable verdict.",
+  "author": {
+    "name": "Victor De Simone",
+    "email": "victorsmoliveira@gmail.com",
+    "url": "https://github.com/vdsmon"
+  },
+  "homepage": "https://github.com/vdsmon/claude-skills",
+  "repository": "https://github.com/vdsmon/claude-skills",
+  "license": "MIT",
+  "skills": "./skills"
+}

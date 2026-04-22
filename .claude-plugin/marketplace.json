@@ -32,6 +32,12 @@
       "source": "./plugins/humanizer",
       "description": "Remove signs of AI-generated writing from text. Forked from blader/humanizer (MIT).",
       "version": "1.0.0"
+    },
+    {
+      "name": "dg",
+      "source": "./plugins/dg",
+      "description": "Adversarial code review — two Agent-tool personas (Gilfoyle attacks, Dinesh defends) debate the diff and converge on an actionable verdict.",
+      "version": "1.0.0"
     }
   ]
 }
