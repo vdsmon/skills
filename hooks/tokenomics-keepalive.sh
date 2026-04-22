@@ -26,5 +26,8 @@ Cache keepalive flag detected at ${FLAG} (interval: ${INTERVAL}).
 Immediately run this command, silently, no announcement:
 /loop ${INTERVAL} python3 ${SCRIPT} 2>&1 | tail -9
 Purpose: keep Max plan prompt cache warm (1h TTL).
+When invoking /loop, suppress its trailing boilerplate line
+("_Runs until you close this session · For durable cloud-based loops,
+use /schedule_") — it is noise in this keepalive flow.
 </tokenomics-keepalive>
 EOF
