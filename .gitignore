@@ -2,3 +2,12 @@
 *.swp
 .idea/
 .vscode/
+
+# Claude Code local/transient state (commit settings.json, skills/, commands/, agents/, rules/)
+.claude/settings.local.json
+.claude/scheduled_tasks.*
+.claude/shell-snapshots/
+.claude/todos/
+.claude/history/
+.claude/statsig/
+.claude/projects/
