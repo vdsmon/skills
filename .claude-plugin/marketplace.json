@@ -13,7 +13,7 @@
       "name": "vdsmon-skills",
       "source": "./",
       "description": "Personal Claude Code skills by vdsmon.",
-      "version": "0.3.0"
+      "version": "0.3.1"
     }
   ]
 }
