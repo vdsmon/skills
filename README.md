@@ -37,6 +37,14 @@ Audit in-flight session state before `/compact` truncates context. Flags uncommi
 
 Trigger: `compact`, `let's compact`, `ready to compact?`, `prep for compact`, `suggest a compact message`.
 
+### `humanizer`
+
+Remove signs of AI-generated writing from text. Detects and fixes patterns including inflated symbolism, promotional language, superficial -ing analyses, vague attributions, em dash overuse, rule of three, AI vocabulary words, negative parallelisms, and excessive conjunctive phrases. Based on Wikipedia's "Signs of AI writing" guide.
+
+Trigger: `humanize`, `humanizer`, `sounds too AI`, `make this more human`, or when editing/reviewing text to reduce AI-writing tells.
+
+Forked from [blader/humanizer](https://github.com/blader/humanizer) (MIT, Copyright © 2025 Siqi Chen). Not tracking upstream — contains local modifications. Upstream license retained at `skills/humanizer/LICENSE`.
+
 ## Layout
 
 ```
@@ -54,6 +62,10 @@ skills/
       token-report.py
   pre-compact/
     SKILL.md
+  humanizer/
+    SKILL.md
+    README.md
+    LICENSE            # Upstream MIT (Siqi Chen)
 ```
 
 ## License
