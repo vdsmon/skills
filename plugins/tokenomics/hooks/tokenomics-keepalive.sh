@@ -93,7 +93,6 @@ Immediately, silently, with no announcement, call the CronCreate tool with:
   prompt:    "${CMD}"
   recurring: true
 Do NOT invoke /loop — its Nm→*/N rewrite lands on fleet-peak minutes (:00/:30).
-After scheduling, also run the prompt once now via Bash to prime the cache.
 Purpose: keep Max plan prompt cache warm (1h TTL).
 </tokenomics-keepalive>
 EOF
