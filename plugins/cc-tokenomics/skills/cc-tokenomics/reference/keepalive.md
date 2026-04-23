@@ -1,6 +1,6 @@
 # Cache Keepalive
 
-Automation that keeps the prompt cache warm across idle periods. The tokenomics plugin does **not** ship the keepalive itself — it lives in the separate `cache-keepalive` plugin from the same marketplace.
+Automation that keeps the prompt cache warm across idle periods. The tokenomics plugin does **not** ship the keepalive itself — it lives in the separate `cc-cache-keepalive` plugin from the same marketplace.
 
 ## Contents
 - Why 30 minutes is the only viable interval on Max
@@ -21,7 +21,7 @@ Net: 30 min is the sweet spot. Shorter works but wastes poll overhead.
 
 Three files, no skill:
 
-- `hooks/keepalive.sh` — runs at SessionStart. Reads the flag file, computes an anchored cron expression, emits a `<cache-keepalive>` directive telling the model to call `CronCreate` with that cron + a silent-prefix prompt.
+- `hooks/keepalive.sh` — runs at SessionStart. Reads the flag file, computes an anchored cron expression, emits a `<cc-cache-keepalive>` directive telling the model to call `CronCreate` with that cron + a silent-prefix prompt.
 - `scripts/keepalive-noop.sh` — literal `exit 0`. The cron fires this every interval.
 - `.claude-plugin/plugin.json` — registers the SessionStart hook.
 
@@ -31,17 +31,17 @@ Why a no-op script warms the cache: each cron firing is a fresh Bash tool call, 
 
 ```
 /plugin marketplace add /Users/victordsm/repos/personal/claude-skills
-/plugin install cache-keepalive@vdsmon-skills
-touch ~/.cache-keepalive
+/plugin install cc-cache-keepalive@vdsmon-skills
+touch ~/.cc-cache-keepalive
 ```
 
-Flag file opt-in is required — the hook short-circuits if `~/.cache-keepalive` is absent, so every user's default state is zero side effects.
+Flag file opt-in is required — the hook short-circuits if `~/.cc-cache-keepalive` is absent, so every user's default state is zero side effects.
 
 To override the interval, put a single line like `15m` or `1h` at the top of the flag file. Format: `<digits><s|m|h|d>`. Invalid values fall back to 30m.
 
 ## Silent-mode rule
 
-Every cron firing carries a user-prompt prefix: `[Silent cache-keepalive — run Bash tool only. No text output, no acknowledgment, no summary.]`. That directive alone is sufficient — the model reads it and runs Bash without narrating. The tokenomics skill does not need any silent-mode rule of its own.
+Every cron firing carries a user-prompt prefix: `[Silent cc-cache-keepalive — run Bash tool only. No text output, no acknowledgment, no summary.]`. That directive alone is sufficient — the model reads it and runs Bash without narrating. The tokenomics skill does not need any silent-mode rule of its own.
 
 ## Cost per poll
 

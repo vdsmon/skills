@@ -1,7 +1,7 @@
 {
-  "name": "cache-keepalive",
+  "name": "cc-cache-keepalive",
   "version": "1.0.0",
-  "description": "Keeps Claude Code's prompt cache warm on Max plans via a SessionStart-scheduled no-op cron. Opt-in via ~/.cache-keepalive flag file. 1h TTL requires a 30-min or shorter interval.",
+  "description": "Keeps Claude Code's prompt cache warm on Max plans via a SessionStart-scheduled no-op cron. Opt-in via ~/.cc-cache-keepalive flag file. 1h TTL requires a 30-min or shorter interval.",
   "author": {
     "name": "Victor De Simone",
     "email": "victorsmoliveira@gmail.com",

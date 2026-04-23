@@ -1,0 +1,14 @@
+{
+  "name": "cc-tokenomics",
+  "version": "2.0.0",
+  "description": "Analyzes Claude Code token usage, cache hit rates, and Max plan consumption. Ships a /tokenomics dashboard plus a reference library on rate limits, cache lifecycle, and empirical billing experiments. Analysis and education only — for cache warmup install the cc-cache-keepalive plugin. Claude Code only (uses dynamic context injection and ${CLAUDE_SKILL_DIR}).",
+  "author": {
+    "name": "Victor De Simone",
+    "email": "victorsmoliveira@gmail.com",
+    "url": "https://github.com/vdsmon"
+  },
+  "homepage": "https://github.com/vdsmon/claude-skills",
+  "repository": "https://github.com/vdsmon/claude-skills",
+  "license": "MIT",
+  "skills": "./skills"
+}

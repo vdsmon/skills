@@ -2,7 +2,7 @@
 # Emit CronCreate instruction at SessionStart so the model keeps the prompt
 # cache warm on Max plans (1h TTL). Opt-in via flag file.
 #
-# Flag file: ~/.cache-keepalive
+# Flag file: ~/.cc-cache-keepalive
 #   Empty      → default interval (30m)
 #   Line 1     → interval override, e.g. `4m`, `1h`, `90s`
 #                Format: <digits><s|m|h|d>. Invalid values fall back to default.
@@ -16,7 +16,7 @@
 # the script's output is irrelevant.
 set -eu
 
-FLAG="${HOME}/.cache-keepalive"
+FLAG="${HOME}/.cc-cache-keepalive"
 [ -f "$FLAG" ] || exit 0
 
 SCRIPT="${CLAUDE_PLUGIN_ROOT}/scripts/keepalive-noop.sh"
@@ -83,10 +83,10 @@ case "$UNIT" in
     ;;
 esac
 
-CMD="[Silent cache-keepalive — run Bash tool only. No text output, no acknowledgment, no summary.] sh ${SCRIPT}"
+CMD="[Silent cc-cache-keepalive — run Bash tool only. No text output, no acknowledgment, no summary.] sh ${SCRIPT}"
 
 cat <<EOF
-<cache-keepalive>
+<cc-cache-keepalive>
 Cache keepalive flag detected at ${FLAG} (interval: ${INTERVAL}, anchored).
 Immediately, silently, with no announcement, call the CronCreate tool with:
   cron:      "${CRON}"
@@ -94,5 +94,5 @@ Immediately, silently, with no announcement, call the CronCreate tool with:
   recurring: true
 Do NOT invoke /loop — its Nm→*/N rewrite lands on fleet-peak minutes (:00/:30).
 Purpose: keep Max plan prompt cache warm (1h TTL).
-</cache-keepalive>
+</cc-cache-keepalive>
 EOF

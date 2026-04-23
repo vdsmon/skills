@@ -48,7 +48,7 @@ Cache reads are free on every dimension: cheap dollars (10% rate) AND free towar
 - Normal conversation after the first few turns (almost all cache reads)
 - Short messages back and forth (small output tokens, cache reads dominate)
 - Tool calls returning small results (grep, ls, etc.)
-- `/tokenomics` report itself (~500 tokens per run)
+- `/cc-tokenomics` report itself (~500 tokens per run)
 
 ### Free (zero quota impact)
 
@@ -75,7 +75,7 @@ Cache reads are free on every dimension: cheap dollars (10% rate) AND free towar
 
 The Max plan's 1h TTL is a massive advantage — a 50-min break and the cache survives. On Pro, a 6-min pause kills the cache and triggers a full rebuild.
 
-See `keepalive.md` for the cache warmup utility (shipped as the separate `cache-keepalive` plugin).
+See `keepalive.md` for the cache warmup utility (shipped as the separate `cc-cache-keepalive` plugin).
 
 ## The 5-hour window
 
@@ -92,7 +92,7 @@ See `keepalive.md` for the cache warmup utility (shipped as the separate `cache-
 
 ## Optimization strategies
 
-1. **Keep the cache alive, never resume.** On Max the cache lives 1 hour; the `cache-keepalive` plugin keeps it warm forever. Keepalive cost is negligible: each poll is ~26k input tokens but 99%+ cache reads (~200 uncached tokens per poll). Over 120+ iterations at 1-min intervals, plan usage barely moved. At 30-min intervals, a session can run for days without meaningful quota impact. Never quit and resume — resume invalidates the entire cache (0% hit rate, full rebuild ~410k cache_creation tokens, ~10% of 5h window per resume). Must leave → keep the session running. Session died → `/clear` and start fresh is cheaper than resuming a large conversation.
+1. **Keep the cache alive, never resume.** On Max the cache lives 1 hour; the `cc-cache-keepalive` plugin keeps it warm forever. Keepalive cost is negligible: each poll is ~26k input tokens but 99%+ cache reads (~200 uncached tokens per poll). Over 120+ iterations at 1-min intervals, plan usage barely moved. At 30-min intervals, a session can run for days without meaningful quota impact. Never quit and resume — resume invalidates the entire cache (0% hit rate, full rebuild ~410k cache_creation tokens, ~10% of 5h window per resume). Must leave → keep the session running. Session died → `/clear` and start fresh is cheaper than resuming a large conversation.
 2. **Avoid bulk file reads.** Each new file = cache_creation tokens. Use targeted reads (specific lines) instead of reading whole files.
 3. **Don't edit CLAUDE.md mid-session.** Invalidates the entire cache prefix. Edit between sessions if possible.
 4. **Use `/clear` wisely.** Clears context; next message re-creates the cache. Good for task switches, expensive if continuing the same work.

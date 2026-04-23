@@ -1,5 +1,5 @@
 ---
-name: pre-compact
+name: cc-pre-compact
 description: >-
   Audits in-flight session state before `/compact` truncates context. Flags
   uncommitted git changes, scratch files, unfinished plans, running background

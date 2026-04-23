@@ -1,5 +1,5 @@
 ---
-name: tokenomics
+name: cc-tokenomics
 description: >-
   Analyzes Claude Code token usage, cache hit rates, and Max plan consumption.
   Presents a compact dashboard with plan-usage bars, session token breakdown,
@@ -8,7 +8,7 @@ description: >-
 when_to_use: >-
   Use when the user asks about "tokens", "usage", "cache", "plan limit",
   "how much quota is left", "am I going to hit the limit", "cache stats",
-  "show my usage", or types "/tokenomics". Also triggers on questions about
+  "show my usage", or types "/cc-tokenomics". Also triggers on questions about
   session efficiency, context growth, cost per session, or worry about a
   long session burning quota. For abstract questions about how Claude Code
   billing works (not measuring the current session), surface the reference
@@ -26,9 +26,9 @@ Analyze token use, cache efficiency, and plan consumption for Claude Code sessio
 
 ## Invocation
 
-- `/tokenomics` — current session
-- `/tokenomics --all` — aggregate across every session on disk
-- `/tokenomics <path-to-session.jsonl>` — specific transcript
+- `/cc-tokenomics` — current session
+- `/cc-tokenomics --all` — aggregate across every session on disk
+- `/cc-tokenomics <path-to-session.jsonl>` — specific transcript
 
 ## Live data
 
@@ -101,4 +101,4 @@ Cache hit trend (last 5 sessions):
 
 - Token economics deep-dive (three token types, cache lifecycle, TTL, 5h/7d windows, optimization): [reference/economics.md](reference/economics.md)
 - Empirical test lab (verified + pending): [reference/experiments.md](reference/experiments.md)
-- Cache keepalive (separate `cache-keepalive` plugin): [reference/keepalive.md](reference/keepalive.md)
+- Cache keepalive (separate `cc-cache-keepalive` plugin): [reference/keepalive.md](reference/keepalive.md)
