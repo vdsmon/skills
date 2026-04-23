@@ -1,6 +1,6 @@
 {
   "name": "skill-polish",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Post-mortem for any skill. Scans a conversation for friction (corrections, skipped steps, rejected tool calls), traces each to the responsible skill file, and applies concrete edits.",
   "author": {
     "name": "Victor De Simone",

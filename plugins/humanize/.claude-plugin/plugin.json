@@ -1,6 +1,6 @@
 {
   "name": "humanize",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Strip AI-writing tells from text. Detects em-dash overuse, AI vocabulary, inflated significance, rule-of-three, sycophancy, negative parallelisms, and 20+ more patterns. Use when editing prose to sound human.",
   "author": {
     "name": "Victor De Simone",

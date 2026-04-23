@@ -13,37 +13,43 @@
       "name": "skill-polish",
       "source": "./plugins/skill-polish",
       "description": "Post-mortem for any skill — scans a session for friction and applies concrete edits to the responsible skill file.",
-      "version": "1.0.0"
+      "version": "1.1.0"
     },
     {
       "name": "tokenomics",
       "source": "./plugins/tokenomics",
-      "description": "Token usage, cache hit rates, and Max plan consumption analyzer. Ships an opt-in SessionStart hook for prompt-cache keepalive.",
-      "version": "1.3.1"
+      "description": "Token usage, cache hit rates, and Max plan consumption analyzer. Ships a /tokenomics dashboard plus reference docs on rate limits, cache lifecycle, and empirical billing experiments.",
+      "version": "2.0.0"
+    },
+    {
+      "name": "cache-keepalive",
+      "source": "./plugins/cache-keepalive",
+      "description": "Keeps Claude Code's prompt cache warm on Max plans via a SessionStart-scheduled no-op cron. Opt-in via ~/.cache-keepalive flag file.",
+      "version": "1.0.0"
     },
     {
       "name": "pre-compact",
       "source": "./plugins/pre-compact",
       "description": "Audit in-flight state before /compact truncates context; produce a copy-paste focus message for the next session.",
-      "version": "1.1.0"
+      "version": "1.3.0"
     },
     {
       "name": "humanize",
       "source": "./plugins/humanize",
       "description": "Strip AI-writing tells from text. Detects em-dash overuse, AI vocabulary, inflated significance, rule-of-three, sycophancy, and 20+ more patterns.",
-      "version": "1.0.0"
+      "version": "1.1.0"
     },
     {
       "name": "dg",
       "source": "./plugins/dg",
       "description": "Adversarial code review — two Agent-tool personas (Gilfoyle attacks, Dinesh defends) debate the diff and converge on an actionable verdict.",
-      "version": "1.0.0"
+      "version": "1.1.0"
     },
     {
       "name": "converge",
       "source": "./plugins/converge",
       "description": "Run a prompt or slash command in a loop until changes converge or start churning. Each pass runs in a fresh Agent subagent for impartial review.",
-      "version": "1.0.0"
+      "version": "1.1.0"
     }
   ]
 }

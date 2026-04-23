@@ -1,0 +1,26 @@
+{
+  "name": "cache-keepalive",
+  "version": "1.0.0",
+  "description": "Keeps Claude Code's prompt cache warm on Max plans via a SessionStart-scheduled no-op cron. Opt-in via ~/.cache-keepalive flag file. 1h TTL requires a 30-min or shorter interval.",
+  "author": {
+    "name": "Victor De Simone",
+    "email": "victorsmoliveira@gmail.com",
+    "url": "https://github.com/vdsmon"
+  },
+  "homepage": "https://github.com/vdsmon/claude-skills",
+  "repository": "https://github.com/vdsmon/claude-skills",
+  "license": "MIT",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/keepalive.sh\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

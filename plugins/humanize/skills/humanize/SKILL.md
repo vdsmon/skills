@@ -1,7 +1,17 @@
 ---
 name: humanize
-version: 1.0.0
-description: Strip AI-writing tells from text. Detects em-dash overuse, AI vocabulary, inflated significance, rule-of-three, negative parallelisms, sycophancy, and 20+ more patterns. Run when user says "humanize this", "remove AI tells", "edit for voice", or pastes text for a humanization pass.
+description: >-
+  Rewrites text to strip AI-writing tells and inject human voice. Detects
+  em-dash overuse, AI vocabulary, inflated significance, rule-of-three,
+  negative parallelisms, sycophancy, and 20+ more patterns catalogued in
+  Wikipedia's Signs of AI writing. Output is a final rewrite plus a short
+  residual-tells list.
+when_to_use: >-
+  Use when the user says "humanize this", "remove AI tells", "edit for
+  voice", "sounds too AI", "make this more human", or pastes text for a
+  humanization pass. Also triggers when editing or reviewing prose in
+  Markdown or plain text files where AI-ness is the target to strip.
+paths: "*.md, *.mdx, *.txt, *.rst"
 allowed-tools:
   - Read
   - Write

@@ -1,6 +1,6 @@
 {
   "name": "converge",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Run a prompt or slash command in a loop until changes converge (no new edits) or start churning (same files flip-flopping). Each pass runs in a fresh general-purpose Agent subagent for impartial review.",
   "author": {
     "name": "Victor De Simone",

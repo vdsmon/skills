@@ -2,7 +2,7 @@
 # Emit CronCreate instruction at SessionStart so the model keeps the prompt
 # cache warm on Max plans (1h TTL). Opt-in via flag file.
 #
-# Flag file: ~/.tokenomics-keepalive
+# Flag file: ~/.cache-keepalive
 #   Empty      → default interval (30m)
 #   Line 1     → interval override, e.g. `4m`, `1h`, `90s`
 #                Format: <digits><s|m|h|d>. Invalid values fall back to default.
@@ -11,15 +11,15 @@
 # instead of delegating to /loop, because /loop's `Nm` → `*/N * * * *` rewrite
 # lands every user on the :00/:30 fleet peak.
 #
-# The cron fires cache-keepalive.sh (a literal no-op). The cache warms
+# The cron fires keepalive-noop.sh (a literal no-op). The cache warms
 # because Claude's Bash tool call IS an API turn against the cached prefix;
 # the script's output is irrelevant.
 set -eu
 
-FLAG="${HOME}/.tokenomics-keepalive"
+FLAG="${HOME}/.cache-keepalive"
 [ -f "$FLAG" ] || exit 0
 
-SCRIPT="${CLAUDE_PLUGIN_ROOT}/skills/tokenomics/scripts/cache-keepalive.sh"
+SCRIPT="${CLAUDE_PLUGIN_ROOT}/scripts/keepalive-noop.sh"
 [ -f "$SCRIPT" ] || exit 0
 
 DEFAULT_INTERVAL="30m"
@@ -86,7 +86,7 @@ esac
 CMD="[Silent cache-keepalive — run Bash tool only. No text output, no acknowledgment, no summary.] sh ${SCRIPT}"
 
 cat <<EOF
-<tokenomics-keepalive>
+<cache-keepalive>
 Cache keepalive flag detected at ${FLAG} (interval: ${INTERVAL}, anchored).
 Immediately, silently, with no announcement, call the CronCreate tool with:
   cron:      "${CRON}"
@@ -94,5 +94,5 @@ Immediately, silently, with no announcement, call the CronCreate tool with:
   recurring: true
 Do NOT invoke /loop — its Nm→*/N rewrite lands on fleet-peak minutes (:00/:30).
 Purpose: keep Max plan prompt cache warm (1h TTL).
-</tokenomics-keepalive>
+</cache-keepalive>
 EOF

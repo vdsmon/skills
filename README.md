@@ -17,8 +17,11 @@ Then install whichever plugins you want:
 ```bash
 /plugin install skill-polish@vdsmon-skills
 /plugin install tokenomics@vdsmon-skills
+/plugin install cache-keepalive@vdsmon-skills
 /plugin install pre-compact@vdsmon-skills
-/plugin install humanizer@vdsmon-skills
+/plugin install humanize@vdsmon-skills
+/plugin install dg@vdsmon-skills
+/plugin install converge@vdsmon-skills
 ```
 
 ## Plugins
@@ -33,61 +36,81 @@ Works on any skill, not just its own.
 
 ### `tokenomics`
 
-Analyze Claude Code token usage, cache hit rates, and Max plan consumption. Ships with `scripts/token-report.py` for lightweight per-session reporting.
+Analyzes Claude Code token usage, cache hit rates, and Max plan consumption. Dashboard + reference library on rate limits, cache lifecycle, and empirical billing experiments. Runs `scripts/token-report.py` via dynamic context injection so the dashboard renders in one turn.
 
 Trigger: `tokenomics`, `how much have I used`, `cache stats`, `am I going to hit the limit`, `show my usage`, or any question about token/plan consumption.
 
-**Optional cache keepalive (Max plan):** touch `~/.tokenomics-keepalive` to opt in. On every session start the plugin emits an instruction that schedules `/loop <interval> python3 .../token-report.py` so the prompt cache stays warm (1h TTL).
+Analysis + education only. For prompt-cache warmup, install `cache-keepalive`.
 
-- Interval defaults to `30m`. Override by writing it on the first line of the flag file, e.g. `echo 4m > ~/.tokenomics-keepalive`.
-- Format: `<digits><s|m|h|d>` (e.g. `90s`, `4m`, `2h`). Invalid values silently fall back to `30m`.
-- No flag file = no hook output, no loop. `rm ~/.tokenomics-keepalive` to disable.
+### `cache-keepalive`
+
+Keeps the prompt cache warm on Max plans (1h TTL). At every SessionStart, emits an instruction telling Claude to schedule an anchored `CronCreate` firing a no-op shell script every 30 minutes. Each firing is an API turn against the cached prefix, which resets the TTL.
+
+**Opt in:** `touch ~/.cache-keepalive`. Without the flag file, the hook exits silently.
+
+- Default interval: `30m`. Override by writing it on the first line of the flag file, e.g. `echo 15m > ~/.cache-keepalive`.
+- Format: `<digits><s|m|h|d>` (e.g. `90s`, `4m`, `2h`). Invalid values fall back to `30m`.
+- Why 30 min: Max plan's 1h cache TTL + scheduler jitter means 60-min intervals consistently miss (verified empirically). Cron's minute granularity requires intervals that divide 60 cleanly.
+- Why anchored cron instead of `/loop`: `/loop`'s `Nm` → `*/N * * * *` rewrite lands every user on fleet-peak minutes (:00/:30). The hook computes its own cron anchored to session-start minute.
+- No skill, no UI — pure infrastructure plugin.
 
 ### `pre-compact`
 
-Audit in-flight session state before `/compact` truncates context. Flags uncommitted git changes, scratch files, unfinished plans, running background tasks. Produces a copy-paste focus message for the next session.
+Audits in-flight session state before `/compact` truncates context. Flags uncommitted git changes, scratch files, unfinished plans, running background tasks. Produces a copy-paste focus message for the next session.
 
 Trigger: `compact`, `let's compact`, `ready to compact?`, `prep for compact`, `suggest a compact message`.
 
-### `humanizer`
+### `humanize`
 
-Remove signs of AI-generated writing from text. Detects and fixes patterns including inflated symbolism, promotional language, superficial -ing analyses, vague attributions, em dash overuse, rule of three, AI vocabulary words, negative parallelisms, and excessive conjunctive phrases. Based on Wikipedia's "Signs of AI writing" guide.
+Removes signs of AI-generated writing from text. Detects and fixes em-dash overuse, AI vocabulary, inflated significance, rule-of-three, negative parallelisms, sycophancy, and 20+ more patterns.
 
-Trigger: `humanize`, `humanizer`, `sounds too AI`, `make this more human`, or when editing/reviewing text to reduce AI-writing tells.
+Trigger: `humanize this`, `remove AI tells`, `edit for voice`, `sounds too AI`, `make this more human`, or when editing/reviewing text.
 
-Forked from [blader/humanizer](https://github.com/blader/humanizer) (MIT, Copyright © 2025 Siqi Chen). Not tracking upstream — contains local modifications. Upstream license retained at `plugins/humanizer/skills/humanizer/LICENSE`.
+### `dg`
+
+Adversarial code review. Two Agent-tool personas (Gilfoyle attacks, Dinesh defends) debate a diff and converge on an actionable verdict. HBO's *Silicon Valley* energy, reviewer-level output.
+
+Trigger: `/dg`, `/dg <rounds>`, `/dg <path>`.
+
+### `converge`
+
+Runs a prompt or slash command in a loop until changes converge (no new edits) or start churning (same files flip-flopping). Each pass runs in a fresh Agent subagent for impartial review.
+
+Trigger: `converge`, `run until stable`, `keep running until done`, `repeat until clean`, `run /simplify until it stops finding things`.
 
 ## Layout
 
 ```
 .claude-plugin/
-  marketplace.json           # Lists all plugins shipped by this marketplace
+  marketplace.json                       # Lists all plugins shipped here
 plugins/
   skill-polish/
     .claude-plugin/plugin.json
     skills/skill-polish/SKILL.md
   tokenomics/
-    .claude-plugin/plugin.json          # Declares SessionStart hook
-    skills/tokenomics/SKILL.md + scripts/token-report.py
-    hooks/tokenomics-keepalive.sh       # Opt-in, flag-gated
+    .claude-plugin/plugin.json
+    skills/tokenomics/
+      SKILL.md
+      scripts/token-report.py
+      reference/{economics,experiments,keepalive}.md
+  cache-keepalive/
+    .claude-plugin/plugin.json           # Declares SessionStart hook
+    hooks/keepalive.sh                   # Opt-in, flag-gated
+    scripts/keepalive-noop.sh
   pre-compact/
     .claude-plugin/plugin.json
     skills/pre-compact/SKILL.md
-  humanizer/
+  humanize/
     .claude-plugin/plugin.json
-    skills/humanizer/SKILL.md + README.md + LICENSE
-```
-
-## Migrating from v0.x (monolithic `vdsmon-skills` plugin)
-
-Earlier versions shipped a single `vdsmon-skills` plugin bundling all skills. If you installed that, uninstall and reinstall only what you want:
-
-```bash
-claude plugin uninstall vdsmon-skills@vdsmon-skills
-claude plugin install tokenomics@vdsmon-skills
-# ... etc
+    skills/humanize/SKILL.md
+  dg/
+    .claude-plugin/plugin.json
+    skills/dg/{SKILL.md,dinesh-agent.md,gilfoyle-agent.md}
+  converge/
+    .claude-plugin/plugin.json
+    skills/converge/SKILL.md
 ```
 
 ## License
 
-MIT — see [LICENSE](LICENSE). The humanizer plugin contains a vendored MIT-licensed skill from blader/humanizer; that license is preserved alongside the skill.
+MIT — see [LICENSE](LICENSE).

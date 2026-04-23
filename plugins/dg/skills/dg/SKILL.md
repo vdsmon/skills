@@ -1,6 +1,22 @@
 ---
 name: dg
-description: Adversarial code review — Dinesh vs Gilfoyle banter from HBO's Silicon Valley. Gilfoyle attacks, Dinesh defends, debate converges. Use when user invokes /dg.
+description: >-
+  Runs adversarial code review as Dinesh vs Gilfoyle banter from HBO's
+  Silicon Valley. Two Agent-tool personas debate the diff across capped
+  rounds — Gilfoyle attacks with technical precision, Dinesh defends with
+  flustered competence — then converge on a verdict with Critical,
+  Important, Contested, and Dismissed buckets plus a recommended-changes
+  checklist.
+when_to_use: >-
+  Use when the user invokes `/dg`, `/dg <rounds>`, `/dg <path>`, or
+  `/dg <rounds> <path>`. Also surface when the user wants an entertaining
+  adversarial review of a diff or file, or says "review this with dg",
+  "dinesh gilfoyle review", or similar.
+argument-hint: "[rounds] [path]"
+disable-model-invocation: true
+allowed-tools:
+  - Bash(git diff *)
+  - Bash(git status *)
 ---
 
 # Dinesh vs Gilfoyle Code Review
@@ -16,7 +32,9 @@ Two-agent adversarial review. Gilfoyle attacks with technical precision, Dinesh 
 
 ## Parse Arguments
 
-Tokens: `<integer>` = round cap, anything else = target path. Order doesn't matter. Defaults: target = git diff, cap = 5.
+Raw input: `$ARGUMENTS`
+
+Split on whitespace. Tokens: `<integer>` = round cap, anything else = target path. Order doesn't matter. Defaults: target = git diff, cap = 5. Empty input = defaults.
 
 ## Step 1 — Gather Code
 

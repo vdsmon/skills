@@ -1,7 +1,7 @@
 {
   "name": "tokenomics",
-  "version": "1.3.1",
-  "description": "Token usage, cache hit rates, and Max plan consumption analyzer for Claude Code sessions. Ships an opt-in SessionStart hook that schedules a /loop to keep the prompt cache warm.",
+  "version": "2.0.0",
+  "description": "Analyzes Claude Code token usage, cache hit rates, and Max plan consumption. Ships a /tokenomics dashboard plus a reference library on rate limits, cache lifecycle, and empirical billing experiments. Analysis and education only — for cache warmup install the cache-keepalive plugin.",
   "author": {
     "name": "Victor De Simone",
     "email": "victorsmoliveira@gmail.com",
@@ -10,18 +10,5 @@
   "homepage": "https://github.com/vdsmon/claude-skills",
   "repository": "https://github.com/vdsmon/claude-skills",
   "license": "MIT",
-  "skills": "./skills",
-  "hooks": {
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/tokenomics-keepalive.sh\"",
-            "timeout": 5
-          }
-        ]
-      }
-    ]
-  }
+  "skills": "./skills"
 }

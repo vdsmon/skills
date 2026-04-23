@@ -1,6 +1,23 @@
 ---
 name: pre-compact
-description: Prepare a session for `/compact` by auditing pending state before context is truncated. Trigger whenever the user says "compact", "let's compact", "ready to compact?", "prep for compact", "suggest a compact message", "what should I put in /compact?", or any variant signalling they're about to run `/compact`. Audit uncommitted git changes, scratch files, in-flight workflow state, unfinished plans, running background tasks — flag anything that would be lost, propose concrete actions to persist it, then produce a copy-paste-ready focus message that lets the next session pick up cleanly. Use this proactively even when the user just asks whether compacting is OK.
+description: >-
+  Audits in-flight session state before `/compact` truncates context. Flags
+  uncommitted git changes, scratch files, unfinished plans, running background
+  tasks, and chat-only decisions; proposes concrete actions to persist what
+  matters; produces a copy-paste focus message for the next session.
+when_to_use: >-
+  Use when the user says "compact", "let's compact", "ready to compact?",
+  "prep for compact", "suggest a compact message", "what should I put in
+  /compact?", or any variant signalling they're about to run `/compact`.
+  Run proactively even when the user just asks whether compacting is OK.
+  Natural break + "context feels full" or "can we compact?" also triggers.
+argument-hint: "[--message-only]"
+allowed-tools:
+  - Bash(git status *)
+  - Bash(git log *)
+  - Bash(git diff *)
+  - Bash(git stash *)
+  - Bash(git checkout *)
 ---
 
 # Pre-Compact
@@ -11,17 +28,39 @@ description: Prepare a session for `/compact` by auditing pending state before c
 
 Description covers most phrases. Whenever user about to run `/compact` or asking whether should. Don't wait for explicit ask — natural break + "context feels full" or "can we compact?" = run flow.
 
+## Modes
+
+Raw input: `$ARGUMENTS`
+
+- `$ARGUMENTS` contains `--message-only` (or `-m`, `message only`, `just the message`, `skip audit`) → **message-only mode**: skip steps 1–2, jump straight to step 3. Git injection below still runs so the message can cite branch + recent commits accurately, but no audit summary, no action list.
+- Otherwise → **full mode**: all three steps in order.
+
+Also honour natural language overrides mid-conversation: if the user says "skip audit, just give me the message" after invocation, switch to message-only without re-running.
+
 ## The three steps
 
-Do in order. Don't skip step 1 — point = catch lost things.
+Do in order in full mode. Message-only mode skips 1 and 2.
+
+Don't skip step 1 in full mode — point = catch lost things.
 
 ### 1. Assess: what's in flight?
+
+Live git state pre-injected so the audit starts with numbers in hand:
+
+```!
+git status --short 2>/dev/null || true
+```
+
+```!
+git log -5 --oneline 2>/dev/null || true
+```
 
 Silent audit, report short structured summary. Check:
 
 **Code state**
-- `git status` in primary working dir (and any worktree). Unstaged/untracked files? Which matter (real work) vs. ignorable (temp/scratch)?
+- Use the `git status --short` output above (and the last 5 commits) as the starting point. Unstaged/untracked files? Which matter (real work) vs. ignorable (temp/scratch)?
 - Files edited this session user hasn't reviewed or uncommitted?
+- ultrathink about which uncommitted changes represent real work vs experimental cruft — the call is subtle and wrong-side-of-the-line loses actual work.
 
 **Workflow / task state**
 - State files, plan files, scratch notes session read/write — reflect current progress?
@@ -123,8 +162,21 @@ Hotfix for rate-limit 503 on hotfix/rate-limit-503. Root cause: thundering-herd 
 ```
 ```
 
+## Message-only format
+
+In message-only mode, drop the Audit/Action sections. Output shape:
+
+```
+**Compact message** (paste into /compact):
+```text
+[the focus message]
+```
+```
+
+Keep the focus message grounded in the injected `git status` and `git log` output at the top so branch, uncommitted work, and recent commits are accurate. No audit bullets, no action list, no preamble.
+
 ## Notes
 
 - Compact message is *yours* — don't parrot user in-session. They compact because they trust you preserve what matters.
-- User says "just give me compact message, skip audit": honor. Default = audit first.
-- State genuinely chaotic (many unfinished threads, half-implementations): say so, recommend *against* compacting until sorted. Losing one session context cheap; losing track of in-flight work not.
+- Default = full audit. `--message-only` (or natural-language equivalents) skips straight to the message.
+- State genuinely chaotic (many unfinished threads, half-implementations): say so, recommend *against* compacting until sorted — even in message-only mode. Losing one session context cheap; losing track of in-flight work not.

@@ -1,17 +1,29 @@
 ---
 name: skill-polish
 description: >-
-  Post-mortem for any skill. Scans the conversation for friction
-  (corrections, skipped steps, rejected tool calls), traces each to
-  the responsible skill file, and applies concrete edits. Use when the
-  user says "skill-polish", "polish the skill", "improve the skill",
-  "that should have been automatic", "you skipped X", or "close the
-  gaps". Works for ANY skill.
+  Post-mortem for any skill. Scans the current conversation for friction
+  (corrections, skipped steps, rejected tool calls, validated surprises),
+  traces each signal to the responsible skill file, and applies concrete
+  edits so the same friction doesn't recur. Works on any installed skill,
+  not just its own.
+when_to_use: >-
+  Use when the user says "skill-polish", "polish the skill", "improve
+  the skill", "that should have been automatic", "you skipped X", "close
+  the gaps", "why did you not use the skill here", or signals that a
+  skill's flow felt rough this session. Invoked proactively after a
+  noticeably clumsy run of any skill to lock in a fix.
+disable-model-invocation: true
+allowed-tools:
+  - Read
+  - Edit
+  - Grep
+  - Glob
+  - AskUserQuestion
 ---
 
 # Skill Polish
 
-Just watched skill execute this conversation. Something not smooth. Job: find what wrong, trace to skill's instructions, fix instructions so not happen again.
+Just watched skill execute this conversation. Something not smooth. Job: find what wrong, trace to skill's instructions, fix instructions so not happen again. ultrathink when scanning — the friction signals are often subtle and buried across many turns.
 
 Not about code written — about *skill itself*. Skill's reference files, SKILL.md, workflow descriptions. Improve tool, not output.
 

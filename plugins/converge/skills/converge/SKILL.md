@@ -1,6 +1,23 @@
 ---
 name: converge
-description: Run a prompt or slash command in a loop until changes converge (no new edits) or start churning (same files flip-flopping). Use when user says "converge", "run until stable", "keep running until done", "repeat until clean", or passes a skill/prompt to apply iteratively. Also triggers on "run /simplify until it stops finding things" or "keep improving until there's nothing left".
+description: >-
+  Runs a prompt or slash command in a loop until the codebase stabilises.
+  Stops on "no files changed" (converged), ≥50% file overlap with a prior
+  pass (churning — reverts the churning files), max 10 passes, or when the
+  inner prompt reports no issues. Each pass runs in a fresh general-purpose
+  Agent subagent for impartial review.
+when_to_use: >-
+  Use when the user says "converge", "run until stable", "keep running
+  until done", "repeat until clean", or passes a skill/prompt to apply
+  iteratively. Also triggers on "run /simplify until it stops finding
+  things", "keep improving until there's nothing left", or any phrasing
+  that asks for a loop around a transformation until the edits dry up.
+argument-hint: "<prompt or /skill>"
+disable-model-invocation: true
+allowed-tools:
+  - Bash(git diff *)
+  - Bash(git checkout *)
+  - Bash(git status *)
 ---
 
 # converge
@@ -13,11 +30,15 @@ Run a prompt or slash command in a loop. Stop when codebase stable. Prevents und
 /converge <prompt or /skill>
 ```
 
+Current invocation: `$ARGUMENTS`
+
 Examples:
 - `/converge /simplify`
 - `/converge /claude-md-improver`
 - `/converge "review and fix type errors"`
 - `/converge "run biome check --write and fix any remaining issues"`
+
+Empty `$ARGUMENTS` → stop and ask the user what to loop.
 
 ## Stop conditions
 
@@ -32,7 +53,7 @@ Examples:
 
 Before starting:
 
-1. Parse user input for the prompt/skill to repeat.
+1. Treat `$ARGUMENTS` as the prompt/skill to repeat.
 2. Print: `Starting convergence loop: "<prompt>"`.
 
 **Critical: each pass runs in a fresh `general-purpose` Agent subagent via the Agent tool.** Fresh context per iteration = impartial review, no self-bias from prior edits. Parent handles snapshot + diff + decide. Subagent handles execution only.
