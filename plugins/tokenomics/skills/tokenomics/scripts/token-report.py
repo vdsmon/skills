@@ -282,9 +282,28 @@ def find_project_sessions(project_dir=None):
     return sorted(glob.glob(os.path.join(base, "*.jsonl")), key=os.path.getmtime)
 
 
+def keepalive_report_enabled():
+    """Line 2+ of ~/.tokenomics-keepalive may contain `report=on` to opt in."""
+    flag = os.path.expanduser("~/.tokenomics-keepalive")
+    try:
+        with open(flag) as f:
+            for line in f.readlines()[1:]:
+                if line.strip().lower() == "report=on":
+                    return True
+    except OSError:
+        pass
+    return False
+
+
 def main():
-    if len(sys.argv) > 1 and sys.argv[1] != "--all":
-        filepath = sys.argv[1]
+    args = [a for a in sys.argv[1:]]
+    if "--keepalive" in args:
+        if not keepalive_report_enabled():
+            return
+        args.remove("--keepalive")
+
+    if args and args[0] != "--all":
+        filepath = args[0]
         turns = parse_session(filepath)
         print_report(turns, filepath)
         return
@@ -294,12 +313,11 @@ def main():
         print("No sessions found.")
         return
 
-    if len(sys.argv) > 1 and sys.argv[1] == "--all":
+    if args and args[0] == "--all":
         for s in sessions:
             turns = parse_session(s)
             print_report(turns, s)
     else:
-        # Latest session
         filepath = sessions[-1]
         turns = parse_session(filepath)
         print_report(turns, filepath)

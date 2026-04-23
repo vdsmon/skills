@@ -13,7 +13,7 @@ Analyze token use, cache efficiency, plan use for Claude Code sessions.
 Run bundled script:
 
 ```bash
-python3 ~/.claude/skills/tokenomics/scripts/token-report.py
+python3 /Users/victordsm/repos/personal/claude-skills/plugins/tokenomics/skills/tokenomics/scripts/token-report.py
 ```
 
 Options: `--all` for all sessions, or pass specific `.jsonl` path.
