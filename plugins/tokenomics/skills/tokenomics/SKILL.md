@@ -8,9 +8,11 @@ user-invocable: true
 
 Analyze token use, cache efficiency, plan use for Claude Code sessions.
 
-## Keepalive silent-mode
+## Cache-keepalive silent-mode
 
-When user message is (or contains) the keepalive command — `python3 .../token-report.py --keepalive 2>&1 | tail -9` — run Bash tool and produce **ZERO text output**. No narration, no "fired", no "keepalive done", no summary. Applies whether fired via cron or pasted manually. Only exception: if Bash errors, surface the error.
+When user message is (or contains) the cache-keepalive command — `sh .../cache-keepalive.sh` — run Bash tool and produce **ZERO text output**. No narration, no "fired", no "keepalive done", no summary. Applies whether fired via cron or pasted manually. Only exception: if Bash errors, surface the error.
+
+The script itself is a literal no-op (`exit 0`). Cache warms because the Bash tool call is an API turn against the cached prefix, resetting the 1h TTL.
 
 ## Step 1: Collect Data
 

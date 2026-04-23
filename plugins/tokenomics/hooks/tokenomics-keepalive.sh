@@ -3,21 +3,23 @@
 # cache warm on Max plans (1h TTL). Opt-in via flag file.
 #
 # Flag file: ~/.tokenomics-keepalive
-#   Empty      → default interval (30m), report silent
+#   Empty      → default interval (30m)
 #   Line 1     → interval override, e.g. `4m`, `1h`, `90s`
 #                Format: <digits><s|m|h|d>. Invalid values fall back to default.
-#   Line 2+    → `report=on` opts in to printing the token report each fire.
-#                Absent/anything else = silent (fires still warm cache).
 #
 # We compute the cron expression ourselves (anchored to session start minute)
 # instead of delegating to /loop, because /loop's `Nm` → `*/N * * * *` rewrite
 # lands every user on the :00/:30 fleet peak.
+#
+# The cron fires cache-keepalive.sh (a literal no-op). The cache warms
+# because Claude's Bash tool call IS an API turn against the cached prefix;
+# the script's output is irrelevant.
 set -eu
 
 FLAG="${HOME}/.tokenomics-keepalive"
 [ -f "$FLAG" ] || exit 0
 
-SCRIPT="${CLAUDE_PLUGIN_ROOT}/skills/tokenomics/scripts/token-report.py"
+SCRIPT="${CLAUDE_PLUGIN_ROOT}/skills/tokenomics/scripts/cache-keepalive.sh"
 [ -f "$SCRIPT" ] || exit 0
 
 DEFAULT_INTERVAL="30m"
@@ -81,7 +83,7 @@ case "$UNIT" in
     ;;
 esac
 
-CMD="[Silent keepalive — run Bash tool only. No text output, no acknowledgment, no summary.] python3 ${SCRIPT} --keepalive 2>&1 | tail -9"
+CMD="[Silent cache-keepalive — run Bash tool only. No text output, no acknowledgment, no summary.] sh ${SCRIPT}"
 
 cat <<EOF
 <tokenomics-keepalive>
