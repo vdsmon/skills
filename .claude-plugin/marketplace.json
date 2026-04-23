@@ -28,10 +28,10 @@
       "version": "1.0.0"
     },
     {
-      "name": "cc-pre-compact",
-      "source": "./plugins/cc-pre-compact",
-      "description": "Audit in-flight state before /compact truncates context; produce a copy-paste focus message for the next session. Claude Code only (uses dynamic !`git status` injection).",
-      "version": "1.3.0"
+      "name": "pre-compact",
+      "source": "./plugins/pre-compact",
+      "description": "Audit in-flight state before any context-compacting step; produce a copy-paste focus message for the next session. Portable across Agent Skills hosts — compacting is a general concept, not Claude-specific.",
+      "version": "1.4.0"
     },
     {
       "name": "humanize",

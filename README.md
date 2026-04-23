@@ -14,7 +14,7 @@ Plugins **without** the `cc-` prefix are portable. They follow the open Agent Sk
 |---|---|---|
 | `cc-tokenomics` | cc- | Claude Code only |
 | `cc-cache-keepalive` | cc- | Claude Code only |
-| `cc-pre-compact` | cc- | Claude Code only |
+| `pre-compact` | — | Any host |
 | `humanize` | — | Any host |
 | `dg` | — | Any host (dispatches subagents via whatever mechanism the host provides) |
 | `converge` | — | Any host (same caveat) |
@@ -34,13 +34,13 @@ Install whichever plugins you want:
 # Portable
 /plugin install skill-polish@vdsmon-skills
 /plugin install humanize@vdsmon-skills
+/plugin install pre-compact@vdsmon-skills
 /plugin install dg@vdsmon-skills
 /plugin install converge@vdsmon-skills
 
 # Claude-Code-specific
 /plugin install cc-tokenomics@vdsmon-skills
 /plugin install cc-cache-keepalive@vdsmon-skills
-/plugin install cc-pre-compact@vdsmon-skills
 ```
 
 ## Install — other hosts (portable plugins only)
@@ -56,10 +56,11 @@ cd claude-skills
 
 ```bash
 mkdir -p ~/.codex/skills
-cp -r plugins/humanize/skills/humanize        ~/.codex/skills/
-cp -r plugins/dg/skills/dg                    ~/.codex/skills/
-cp -r plugins/converge/skills/converge        ~/.codex/skills/
-cp -r plugins/skill-polish/skills/skill-polish ~/.codex/skills/
+cp -r plugins/humanize/skills/humanize          ~/.codex/skills/
+cp -r plugins/pre-compact/skills/pre-compact    ~/.codex/skills/
+cp -r plugins/dg/skills/dg                      ~/.codex/skills/
+cp -r plugins/converge/skills/converge          ~/.codex/skills/
+cp -r plugins/skill-polish/skills/skill-polish  ~/.codex/skills/
 ```
 
 ### Gemini CLI
@@ -117,11 +118,11 @@ Keeps the prompt cache warm on Max plans (1h TTL). At every SessionStart, emits 
 - Why anchored cron instead of `/loop`: `/loop`'s `Nm` → `*/N * * * *` rewrite lands every user on fleet-peak minutes (:00/:30). The hook computes its own cron anchored to session-start minute.
 - No skill, no UI — pure infrastructure plugin.
 
-### `cc-pre-compact` (Claude Code only)
+### `pre-compact` (portable)
 
-Audits in-flight session state before `/compact` truncates context. Flags uncommitted git changes, scratch files, unfinished plans, running background tasks. Produces a copy-paste focus message for the next session. Uses `` !`git status` `` + `` !`git log` `` dynamic injection so audit numbers arrive pre-model.
+Audits in-flight session state before any context-compacting step truncates history. Flags uncommitted git changes, scratch files, unfinished plans, running background tasks. Produces a copy-paste focus message for the next session. Compacting is a general agent concept — Claude Code's `/compact`, Codex's summarise-and-continue, Cursor's context prune, etc. — so this skill works across hosts.
 
-Trigger: `compact`, `let's compact`, `ready to compact?`, `prep for compact`, `suggest a compact message`.
+Trigger: `compact`, `let's compact`, `ready to compact?`, `prep for compact`, `suggest a compact message`, `shrink the context`, `summarise and continue`.
 
 `--message-only` flag skips the audit and outputs just the focus message.
 
@@ -162,9 +163,9 @@ plugins/
     .claude-plugin/plugin.json           # Declares SessionStart hook
     hooks/keepalive.sh                   # Opt-in, flag-gated
     scripts/keepalive-noop.sh
-  cc-pre-compact/
+  pre-compact/
     .claude-plugin/plugin.json
-    skills/cc-pre-compact/SKILL.md
+    skills/pre-compact/SKILL.md
   humanize/
     .claude-plugin/plugin.json
     skills/humanize/SKILL.md

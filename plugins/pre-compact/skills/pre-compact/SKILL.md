@@ -1,14 +1,17 @@
 ---
-name: cc-pre-compact
+name: pre-compact
 description: >-
-  Audits in-flight session state before `/compact` truncates context. Flags
-  uncommitted git changes, scratch files, unfinished plans, running background
-  tasks, and chat-only decisions; proposes concrete actions to persist what
-  matters; produces a copy-paste focus message for the next session.
+  Audits in-flight session state before a context-compacting step truncates
+  history. Flags uncommitted git changes, scratch files, unfinished plans,
+  running background tasks, and chat-only decisions; proposes concrete
+  actions to persist what matters; produces a copy-paste focus message for
+  the next session. Portable across Agent Skills hosts — compacting is a
+  general concept, not Claude-specific.
 when_to_use: >-
   Use when the user says "compact", "let's compact", "ready to compact?",
   "prep for compact", "suggest a compact message", "what should I put in
-  /compact?", or any variant signalling they're about to run `/compact`.
+  /compact?", "shrink the context", "summarise and continue", or any
+  variant signalling they're about to hit a context-truncating step.
   Run proactively even when the user just asks whether compacting is OK.
   Natural break + "context feels full" or "can we compact?" also triggers.
 argument-hint: "[--message-only]"
@@ -22,17 +25,17 @@ allowed-tools:
 
 # Pre-Compact
 
-`/compact` drop conversation history, keep only short summary you provide. Anything not persisted outside chat — half-written plan, unsaved inline snippet, background task name — gone. Skill audit so that no bite next session.
+the compact step drop conversation history, keep only short summary you provide. Anything not persisted outside chat — half-written plan, unsaved inline snippet, background task name — gone. Skill audit so that no bite next session.
 
 ## When to use
 
-Description covers most phrases. Whenever user about to run `/compact` or asking whether should. Don't wait for explicit ask — natural break + "context feels full" or "can we compact?" = run flow.
+Description covers most phrases. Whenever user about to run the compact step or asking whether should. Don't wait for explicit ask — natural break + "context feels full" or "can we compact?" = run flow.
 
 ## Modes
 
 Raw input: `$ARGUMENTS`
 
-- `$ARGUMENTS` contains `--message-only` (or `-m`, `message only`, `just the message`, `skip audit`) → **message-only mode**: skip steps 1–2, jump straight to step 3. Git injection below still runs so the message can cite branch + recent commits accurately, but no audit summary, no action list.
+- `$ARGUMENTS` contains `--message-only` (or `-m`, `message only`, `just the message`, `skip audit`) → **message-only mode**: skip steps 1–2, jump straight to step 3. Still run `git status --short` + `git log -5 --oneline` so the message can cite branch + recent commits accurately, but no audit summary, no action list.
 - Otherwise → **full mode**: all three steps in order.
 
 Also honour natural language overrides mid-conversation: if the user says "skip audit, just give me the message" after invocation, switch to message-only without re-running.
@@ -45,20 +48,19 @@ Don't skip step 1 in full mode — point = catch lost things.
 
 ### 1. Assess: what's in flight?
 
-Live git state pre-injected so the audit starts with numbers in hand:
+First, gather the git baseline with two Bash calls:
 
-```!
-git status --short 2>/dev/null || true
+```bash
+git status --short
+git log -5 --oneline
 ```
 
-```!
-git log -5 --oneline 2>/dev/null || true
-```
+(On Claude Code, these calls are pre-approved via `allowed-tools` and run without prompting. On other hosts, the user may need to approve them once.)
 
 Silent audit, report short structured summary. Check:
 
 **Code state**
-- Use the `git status --short` output above (and the last 5 commits) as the starting point. Unstaged/untracked files? Which matter (real work) vs. ignorable (temp/scratch)?
+- Start from the `git status --short` output (and the last 5 commits). Unstaged/untracked files? Which matter (real work) vs. ignorable (temp/scratch)?
 - Files edited this session user hasn't reviewed or uncommitted?
 - ultrathink about which uncommitted changes represent real work vs experimental cruft — the call is subtle and wrong-side-of-the-line loses actual work.
 
@@ -92,7 +94,7 @@ Nothing needs action: "State is clean. Ready to compact." Then step 3.
 
 ### 3. Propose: the compact message
 
-Single code block with focus message user paste into `/compact`. 3–6 sentences, optimized for next session cold-start.
+Single code block with focus message user paste into the compact step. 3–6 sentences, optimized for next session cold-start.
 
 Good compact message include:
 
@@ -115,7 +117,7 @@ Respond in this shape:
 **Action needed**
 - [actions with rationale, or "none — state is clean"]
 
-**Compact message** (paste into /compact):
+**Compact message** (paste into your host's compact/summary prompt):
 ```text
 [the focus message]
 ```
@@ -137,7 +139,7 @@ Don't narrate three steps as "Step 1 / Step 2 / Step 3" sections — ceremony. A
 **Action needed**
 - None — state is clean.
 
-**Compact message:**
+**Compact message:** (paste into host's compact/summary prompt)
 ```text
 Resume tokenizer refactor on feat/parser-rewrite. Unit tests green (42 passing). Next: wire new tokenizer into the parser entrypoint and re-run the integration suite. Plan: docs/plan-parser-rewrite.md. One open thread: decide whether to keep the legacy whitespace-handling shim (see plan Open Questions).
 ```
@@ -156,7 +158,7 @@ Resume tokenizer refactor on feat/parser-rewrite. Unit tests green (42 passing).
 - Revert `.env` before compact so next session doesn't commit it unknowingly: `git checkout -- .env`.
 - Read output of `bash_3` now — it will still be running but its earlier stdout is what you'll want to summarize.
 
-**Compact message:**
+**Compact message:** (paste into host's compact/summary prompt)
 ```text
 Hotfix for rate-limit 503 on hotfix/rate-limit-503. Root cause: thundering-herd on token refresh. Fix in progress: jittered backoff in src/limiter.ts (uncommitted, intentional). Repro harness still running as background task capturing traces. Next: add a regression test, then commit + PR. Skip rerunning the repro — we already have enough traces.
 ```
@@ -167,13 +169,13 @@ Hotfix for rate-limit 503 on hotfix/rate-limit-503. Root cause: thundering-herd 
 In message-only mode, drop the Audit/Action sections. Output shape:
 
 ```
-**Compact message** (paste into /compact):
+**Compact message** (paste into your host's compact/summary prompt):
 ```text
 [the focus message]
 ```
 ```
 
-Keep the focus message grounded in the injected `git status` and `git log` output at the top so branch, uncommitted work, and recent commits are accurate. No audit bullets, no action list, no preamble.
+Keep the focus message grounded in the `git status` and `git log` output so branch, uncommitted work, and recent commits are accurate. No audit bullets, no action list, no preamble.
 
 ## Notes
 
