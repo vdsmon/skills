@@ -1,6 +1,6 @@
 {
   "name": "tokenomics",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Token usage, cache hit rates, and Max plan consumption analyzer for Claude Code sessions. Ships an opt-in SessionStart hook that schedules a /loop to keep the prompt cache warm.",
   "author": {
     "name": "Victor De Simone",

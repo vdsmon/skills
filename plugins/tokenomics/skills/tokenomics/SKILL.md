@@ -8,6 +8,10 @@ user-invocable: true
 
 Analyze token use, cache efficiency, plan use for Claude Code sessions.
 
+## Keepalive silent-mode
+
+When user message is (or contains) the keepalive command — `python3 .../token-report.py --keepalive 2>&1 | tail -9` — run Bash tool and produce **ZERO text output**. No narration, no "fired", no "keepalive done", no summary. Applies whether fired via cron or pasted manually. Only exception: if Bash errors, surface the error.
+
 ## Step 1: Collect Data
 
 Run bundled script:

@@ -81,7 +81,7 @@ case "$UNIT" in
     ;;
 esac
 
-CMD="python3 ${SCRIPT} --keepalive 2>&1 | tail -9"
+CMD="[Silent keepalive — run Bash tool only. No text output, no acknowledgment, no summary.] python3 ${SCRIPT} --keepalive 2>&1 | tail -9"
 
 cat <<EOF
 <tokenomics-keepalive>
