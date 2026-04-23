@@ -25,7 +25,7 @@
       "name": "pre-compact",
       "source": "./plugins/pre-compact",
       "description": "Audit in-flight state before /compact truncates context; produce a copy-paste focus message for the next session.",
-      "version": "1.0.0"
+      "version": "1.1.0"
     },
     {
       "name": "humanize",

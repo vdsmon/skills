@@ -1,6 +1,6 @@
 {
   "name": "pre-compact",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Audit in-flight session state before /compact truncates context. Flags uncommitted changes, scratch files, unfinished plans, and running background tasks, then produces a copy-paste focus message for the next session.",
   "author": {
     "name": "Victor De Simone",
