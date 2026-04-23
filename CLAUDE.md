@@ -22,7 +22,7 @@ Two invariants preserve when add/rename plugins:
 1. **Every plugin listed in `.claude-plugin/marketplace.json`** with `name`, `source: ./plugins/<name>`, `description`, `version`. Forget = plugin invisible to `/plugin install`.
 2. **`plugin.json` `name` must match marketplace `name` and directory name.** Skill dir name under `skills/` independent but conventionally matches.
 
-Current plugins: `skill-polish`, `tokenomics`, `pre-compact`, `humanize`, `dg`.
+Current plugins: `skill-polish`, `tokenomics`, `pre-compact`, `humanize`, `dg`, `converge`.
 
 ## Anatomy of a skill
 

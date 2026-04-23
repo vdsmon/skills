@@ -38,6 +38,12 @@
       "source": "./plugins/dg",
       "description": "Adversarial code review — two Agent-tool personas (Gilfoyle attacks, Dinesh defends) debate the diff and converge on an actionable verdict.",
       "version": "1.0.0"
+    },
+    {
+      "name": "converge",
+      "source": "./plugins/converge",
+      "description": "Run a prompt or slash command in a loop until changes converge or start churning. Each pass runs in a fresh Agent subagent for impartial review.",
+      "version": "1.0.0"
     }
   ]
 }

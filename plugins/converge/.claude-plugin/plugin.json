@@ -1,0 +1,14 @@
+{
+  "name": "converge",
+  "version": "1.0.0",
+  "description": "Run a prompt or slash command in a loop until changes converge (no new edits) or start churning (same files flip-flopping). Each pass runs in a fresh general-purpose Agent subagent for impartial review.",
+  "author": {
+    "name": "Victor De Simone",
+    "email": "victorsmoliveira@gmail.com",
+    "url": "https://github.com/vdsmon"
+  },
+  "homepage": "https://github.com/vdsmon/claude-skills",
+  "repository": "https://github.com/vdsmon/claude-skills",
+  "license": "MIT",
+  "skills": "./skills"
+}
