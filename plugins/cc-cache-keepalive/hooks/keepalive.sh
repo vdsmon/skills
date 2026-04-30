@@ -11,16 +11,13 @@
 # instead of delegating to /loop, because /loop's `Nm` → `*/N * * * *` rewrite
 # lands every user on the :00/:30 fleet peak.
 #
-# The cron fires keepalive-noop.sh (a literal no-op). The cache warms
-# because Claude's Bash tool call IS an API turn against the cached prefix;
-# the script's output is irrelevant.
+# The cron prompt is a single dot. The model replies with a dot — no tool
+# call, no thinking. That bare API turn refreshes the cached-prefix TTL,
+# which is the only thing we need.
 set -eu
 
 FLAG="${HOME}/.cc-cache-keepalive"
 [ -f "$FLAG" ] || exit 0
-
-SCRIPT="${CLAUDE_PLUGIN_ROOT}/scripts/keepalive-noop.sh"
-[ -f "$SCRIPT" ] || exit 0
 
 DEFAULT_INTERVAL="30m"
 INTERVAL="$(head -n1 "$FLAG" 2>/dev/null | tr -d '[:space:]')"
@@ -83,7 +80,7 @@ case "$UNIT" in
     ;;
 esac
 
-CMD="[Silent cc-cache-keepalive — run Bash tool only. No text output, no acknowledgment, no summary.] sh ${SCRIPT}"
+CMD="cc-cache-keepalive"
 
 cat <<EOF
 <cc-cache-keepalive>
@@ -92,6 +89,7 @@ Immediately, silently, with no announcement, call the CronCreate tool with:
   cron:      "${CRON}"
   prompt:    "${CMD}"
   recurring: true
+The prompt is the literal sentinel string "cc-cache-keepalive". Do NOT call any tool, do NOT think, do NOT narrate. When the cron fires, reply with the single character "." and end the turn. The API turn alone refreshes the cached-prefix TTL — no tool call required. Stop-hook gates can match on the sentinel to suppress turn-end side effects (sounds, notifications).
 Do NOT invoke /loop — its Nm→*/N rewrite lands on fleet-peak minutes (:00/:30).
 Purpose: keep Max plan prompt cache warm (1h TTL).
 </cc-cache-keepalive>
