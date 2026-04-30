@@ -79,10 +79,10 @@ See `keepalive.md` for the cache warmup utility (shipped as the separate `cc-cac
 
 ## The 5-hour window
 
-- Rolling window, starts when the first message is sent (floored to the hour)
+- Rolling window, starts at the exact timestamp of the first message (no longer floored to the hour — Anthropic dropped that rounding)
 - Counts `input_tokens` + `cache_creation_input_tokens` (NOT cache reads)
 - Resets fully when the window expires
-- Warmup trick: send a minimal message early (e.g. via [claude-warmup](https://github.com/vdsmon/claude-warmup)) to anchor the window reset at a convenient time
+- Warmup trick: send a minimal message at a convenient minute (e.g. via [claude-warmup](https://github.com/vdsmon/claude-warmup)) to anchor the reset there — minute precision now matters since the start no longer rounds down
 
 ## The 7-day window
 

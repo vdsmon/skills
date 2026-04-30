@@ -19,7 +19,7 @@
       "name": "cc-tokenomics",
       "source": "./plugins/cc-tokenomics",
       "description": "Token usage, cache hit rates, and Max plan consumption analyzer. /cc-tokenomics dashboard + reference docs on rate limits, cache lifecycle, and empirical billing experiments. Claude Code only.",
-      "version": "2.0.0"
+      "version": "2.0.1"
     },
     {
       "name": "cc-cache-keepalive",
