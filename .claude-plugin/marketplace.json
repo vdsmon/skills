@@ -13,7 +13,7 @@
       "name": "skill-polish",
       "source": "./plugins/skill-polish",
       "description": "Post-mortem for any skill — scans a session for friction and applies concrete edits to the responsible skill file. Portable across SKILL.md-native hosts.",
-      "version": "1.1.0"
+      "version": "1.2.0"
     },
     {
       "name": "cc-tokenomics",

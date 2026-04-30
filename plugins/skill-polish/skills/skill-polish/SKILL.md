@@ -13,6 +13,7 @@ when_to_use: >-
   skill's flow felt rough this session. Invoked proactively after a
   noticeably clumsy run of any skill to lock in a fix.
 disable-model-invocation: true
+argument-hint: "[--auto-approve|-a]"
 allowed-tools:
   - Read
   - Edit
@@ -20,6 +21,9 @@ allowed-tools:
   - Glob
   - AskUserQuestion
 ---
+
+<!-- $ARGUMENTS holds raw flags. `--auto-approve` or `-a` = skip Step 4 picker, apply every proposed edit. -->
+ARGUMENTS: $ARGUMENTS
 
 # Skill Polish
 
@@ -114,7 +118,9 @@ Present all edits together for review. Don't apply yet.
 
 ### Step 4: Apply with approval
 
-Use `AskUserQuestion` to present picker with these options:
+If `$ARGUMENTS` contain `--auto-approve` or `-a`, skip picker — apply every proposed edit immediately. Note in summary: "auto-approve flag set, all N edits applied without prompt."
+
+Otherwise, use `AskUserQuestion` to present picker with these options:
 - **"Apply all"** — apply every proposed edit
 - **"Apply selected"** — let user specify which numbered edits to apply (follow up asking which)
 - **"Skip"** — don't apply, note for later
