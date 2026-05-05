@@ -11,9 +11,9 @@
 # instead of delegating to /loop, because /loop's `Nm` → `*/N * * * *` rewrite
 # lands every user on the :00/:30 fleet peak.
 #
-# The cron prompt is a single dot. The model replies with a dot — no tool
-# call, no thinking. That bare API turn refreshes the cached-prefix TTL,
-# which is the only thing we need.
+# The cron prompt is the sentinel "cc-cache-keepalive". The model replies
+# with "🔄 cache-keepalive" — no tool call, no thinking. That bare API turn
+# refreshes the cached-prefix TTL, which is the only thing we need.
 set -eu
 
 FLAG="${HOME}/.cc-cache-keepalive"
@@ -89,7 +89,7 @@ Immediately, silently, with no announcement, call the CronCreate tool with:
   cron:      "${CRON}"
   prompt:    "${CMD}"
   recurring: true
-The prompt is the literal sentinel string "cc-cache-keepalive". Do NOT call any tool, do NOT think, do NOT narrate. When the cron fires, reply with the single character "." and end the turn. The API turn alone refreshes the cached-prefix TTL — no tool call required. Stop-hook gates can match on the sentinel to suppress turn-end side effects (sounds, notifications).
+The prompt is the literal sentinel string "cc-cache-keepalive". Do NOT call any tool, do NOT think, do NOT narrate. When the cron fires, reply with exactly "🔄 cache-keepalive" and end the turn. The API turn alone refreshes the cached-prefix TTL — no tool call required. Stop-hook gates can match on the sentinel to suppress turn-end side effects (sounds, notifications).
 Do NOT invoke /loop — its Nm→*/N rewrite lands on fleet-peak minutes (:00/:30).
 Purpose: keep Max plan prompt cache warm (1h TTL).
 </cc-cache-keepalive>

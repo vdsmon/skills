@@ -25,7 +25,7 @@
       "name": "cc-cache-keepalive",
       "source": "./plugins/cc-cache-keepalive",
       "description": "Keeps Claude Code's prompt cache warm on Max plans via a SessionStart-scheduled silent cron. Opt-in via ~/.cc-cache-keepalive flag file. Cron prompt is sentinel 'cc-cache-keepalive' — gate Stop hooks on it to silence turn-end sounds. Claude Code only (hook + cron).",
-      "version": "1.2.0"
+      "version": "1.2.1"
     },
     {
       "name": "pre-compact",
