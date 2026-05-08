@@ -1,0 +1,20 @@
+# Project-level ship-it config. Copy to <repo-root>/.ship-it.toml and fill in.
+# Commit this file if you want every contributor to share the same defaults,
+# or keep it gitignored if each contributor sets their own.
+
+[vcs]
+# Bitbucket workspace and repo slug, both visible in any repo URL:
+#   https://bitbucket.org/<workspace>/<repo_slug>/
+workspace = ""
+repo_slug = ""
+
+# Default destination branch for new PRs. Defaults to "dev" if omitted.
+default_target = "dev"
+
+# Only "bkt" is supported in v0.1. The key exists so future adapters
+# (gh for GitHub, etc.) can drop in without breaking config files.
+cli = "bkt"
+
+[reviewer_bot]
+# Only "coderabbit" is supported in v0.1. Same forward-compat reasoning.
+name = "coderabbit"
