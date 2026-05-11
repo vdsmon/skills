@@ -116,23 +116,26 @@ n_blok=$(count_label "blok")
 n_settled=$((n_done + n_skip))
 
 bucket_header() {
-  # Args: prefix, done, total, skip, blok
-  local prefix=$1 d=$2 t=$3 s=$4 b=$5
+  # Emits <details><summary>...</summary> opener for one epic bucket.
+  # Caller emits rows, then `</details>` to close.
+  # Args: label, done, total, skip, blok
+  local label=$1 d=$2 t=$3 s=$4 b=$5
+  local counts
   if [ "$d" -eq "$t" ]; then
-    printf '%s  [%s/%s done]\n' "$prefix" "$d" "$t"
+    counts="$d/$t done"
   else
     local bits=()
     [ "$d" -gt 0 ] && bits+=("$d done")
     [ "$s" -gt 0 ] && bits+=("$s wontfix")
     [ "$b" -gt 0 ] && bits+=("$b blocked")
-    local hdr=""
+    counts=""
     local x
     for x in "${bits[@]}"; do
-      if [ -z "$hdr" ]; then hdr="$x"; else hdr="$hdr · $x"; fi
+      if [ -z "$counts" ]; then counts="$x"; else counts="$counts · $x"; fi
     done
-    [ -z "$hdr" ] && hdr="$t total"
-    printf '%s  [%s]\n' "$prefix" "$hdr"
+    [ -z "$counts" ] && counts="$t total"
   fi
+  printf '<details>\n<summary><b>%s</b> &nbsp; [%s]</summary>\n\n' "$label" "$counts"
 }
 
 emit_rows() {
@@ -169,10 +172,10 @@ trap 'rm -f "$TMP" "$OUT"' EXIT
     etotal=$(printf '%s\n' "$rows" | wc -l | tr -d ' ')
     eskip=$(printf '%s\n' "$rows" | awk -F'\t' '$3=="skip"' | wc -l | tr -d ' ')
     eblok=$(printf '%s\n' "$rows" | awk -F'\t' '$3=="blok"' | wc -l | tr -d ' ')
-    bucket_header "## $e $name" "$edone" "$etotal" "$eskip" "$eblok"
-    echo
+    bucket_header "$e $name" "$edone" "$etotal" "$eskip" "$eblok"
+    printf '```\n'
     printf '%s\n' "$rows" | emit_rows
-    echo
+    printf '```\n</details>\n\n'
   done < <(awk -F'\t' '$1!=""{print $1}' "$TMP" | sort -u)
 
   # No-epic bucket last
@@ -182,10 +185,10 @@ trap 'rm -f "$TMP" "$OUT"' EXIT
     nototal=$(printf '%s\n' "$norows" | wc -l | tr -d ' ')
     noskip=$(printf '%s\n' "$norows" | awk -F'\t' '$3=="skip"' | wc -l | tr -d ' ')
     noblok=$(printf '%s\n' "$norows" | awk -F'\t' '$3=="blok"' | wc -l | tr -d ' ')
-    bucket_header "## (no epic)" "$nodone" "$nototal" "$noskip" "$noblok"
-    echo
+    bucket_header "(no epic)" "$nodone" "$nototal" "$noskip" "$noblok"
+    printf '```\n'
     printf '%s\n' "$norows" | emit_rows
-    echo
+    printf '```\n</details>\n\n'
   fi
 
   echo "Legend: done | pend | wip | skip | blok"
