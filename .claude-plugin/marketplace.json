@@ -61,7 +61,7 @@
       "name": "tasks",
       "source": "./plugins/tasks",
       "description": "Filesystem-based two-phase task orchestration. /tasks:spec breaks an epic into atomic stories with shell-runnable acceptance + dep graph; /tasks:orchestrate dispatches the ready set in parallel-safe batches via subagents until done. Bootstraps project templates on first use. Portable (subagent dispatch varies by host).",
-      "version": "0.1.1"
+      "version": "0.2.0"
     }
   ]
 }
