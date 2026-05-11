@@ -49,20 +49,26 @@ Empty `$ARGUMENTS` → ask user for the epic statement before proceeding.
 
 ## Bootstrap
 
-Before any spec work, ensure templates are in place. Templates are the source-of-truth shape for epics + stories.
+Templates are source-of-truth shape. Idempotent; safe to re-run.
 
 ```!
+set -eu
+SRC="${CLAUDE_SKILL_DIR}/../../templates"
+if [ ! -d "$SRC" ]; then
+  echo "ERROR: plugin templates missing at $SRC" >&2
+  exit 1
+fi
 if [ ! -d "tasks/_templates" ]; then
   mkdir -p tasks/_templates tasks/epics
-  cp "${CLAUDE_SKILL_DIR}/../../templates/EPIC.md" tasks/_templates/EPIC.md
-  cp "${CLAUDE_SKILL_DIR}/../../templates/STORY.md" tasks/_templates/STORY.md
-  cp "${CLAUDE_SKILL_DIR}/../../templates/README.md" tasks/_templates/README.md
+  cp "$SRC/EPIC.md" tasks/_templates/EPIC.md
+  cp "$SRC/STORY.md" tasks/_templates/STORY.md
+  cp "$SRC/README.md" tasks/_templates/README.md
   echo "bootstrapped tasks/_templates/ from plugin defaults"
 fi
 ls tasks/_templates/ 2>/dev/null
 ```
 
-After bootstrap: read `tasks/_templates/EPIC.md`, `STORY.md`, `README.md` (in that order) to internalize the current shape. Templates are project-customizable — never hardcode field lists; always read from the templates.
+Then read `tasks/_templates/EPIC.md`, `STORY.md`, `README.md` in that order. Templates are project-customizable — never hardcode field lists; always read from the templates.
 
 ## Workflow
 
@@ -92,24 +98,18 @@ Draft in-message (not yet in a file). Include:
 
 ### 4. Decompose into stories
 
-Atomic stories with frontmatter per `tasks/_templates/STORY.md`:
+Frontmatter shape is whatever `tasks/_templates/STORY.md` defines — read it; don't hardcode. As of this writing the template fields are: `id`, `title`, `status` (starts `pending`), `size`, `depends_on`, `epic`, `parallel_cluster` (omit for epic-grouped stories), `agent_type`, `priority`, `estimated_minutes`.
 
-- `id: T<NN>` — next free ID in the project
-- `depends_on: [...]` — strict deps; orchestrator uses this for DAG
-- `epic: E<NN>` — link to the epic file
-- `agent_type: cavecrew-builder | general-purpose | orchestrator-direct`
-- `priority: normal | high` — optional; flags de-risk-first stories
-- `size: S | M | L`
-- `estimated_minutes: N`
-
-Each story gets:
+Sections per the template:
 
 - `## Goal` — one paragraph
 - `## Files` — every file the story creates / edits / appends. Orchestrator uses this for collision avoidance. `None — <reason>` for pure-infrastructure stories.
 - `## Acceptance` — shell-runnable commands. Each `<command>` exits 0 / prints `<expected>`. End-state assertions only, not process metrics.
+- `## Human handoff` (optional) — only for `orchestrator-direct` stories. Numbered steps user performs.
 - `## Notes` — guidance, anti-goals, gotchas, process constraints (iteration ceilings live HERE, not in Acceptance).
-- `## Human handoff` (optional) — for `orchestrator-direct` stories. Numbered steps user performs.
-- `## Blocker` (only when status:blocked) — populated by agent when stuck.
+- `## Blocker` and `## Retry notes` — orchestrator-appended at runtime; spec phase never writes these.
+
+Sizing rule: a `cavecrew-builder` story should declare ≤2 entries in `## Files`. 3+ files → either split, or promote `agent_type` to `general-purpose`. The cavecrew-builder subagent refuses large multi-file dispatches.
 
 ### 5. Collision audit
 
@@ -132,7 +132,7 @@ Present the decomposition in-message BEFORE writing files:
 - Collision audit summary
 - Open questions remaining
 
-Get user nod. Push back is normal — iterate before writing.
+Wait for user nod. Iterate before writing.
 
 ### 7. Write files + commit
 
@@ -155,11 +155,13 @@ Status starts at `pending` for every new story. Spec phase NEVER flips status to
 
 ## Anti-patterns
 
-- Skipping the architecture sketch — leads to 3 stories independently extending the same file, paying integration cost 3 times.
+- Skipping the architecture sketch — leads to 3 stories independently extending the same file (e.g. `run_scenario.sh` mode-dispatch), paying integration cost N times. Land shared refactors ONCE upfront.
 - Writing stories before user nod — sunk-cost on a flawed decomposition.
 - Subjective acceptance ("code is clean", "tests pass") — push to manual review, NOT into the `## Acceptance` block.
 - Inventing new frontmatter fields — only fields documented in `tasks/_templates/STORY.md` are valid. Want a new field? Update the template first, project-wide.
 - One-shot tasks dispatched through spec — this skill is for multi-story epics. Single tasks go straight to dispatch.
+- Telemetry / observation stories that read sibling-story output without owning a contract on it — caller of the contract must point at fixtures the contract guarantees, not at incidental on-disk state. Otherwise the story produces empty results when run standalone.
+- Assigning `cavecrew-builder` to a 3+ file story — agent refuses. Either split, or use `general-purpose`.
 
 ## Final output
 

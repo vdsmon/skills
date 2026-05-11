@@ -26,14 +26,14 @@ Stories stay flat (no per-epic subdirs) so dependency graph traversal is one `fi
 | --- | --- |
 | `draft` | epic only — still being shaped, no stories yet |
 | `pending` | story or epic ready for work; deps satisfied if applicable |
-| `in-progress` | currently owned by an agent (orchestrator sets this; never by hand) |
+| `in-progress` | currently owned by an agent. Reserved state — current orchestrator implementation goes `pending` → `done` directly; do not set by hand. |
 | `done` | merged; downstream unblocked |
 | `blocked` | could not complete; see `## Blocker` section |
 | `wontfix` | resolved by decision, not implementation |
 
 ## Two-phase workflow
 
-### Phase 1 — spec (`/spec` in the planned skill)
+### Phase 1 — spec (`/tasks:spec`)
 
 1. User brings an epic statement (goal + constraints + out-of-scope).
 2. Orchestrator (Claude) asks 2–5 clarifying questions; skips if unambiguous.
@@ -42,7 +42,7 @@ Stories stay flat (no per-epic subdirs) so dependency graph traversal is one `fi
 5. Collision audit — which stories parallelize, which serialize (file conflicts).
 6. Writes `tasks/epics/E<NN>-<slug>.md` + `tasks/T<NN>-<slug>.md` files. Updates `tasks/README.md` index.
 
-### Phase 2 — orchestrate (`/orchestrate` in the planned skill)
+### Phase 2 — orchestrate (`/tasks:orchestrate`)
 
 1. Read `tasks/T*.md` frontmatter. Compute ready set: `status == pending && every dep is done|wontfix`.
 2. Compute parallel-safe batches from the ready set: stories that don't share `Files` entries can run in parallel. Append-only files force serial.
@@ -73,7 +73,7 @@ Story without acceptance is a wish. Refuse to dispatch.
 
 | agent_type | Who runs it | When to use |
 | --- | --- | --- |
-| `cavecrew-builder` | Subagent. No Bash. | Surgical 1–2 file edit. Parent runs acceptance + commits. |
+| `cavecrew-builder` | Subagent. Read/Edit/Write/Grep/Glob only — no Bash. | Surgical 1–2 file edit (hard cap; agent refuses on 3+ files). Parent runs acceptance + commits. |
 | `general-purpose` | Subagent. Full toolset. | Multi-file work, acceptance scripting, self-commits. |
 | `orchestrator-direct` | Orchestrator (main thread) itself, no subagent. | Stories requiring interactive user steps, secret handling, or coordination work that can't be safely delegated. |
 

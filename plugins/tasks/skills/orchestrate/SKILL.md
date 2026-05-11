@@ -56,11 +56,17 @@ Examples:
 ## Bootstrap
 
 ```!
+set -eu
+SRC="${CLAUDE_SKILL_DIR}/../../templates"
+if [ ! -d "$SRC" ]; then
+  echo "ERROR: plugin templates missing at $SRC" >&2
+  exit 1
+fi
 if [ ! -d "tasks/_templates" ]; then
   mkdir -p tasks/_templates tasks/epics
-  cp "${CLAUDE_SKILL_DIR}/../../templates/EPIC.md" tasks/_templates/EPIC.md
-  cp "${CLAUDE_SKILL_DIR}/../../templates/STORY.md" tasks/_templates/STORY.md
-  cp "${CLAUDE_SKILL_DIR}/../../templates/README.md" tasks/_templates/README.md
+  cp "$SRC/EPIC.md" tasks/_templates/EPIC.md
+  cp "$SRC/STORY.md" tasks/_templates/STORY.md
+  cp "$SRC/README.md" tasks/_templates/README.md
   echo "bootstrapped tasks/_templates/ from plugin defaults"
 fi
 ls tasks/T*.md 2>/dev/null | wc -l | tr -d ' '
@@ -104,28 +110,38 @@ If `--dry-run`, stop here.
 
 ### 4. Dispatch by agent_type
 
+Refuse-at-dispatch checks (apply before constructing any prompt):
+
+- `cavecrew-builder` + 3 or more entries in `## Files` → halt. Either split the story or rewrite frontmatter to `general-purpose`. Surface to user; do not dispatch.
+- `agent_type: orchestrator-direct` reaching a subagent path → bug; halt.
+- Story lacks any `## Acceptance` items → refuse; spec violation.
+
 For each story in the current batch:
 
-- **`cavecrew-builder`**: subagent has no Bash. Prompt: edit files only, leave `status: pending`, return. Parent runs `## Acceptance` commands, on pass flips status to `done` + commits with subject `T<NN>: <slug>`. On fail: revert agent's edits via `git checkout -- <files>`, append a `## Retry notes` section.
-- **`general-purpose`**: subagent has full toolset, self-commits on success. Parent re-verifies `## Acceptance` independently (don't trust agent's self-report alone). On any divergence: revert agent's commit, append `## Retry notes`.
+- **`cavecrew-builder`**: subagent has only Read/Edit/Write/Grep/Glob (no Bash). Prompt: edit files only, leave `status: pending`, return. Parent runs `## Acceptance` commands, on pass flips status to `done` + commits with subject `T<NN>: <slug>`. On fail: revert agent's edits via `git checkout -- <files>`, append a `## Retry notes` section.
+- **`general-purpose`**: subagent has full toolset, self-commits on success. Parent re-verifies `## Acceptance` independently (don't trust agent's self-report alone). On any divergence: revert agent's commit (`git revert <sha>` or `git reset --hard HEAD~1` if not yet pushed), append `## Retry notes`.
 - **`orchestrator-direct`**: NO subagent. Parent handles inline. Read the `## Human handoff` section, prompt the user step-by-step, run non-interactive shell follow-ups (`gh secret set`, etc.), verify acceptance. Then flip status + commit.
 
-When constructing subagent prompts:
+Constructing subagent prompts. The prompt body MUST be assembled by:
 
-- Pass story ID + brief contents to the agent.
-- **STRIP `## Human handoff` section before passing to a subagent.** That section may contain secret-handling instructions; subagents should never see them. Orchestrator-direct stories never reach subagents anyway, but defense-in-depth.
-- Tell `cavecrew-builder` agents explicitly: "leave frontmatter as `pending`. Do NOT commit. Parent handles acceptance + commit."
-- Tell `general-purpose` agents: "run every `## Acceptance` command. On pass flip status to `done` + commit subject `T<NN>: <slug>`."
-- For parallel dispatch, send all agents in a single message with multiple Agent tool calls.
+1. Reading the story file.
+2. Excising the entire `## Human handoff` section (heading + body, through to the next `## ` or EOF). Defense-in-depth — `cavecrew-builder` and `general-purpose` stories should never carry one, but strip unconditionally.
+3. Stripping `## Blocker` and `## Retry notes` from previous attempts unless the agent's prompt needs the retry context — in that case quote only the latest entry.
+4. Prepending the per-agent contract message:
+   - `cavecrew-builder`: "Leave frontmatter as `pending`. Do NOT commit. Parent handles acceptance + commit. Edit only files listed in `## Files`."
+   - `general-purpose`: "Run every `## Acceptance` command. On pass, flip status to `done` + commit with subject `T<NN>: <slug>`. Parent re-verifies; do not lie about acceptance results."
+
+For parallel dispatch, send all agents in a single message with multiple Agent tool calls. Hard cap: 4 concurrent dispatches.
 
 ### 5. Verify + commit per story
 
 After each story's subagent returns (or after orchestrator-direct handling completes):
 
-- Re-run every `## Acceptance` command from the parent. Parent's run is the truth.
-- If any acceptance fails: revert (commit + working tree), append `## Retry notes` section with the failure, mark status back to `pending`. Story re-enters the ready set on the next batch.
-- If acceptance passes AND the agent didn't already commit: write status: done, commit.
-- If acceptance passes AND the agent already committed: verify commit SHA exists, status is already done.
+- Re-run every `## Acceptance` command from the parent. Parent's run is the truth — never flip status off subagent self-report.
+- Also run the project's standard linter/type-checker set on touched files (e.g. `ty`, `ruff`, `shellcheck`, `actionlint`, `yamllint` — whichever apply). Subagents often miss linters they don't know about. This is parent-side belt-and-braces, not part of `## Acceptance`.
+- If any acceptance fails: revert (commit + working tree), append `## Retry notes` section with the failing command + output excerpt, mark status back to `pending`. Story re-enters the ready set on the next batch.
+- If acceptance passes AND the agent didn't already commit: write `status: done`, commit.
+- If acceptance passes AND the agent already committed: verify commit SHA exists, status is already `done`.
 
 ### 6. Loop
 
@@ -174,12 +190,16 @@ Working tree: clean | <state>
 - NEVER dispatch a story whose `agent_type` is `orchestrator-direct` to a subagent.
 - NEVER include `## Human handoff` content in a subagent prompt.
 - NEVER allow a single batch to commit more than 4 stories in parallel.
+- NEVER retry a story more than 3 times — mark `blocked` after the third failure.
 - ALWAYS commit per-story (one commit per story), not per-batch. Cleaner revert path.
 - ALWAYS preserve `## Notes`, `## Blocker`, `## Retry notes` sections when editing the story file — append, don't overwrite.
 
 ## Anti-patterns
 
-- Batching by agent_type instead of by file-overlap — leads to "all cavecrew tasks in batch 1" which collides on shared files.
+- Batching by agent_type instead of by file-overlap — leads to "all cavecrew tasks in batch 1" which collides on shared files like `mise.toml`.
+- Two stories appending to `mise.toml` in the same batch — the appended blocks land out of order and one overwrites the other. Serialize.
 - Trusting a `general-purpose` subagent's self-reported "all acceptance passed" without re-running — agents accept their own bugs because they're inside the bubble.
+- Skipping parent-side linter run after subagent returns — subagents don't always know about every linter (`ty`, project-specific checks); diagnostics slip through.
 - Letting a watch-loop story (CI run, iterative push) keep retrying past its documented iteration ceiling — read `## Notes` for the ceiling, enforce it externally.
 - Skipping the pre-flight check on git working tree — concurrent subagents on a dirty tree corrupt state.
+- Dispatching `cavecrew-builder` for 3+ files — agent refuses. Halt at dispatch, surface to user.
