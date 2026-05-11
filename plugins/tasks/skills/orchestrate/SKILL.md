@@ -91,12 +91,18 @@ Filter by `--epic` / `--task` if specified.
 
 ### 3. Compute parallel-safe batches
 
-Greedy batching over the ready set:
+Greedy batching over the ready set. Algorithm:
 
-- Build a set of "touched paths" per story from its `## Files` section.
-- Mark append-only paths explicitly: `mise.toml`, `*.github/workflows/*.yml` (when both stories edit the same file), `README.md`, `AGENT_GUIDE.md`, `project.godot`, `tests/scenarios/SCHEMA.md`, and any shared docs. Two stories appending to the same file → serialize.
-- Stories with NO path overlap can batch together.
-- Cap batch size at 3–4 to bound parent verification cost.
+1. Order the ready set by priority rule (see Dispatch rules) → ordered list `L`.
+2. Initialize `batch = []`, `batch_paths = {}` (path → "edit" | "append").
+3. For each story `s` in `L`:
+   - Build `s.paths` from its `## Files` section. Each entry classified as `edit` (Create / Edit) or `append` (Append).
+   - Collision iff any path `p` in `s.paths` is in `batch_paths` AND either side is `append` OR both sides are `edit` on the same path. (Append-vs-anything on the same file = collision; edit-vs-edit on the same file = collision; non-overlapping paths = no collision.)
+   - If no collision: add `s` to `batch`, merge `s.paths` into `batch_paths`. Else: defer `s` to a later batch.
+4. Stop adding when `|batch| == 4` (hard cap; lean conservative at 3).
+5. Emit `batch`. Remaining stories form the next batch's input on the next loop iteration.
+
+Append-only surfaces in this repo include: `mise.toml`, GitHub workflow files (`.github/workflows/*.yml`), shared docs (`README.md`, `AGENT_GUIDE.md`, `ASSETS.md`), `project.godot`, `tests/scenarios/SCHEMA.md`. Any file the project treats as append-only counts; the rule is structural, not a fixed list.
 
 Print the batch plan:
 
@@ -125,8 +131,8 @@ For each story in the current batch:
 Constructing subagent prompts. The prompt body MUST be assembled by:
 
 1. Reading the story file.
-2. Excising the entire `## Human handoff` section (heading + body, through to the next `## ` or EOF). Defense-in-depth — `cavecrew-builder` and `general-purpose` stories should never carry one, but strip unconditionally.
-3. Stripping `## Blocker` and `## Retry notes` from previous attempts unless the agent's prompt needs the retry context — in that case quote only the latest entry.
+2. Excising the entire `## Human handoff` section (heading + body, through to the next H2 heading matching `^## ` or EOF if it's the last section). The H2 boundary means `### Candidate X` and other deeper headings inside the section don't end the excision. Defense-in-depth — `cavecrew-builder` and `general-purpose` stories should never carry a handoff, but strip unconditionally.
+3. Excising `## Blocker` and `## Retry notes` sections using the same H2-or-EOF boundary rule as step 2. Exception: if the prompt needs prior-retry context (story is being retried), quote only the LATEST entry from `## Retry notes` inline in the contract message — don't pass the whole accumulated section.
 4. Prepending the per-agent contract message:
    - `cavecrew-builder`: "Leave frontmatter as `pending`. Do NOT commit. Parent handles acceptance + commit. Edit only files listed in `## Files`."
    - `general-purpose`: "Run every `## Acceptance` command. On pass, flip status to `done` + commit with subject `T<NN>: <slug>`. Parent re-verifies; do not lie about acceptance results."
@@ -169,7 +175,7 @@ Working tree: clean | <state>
 - **Append-only files force serial dispatch**. `mise.toml`, `project.godot` `[autoload]`, GitHub workflow files (when both stories edit the same workflow), shared markdown docs (`README.md`, `AGENT_GUIDE.md`, `ASSETS.md`) — every story that appends to these gets its own slot.
 - **Batch size capped at 3–4**. More parallelism means more parent-verification cost + higher chance of subtle conflicts. Lean conservative.
 - **Retry budget per story = 3**. After 3 retries, mark the story `blocked` with a `## Retry notes` summary of all attempts. Do NOT loop forever.
-- **Honor `priority: high`**. High-priority stories dispatch first within the ready set (de-risk-first). Tiebreak: earliest ID.
+- **Honor `priority: high`**. Within a single epic's ready set, high-priority stories dispatch first (de-risk-first). Tiebreak: earliest ID. Across epics, priority is incomparable — order by epic ID then story ID.
 
 ## Abort conditions
 
