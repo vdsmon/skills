@@ -193,6 +193,20 @@ After each batch:
 
 ### 7. Final summary
 
+Before printing the summary, refresh the project's tasks dashboard if the project ships a regenerator:
+
+```bash
+if [ -x tools/regen-dashboard.sh ]; then
+  tools/regen-dashboard.sh
+  if ! git diff --quiet tasks/DASHBOARD.md 2>/dev/null; then
+    git add tasks/DASHBOARD.md
+    git commit -m "tasks: dashboard refresh"
+  fi
+fi
+```
+
+The dashboard reflects all status flips landed this run. If the project doesn't ship `tools/regen-dashboard.sh`, skip silently — not every project uses one. (See `tasks/_templates/regen-dashboard.sh` in the plugin for a reference implementation that parses `tasks/T*.md` frontmatter into a tree-style status view.)
+
 ```
 ## Orchestration summary
 
@@ -201,6 +215,7 @@ Stories blocked: T<NN> (see ## Blocker)
 Stories retried: T<NN> (passed after N retries)
 Commits: <SHA-list>
 Working tree: clean | <state>
+Dashboard: tasks/DASHBOARD.md (refreshed | not present)
 ```
 
 ## Dispatch rules
