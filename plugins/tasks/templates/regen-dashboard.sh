@@ -116,8 +116,7 @@ n_blok=$(count_label "blok")
 n_settled=$((n_done + n_skip))
 
 bucket_header() {
-  # Emits <details><summary>...</summary> opener for one epic bucket.
-  # Caller emits rows, then `</details>` to close.
+  # Emits a markdown H2 heading for one epic bucket.
   # Args: label, done, total, skip, blok
   local label=$1 d=$2 t=$3 s=$4 b=$5
   local counts
@@ -135,7 +134,7 @@ bucket_header() {
     done
     [ -z "$counts" ] && counts="$t total"
   fi
-  printf '<details>\n<summary><b>%s</b> &nbsp; [%s]</summary>\n\n' "$label" "$counts"
+  printf '## %s  [%s]\n\n' "$label" "$counts"
 }
 
 emit_rows() {
@@ -175,7 +174,7 @@ trap 'rm -f "$TMP" "$OUT"' EXIT
     bucket_header "$e $name" "$edone" "$etotal" "$eskip" "$eblok"
     printf '```\n'
     printf '%s\n' "$rows" | emit_rows
-    printf '```\n</details>\n\n'
+    printf '```\n\n'
   done < <(awk -F'\t' '$1!=""{print $1}' "$TMP" | sort -u)
 
   # No-epic bucket last
