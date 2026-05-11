@@ -126,20 +126,37 @@ For each story in the current batch:
 
 - **`cavecrew-builder`**: subagent has only Read/Edit/Write/Grep/Glob (no Bash). Prompt: edit files only, leave `status: pending`, return. Parent runs `## Acceptance` commands, on pass flips status to `done` + commits with subject `T<NN>: <slug>`. On fail: revert agent's edits via `git checkout -- <files>`, append a `## Retry notes` section.
 - **`general-purpose`**: subagent has full toolset, self-commits on success. Parent re-verifies `## Acceptance` independently (don't trust agent's self-report alone). On any divergence: revert agent's commit (`git revert <sha>` or `git reset --hard HEAD~1` if not yet pushed), append `## Retry notes`.
-- **`orchestrator-direct`**: NO subagent. Parent handles inline. Read the `## Human handoff` section, prompt the user step-by-step, run non-interactive shell follow-ups (`gh secret set`, etc.), verify acceptance. Then flip status + commit.
+- **`orchestrator-direct`**: NO subagent. Parent handles inline. Read the `## Human handoff` section, prompt the user step-by-step, verify acceptance via side effect, flip status + commit.
 
-Constructing subagent prompts. The prompt body MUST be assembled by:
+  **Secret-handling default** (when the story handles a secret — OAuth token, API key, signing key, password):
+  1. NEVER ask the user to paste the secret into the conversation — the transcript is logged and may be persisted across sessions.
+  2. Default to: send the user the exact non-interactive command they can run themselves on their machine. Example for `gh secret set CLAUDE_CODE_OAUTH_TOKEN`: send `gh secret set CLAUDE_CODE_OAUTH_TOKEN --repo <owner/name>` — gh prompts `? Paste your secret:` interactively (Ctrl-D to finish), so the secret never reaches argv, env, history, or transcript.
+  3. Verify acceptance via the side effect (e.g. `gh secret list --json name,updatedAt`) — never via the secret value itself.
+  4. If the user explicitly chooses to paste the secret to chat anyway: pipe via stdin (`gh secret set NAME --body -` with the value piped from `printf '%s' "$VAR"`) so it stays out of argv / `ps` listing. Note: it will still be in the transcript — the user accepts that trade-off.
 
-1. Reading the story file.
-2. Excising the entire `## Human handoff` section (heading + body, through to the next H2 heading matching `^## ` or EOF if it's the last section). The H2 boundary means `### Candidate X` and other deeper headings inside the section don't end the excision. Defense-in-depth — `cavecrew-builder` and `general-purpose` stories should never carry a handoff, but strip unconditionally.
-3. Excising `## Blocker` and `## Retry notes` sections using the same H2-or-EOF boundary rule as step 2. Exception: if the prompt needs prior-retry context (story is being retried), quote only the LATEST entry from `## Retry notes` inline in the contract message — don't pass the whole accumulated section.
-4. Prepending the per-agent contract message:
+Constructing subagent prompts. Use the helper script — do NOT hand-stitch:
+
+```
+PROMPT=$(bash "${CLAUDE_SKILL_DIR}/../../scripts/build-dispatch-prompt.sh" \
+          tasks/T<NN>-<slug>.md <agent-type> [--retry])
+```
+
+The script:
+
+1. Reads the story file.
+2. Excises `## Human handoff`, `## Blocker`, and `## Retry notes` sections (H2-or-EOF boundary — `### Candidate X` and other deeper headings inside the section don't end the excision). Defense-in-depth — `cavecrew-builder` and `general-purpose` stories should never carry a handoff, but strip unconditionally.
+3. With `--retry`: re-injects ONLY the LATEST entry from `## Retry notes` (the last `### ` subheading block) inline in the contract message. The skill needs prior-retry context but not the whole accumulated section.
+4. Prepends the per-agent contract message:
    - `cavecrew-builder`: "Leave frontmatter as `pending`. Do NOT commit. Parent handles acceptance + commit. Edit only files listed in `## Files`."
-   - `general-purpose`: "Run every `## Acceptance` command. On pass, flip status to `done` + commit with subject `T<NN>: <slug>`. Parent re-verifies; do not lie about acceptance results."
+   - `general-purpose`: "Run every `## Acceptance` command. On pass, flip frontmatter `status: pending` → `status: done` + commit with subject `T<NN>: <slug>`. Parent re-verifies; do not lie about acceptance results."
+
+Pass the script's stdout as the `prompt` argument to the Agent tool call. Hand-stitching the prompt is an anti-pattern: H2-boundary detection errors and stale Blocker/Retry leakage are recurrent failure modes that the script eliminates.
 
 For parallel dispatch, send all agents in a single message with multiple Agent tool calls. Hard cap: 4 concurrent dispatches.
 
 ### 5. Verify + commit per story
+
+**Continuity rule.** From `acceptance passes` to `status flip + commit + next-batch dispatch` is ONE uninterrupted flow. Do not pause for user input or end the response between these steps. A pause invites: session-resume state drift (parent re-runs acceptance because the in-context state isn't trusted), duplicate work, and forgotten post-acceptance side effects. Surface to user only at: batch boundary (after the next batch is dispatched), blocker, abort condition, or final summary.
 
 After each story's subagent returns (or after orchestrator-direct handling completes):
 
@@ -148,6 +165,23 @@ After each story's subagent returns (or after orchestrator-direct handling compl
 - If any acceptance fails: revert (commit + working tree), append `## Retry notes` section with the failing command + output excerpt, mark status back to `pending`. Story re-enters the ready set on the next batch.
 - If acceptance passes AND the agent didn't already commit: write `status: done`, commit.
 - If acceptance passes AND the agent already committed: verify commit SHA exists, status is already `done`.
+- When parent finishes a story INLINE (subagent halted, or no subagent work remained after spec amendment, or `orchestrator-direct` from the start): before flipping status, re-read the story's `## Notes` for post-acceptance side effects (issue close, branch delete, audit-trail comment, test-data cleanup). The subagent's order-of-ops covers these in normal flow; parent must cover them manually for inline completion. Common surfaces: GitHub issues opened by the story, test data on external services, temporary branches.
+
+### 5b. Spec amendment path
+
+Sometimes acceptance fails because the spec was wrong, not the implementation: the workflow / code is verifiably correct, but the `## Acceptance` check assumed something about an external system that turned out to be untrue (a bot's login name, an error message's exact wording, a CLI tool's exit code shape). The subagent correctly flips to `blocked` per the "do not lie about acceptance" contract — escalate this class to the user, do not silently relax the check.
+
+Protocol when parent diagnosis confirms wrong-by-spec:
+
+1. Surface to user: `actual <thing observed>` vs `spec wants <thing assumed>`, plus *why* they don't match (link to upstream docs / FAQ if available). Recommend the minimal spec amendment.
+2. Wait for explicit user OK to amend the spec. Do NOT unilaterally edit acceptance.
+3. Edit the story's `## Acceptance` section to match observed reality (e.g. broaden a jq filter, accept multiple identities via `test("^(a|b)$")`, etc.).
+4. Convert any `## Blocker` section documenting the issue into `## Retry notes` (preserve the content, retitle the heading) — Blocker is for terminal failures; the issue was resolved by amendment.
+5. Flip frontmatter `status: blocked` → `status: done`.
+6. Re-run the AMENDED acceptance commands inline from the parent. Skip subagent re-dispatch — no subagent work remains.
+7. Commit with the standard `T<NN>: <slug>` subject.
+
+If wrong-by-spec is recurrent across an epic: flag the spec quality to the user; the `tasks:spec` stage produced rigid acceptance checks tied to unverified external-system assumptions.
 
 ### 6. Loop
 
@@ -176,6 +210,7 @@ Working tree: clean | <state>
 - **Batch size capped at 3–4**. More parallelism means more parent-verification cost + higher chance of subtle conflicts. Lean conservative.
 - **Retry budget per story = 3**. After 3 retries, mark the story `blocked` with a `## Retry notes` summary of all attempts. Do NOT loop forever.
 - **Honor `priority: high`**. Within a single epic's ready set, high-priority stories dispatch first (de-risk-first). Tiebreak: earliest ID. Across epics, priority is incomparable — order by epic ID then story ID.
+- **Local-only status-flip commits piggyback on the next push**. Some stories (CI watch-loop stories with "do not push status-flip commits" in `## Notes`) intentionally produce a local-only `T<NN>: <slug>` commit after their pushed green-CI commit. These accumulate locally and ride the next dispatched fix-push (or final user-initiated push). Working as intended; mention as `[unpushed]` in the final summary so the user can `git push` when ready.
 
 ## Abort conditions
 
@@ -189,6 +224,11 @@ Working tree: clean | <state>
 - `tasks/` directory exists and contains at least one `T*.md`.
 - `tasks/_templates/` exists (bootstrap if missing — see Bootstrap section above).
 - For epics-scoped runs (`--epic E<NN>`): epic file `tasks/epics/E<NN>-*.md` exists.
+- **Per-story external-service tooling check.** For each story in the immediate ready set, scan its `## Acceptance` and `## Notes` for external-service tooling (`gh`, `gcloud`, `aws`, `npm publish`, `cargo publish`, `kubectl`, `docker push`, etc.). Verify auth + required scopes BEFORE constructing the dispatch prompt. Common gotchas:
+  - `gh` push to a repo containing `.github/workflows/*` requires `workflow` scope (`gh auth status` → token scopes).
+  - `gh secret set` requires `repo` scope.
+  - `npm publish` requires `npm whoami` to succeed against the target registry.
+  A wasted dispatch can leave irreversible side effects on the remote service (e.g. GitHub repo created on github.com, npm version published, cloud resource provisioned). Pre-flight catches it before the dispatch.
 
 ## Constraints
 
@@ -209,3 +249,4 @@ Working tree: clean | <state>
 - Letting a watch-loop story (CI run, iterative push) keep retrying past its documented iteration ceiling — read `## Notes` for the ceiling, enforce it externally.
 - Skipping the pre-flight check on git working tree — concurrent subagents on a dirty tree corrupt state.
 - Dispatching `cavecrew-builder` for 3+ files — agent refuses. Halt at dispatch, surface to user.
+- Running `actionlint` against composite-action files (`.github/actions/<name>/action.yml`) — actionlint validates the *workflow* schema and will flag composite-action keys (`description`, `inputs`, `outputs`, `runs`) as unexpected. Use `prek run --files <action.yml>` (yamllint via pre-commit) for composite actions. Reserve `actionlint` for `.github/workflows/*.yml`.
