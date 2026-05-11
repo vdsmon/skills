@@ -1,0 +1,14 @@
+{
+  "name": "adx-loop",
+  "version": "0.1.0",
+  "description": "ADX (Agent Development Experience) self-improvement loop. Each cycle: read prior retro's queued harness fix → ship that fix → ship a gameplay/product feature that pressure-tests the surface → retro (top pain + one queued fix for next cycle) → log a single composite metric. Discipline borrowed from Karpathy autoresearch: one change per iteration, mechanical single number, git as memory, binary keep/discard. Optimizes the development environment, not the product — the product is the pressure-test surface.",
+  "author": {
+    "name": "Victor De Simone",
+    "email": "victorsmoliveira@gmail.com",
+    "url": "https://github.com/vdsmon"
+  },
+  "homepage": "https://github.com/vdsmon/claude-skills",
+  "repository": "https://github.com/vdsmon/claude-skills",
+  "license": "MIT",
+  "skills": "./skills"
+}
