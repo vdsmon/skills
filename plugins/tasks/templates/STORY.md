@@ -27,6 +27,21 @@ file deltas write `None — <one-line reason>` instead.
 - Append: `path/to/shared.ext` — what gets appended (flags this story as
   serial-dispatch on shared files)
 
+## Preconditions (optional)
+
+Tools, scopes, secrets, or environment state the orchestrator's pre-flight
+must verify BEFORE dispatching this story. Each item is a check the parent
+runs once at orchestrate time; failure = halt dispatch, surface to user.
+
+- `gitleaks` binary on PATH (install: `brew install gitleaks`)
+- `gh` auth token scope includes `workflow` (verify: `gh auth status` shows `workflow` in token scopes)
+- `CLAUDE_CODE_OAUTH_TOKEN` repo secret exists (verify: `gh secret list --json name -q '.[] | .name' | grep -q '^CLAUDE_CODE_OAUTH_TOKEN$'`)
+
+Most stories OMIT this section. Use it when the story depends on tooling /
+scope / secret state not guaranteed by the standard dev env. Without this
+section, the orchestrator has to grep `## Notes` heuristically for tooling
+mentions — unreliable.
+
 ## Acceptance
 
 Every item is shell-runnable OR explicitly marked `[structural-only]`.

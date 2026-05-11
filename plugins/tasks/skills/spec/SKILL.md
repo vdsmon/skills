@@ -88,6 +88,14 @@ Use `AskUserQuestion` to resolve ambiguities BEFORE drafting the architecture sk
 
 If the epic statement already answers these, skip. Don't ask for the sake of asking.
 
+**Question construction rules:**
+
+- **Single-select** when options are mutually exclusive (one branch protection profile, one license, one storage backend).
+- **Multi-select** ONLY when options genuinely combine (audit checks: secret scan + LICENSE + README polish can all run together).
+- **Never mix "skip / none" with positive options in multi-select** — the user can pick contradictory combinations ("skip + add LICENSE"). Either: make it single-select with "skip" as one option, OR split into a yes/no gating question first ("audit at all?") followed by the multi-select.
+- **Use previews on AskUserQuestion options** when the choice has a visible artifact (file layout, dashboard format, API payload shape, generated commit subject). Previews close the loop on "what does this actually look like" — saves a round-trip.
+- **Don't ask defaults that can be sourced from project state.** See step 3b (Source defaults).
+
 ### 3. Architecture sketch
 
 Draft in-message (not yet in a file). Include:
@@ -95,6 +103,23 @@ Draft in-message (not yet in a file). Include:
 - **Contracts touched** — shared surfaces multiple stories will read or modify. Common: env-variable contracts, manifest schemas, plugin protocols, shared config files. Identify owner story per contract (one story defines or extends; others consume).
 - **Append-only / shared surface** — files where every consuming story appends a block (e.g. `mise.toml`, GitHub workflow files, `README.md` sections). These force serial dispatch.
 - **Anticipated extensions** — refactors visible at epic-time that should land ONCE upfront, not as N drive-by extensions during dispatch. This is the highest-leverage part — call out what would otherwise get re-edited 3 times.
+
+### 3b. Source defaults from project state — NEVER fabricate
+
+Before proposing any default value in the architecture sketch (copyright names, email addresses, repo descriptions, organization slugs, file paths, version numbers, dates, owner labels), check the project for the canonical source. Common sources, in priority order:
+
+| Default needed | Where to check |
+|---|---|
+| Author / copyright name | `git config user.name` → `gh api user --jq .name` → `gh api user --jq .login` |
+| Author email | `git config user.email` |
+| Repo description | `gh api repos/<owner>/<name> --jq .description` (null = need to write one) |
+| Repo URL / owner | `git remote get-url origin` |
+| Project slug | basename of repo root |
+| Current date | `date -u +%Y-%m-%d` |
+| Required toolchain versions | `mise.toml`, `pyproject.toml`, `package.json`, `go.mod`, etc. |
+| License | existing `LICENSE` file, or `gh api repos/<owner>/<name>/license` |
+
+Fabricating a default is a spec defect. The user catches it during the preview step (step 6) and the round-trip cost is wasted. If a value genuinely has no canonical source (e.g. a brand-new feature name), surface it as an `Open question` in the architecture sketch — don't guess.
 
 ### 4. Decompose into stories
 
@@ -110,6 +135,8 @@ Sections per the template:
 - `## Blocker` and `## Retry notes` — orchestrator-appended at runtime; spec phase never writes these.
 
 Sizing rule: a `cavecrew-builder` story should declare ≤2 entries in `## Files`. 3+ files → either split, or promote `agent_type` to `general-purpose`. The cavecrew-builder subagent refuses large multi-file dispatches.
+
+**Preconditions discipline.** When a story uses external tooling not guaranteed by the project's default dev env (`gitleaks`, `gcloud`, `aws`, `npm publish`, etc.) or needs specific auth scopes / secrets, add a `## Preconditions` section to the story file with one bullet per checkable precondition. The orchestrate skill's pre-flight uses this section (per orchestrate's "per-story external-service tooling check" rule) to fail-fast before a wasted dispatch hits a remote service. Without this section the orchestrator has to grep `## Notes` heuristically, which is unreliable.
 
 ### 5. Collision audit
 
@@ -162,6 +189,7 @@ Status starts at `pending` for every new story. Spec phase NEVER flips status to
 - One-shot tasks dispatched through spec — this skill is for multi-story epics. Single tasks go straight to dispatch.
 - Telemetry / observation stories that read sibling-story output without owning a contract on it — caller of the contract must point at fixtures the contract guarantees, not at incidental on-disk state. Otherwise the story produces empty results when run standalone.
 - Assigning `cavecrew-builder` to a 3+ file story — agent refuses. Either split, or use `general-purpose`.
+- Spec'ing a story whose Files / Acceptance depends on the subagent invoking another skill (e.g. "subagent runs `/humanize:humanize` against README.md"), without confirming the subagent has access to that skill. Subagent skill availability depends on the parent's invocation context. Two safer patterns: (a) inline the skill's logic into the story's prompt (paste the canonical pattern from the skill's SKILL.md body), or (b) move the cross-skill step to a separate `orchestrator-direct` story where the parent (not subagent) invokes the skill. Default to (a) for prose passes (humanize, security-review) and (b) for skills with mandatory user interaction.
 
 ## Final output
 
