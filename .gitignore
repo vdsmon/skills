@@ -14,3 +14,6 @@
 
 # /caveman:compress backups
 *.original.md
+
+# ship-it local config (reviewer account IDs); example tracked
+plugins/ship-it/skills/ship-it/config.toml
