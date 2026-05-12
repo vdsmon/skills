@@ -1,0 +1,14 @@
+{
+  "name": "team-lead",
+  "version": "0.1.0",
+  "description": "Coordinating a team of Agent-spawned teammates shipping a multi-story epic. Atomic-imperative dispatch pattern, lead-mediated commit serialization protocol (v2 + v3 shared-file ownership), wave-composition heuristics via file-conflict matrix, sandbox-approval handling, common failure modes + recovery. Battle-tested across 21 ships in one session on godot-scenario-harness 2026-05-12. Universal playbook — portable across projects; project-specific lane assignments stay in per-project memory.",
+  "author": {
+    "name": "Victor De Simone",
+    "email": "victorsmoliveira@gmail.com",
+    "url": "https://github.com/vdsmon"
+  },
+  "homepage": "https://github.com/vdsmon/claude-skills",
+  "repository": "https://github.com/vdsmon/claude-skills",
+  "license": "MIT",
+  "skills": "./skills"
+}
