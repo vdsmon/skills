@@ -72,7 +72,9 @@ Output: actionable inline findings grouped by file with severity plus line numbe
 
 For other reviewers (when an adapter ships): the script slot lives at `SKILL_DIR/scripts/fetch_<bot>_comments.py`. Until that adapter exists, fall back to `bkt pr comments <PR_ID> --json` and parse by hand.
 
-**Stale findings**: on re-fetch after a fix push, the script may return findings from prior rounds that are already resolved. Compare against the prior round, mark already-fixed items stale and skip. Only act on new findings.
+The script drops threads whose `resolution` is set, so a resolved finding does not re-surface on the post-fix re-fetch. Each remaining finding carries its `comment <id>` (and, with `--json`, an `id` field) so it can be resolved in Step 3.6.5.
+
+**Stale findings**: a finding that was addressed but not yet resolved (you fixed the code but did not POST the resolve) still comes back on re-fetch. Compare against the prior round, skip anything already fixed in a pushed commit, and resolve it in Step 3.6.5 so it stops re-surfacing. Only newly-introduced findings need a code change.
 
 ## Step 3.4: Parse and classify
 
@@ -94,6 +96,42 @@ Commits should follow the project's existing commit-message convention (the most
 After pushing fixes, **must** re-run both CI and reviewer Monitors. The reviewer often adds new findings on fix commits. CI may regress. Don't proceed to completion until both green.
 
 Stop the prior two Monitors (Step 3.0), launch both fresh concurrently (one for CI, one for the reviewer, same inline patterns as 3.1 and 3.2). If CI fails again, re-enter the fix loop (max 3 attempts across all cycles). If the reviewer has new actionable findings, loop Step 3.3-3.5 again.
+
+## Step 3.6.5: Resolve addressed threads (default)
+
+After the post-fix re-verify shows CI and the reviewer green, resolve every CodeRabbit thread that a pushed commit actually addressed. This is the default, not opt-in: an unresolved thread re-surfaces on every future re-fetch and reads as an open defect to anyone scanning the PR.
+
+Resolve only threads you fixed in code. A thread you disagreed with and skipped (Step 3.5) stays open with your reasoning comment, that is the user's call to close.
+
+Per addressed finding (`<CID>` is the `comment <id>` from Step 3.3):
+
+```bash
+WS=<workspace>; RS=<repo_slug>; PR=<pr_id>; CID=<comment_id>
+FIX_SHA=$(git rev-parse --short HEAD)   # or the specific commit that addressed it
+
+# 1. Reply pointing at the fix commit (one line, plain ASCII, no em-dash).
+bkt api "2.0/repositories/$WS/$RS/pullrequests/$PR/comments" -X POST \
+  -d "$(jq -n --arg b "Fixed in $FIX_SHA. <one-line what changed and why>." \
+              --argjson pid $CID '{content:{raw:$b},parent:{id:$pid}}')" --json
+
+# 2. Resolve the thread.
+bkt api "2.0/repositories/$WS/$RS/pullrequests/$PR/comments/$CID/resolve" -X POST --json
+```
+
+Endpoint gotchas (learned the hard way, do not re-derive):
+
+- `POST .../comments/<CID>/resolve` is the resolve endpoint. There is a matching `DELETE` to unresolve. The `links.resolve` rel is often absent from the comment payload, the endpoint still works, do not gate on the rel.
+- Success returns a `comment_resolution` object (`{created_on, user, type:"comment_resolution"}`). It has no top-level `resolved:true`. A `jq -r '.resolved'` check misreports this as failure. Judge success by re-fetching the comment and testing `.resolution != null`, not `.resolved`.
+- Only resolve a top-level inline comment (`parent == null`). Replies cannot be resolved.
+
+Verify:
+
+```bash
+bkt api "2.0/repositories/$WS/$RS/pullrequests/$PR/comments/$CID" --json \
+  --jq '.resolution != null'   # true == resolved
+```
+
+Skip this step only if the user explicitly asked to leave threads for the maintainer.
 
 ## Step 3.7: Completion
 

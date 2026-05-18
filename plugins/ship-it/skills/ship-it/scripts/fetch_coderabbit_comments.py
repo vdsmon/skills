@@ -83,6 +83,8 @@ def extract_comment(comment: dict) -> dict:
     title = title_match.group(1) if title_match else "(no title)"
 
     return {
+        "id": comment.get("id"),
+        "resolved": comment.get("resolution") is not None,
         "file": inline.get("path"),
         "line": inline.get("to") or inline.get("from"),
         "severity": severity,
@@ -104,7 +106,8 @@ def format_output(comments: list[dict], pr_id: int) -> str:
         for c in sorted(by_file[filepath], key=lambda x: x["line"] or 0):
             sev = f" [{c['severity']}]" if c["severity"] else ""
             loc = f"L{c['line']}" if c["line"] else ""
-            lines.append(f"- **{loc}{sev}**: {c['title']}")
+            cid = f" (comment {c['id']})" if c.get("id") else ""
+            lines.append(f"- **{loc}{sev}**{cid}: {c['title']}")
         lines.append("")
 
     return "\n".join(lines)
@@ -137,6 +140,14 @@ def main():
         return
 
     extracted = [extract_comment(c) for c in actionable]
+    # A resolved thread is already handled (fixed in a prior round, or
+    # closed by a maintainer). Dropping it here stops the re-fetch loop
+    # from re-surfacing the same finding after the fix push.
+    extracted = [c for c in extracted if not c["resolved"]]
+
+    if not extracted:
+        print(f"No unresolved actionable CodeRabbit comments on PR #{pr_id}.")
+        return
 
     if args.as_json:
         print(json.dumps(extracted, indent=2))

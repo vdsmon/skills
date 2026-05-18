@@ -55,7 +55,7 @@
       "name": "ship-it",
       "source": "./plugins/ship-it",
       "description": "Push branch, open draft PR, attach reviewers, then wait on CI and the AI code reviewer in a fix loop until green. Ticket-agnostic. Supported stack today: Bitbucket Cloud + bkt CLI + CodeRabbit. Adapter slots reserved for gh + other reviewer bots.",
-      "version": "0.1.0"
+      "version": "0.2.0"
     },
     {
       "name": "tasks",
