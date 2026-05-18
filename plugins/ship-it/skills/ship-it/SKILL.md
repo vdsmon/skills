@@ -15,7 +15,7 @@ Push branch. Open draft PR. Attach reviewers. Wait on CI plus AI reviewer. Fix u
 |---|-------|-----------|---------|
 | 1 | PUSH | `references/push.md` | Push current branch with the right upstream and refspec |
 | 2 | CREATE | `references/create.md` | Detect existing PR or create a draft one. Humanize the body. Attach default reviewers |
-| 3 | FEEDBACK | `references/feedback.md` | Wait on CI plus the AI code reviewer. Fix, push, re-verify until green, then resolve the threads the fix addressed |
+| 3 | FEEDBACK | `references/feedback.md` | Wait on CI plus the AI code reviewer. Fix, push, re-verify until green, resolve the threads the fix addressed, then round-trip the reviewer on reasoned skips (reply, re-arm, act on its response) |
 
 There is no ticket dependency. The skill works on any branch with at least one commit ahead of the destination branch.
 

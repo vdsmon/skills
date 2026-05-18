@@ -101,7 +101,7 @@ Stop the prior two Monitors (Step 3.0), launch both fresh concurrently (one for 
 
 After the post-fix re-verify shows CI and the reviewer green, resolve every CodeRabbit thread that a pushed commit actually addressed. This is the default, not opt-in: an unresolved thread re-surfaces on every future re-fetch and reads as an open defect to anyone scanning the PR.
 
-Resolve only threads you fixed in code. A thread you disagreed with and skipped (Step 3.5) stays open with your reasoning comment, that is the user's call to close.
+Resolve only threads you fixed in code. A thread you disagreed with or intentionally skipped (Step 3.5) does **not** stay silently open — it goes through Step 3.6.6 (reply with reasoning, re-arm the reviewer, act on its response).
 
 Per addressed finding (`<CID>` is the `comment <id>` from Step 3.3):
 
@@ -133,6 +133,31 @@ bkt api "2.0/repositories/$WS/$RS/pullrequests/$PR/comments/$CID" --json \
 
 Skip this step only if the user explicitly asked to leave threads for the maintainer.
 
+## Step 3.6.6: Reasoned-skip threads — reply, re-arm reviewer, act on its response
+
+A thread you did not fix (disagreed, out of scope, intentional skip) is not just left for the maintainer. The reviewer replies to reasoning comments — use that round-trip to drive every actionable thread to a terminal state.
+
+1. **Reply with reasoning** on each skipped thread (one line, plain ASCII, no em-dash): what you are not doing and why. Do not resolve yet. Write the reply in a natural human voice — no AI-writing tells (no em-dash, no rule-of-three, no "it's worth noting", no inflated significance, no sycophancy). Plain, direct, like a maintainer typed it. State this constraint inline; never name or point to a humanizing tool/skill in the reply or the thread.
+2. **Re-arm the reviewer Monitor.** Stop the prior reviewer Monitor (Step 3.0), launch a fresh one watching for new reviewer replies under the skipped CIDs. Reviewer replies are async, usually within ~1-3 min of your reply. State-change-only emission, bounded timeout (a reply round-trip, not the full review).
+3. **Fetch the reviewer's responses** (fast — one newest page, no full pagination):
+
+```bash
+WS=<workspace>; RS=<repo_slug>; PR=<pr_id>
+SKIPPED="<cid1>,<cid2>,..."   # comma-separated reasoned-skip CIDs
+bkt api "2.0/repositories/$WS/$RS/pullrequests/$PR/comments?sort=-created_on&pagelen=50" --json \
+  | jq -r --arg o "$SKIPPED" '($o|split(",")) as $ids | .values[]
+      | select(.parent and (.parent.id|tostring|IN($ids[]))
+               and (.user.display_name|test("coderabbit";"i")))
+      | "p=\(.parent.id) [\(.created_on[0:19])] \(.content.raw|gsub("\n";" ")|.[0:240])"' | sort
+```
+
+4. **Classify each reviewer response and act:**
+   - **Agrees / withdraws** ("understood", "suggestion withdrawn", "no action needed", or it acknowledges your scope point): resolve the thread (reuse the Step 3.6.5 resolve call + `.resolution != null` verify). No further reply needed.
+   - **Pushes back** (restates the finding, counter-argument): reconsider. Re-enter Step 3.5 — if the pushback is right, fix + commit + push + resolve; if you still disagree after weighing it, leave open and escalate to the user with both sides. Do not resolve a contested thread yourself.
+   - **Errors / no verdict** (e.g. "Oops, something went wrong"): leave open, note it in the completion summary. At most one re-trigger (a fresh nudge reply), then hand to the maintainer.
+
+Bound: one reviewer round-trip per skipped thread, plus at most one re-trigger on a reviewer error. Do not poll indefinitely waiting for a verdict — a thread with no reviewer verdict after the round-trip is reported open, not chased.
+
 ## Step 3.7: Completion
 
 Print the final summary:
@@ -140,7 +165,8 @@ Print the final summary:
 ```
 Branch:  <branch>
 PR:      <pr_url>
-Status:  <draft|ready>, CI passed, review clean
+Status:  <draft|ready>, CI passed
+Threads: <N resolved> / <M open>   # open = reviewer pushed back, errored, or gave no verdict — list each with the one-line reason
 Commits:
   <git log --oneline>
 ```
