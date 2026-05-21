@@ -22,7 +22,7 @@ Launch a Monitor that polls `bkt pr checks <PR_ID>` via an inline bash loop. **E
 ```
 Monitor(
   description="CI pipeline for PR #<PR_ID>",
-  command='prev=""; while true; do raw=$(bkt pr checks <PR_ID> 2>&1 | grep -iE "Pipeline"); state=$(echo "$raw" | grep -oiE "INPROGRESS|SUCCESSFUL|FAILED|STOPPED|ERROR" | head -1); if [ "$state" != "$prev" ]; then echo "[$(date +%T)] Pipeline: $state"; prev=$state; fi; if echo "$state" | grep -qiE "SUCCESSFUL|FAILED|STOPPED|ERROR"; then break; fi; sleep 60; done',
+  command='prev=""; t0=$(date +%s); while true; do raw=$(bkt pr checks <PR_ID> 2>&1 | grep -iE "Pipeline"); state=$(echo "$raw" | grep -oiE "INPROGRESS|SUCCESSFUL|FAILED|STOPPED|ERROR" | head -1); now=$(date +%s); if [ -z "$raw" ] && [ $((now - t0)) -gt 600 ]; then echo "[$(date +%T)] Pipeline: not wired (no entry after 10min)"; break; fi; if [ -n "$state" ] && [ "$state" != "$prev" ]; then echo "[$(date +%T)] Pipeline: $state"; prev=$state; fi; if echo "$state" | grep -qiE "SUCCESSFUL|FAILED|STOPPED|ERROR"; then break; fi; sleep 60; done',
   timeout_ms=1500000, persistent=false
 )
 ```
@@ -44,7 +44,7 @@ After pushing fixes, stop the prior CI Monitor (Step 3.0), re-arm. **Max 3 retry
 
 **Gate before pushing CI fixes**: `AskUserQuestion` -> Approve and push / Show diff first / Skip CI fix.
 
-**If no Pipeline entry ever appears** (`bkt pr checks` shows the reviewer but no `Pipeline` line for >3 min): CI isn't wired for this branch, note it and skip to Step 3.2. Confirm via raw `bkt pr checks <PR_ID>` first, do not assume "no pipeline" from any other signal.
+**If no Pipeline entry ever appears** (`bkt pr checks` shows the reviewer but no `Pipeline` line for >10 min): CI isn't wired for this branch, note it and skip to Step 3.2. Confirm via raw `bkt pr checks <PR_ID>` first, do not assume "no pipeline" from any other signal. 10 min is calibrated against Bitbucket Cloud webhook lag plus pipeline scheduler warm-up; lower thresholds (the prior 3 min) produced false negatives on real PRs where the Pipeline entry surfaced minutes later.
 
 ## Step 3.2: Wait for AI code reviewer
 
@@ -138,7 +138,17 @@ Skip this step only if the user explicitly asked to leave threads for the mainta
 A thread you did not fix (disagreed, out of scope, intentional skip) is not just left for the maintainer. The reviewer replies to reasoning comments — use that round-trip to drive every actionable thread to a terminal state.
 
 1. **Reply with reasoning** on each skipped thread (one line, plain ASCII, no em-dash): what you are not doing and why. Do not resolve yet. Write the reply in a natural human voice — no AI-writing tells (no em-dash, no rule-of-three, no "it's worth noting", no inflated significance, no sycophancy). Plain, direct, like a maintainer typed it. State this constraint inline; never name or point to a humanizing tool/skill in the reply or the thread.
-2. **Re-arm the reviewer Monitor.** Stop the prior reviewer Monitor (Step 3.0), launch a fresh one watching for new reviewer replies under the skipped CIDs. Reviewer replies are async, usually within ~1-3 min of your reply. State-change-only emission, bounded timeout (a reply round-trip, not the full review).
+2. **Re-arm the reviewer Monitor.** Stop the prior reviewer Monitor (Step 3.0), launch a fresh one watching for **new reviewer replies under the skipped CIDs**. This is a different polling target from Step 3.2 (which watches reviewer *status*), so the command shape is different — `bkt pr checks` will not show a counter-reply. Reviewer replies are async, usually within ~1-3 min of your reply. State-change-only emission, bounded timeout (a reply round-trip, not the full review).
+
+   ```
+   Monitor(
+     description="<ReviewerName> counter-reply on skipped CIDs for PR #<PR_ID>",
+     command='SKIPPED="<cid1>,<cid2>,..."; WS=<workspace>; RS=<repo_slug>; PR=<pr_id>; need=$(echo "$SKIPPED" | tr "," "\n" | wc -l | tr -d " "); prev=""; while true; do cur=$(bkt api "2.0/repositories/$WS/$RS/pullrequests/$PR/comments?sort=-created_on&pagelen=50" --json 2>/dev/null | jq -r --arg o "$SKIPPED" "(\$o|split(\",\")) as \$ids | .values // [] | map(select(.parent and (.parent.id|tostring|IN(\$ids[])) and (.user.display_name|test(\"<ReviewerNameLowercase>\";\"i\")))) | map(.parent.id) | unique | sort | join(\",\")"); if [ "$cur" != "$prev" ] && [ -n "$cur" ]; then echo "[$(date +%T)] counter-reply on parents: $cur"; prev="$cur"; got=$(echo "$cur" | tr "," "\n" | wc -l | tr -d " "); if [ "$got" -ge "$need" ]; then break; fi; fi; sleep 30; done',
+     timeout_ms=600000, persistent=false
+   )
+   ```
+
+   `timeout_ms=600000` (10 min) bounds the wait: if the reviewer goes silent past that, drop through to Step 3.6.6.3 anyway and surface "no verdict" in the completion summary. Do not loop indefinitely.
 3. **Fetch the reviewer's responses** (fast — one newest page, no full pagination):
 
 ```bash
@@ -152,7 +162,7 @@ bkt api "2.0/repositories/$WS/$RS/pullrequests/$PR/comments?sort=-created_on&pag
 ```
 
 4. **Classify each reviewer response and act:**
-   - **Agrees / withdraws** ("understood", "suggestion withdrawn", "no action needed", or it acknowledges your scope point): resolve the thread (reuse the Step 3.6.5 resolve call + `.resolution != null` verify). No further reply needed.
+   - **Agrees / withdraws** (any of: "understood", "acknowledged", "suggestion withdrawn", "withdrawing the suggestion", "no action needed", "the right call", or it acknowledges your scope point, or its reply contains a `✏️ Learnings added` block memorializing the pattern as a persistent learning — that block is a near-certain withdrawal signal because the reviewer only writes it when it has internalized the rationale): resolve the thread (reuse the Step 3.6.5 resolve call + `.resolution != null` verify). No further reply needed.
    - **Pushes back** (restates the finding, counter-argument): reconsider. Re-enter Step 3.5 — if the pushback is right, fix + commit + push + resolve; if you still disagree after weighing it, leave open and escalate to the user with both sides. Do not resolve a contested thread yourself.
    - **Errors / no verdict** (e.g. "Oops, something went wrong"): leave open, note it in the completion summary. At most one re-trigger (a fresh nudge reply), then hand to the maintainer.
 
