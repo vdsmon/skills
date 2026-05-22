@@ -57,7 +57,7 @@ git log -5 --oneline
 
 (On Claude Code, these calls are pre-approved via `allowed-tools` and run without prompting. On other hosts, the user may need to approve them once.)
 
-Silent audit, report short structured summary. Check:
+Audit silently — **do not** dump a summary recap. The recap is noise; the user knows their own session. Audit feeds step 2 (surface save-actions) and step 3 (the compact message). Check:
 
 **Code state**
 - Start from the `git status --short` output (and the last 5 commits). Unstaged/untracked files? Which matter (real work) vs. ignorable (temp/scratch)?
@@ -74,13 +74,11 @@ Silent audit, report short structured summary. Check:
 - Scheduled crons or wake-ups user should know about.
 
 **Conversation-only knowledge**
-- Verbal decisions not in any file: chosen approach, user preference, debug breakthrough. Not in code/note = must go in compact message.
+- Verbal decisions not in any file: chosen approach, user preference, debug breakthrough. Not in code/note = goes in compact message (step 3), not an action.
 
-Tight bulleted summary, not prose. Three to six bullets. Fewer if clean.
+### 2. Raise: only what needs saving
 
-### 2. Raise: what needs action first?
-
-Anything from step 1 that *should* persist before compacting: propose action. Don't do silently — user chance to say "skip" or "do first".
+Output the **Action needed** section *only if* something must persist to disk before compacting — uncommitted real work, stale state file, unread background output. These are things the compact message can't preserve; they need a save first. Propose; don't do silently — user chance to say "skip" or "do first".
 
 Typical actions:
 - **Commit WIP** — uncommitted real work land in commit (or stash) before context lost.
@@ -90,88 +88,115 @@ Typical actions:
 
 Order by blast radius — risk of losing real work first.
 
-Nothing needs action: "State is clean. Ready to compact." Then step 3.
+**Nothing needs saving → emit nothing here. Go straight to the compact message.** No "state is clean" line, no recap — that's noise.
 
-### 3. Propose: the compact message
+### 3. Propose: compact message + follow-up
 
-Single code block with focus message user paste into the compact step. 3–6 sentences, optimized for next session cold-start.
+Output **two** code blocks:
 
-Good compact message include:
+1. **Compact message** — paste and send. Must start with the literal `/compact ` prefix, then the focus message, so paste fires the command directly, no editing. 3–6 sentences, optimized for next-session cold-start.
+2. **Follow-up** — the user queues this *while compact runs*. The host fires queued input the moment compact finishes, so work resumes hands-free — no second prompt, no waiting. It's the literal next action, written as an imperative to your post-compact self.
+
+Compact message holds **context**:
 
 - **Where we are** — current task / branch / stage if applicable
 - **What's done** — key milestones, test counts, decisions locked in
-- **What's next** — literal next action on resume
 - **Any gotchas** — open debug threads, things to skip or redo, non-obvious state
 - **Pointers to persisted state** — "plan at X, state file at Y, branch Z"
 
-Keep terse. Model reading has full file access — no paragraphs, just breadcrumbs to right files.
+Follow-up holds **the next move**:
+
+- One or two imperative sentences: the exact first action on resume.
+- Self-contained — assume the summary plus file access are the only context. Name the file / command / function to touch first.
+
+Keep both terse. Model reading has full file access — breadcrumbs, not paragraphs.
+
+Tell the user plainly: send the compact block, then immediately paste the follow-up so it queues and chains.
 
 ## Format
 
-Respond in this shape:
+No audit recap. If something needs saving, lead with the **Action needed** block; otherwise omit it and go straight to the message.
+
+Clean state (the common case):
 
 ```
-**Audit**
-- [short bullets of what's in flight]
-
-**Action needed**
-- [actions with rationale, or "none — state is clean"]
-
-**Compact message** (paste into your host's compact/summary prompt):
+**Compact message** — paste and send:
 ```text
-[the focus message]
+/compact [the focus message]
+```
+
+**Follow-up** — queue this while compact runs; it fires when compact finishes and chains the work:
+```text
+[the next-action kickoff]
 ```
 ```
 
-Don't narrate three steps as "Step 1 / Step 2 / Step 3" sections — ceremony. Audit, actions, message.
+Something needs saving first — prepend only the action block:
+
+```
+**Action needed**
+- [save-action with rationale]
+
+**Compact message** — paste and send:
+```text
+/compact [the focus message]
+```
+
+**Follow-up** — queue this while compact runs; it fires when compact finishes and chains the work:
+```text
+[the next-action kickoff]
+```
+```
+
+No "Step 1 / Step 2 / Step 3" narration, no audit bullets — ceremony. Actions only if needed, then the two blocks.
 
 ## Examples
 
-**Example — clean state, mid-task:**
+**Example — clean state, mid-task** (nothing to save → straight to the message, no recap):
 
 ```
-**Audit**
-- On branch `feat/parser-rewrite`, task is refactoring the tokenizer
-- No uncommitted changes
-- Plan + scratch notes on disk are current
-- No background tasks running
-
-**Action needed**
-- None — state is clean.
-
-**Compact message:** (paste into host's compact/summary prompt)
+**Compact message** — paste and send:
 ```text
-Resume tokenizer refactor on feat/parser-rewrite. Unit tests green (42 passing). Next: wire new tokenizer into the parser entrypoint and re-run the integration suite. Plan: docs/plan-parser-rewrite.md. One open thread: decide whether to keep the legacy whitespace-handling shim (see plan Open Questions).
+/compact Tokenizer refactor on feat/parser-rewrite. Unit tests green (42 passing). Plan: docs/plan-parser-rewrite.md. One open thread: decide whether to keep the legacy whitespace-handling shim (see plan Open Questions).
+```
+
+**Follow-up** — queue while compact runs; fires on finish, chains the work:
+```text
+Continue the tokenizer refactor: wire the new tokenizer into the parser entrypoint, then re-run the integration suite and report failures.
 ```
 ```
 
-**Example — uncommitted experimental changes:**
+**Example — uncommitted experimental changes** (real work at risk → surface the save-action, then the message):
 
 ```
-**Audit**
-- Mid-debug on a prod incident, branch `hotfix/rate-limit-503`
-- Modified: `.env` (swapped to staging creds for repro — not meant to ship)
-- Modified: `src/limiter.ts` (added jittered backoff — wanted)
-- Repro harness left running in background task `bash_3` (captures 503 traces)
-
 **Action needed**
 - Revert `.env` before compact so next session doesn't commit it unknowingly: `git checkout -- .env`.
 - Read output of `bash_3` now — it will still be running but its earlier stdout is what you'll want to summarize.
 
-**Compact message:** (paste into host's compact/summary prompt)
+**Compact message** — paste and send:
 ```text
-Hotfix for rate-limit 503 on hotfix/rate-limit-503. Root cause: thundering-herd on token refresh. Fix in progress: jittered backoff in src/limiter.ts (uncommitted, intentional). Repro harness still running as background task capturing traces. Next: add a regression test, then commit + PR. Skip rerunning the repro — we already have enough traces.
+/compact Hotfix for rate-limit 503 on hotfix/rate-limit-503. Root cause: thundering-herd on token refresh. Fix in progress: jittered backoff in src/limiter.ts (uncommitted, intentional). Repro harness still running as background task capturing traces. Skip rerunning the repro — we already have enough traces.
+```
+
+**Follow-up** — queue while compact runs; fires on finish, chains the work:
+```text
+Resume the 503 hotfix: add a regression test for the jittered backoff in src/limiter.ts, then commit and open the PR.
 ```
 ```
 
 ## Message-only format
 
-In message-only mode, drop the Audit/Action sections. Output shape:
+In message-only mode, drop the Audit/Action sections. Still output both blocks:
 
 ```
-**Compact message** (paste into your host's compact/summary prompt):
+**Compact message** — paste and send:
 ```text
-[the focus message]
+/compact [the focus message]
+```
+
+**Follow-up** — queue while compact runs; fires on finish, chains the work:
+```text
+[the next-action kickoff]
 ```
 ```
 
@@ -180,5 +205,7 @@ Keep the focus message grounded in the `git status` and `git log` output so bran
 ## Notes
 
 - Compact message is *yours* — don't parrot user in-session. They compact because they trust you preserve what matters.
+- The follow-up only chains if queued *before* compact finishes — that's why the user sends the `/compact` block first, then immediately pastes the follow-up. The host holds queued input and fires it the instant compact returns.
+- Keep the two blocks non-overlapping: context in the compact message, next action in the follow-up. Duplicating the next step in both wastes the summary.
 - Default = full audit. `--message-only` (or natural-language equivalents) skips straight to the message.
 - State genuinely chaotic (many unfinished threads, half-implementations): say so, recommend *against* compacting until sorted — even in message-only mode. Losing one session context cheap; losing track of in-flight work not.

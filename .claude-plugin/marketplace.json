@@ -30,8 +30,8 @@
     {
       "name": "pre-compact",
       "source": "./plugins/pre-compact",
-      "description": "Audit in-flight state before any context-compacting step; produce a copy-paste focus message for the next session. Portable across Agent Skills hosts — compacting is a general concept, not Claude-specific.",
-      "version": "1.4.0"
+      "description": "Audit in-flight state before any context-compacting step; produce a copy-paste /compact message plus a queue-able follow-up that chains the next action when compact finishes. Portable across Agent Skills hosts — compacting is a general concept, not Claude-specific.",
+      "version": "1.5.0"
     },
     {
       "name": "humanize",
