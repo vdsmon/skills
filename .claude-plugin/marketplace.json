@@ -74,6 +74,12 @@
       "source": "./plugins/adx-loop",
       "description": "Agent Development Experience self-improvement loop. Each cycle: ship prior retro's queued harness fix → ship a gameplay feature that pressure-tests the surface → retro (top pain + one queued fix) → log a single composite metric. Karpathy autoresearch discipline: one change per iteration, mechanical metric, git as memory, binary keep/discard. Optimizes the dev environment, not the product.",
       "version": "0.1.0"
+    },
+    {
+      "name": "rapidfire",
+      "source": "./plugins/rapidfire",
+      "description": "Dispatcher pattern. User drops one-line ideas; the dispatcher refines in ≤3 questions, writes a ticket to `.rapidfire/T<NN>-<slug>.md`, fire-and-forget dispatches to a background subagent. Auto-selects model + agent_type via a 4-bucket complexity heuristic (trivial→haiku/cavecrew-builder, moderate→sonnet/general-purpose, complex/ambiguous→opus/general-purpose). Pre-dispatch lint catches T01-class spec defects (acceptance grep contradicting an intended edit). Listens for `<task-notification>` blocks, auto-dispatches queued tickets when their `depends_on` is satisfied. Lead reviews + commits via `/rapidfire commit`. Helper scripts (status/lint-spec/dispatch-args/migrate/optimize-description) are uv PEP 723 single-file Python (no global deps). Portable across SKILL.md-native hosts (subagent dispatch varies).",
+      "version": "0.1.0"
     }
   ]
 }
