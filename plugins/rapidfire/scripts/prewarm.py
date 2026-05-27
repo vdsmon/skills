@@ -3,9 +3,9 @@
 # requires-python = ">=3.10"
 # dependencies = ["pyyaml"]
 # ///
-"""prewarm.py — Builds the uv ephemeral venv that status/dispatch-args/migrate share.
+"""prewarm.py — Builds the uv ephemeral venv that status/dispatch-args/lint-spec share.
 
-All three scripts declare the same PEP 723 deps (pyyaml + python >=3.10),
+Those scripts declare the same PEP 723 deps (pyyaml + python >=3.10),
 so uv caches a single venv keyed on the metadata hash. Running this script
 once at session bootstrap forces uv to materialize that venv. Subsequent
 script invocations hit the warm cache and skip the ~10-15s cold-start.

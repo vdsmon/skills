@@ -1,12 +1,19 @@
 ---
 name: rapidfire
 description: >-
-  Dispatcher pattern. User drops a one-line idea; you refine it in ≤3 narrow
-  questions, write a ticket to `.rapidfire/T<NN>-<slug>.md`, then fire-and-forget
-  dispatch to a background subagent. Model + agent_type auto-selected from a
-  4-bucket complexity heuristic (trivial/moderate/complex/ambiguous). On later
-  invocations, listens for `<task-notification>` blocks, updates ticket metadata,
-  auto-dispatches queued tickets whose `depends_on` is satisfied.
+  Dispatcher pattern. User drops a one-line idea; you refine (≤3 questions
+  default; extend to 4-6 when the bucket lands on complex or design
+  judgment is needed), write a ticket to `.rapidfire/T<NN>-<slug>.md`, then
+  fire-and-forget dispatch to a background subagent. Model + agent_type
+  auto-selected from a 4-bucket complexity heuristic
+  (trivial/moderate/complex/ambiguous). Listens for `<task-notification>`
+  blocks, updates ticket metadata, auto-dispatches queued tickets whose
+  `depends_on` is satisfied. Use when the user wants execution offloaded so
+  they can keep ideating — phrases like "dispatch this", "delegate this",
+  "queue this up", "throw this at an agent", "next idea:", "batch a bunch of
+  tweaks", or any `/rapidfire` subcommand while tickets exist in
+  `.rapidfire/`. Skip one-shot inline fixes, exploration, abstract design,
+  and pre-spec'd multi-story epics (use `tasks:spec`).
 when_to_use: >-
   Use when the user wants execution offloaded so they can keep ideating.
   Phrases: "act as dispatcher", "dispatch this idea", "delegate this", "queue
@@ -35,10 +42,9 @@ You = dispatcher. User drops ideas. You refine + dispatch. Background agents wor
 
 ## Prerequisites
 
-- **`uv`** (≥0.10) in PATH — every helper script in `scripts/` uses PEP 723 inline deps via `#!/usr/bin/env -S uv run --quiet --script`. Without uv, the bootstrap silently skips and all later script steps fail at exec time.
-- **`caveman` plugin** installed (provides `caveman:cavecrew-builder` subagent_type). Used by the `trivial` bucket. If unavailable, set `RAPIDFIRE_NO_CAVEMAN=1` in the environment — `dispatch-args.py` then routes trivial → `{general-purpose, sonnet}` instead.
-- **`claude` CLI** in PATH — only needed for `scripts/optimize-description.py` (the optional description-tuning loop, not the dispatch flow).
-- **`skill-creator` plugin** installed (`/plugin install skill-creator@claude-plugins-official`) — also only for `optimize-description.py`; it reuses skill-creator's `run_eval.py`.
+- **`uv`** (≥0.10) in PATH — every helper script in `scripts/` uses PEP 723 inline deps via `#!/usr/bin/env -S uv run --quiet --script`. The bootstrap below hard-fails with an install hint if `uv` is missing.
+- **`caveman` plugin** installed (provides `caveman:cavecrew-builder` subagent_type). Used by the `trivial` bucket. If unavailable, set `RAPIDFIRE_NO_CAVEMAN=1` in the environment — `dispatch-args.py` then routes trivial → `{general-purpose, sonnet}`.
+- **`skill-creator` plugin** installed (`/plugin install skill-creator@claude-plugins-official`) — only for `optimize-description.py`; it reuses skill-creator's `run_eval.py`.
 
 ## Subcommands
 
@@ -57,32 +63,33 @@ Empty args + no obvious subcommand → ask user for the idea.
 
 ## Helper scripts
 
-Located at `${CLAUDE_SKILL_DIR}/../../scripts/` (i.e. `plugins/rapidfire/scripts/` relative to the plugin root). Each is a `uv` PEP 723 script (invoke directly, NOT via `python3` — that bypasses the shebang and the inline deps).
+Located at `${CLAUDE_SKILL_DIR}/../../scripts/`. Each is a `uv` PEP 723 script (invoke directly, NOT via `python3` — that bypasses the shebang and the inline deps).
 
 - `prewarm.py` — builds the shared uv venv once per session (run at bootstrap; cuts ~10s cold-start from later script invocations)
 - `status.py` — table / `--stats` / `--ready` / `--json`
 - `lint-spec.py <ticket>` — pre-dispatch spec-defect lint (exit 1 = block)
 - `dispatch-args.py <ticket>` — emit Agent params as JSON (exit 1 = hard-rule violation)
-- `migrate.py [<dir>]` — one-time backfill for pre-v2 tickets
-- `optimize-description.py` — iterative `description:` tightening loop via `claude -p` (no API key needed). See `optimize-description.py --help`.
+- `optimize-description.py` — iterative `description:` tightening loop via `claude -p`. See `optimize-description.py --help`.
 
 ## Bootstrap (idempotent, every invocation)
 
 ```!
 set -eu
+if ! command -v uv >/dev/null 2>&1; then
+  echo "rapidfire requires uv. Install: brew install uv  (or: curl -LsSf https://astral.sh/uv/install.sh | sh)" >&2
+  exit 1
+fi
 mkdir -p .rapidfire
 if [ -f .gitignore ] && ! grep -qxF '.rapidfire/' .gitignore; then
   echo '.rapidfire/' >> .gitignore
 elif [ ! -f .gitignore ]; then
   echo '.rapidfire/' > .gitignore
 fi
-# Pre-warm the shared uv venv (built once, cached across script invocations).
-# Skips cleanly if uv isn't available.
-"${CLAUDE_SKILL_DIR}/../../scripts/prewarm.py" 2>/dev/null || true
+"${CLAUDE_SKILL_DIR}/../../scripts/prewarm.py" || true
 ls .rapidfire/ 2>/dev/null || true
 ```
 
-## Step 0 — Drain completion notifications
+## Step 0 — Process incoming notifications
 
 BEFORE any subcommand work, scan the current message for `<task-notification>` system-reminder blocks. Each `task-id` matches a ticket's `agent_id` frontmatter.
 
@@ -93,7 +100,7 @@ For each match:
    ```
    🟢 T02 "popup auto-hide" done — agent rf-T02-popup-autohide. Run `/rapidfire show T02` for diff.
    ```
-4. **Inline FAIL fix path**: if FAIL has obvious cause AND fix ≤5 lines AND single file, lead applies inline. See Validated patterns below.
+4. **Inline FAIL fix path**: if FAIL has obvious cause AND fix ≤5 lines AND single file, lead applies inline. See `references/inline-fail-fix.md`.
 
 After processing all notifications: run `"${CLAUDE_SKILL_DIR}/../../scripts/status.py" --ready`. Each ID printed = queued ticket whose deps are now satisfied. Auto-dispatch with `origin: dep-cascade` (bypasses budget).
 
@@ -103,60 +110,30 @@ After processing all notifications: run `"${CLAUDE_SKILL_DIR}/../../scripts/stat
 
 `$ARGUMENTS` = the idea. Empty → ask.
 
-### Step 2 — Refine (≤3 questions)
+### Step 2 — Refine
 
 Use `AskUserQuestion`. ONLY ask what you can't infer. Bias toward dispatch.
 
-Battery (pick ≤3): Scope · Files · Acceptance.
+**Question budget is adaptive, not fixed.** Default cap is 3 questions (trivial/moderate land here — user is in flow, don't drag it out). When the idea is large enough that the bucket is heading toward `complex` or `ambiguous`, extend the interview to 4-6 questions and cover novel design decisions, integration points, and edge cases that the subagent can't infer from the ticket alone. Tell the user inline when you extend ("This is complex-shaped — I'm going to ask a few more questions before dispatching"). Don't apologize for it; a well-spec'd complex ticket beats a thrashing one.
+
+Battery to pull from: Scope · Files · Acceptance · Design constraints · Failure modes · Integration points · Non-goals.
+
+If the user references a prior ticket as a prerequisite ("after T03 lands", "depends on T05"), populate `depends_on: [T<id>]` and set `status: queued`. Step 0's `--ready` check auto-dispatches when those deps clear.
 
 During refine, mentally bucket:
 
-| Bucket | Signal |
-|---|---|
-| **trivial** | Pure string swap, typo, config value, no logic |
-| **moderate** | Single-file restyle/refactor + compile verification |
-| **complex** | Multi-file feature, novel pattern, design judgment |
-| **ambiguous** | Anything else — bias UP (per user rule) |
+| Bucket | Signal | Default questions |
+|---|---|---|
+| **trivial** | Pure string swap, typo, config value, no logic | 0-2 |
+| **moderate** | Single-file restyle/refactor + compile verification | 2-3 |
+| **complex** | Multi-file feature, novel pattern, design judgment | 4-6 |
+| **ambiguous** | Anything else — bias UP (per user rule) | 4-6 |
 
-**Scope-creep autobump**: if refine reveals >2 files, hard-bump to `complex`, warn user inline. No second question.
+**Scope-creep autobump**: if refine reveals >2 files mid-flow, hard-bump to `complex` and switch to the extended-question budget. Warn user inline.
 
 ### Step 3 — Write ticket
 
-Look at `.rapidfire/T*.md` to find next ID. Slug = first 3-5 words of title, kebab-case.
-
-Write `.rapidfire/T<NN>-<slug>.md`:
-
-```yaml
----
-id: T<NN>
-title: <one-line>
-status: dispatched         # "queued" for /rapidfire queue
-agent_type: caveman:cavecrew-builder | general-purpose
-agent_name: rf-T<NN>-<slug>
-model: haiku | sonnet | opus
-bucket: trivial | moderate | complex | ambiguous
-origin: user               # auto-set to supersede/retry/dep-cascade by automation
-created_at: <ISO-8601 UTC>
-depends_on: []
----
-
-## Goal
-<1-2 sentences>
-
-## Files
-- <path>
-
-## Edits
-<optional structured edits — lint-spec.py reads this section>
-
-## Acceptance
-- `<shell command>` exits 0 / prints `<expected>`
-
-## Notes
-<gotchas, anti-goals>
-```
-
-**Frontmatter is the source of truth.** No `.rapidfire/index.json` (v2 dropped it). `scripts/status.py` walks ticket files.
+Shape + frontmatter spec: `references/ticket-shape.md`.
 
 ### Step 4 — Pre-dispatch lint (HARD GATE)
 
@@ -177,14 +154,9 @@ depends_on: []
 - Exit 1 → hard-rule violation (e.g. `haiku` + `general-purpose`). Amend frontmatter + re-run.
 - Stderr warnings → surface inline; lead decides. (Common warning: cavecrew + heavy-shell-acceptance → those checks will SKIP. Override to `general-purpose` or accept skip.)
 
-Matrix the script applies:
+Routing matrix lives in `scripts/dispatch-args.py:MATRIX` (single source of truth). Hard rule: never `haiku + general-purpose`.
 
-| Bucket | agent_type | model |
-|---|---|---|
-| trivial | caveman:cavecrew-builder | haiku |
-| moderate | general-purpose | sonnet |
-| complex | general-purpose | opus |
-| ambiguous | general-purpose | opus |
+**Trivial + verification needed**: the trivial bucket routes to `cavecrew-builder`, which has no Bash. If `## Acceptance` runs anything beyond `grep`/`ls`/`wc`/`cat`/`head`/`tail`, those checks SKIP at run time (the script warns). For real verification on a trivial-shape ticket, override `agent_type: general-purpose` + bump `model: sonnet` in the ticket frontmatter before this step.
 
 ### Step 6 — Dispatch
 
@@ -224,31 +196,13 @@ Default `<ids>` = all tickets with `status: reported` AND no `committed_at` fiel
 
 ## Validated patterns
 
-### Auto-supersede (4 steps)
-
-New idea overlaps with `status: dispatched` ticket's `## Files` AND user intent contradicts the in-flight design:
-
-1. Detect during Step 2 refine.
-2. `TaskStop(task_id=<old ticket's agent_id>)`.
-3. Update old ticket: `status: killed`, `superseded_by: T<new>`, `finished_at: <now>`.
-4. Write new ticket: `supersedes: T<old>`, `origin: supersede`. Dispatch (bypasses budget).
-
-### Inline FAIL fix (lead applies directly)
-
-Conditions: failure root cause obvious AND ≤5 lines AND single file.
-
-1. Apply repair inline via Edit.
-2. Inherit metadata from the original failed dispatch BEFORE overwriting status: keep `agent_id`, `dispatched_at`, `total_tokens`, `tool_uses`. Set `finished_at` to repair time. Update `files_touched` and `diff_stat` to reflect the combined original+repair work. Preserve `agent_notes` (often explains the failure).
-3. Set `status: reported`, `attempt: 2`, `recovered: inline`.
-4. Append `## Lead repair` section with the lead's diff.
-
-Anything bigger → `/rapidfire retry <id>`.
+- **Auto-supersede** (new idea contradicts an in-flight ticket): see `references/auto-supersede.md`.
+- **Inline FAIL fix** (lead repairs a small failure instead of retrying): see `references/inline-fail-fix.md`.
 
 ## Anti-patterns
 
-- Asking >3 refine questions — user is in flow.
+- Padding refine with questions you could infer from context. Adaptive budget is permission to extend on complex scope, not license to interrogate.
 - Refining AND executing inline. The whole point is delegation.
 - Ignoring `lint-spec.py` exit 1 without explicit user "proceed".
 - Counting rearrangement-origin tickets (supersede/retry/dep-cascade) against the budget.
-- Writing to a `.rapidfire/index.json` — v2 removed it.
 - Committing on user's behalf during dispatch. Subagent reports; lead commits via `/rapidfire commit`.

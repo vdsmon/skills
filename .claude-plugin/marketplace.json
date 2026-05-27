@@ -78,8 +78,8 @@
     {
       "name": "rapidfire",
       "source": "./plugins/rapidfire",
-      "description": "Dispatcher pattern. User drops one-line ideas; the dispatcher refines in ≤3 questions, writes a ticket to `.rapidfire/T<NN>-<slug>.md`, fire-and-forget dispatches to a background subagent. Auto-selects model + agent_type via a 4-bucket complexity heuristic (trivial→haiku/cavecrew-builder, moderate→sonnet/general-purpose, complex/ambiguous→opus/general-purpose). Pre-dispatch lint catches T01-class spec defects (acceptance grep contradicting an intended edit). Listens for `<task-notification>` blocks, auto-dispatches queued tickets when their `depends_on` is satisfied. Lead reviews + commits via `/rapidfire commit`. Helper scripts (status/lint-spec/dispatch-args/migrate/optimize-description) are uv PEP 723 single-file Python (no global deps). Portable across SKILL.md-native hosts (subagent dispatch varies).",
-      "version": "0.1.0"
+      "description": "Dispatcher pattern. User drops one-line ideas; the dispatcher refines in ≤3 questions, writes a ticket to `.rapidfire/T<NN>-<slug>.md`, fire-and-forget dispatches to a background subagent. Auto-selects model + agent_type via a 4-bucket complexity heuristic (trivial→haiku/cavecrew-builder, moderate→sonnet/general-purpose, complex/ambiguous→opus/general-purpose). Pre-dispatch lint catches T01-class spec defects (acceptance grep contradicting an intended edit). Listens for `<task-notification>` blocks, auto-dispatches queued tickets when their `depends_on` is satisfied. Lead reviews + commits via `/rapidfire commit`. Helper scripts (status/lint-spec/dispatch-args/optimize-description) are uv PEP 723 single-file Python (no global deps). Portable across SKILL.md-native hosts (subagent dispatch varies).",
+      "version": "0.2.0"
     }
   ]
 }
