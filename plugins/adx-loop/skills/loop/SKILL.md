@@ -11,9 +11,8 @@ when_to_use: >-
   pressure-test", or asks to dogfood tooling against a feature backlog.
   Also: when a development environment (test harness, dev loop, CI flow,
   scaffolder) feels slow or "blind" and the user wants structured
-  improvement rather than ad-hoc fixes. Not for shipping product features
-  on their own — that's tasks:orchestrate. ADX loop intentionally couples
-  feature work to harness work.
+  improvement rather than ad-hoc fixes. ADX loop intentionally couples
+  feature work to harness work, not for shipping product features alone.
 argument-hint: "[--cycle N | --halt | --status]"
 allowed-tools:
   - Read

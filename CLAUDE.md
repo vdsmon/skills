@@ -22,7 +22,7 @@ Two invariants preserve when add/rename plugins:
 1. **Every plugin listed in `.claude-plugin/marketplace.json`** with `name`, `source: ./plugins/<name>`, `description`, `version`. Forget = plugin invisible to `/plugin install`.
 2. **`plugin.json` `name` must match marketplace `name` and directory name.** Skill dir name under `skills/` independent but conventionally matches.
 
-Current plugins: `skill-polish`, `cc-tokenomics`, `cc-cache-keepalive`, `pre-compact`, `humanize`, `dg`, `converge`, `tasks`, `ship-it`. Plugins prefixed with `cc-` are Claude-Code-specific (hooks, `` !`cmd` `` dynamic injection, `${CLAUDE_SKILL_DIR}`); unprefixed plugins port cleanly to other Agent Skills hosts (Codex CLI, Gemini CLI, Cursor, Goose, etc.). `cc-tokenomics` is analysis + education only; cache warmup lives in `cc-cache-keepalive`. The `tasks` plugin has two skills (`tasks:spec` for epic decomposition, `tasks:orchestrate` for dispatch + parallel-batch execution).
+Current plugins: `skill-polish`, `cc-tokenomics`, `cc-cache-keepalive`, `pre-compact`, `humanize`, `converge`, `ship-it`, `adx-loop`. Plugins prefixed with `cc-` are Claude-Code-specific (hooks, `` !`cmd` `` dynamic injection, `${CLAUDE_SKILL_DIR}`); unprefixed plugins port cleanly to other Agent Skills hosts (Codex CLI, Gemini CLI, Cursor, Goose, etc.). `cc-tokenomics` is analysis + education only; cache warmup lives in `cc-cache-keepalive`.
 
 ## Anatomy of a skill
 
@@ -72,8 +72,8 @@ Called from `SKILL.md` via dynamic-context injection: the `` ```! `` block runs 
 
 Some plugins ship more than `SKILL.md` + hooks. Two conventions:
 
-- **`plugins/<plugin>/scripts/`** — helper scripts the skill invokes via `bash "${CLAUDE_SKILL_DIR}/../../scripts/<name>.sh"`. Keeps deterministic logic out of the skill prose (which the model would otherwise re-interpret each invocation). Example: `plugins/tasks/scripts/build-dispatch-prompt.sh` constructs subagent prompts from a story file (strips `## Human handoff` / `## Blocker` / `## Retry notes` H2 sections, prepends per-agent contract). Eliminates a recurrent prose-stitching error class.
-- **`plugins/<plugin>/templates/`** — files copied into a project the first time the skill runs there (bootstrap pattern). Skill's `Bootstrap` block detects the template root via `${CLAUDE_SKILL_DIR}/../../templates` and `cp`s missing files. Example: `plugins/tasks/templates/` ships `EPIC.md`, `STORY.md`, `README.md`, and `regen-dashboard.sh` reference impl.
+- **`plugins/<plugin>/scripts/`** — helper scripts the skill invokes via `bash "${CLAUDE_SKILL_DIR}/../../scripts/<name>.sh"`. Keeps deterministic logic out of the skill prose (which the model would otherwise re-interpret each invocation).
+- **`plugins/<plugin>/templates/`** — files copied into a project the first time the skill runs there (bootstrap pattern). Skill's `Bootstrap` block detects the template root via `${CLAUDE_SKILL_DIR}/../../templates` and `cp`s missing files.
 
 ## Conventions
 

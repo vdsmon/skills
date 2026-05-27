@@ -16,9 +16,10 @@ Plugins **without** the `cc-` prefix are portable. They follow the open Agent Sk
 | `cc-cache-keepalive` | cc- | Claude Code only |
 | `pre-compact` | — | Any host |
 | `humanize` | — | Any host |
-| `dg` | — | Any host (dispatches subagents via whatever mechanism the host provides) |
-| `converge` | — | Any host (same caveat) |
+| `converge` | — | Any host (dispatches subagents via whatever mechanism the host provides) |
 | `skill-polish` | — | Any host |
+| `ship-it` | — | Any host |
+| `adx-loop` | — | Any host |
 
 ## Install — Claude Code
 
@@ -35,8 +36,9 @@ Install whichever plugins you want:
 /plugin install skill-polish@vdsmon-skills
 /plugin install humanize@vdsmon-skills
 /plugin install pre-compact@vdsmon-skills
-/plugin install dg@vdsmon-skills
 /plugin install converge@vdsmon-skills
+/plugin install ship-it@vdsmon-skills
+/plugin install adx-loop@vdsmon-skills
 
 # Claude-Code-specific
 /plugin install cc-tokenomics@vdsmon-skills
@@ -58,7 +60,6 @@ cd claude-skills
 mkdir -p ~/.codex/skills
 cp -r plugins/humanize/skills/humanize          ~/.codex/skills/
 cp -r plugins/pre-compact/skills/pre-compact    ~/.codex/skills/
-cp -r plugins/dg/skills/dg                      ~/.codex/skills/
 cp -r plugins/converge/skills/converge          ~/.codex/skills/
 cp -r plugins/skill-polish/skills/skill-polish  ~/.codex/skills/
 ```
@@ -132,12 +133,6 @@ Rewrites text to strip AI-writing tells and inject human voice. Detects em-dash 
 
 Trigger: `humanize this`, `remove AI tells`, `edit for voice`, `sounds too AI`, `make this more human`.
 
-### `dg` (portable)
-
-Adversarial code review. Two subagents (Gilfoyle attacks, Dinesh defends) debate a diff and converge on an actionable verdict. HBO's *Silicon Valley* energy, reviewer-level output.
-
-Trigger: `/dg`, `/dg <rounds>`, `/dg <path>`.
-
 ### `converge` (portable)
 
 Runs a prompt or slash command in a loop until changes converge (no new edits) or start churning (same files flip-flopping). Each pass runs in a fresh subagent for impartial review.
@@ -169,9 +164,6 @@ plugins/
   humanize/
     .claude-plugin/plugin.json
     skills/humanize/SKILL.md
-  dg/
-    .claude-plugin/plugin.json
-    skills/dg/{SKILL.md,dinesh-agent.md,gilfoyle-agent.md}
   converge/
     .claude-plugin/plugin.json
     skills/converge/SKILL.md
