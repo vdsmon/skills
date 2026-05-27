@@ -24,7 +24,7 @@ when_to_use: >-
   `.rapidfire/`. Skip one-shot inline tasks ("just fix this typo"), exploration
   ("where is X"), abstract design questions, and pre-spec'd multi-story epics
   with cross-cutting refactors (use `tasks:spec`).
-argument-hint: "[<idea>] | status | show <id> | kill <id> | retry <id> | queue <idea> | commit [<ids>] | stats | help"
+argument-hint: "help | [<idea>] | status | show <id> | kill <id> | retry <id> | queue <idea> | commit [<ids>] | stats"
 allowed-tools:
   - Read
   - Write
