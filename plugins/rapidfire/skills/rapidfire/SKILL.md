@@ -24,7 +24,7 @@ when_to_use: >-
   `.rapidfire/`. Skip one-shot inline tasks ("just fix this typo"), exploration
   ("where is X"), abstract design questions, and pre-spec'd multi-story epics
   with cross-cutting refactors (use `tasks:spec`).
-argument-hint: "[<idea>] | status | show <id> | kill <id> | retry <id> | queue <idea> | commit [<ids>] | stats"
+argument-hint: "[<idea>] | status | show <id> | kill <id> | retry <id> | queue <idea> | commit [<ids>] | stats | help"
 allowed-tools:
   - Read
   - Write
@@ -58,6 +58,7 @@ You = dispatcher. User drops ideas. You refine + dispatch. Background agents wor
 | `/rapidfire kill <id>` | Stop running agent for `<id>`. |
 | `/rapidfire retry <id>` | Re-dispatch failed/killed ticket. Increments `attempt`, bypasses budget. |
 | `/rapidfire commit [<ids>]` | Compose conventional commit from reported tickets. Preview + confirm. |
+| `/rapidfire help` | Print the subcommand table. |
 
 Empty args + no obvious subcommand → ask user for the idea.
 
@@ -189,6 +190,10 @@ Confirm `status ∈ {failed, killed}`. Increment `attempt`, set `origin: retry`,
 ### queue <idea>
 
 Run Steps 1–5, write `status: queued` in Step 3, **skip Step 6**. Dispatch happens via Step 0 when deps satisfy.
+
+### help
+
+Print the Subcommands table verbatim. Append one line: "Empty args → asks for idea. Step 0 (notification scan + auto-dispatch of `--ready` queued tickets) runs before any subcommand."
 
 ### commit [<ids>]
 
