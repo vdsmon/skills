@@ -10,11 +10,11 @@ allowed-tools: Bash(python3:*), Bash(git:*), Bash(bd:*), Bash(jq:*), Bash(cat:*)
 Multi-tracker pipeline. Tracker is pluggable (Jira | beads). Stages, handlers,
 and memory namespace come from `.flow/workspace.toml` + `stage-registry.toml`.
 
-This skill is in **phase 5-mvp**: `/flow init`, `/flow do`, and `/flow recall`
-work end-to-end against bare workspaces. `/flow status`, `/flow recover`,
-`/flow sync`, and `/flow baseline` are stubbed with a "not yet implemented in
-5-mvp" warning + a workaround hint. Skill-handler dispatch (the
-`skill:<name>[:<args>]` handler type) is also deferred to phase 5b.
+This skill is in **phase 5b**: `/flow init`, `/flow do`, and `/flow recall`
+work end-to-end against bare and skill-bundled workspaces. `skill:<name>`
+handler dispatch and per-subagent-stage reference docs are wired (see the do
+verb). `/flow status`, `/flow recover`, `/flow sync`, and `/flow baseline`
+are stubbed with a "not yet implemented" warning + a workaround hint.
 
 ## Argument parsing
 
@@ -33,7 +33,7 @@ Match `$ARGUMENTS` against the verb:
 
 For stubs, surface:
 ```
-/flow <verb> is not implemented in phase 5-mvp.
+/flow <verb> is not implemented yet.
 Workaround: <verb-specific hint>.
 Track progress in plugins/flow/skills/flow/scripts/inventory.md.
 ```
@@ -157,7 +157,12 @@ JSON; this prose acts on each descriptor and calls back to `finish`.
         determine `status = completed` or `failed` based on whether the
         stage succeeded.
 
-      - **`subagent:<type>`** — Spawn an Agent:
+      - **`subagent:<type>`** — If `descriptor.reference_doc` is present,
+        Read `${CLAUDE_SKILL_DIR}/${descriptor.reference_doc}` first (e.g.
+        `references/stage-plan.md`, `references/stage-implement.md`); it
+        carries the per-stage protocol the subagent must follow. Then spawn
+        an Agent, embedding that protocol (or a pointer to its path) in the
+        prompt:
         ```
         Agent(
           subagent_type=descriptor.subagent_type,
@@ -170,6 +175,9 @@ JSON; this prose acts on each descriptor and calls back to `finish`.
           You are the <subagent_type> agent for the <STAGE> stage of /flow.
           Read .flow/runs/<KEY>/ticket.json for ticket context. Read
           .flow/tickets/<KEY>.md for ticket frontmatter.
+
+          Per-stage protocol (from <reference_doc>):
+          <contents of the reference doc, or its path if it is large>
 
           Do the stage's work and return your report.
           """
@@ -187,10 +195,35 @@ JSON; this prose acts on each descriptor and calls back to `finish`.
         Remember `$TICKET_DIR/stages/<STAGE>.out` for the `--output-path`
         flag on the `finish` call below.
 
-      - **`skill:<name>[:<args>]`** — NOT IMPLEMENTED in 5-mvp. Surface:
-        "Skill handler `<name>` is not wired in phase 5-mvp. Reconfigure
-        workspace to use `inline` or `subagent:` for this stage." Abort
-        the loop.
+      - **`skill:<name>[:<args>]`** — The descriptor carries `skill_name`
+        and `skill_args` (no raw handler string). Reconstruct it:
+        `skill:<skill_name>` when `skill_args` is null/empty, else
+        `skill:<skill_name>:<skill_args>`. Then:
+
+        1. Resolve + verify the handler is installed:
+           ```bash
+           python3 ${CLAUDE_SKILL_DIR}/scripts/resolve_handler.py \
+             --handler "<handler_string>"
+           ```
+           - Exit 1 → skill not installed. Surface "handler
+             `<handler_string>` not installed; `/flow init --reconfigure`
+             or install the skill." Set `STATUS=failed` and fall through to
+             step (f) to record the failure in state.json (do not bare-break
+             the loop).
+           - Exit 2 → skill installed but manifest invalid. Surface the
+             stderr error. Set `STATUS=failed` and fall through to (f).
+           - Exit 0 → proceed. The stdout JSON gives `skill_name`,
+             `skill_args`, and `invocation`; use those as authoritative.
+        2. Invoke the skill via the Skill tool (or its slash command) using
+           `skill_name`, passing `skill_args` verbatim as the argument
+           string. Wait for it to finish (synchronous).
+        3. Capture the skill's final response. `mkdir -p
+           "$TICKET_DIR/stages"`, then call the Write tool with
+           `file_path = <TICKET_DIR>/stages/<STAGE>.out` and
+           `content = <the skill's full response string>` (same pattern as
+           the subagent branch; NOT shell redirection). Remember that path
+           for the `--output-path` flag on the `finish` call. Set
+           `STATUS=completed` (or `failed` if the skill reported failure).
 
       - **`none`** — Skip. Immediately transition to step (f) with
         status=completed.
@@ -250,28 +283,39 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/recall.py "<query>" \
 ## Stage handler routing
 
 Inline stages (handler `inline`) read their `reference_doc` from
-`${CLAUDE_SKILL_DIR}/${descriptor.reference_doc}`. Currently in 5-mvp the
-following reference docs exist:
+`${CLAUDE_SKILL_DIR}/${descriptor.reference_doc}`. The inline reference docs:
 
 - `references/stage-ticket.md` — fetch + cache ticket, stamp frontmatter.
 - `references/stage-code_review.md` — inline self-review of implement diff.
 - `references/stage-commit.md` — compose + apply + transition.
 - `references/stage-reflect.md` — knowledge extraction + ship-event.
 
-Subagent stages (`subagent:Plan` for plan; `subagent:general-purpose` for
-implement) do NOT have reference docs in 5-mvp. The spawned agent receives
-the stage name + ticket dir; it figures out the rest from context. Phase 5b
-adds richer per-subagent-stage context docs.
+Subagent stages now carry a `reference_doc` too. The dispatcher includes it
+in the descriptor when the registry stage defines one. The spawned agent
+receives the per-stage protocol embedded in its prompt:
+
+- `references/stage-plan.md` — `subagent:Plan` for the plan stage.
+- `references/stage-implement.md` — `subagent:general-purpose` for implement.
+
+(`e2e` ships `references/stage-e2e.md` for the same reason, though it
+defaults to handler `none` and only becomes a subagent stage when a
+workspace reconfigures it.)
+
+Skill stages (handler `skill:<name>[:<args>]`) resolve through
+`resolve_handler.py` before invocation: it confirms the bundle is installed
+and its `.flow-bundle.toml` manifest is valid, then returns the concrete
+`skill_name` + `skill_args` to feed the Skill tool.
 
 ## Status
 
-Phases 1-4 + 6 + 7-mvp + 8-mvp + 8b-mvp + 5-mvp complete. The skill is now
-**usable** for end-to-end `/flow do <ticket>` against a bare workspace.
+Phases 1-4 + 6 + 7-mvp + 8-mvp + 8b-mvp + 5-mvp + 5b complete. Phase 5b
+wired skill-handler dispatch (via `resolve_handler.py`), subagent stage
+reference docs (plan / implement / e2e), and the SessionStart recall hook.
+The skill is now **usable** for end-to-end `/flow do <ticket>` against bare
+and skill-bundled workspaces.
 
 Still pending:
 - `/flow status`, `/flow recover` (phase 8c).
 - `/flow sync`, `/flow baseline` (phase 8d).
-- Skill-handler dispatch + subagent stage reference docs + SessionStart
-  recall hook (phase 5b).
 - Lease lifecycle + canonical-snapshot TOCTOU + heartbeat (phase 7-full).
 - `recall.py --metric` + work-mode quality gate (phase 8d).

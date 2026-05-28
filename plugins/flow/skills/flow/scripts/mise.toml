@@ -8,13 +8,16 @@ ty = "0.0.13"
 "pipx:pytest" = "8.3.3"
 
 [tasks.lint]
-description = "ruff check + ruff format --check + ty check"
+description = "ruff check + ruff format --check + ty check (scripts + plugin hooks)"
 run = [
-    "ruff check .",
-    "ruff format --check .",
+    "ruff check . ../../../hooks",
+    "ruff format --check . ../../../hooks",
     "ty check .",
 ]
 
 [tasks.test]
-description = "pytest scripts/tests/ -q"
-run = "pytest tests/ -q"
+description = "pytest scripts/tests/ + plugin hooks/tests/ -q"
+run = [
+    "pytest tests/ -q",
+    "pytest ../../../hooks/tests/ -q",
+]

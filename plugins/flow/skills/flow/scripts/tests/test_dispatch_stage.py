@@ -150,6 +150,69 @@ def test_cli_init_force_flag_resets(
     assert state_data["stages"]["ticket"]["status"] == "pending"
 
 
+def test_init_triggers_recall_promotion(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _write_workspace(tmp_path, stages=["ticket"], compounding=False)
+    # _stub_git_head stubs subprocess.run globally, so both head_sha and branch
+    # resolve to the stub sha.
+    _stub_git_head(monkeypatch, "abc123")
+
+    calls: list[dict[str, Any]] = []
+
+    def fake_promote(workspace_root: Path, **kwargs: Any) -> list[dict[str, Any]]:
+        calls.append({"workspace_root": workspace_root, **kwargs})
+        return []
+
+    monkeypatch.setattr(ds.recall_pending, "promote_matching", fake_promote)
+    rc, payload = ds.cmd_init(tmp_path, "FT-1")
+    assert rc == 0
+    assert payload["resumed"] is False
+    assert len(calls) == 1
+    assert calls[0]["ticket"] == "FT-1"
+    assert calls[0]["branch"] == "abc123"
+    assert calls[0]["cwd"] == str(tmp_path)
+
+
+def test_init_resume_triggers_recall_promotion(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Promotion must fire on the resume path too, not only on fresh init.
+    _write_workspace(tmp_path, stages=["ticket", "plan"], compounding=False)
+    _stub_git_head(monkeypatch, "abc123")
+    ds.cmd_init(tmp_path, "FT-1")
+
+    calls: list[str] = []
+
+    def fake_promote(workspace_root: Path, **kwargs: Any) -> list[dict[str, Any]]:
+        del workspace_root
+        calls.append(kwargs["ticket"])
+        return []
+
+    monkeypatch.setattr(ds.recall_pending, "promote_matching", fake_promote)
+    rc, payload = ds.cmd_init(tmp_path, "FT-1")
+    assert rc == 0
+    assert payload["resumed"] is True
+    assert calls == ["FT-1"]
+
+
+def test_init_succeeds_when_recall_promotion_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Promotion is best-effort; a raised exception must not abort init.
+    _write_workspace(tmp_path, stages=["ticket"], compounding=False)
+    _stub_git_head(monkeypatch)
+
+    def boom(workspace_root: Path, **kwargs: Any) -> list[dict[str, Any]]:
+        del workspace_root, kwargs
+        raise RuntimeError("promotion exploded")
+
+    monkeypatch.setattr(ds.recall_pending, "promote_matching", boom)
+    rc, payload = ds.cmd_init(tmp_path, "FT-1")
+    assert rc == 0
+    assert payload["resumed"] is False
+    state_path = tmp_path / ".flow" / "runs" / "FT-1" / "state.json"
+    assert state_path.exists()
+
+
 # ─── next: handler routing ───────────────────────────────────────────────────
 
 
@@ -214,6 +277,8 @@ def test_next_routes_subagent_handler(tmp_path: Path, monkeypatch: pytest.Monkey
     assert payload["stage"] == "plan"
     assert payload["handler_type"] == "subagent"
     assert payload["subagent_type"] == "Plan"
+    # reference_doc attaches to subagent stages too, not only inline.
+    assert payload["reference_doc"] == "references/stage-plan.md"
 
 
 def test_next_routes_skill_handler(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

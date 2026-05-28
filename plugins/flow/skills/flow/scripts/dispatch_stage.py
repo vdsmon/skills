@@ -22,12 +22,15 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import recall_pending
 import state
 import validate_workspace as vw
 from _registry import registry_by_name
@@ -74,6 +77,36 @@ def _git_head_sha(workspace_root: Path) -> str:
     return cp.stdout.strip()
 
 
+def _git_branch(workspace_root: Path) -> str:
+    try:
+        cp = subprocess.run(
+            ["git", "branch", "--show-current"],
+            cwd=str(workspace_root),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        return ""
+    if cp.returncode != 0:
+        return ""
+    return cp.stdout.strip()
+
+
+def _promote_recall_log(workspace_root: Path, ticket: str) -> None:
+    # Best-effort: fold any matching SessionStart recall-pending entries into the
+    # per-ticket recall-log on run start. A promotion failure must never abort init.
+    with contextlib.suppress(Exception):
+        recall_pending.promote_matching(
+            workspace_root,
+            ticket=ticket,
+            branch=_git_branch(workspace_root),
+            head_sha=_git_head_sha(workspace_root),
+            cwd=str(workspace_root),
+            now_iso=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        )
+
+
 # ─── Public API ──────────────────────────────────────────────────────────────
 
 
@@ -100,6 +133,7 @@ def cmd_init(workspace_root: Path, ticket: str, force: bool = False) -> tuple[in
         # completed stages including a second git commit.
         existing, exit_code = state.read(td)
         if existing is not None and exit_code == 0:
+            _promote_recall_log(workspace_root, ticket)
             return 0, {
                 "ticket": ticket,
                 "run_id": existing.run_id,
@@ -108,6 +142,7 @@ def cmd_init(workspace_root: Path, ticket: str, force: bool = False) -> tuple[in
                 "resumed": True,
             }
     new_state = state.init(td, ticket, snapshot.backend, snapshot.stages)
+    _promote_recall_log(workspace_root, ticket)
     return 0, {
         "ticket": ticket,
         "run_id": new_state.run_id,
@@ -163,11 +198,9 @@ def cmd_next(workspace_root: Path, ticket: str) -> tuple[int, dict[str, Any]]:
         "roles": stage_meta.roles if stage_meta else [],
         **handler_descriptor,
     }
-    if (
-        stage_meta is not None
-        and stage_meta.reference_doc
-        and handler_descriptor["handler_type"] == "inline"
-    ):
+    # Attach reference_doc regardless of handler type so the do-loop can pass it
+    # to a spawned subagent (and to inline / skill / none handlers alike).
+    if stage_meta is not None and stage_meta.reference_doc:
         payload["reference_doc"] = stage_meta.reference_doc
 
     state.begin_stage(td, next_stage, head_sha)
