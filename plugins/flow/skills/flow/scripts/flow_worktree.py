@@ -77,6 +77,17 @@ def _git(args: list[str], cwd: Path, runner: Runner) -> str:
     return result.stdout.strip()
 
 
+def _table_name(line: str) -> str | None:
+    """Return the table name for a `[table]` header line, else None. Tolerates a
+    trailing inline comment (`[memory] # note`) and ignores `[[array]]` headers —
+    so a user's hand-edited workspace.toml doesn't slip past the [memory] match
+    and get a duplicate table appended (which would not parse)."""
+    s = line.split("#", 1)[0].strip()
+    if s.startswith("[[") or not (s.startswith("[") and s.endswith("]")):
+        return None
+    return s[1:-1].strip()
+
+
 def _set_memory_root(toml_text: str, root: str) -> str:
     """Insert/replace `root = "<root>"` under the [memory] table, preserving the
     rest of the file (comments, ordering). Assumes a [memory] section exists (a
@@ -86,16 +97,17 @@ def _set_memory_root(toml_text: str, root: str) -> str:
     in_memory = False
     replaced = False
     for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("[") and stripped.endswith("]"):
+        name = _table_name(line)
+        if name is not None:
             # leaving the [memory] table without having seen a root key -> inject now
             if in_memory and not replaced:
                 out.append(f'root = "{root}"')
                 replaced = True
-            in_memory = stripped == "[memory]"
+            in_memory = name == "memory"
             out.append(line)
             continue
-        if in_memory and stripped.startswith("root") and "=" in stripped:
+        key = line.split("=", 1)[0].strip() if "=" in line else ""
+        if in_memory and key == "root":
             out.append(f'root = "{root}"')
             replaced = True
             continue

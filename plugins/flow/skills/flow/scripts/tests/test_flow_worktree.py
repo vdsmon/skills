@@ -124,6 +124,41 @@ def test_set_memory_root_memory_is_last_table() -> None:
     assert 'root = "/x/.flow"' in out
 
 
+def test_set_memory_root_header_with_inline_comment() -> None:
+    # a [memory] header carrying an inline comment must still be recognized,
+    # else a duplicate [memory] table gets appended and the file won't parse.
+    import tomllib
+
+    toml = '[tracker]\nbackend = "jira"\n[memory]  # the compounding store\nnamespace = "FT"\n'
+    out = fw._set_memory_root(toml, "/x/.flow")
+    parsed = tomllib.loads(out)
+    assert parsed["memory"]["root"] == "/x/.flow"
+    assert out.count("[memory]") == 1  # no duplicate table
+
+
+def test_set_memory_root_does_not_match_rootlike_key() -> None:
+    # `root_dir` under [memory] must not be mistaken for the `root` key.
+    import tomllib
+
+    toml = '[memory]\nnamespace = "FT"\nroot_dir = "/keep/me"\n'
+    out = fw._set_memory_root(toml, "/x/.flow")
+    parsed = tomllib.loads(out)
+    assert parsed["memory"]["root"] == "/x/.flow"
+    assert parsed["memory"]["root_dir"] == "/keep/me"
+
+
+def test_set_memory_root_output_always_parses() -> None:
+    import tomllib
+
+    for toml in (
+        '[memory]\nnamespace = "FT"\n',
+        '[tracker]\nx = 1\n[memory]\nnamespace = "FT"\n[pipeline]\nstages = ["ticket"]\n',
+        '[memory]\nnamespace = "FT"\nroot = "/old"\n',
+    ):
+        parsed = tomllib.loads(fw._set_memory_root(toml, "/new/.flow"))
+        assert parsed["memory"]["root"] == "/new/.flow"
+
+
 # ─── bootstrap ────────────────────────────────────────────────────────────────
 
 
