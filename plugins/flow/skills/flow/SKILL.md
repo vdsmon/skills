@@ -8,7 +8,7 @@ when_to_use: User runs /flow init, /flow do <ticket>, /flow plan, /flow implemen
 
 Pipeline router. Tracker is pluggable (Jira | beads). Stages, handlers, memory namespace come from `.flow/workspace.toml` + `stage-registry.toml`.
 
-This skill is currently a **skeleton** (build phase 1-2 of the implementation plan). The tracker Protocol and factory exist; adapters and the dispatcher land in later phases.
+This skill is currently a **skeleton** (build phases 1-3 of the implementation plan complete). The tracker Protocol, factory, and JiraAdapter exist; BeadsAdapter, dispatcher, init wizard, and memory layer land in later phases.
 
 ## Verbs (planned surface)
 
@@ -24,4 +24,4 @@ Canonical stages live in `stage-registry.toml`. Workspaces pick a subset via `[p
 
 ## Status
 
-Phase 1 (skeleton) complete: `plugin.json`, `stage-registry.toml`, `scripts/tracker.py` (Protocol + factory + types). Adapters, dispatcher, init wizard, memory layer = not yet built. Do not call verbs against this skill until phase ≥7.
+Phases 1-3 complete: `plugin.json`, `stage-registry.toml`, `scripts/tracker.py` (Protocol + factory + types), `scripts/tracker_jira.py` (full JiraAdapter — stdlib urllib, env-var auth, ADF-only comments, error-classification per `scripts/inventory.md`). BeadsAdapter, dispatcher, init wizard, memory layer = not yet built. Do not call verbs against this skill until phase ≥7.

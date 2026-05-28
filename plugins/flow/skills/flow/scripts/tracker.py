@@ -17,10 +17,13 @@ Key invariants:
 - `is_shipped` is a PURE READ. Adapters MUST NOT write under `.flow/`. The writer
   is `observe-ship-event.py` invoked by the reflect stage or `/flow sync
   --observe-ship`.
-- No `extra: dict` escape on `create()` / `edit()`. All backend-rich operations
-  (sprints, watchers, fix_versions, components, epic_link, board_rank, custom
-  fields, attachments) go through dedicated typed methods that raise
-  `NotSupported` when the corresponding capability is `supported=false`.
+- No `extra: dict` escape on `create()` or any mutator. Generic `edit(fields)`
+  is explicitly DROPPED; ticket field mutations go through typed setters
+  (`set_summary`, `set_description`, `set_priority`, `set_labels`,
+  `set_assignee`). Backend-rich operations (sprints, watchers, fix_versions,
+  components, epic_link, board_rank, custom fields, attachments) go through
+  dedicated typed methods that raise `NotSupported` when the corresponding
+  capability is `supported=false`.
 """
 
 from __future__ import annotations
@@ -284,7 +287,11 @@ class Tracker(Protocol):
         labels: list[str] | None = None,
         assignee: str | None = None,
     ) -> str: ...
-    def edit(self, key: str, fields: dict[str, Content | str | list[Any]]) -> None: ...
+    def set_summary(self, key: str, summary: Content) -> None: ...
+    def set_description(self, key: str, description: Content) -> None: ...
+    def set_priority(self, key: str, priority: str) -> None: ...
+    def set_labels(self, key: str, labels: list[str]) -> None: ...
+    def set_assignee(self, key: str, account_id: str | None) -> None: ...
     def transition(
         self,
         key: str,

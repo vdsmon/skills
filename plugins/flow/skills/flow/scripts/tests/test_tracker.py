@@ -34,11 +34,21 @@ def test_make_tracker_rejects_none_backend() -> None:
         t.make_tracker({"backend": None})
 
 
-def test_make_tracker_jira_constructs_stub_then_raises_not_implemented() -> None:
-    # Phase 1-2: the Jira adapter is a stub that raises at construction.
-    # Phase 3 will replace this with a working adapter; the assertion flips to
-    # "instance returned and capabilities advertised".
-    with pytest.raises(NotImplementedError, match="phase 3"):
+def test_make_tracker_jira_constructs_with_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ATLASSIAN_EMAIL", "you@example.com")
+    monkeypatch.setenv("ATLASSIAN_API_TOKEN", "fake-token")
+    adapter = t.make_tracker({"backend": "jira", "cloud_id": "x", "project_key": "FT"})
+    assert adapter.backend == "jira"
+    assert isinstance(adapter.capabilities, list)
+    assert any(c["name"] == "comments_adf" and c["supported"] for c in adapter.capabilities)
+
+
+def test_make_tracker_jira_without_creds_raises_config_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ATLASSIAN_EMAIL", raising=False)
+    monkeypatch.delenv("ATLASSIAN_API_TOKEN", raising=False)
+    with pytest.raises(t.TrackerConfigError, match="ATLASSIAN_EMAIL"):
         t.make_tracker({"backend": "jira", "cloud_id": "x", "project_key": "FT"})
 
 
@@ -147,7 +157,19 @@ class _FakeAdapter:
     ) -> str:  # pragma: no cover
         raise NotImplementedError
 
-    def edit(self, key: str, fields: dict[str, Any]) -> None:  # pragma: no cover
+    def set_summary(self, key: str, summary: t.Content) -> None:  # pragma: no cover
+        raise NotImplementedError
+
+    def set_description(self, key: str, description: t.Content) -> None:  # pragma: no cover
+        raise NotImplementedError
+
+    def set_priority(self, key: str, priority: str) -> None:  # pragma: no cover
+        raise NotImplementedError
+
+    def set_labels(self, key: str, labels: list[str]) -> None:  # pragma: no cover
+        raise NotImplementedError
+
+    def set_assignee(self, key: str, account_id: str | None) -> None:  # pragma: no cover
         raise NotImplementedError
 
     def transition(
