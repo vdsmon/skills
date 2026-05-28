@@ -293,6 +293,37 @@ def finish_stage(
     return _update(ticket_dir, mutate)
 
 
+def force_stage_status(ticket_dir: Path, stage: str, status: StageStatus) -> TicketState:
+    """Recovery-only: force a stage to a given status, outside begin/finish.
+
+    Used by /flow recover to retry (-> pending), skip (-> completed), or reset a
+    stage. Resetting to pending clears the stage's timestamps + failure detail so
+    the retry starts clean.
+    """
+    if status not in ("pending", "in_progress", "completed", "failed"):
+        raise ValueError(f"force_stage_status: invalid status {status!r}")
+
+    def mutate(state: TicketState) -> TicketState:
+        if stage not in state.stages:
+            raise ValueError(f"stage {stage!r} not in state.stages")
+        record = state.stages[stage]
+        if status == "pending":
+            new_record = replace(
+                record,
+                status="pending",
+                started_at_iso=None,
+                started_at_sha=None,
+                finished_at_iso=None,
+                finished_at_sha=None,
+                failure_detail=None,
+            )
+        else:
+            new_record = replace(record, status=status)
+        return replace(state, stages={**state.stages, stage: new_record})
+
+    return _update(ticket_dir, mutate)
+
+
 def pick_next_pending(state: TicketState, pipeline_order: list[str]) -> str | None:
     for name in pipeline_order:
         record = state.stages.get(name)
@@ -461,6 +492,7 @@ __all__ = [
     "cli_main",
     "find_failed",
     "finish_stage",
+    "force_stage_status",
     "init",
     "pick_next_pending",
     "read",
