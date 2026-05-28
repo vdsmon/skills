@@ -475,11 +475,14 @@ subsequent next).
 | `--emit-canonical-snapshot` content-tree hash    | 7-full    |
 | FS capability probe (flock detection)            | 7-full    |
 | Heartbeat `.progress` files + hung detection     | 7-full    |
-| `lint-ticket.py` HARD GATE pre-stage             | 8         |
-| `branch-ticket.py` ticket resolution             | 8         |
-| `ticket-frontmatter.py` YAML r/w                 | 8         |
-| `diff-extract.py` baseline + since-stage         | 8         |
-| `recover.py` takeover modes                      | 8         |
+| `lint-ticket.py` HARD GATE pre-stage             | 8-mvp ✓   |
+| `branch-ticket.py` ticket resolution             | 8-mvp ✓   |
+| `ticket-frontmatter.py` TOML r/w                 | 8-mvp ✓   |
+| `diff-extract.py` baseline + since-stage         | 8-mvp ✓   |
+| `compose-commit.py` skeleton emitter             | 8-mvp ✓   |
+| `recover.py` takeover modes                      | 8c        |
+| `memory-append.py` + `recall.py` + ship-event    | 8b        |
+| `pending-mutations.py` + `sync.py`               | 8d        |
 | Capability cross-check (handler vs adapter)      | 7-full    |
 | Subagent / skill handler spawn harness           | 7-full    |
 
@@ -492,3 +495,94 @@ subsequent next).
 - Bulk operations (`bulkCreateIssue`, `bulkEditIssues`). Adapter sticks to
   single-issue endpoints; the dispatcher batches client-side.
 - Jira Server / Data Center (Cloud only — REST v3 + agile/1.0 differs on-prem).
+
+---
+
+## Phase 8-mvp helpers
+
+Five bookkeeping scripts. All stdlib-only, library + thin CLI shape, atomic
+writes where they touch files, `fcntl.flock` where they touch shared mutable
+state. Built to be subprocess'd by `dispatch_stage.py` (phase 5 wiring) but
+shippable as standalone CLIs first.
+
+### `branch_ticket.py`
+
+Pure read. Resolves ticket key from current git branch.
+
+| Subcommand | Flags | Exits | Notes |
+|------------|-------|-------|-------|
+| (default)  | `--workspace-root <dir>` `--cwd <dir>` | 0=match, 1=env-error, 3=no-match | Backend-aware: jira regex `<PROJECT_KEY>-\d+`; beads regex `<prefix>-[0-9a-z]{4,}` (mirrors `_BD_ID_RE`). |
+
+### `ticket_frontmatter.py`
+
+TOML frontmatter r/w under flock + atomic rename. Frontmatter delimiter is
+`+++` (deviation from plan-source "YAML" wording — locked at design review).
+
+| Subcommand | Flags | Exits | Notes |
+|------------|-------|-------|-------|
+| `read <path>` | — | 0 always (on malformed: quarantine + warn + empty dict) | Emits JSON to stdout. |
+| `update <path>` | `--set k=v` (repeatable) | 0=ok, 1=lock contention, 2=schema invalid, 3=I/O | `--set` parses: `null`→`""`, `true`/`false`→bool, `^-?\d+$`→int, `^\[.*\]$`→list, `NOW`→UTC ISO, else→string. |
+
+### `lint_ticket.py`
+
+HARD GATE pre-stage: validate required ticket frontmatter fields per stage.
+
+| Flag | Description |
+|------|-------------|
+| `--stage <name>` | Stage name (matches stage-registry). |
+| `--ticket-path <path>` | Path to ticket `.md` file. |
+| `--workspace-root <dir>` | Override stage-registry source (default: plugin root). |
+
+Exit 0=continue, 1=block (violations to stderr as `<key>: <reason>`). Required
+fields per stage (8-mvp set, baked into stage-registry.toml):
+
+- **universal** (every stage): `ticket`, `status`.
+- `implement.required_fields = ["planned_files"]`
+- `commit.required_fields = ["commit_message"]`
+- `create_pr.required_fields = ["pr_title"]`
+
+Empty-string / empty-list / missing-key all count as violations.
+
+### `diff_extract.py`
+
+Git diff capture for implement / commit / reflect stages.
+
+| Subcommand | Flags | Exits | Output |
+|------------|-------|-------|--------|
+| `since` | `--ref <git-ref> --cwd <dir>` | 0=ok, 2=git-error | `{files_touched, insertions, deletions, binary}` JSON. |
+| `since-stage` | `--stage <name> --ticket <key> --ticket-dir <dir> --cwd <dir>` | 0=ok, 1=missing-state, 2=git-error | Reads `state.json` for `stages.<name>.started_at_sha`, delegates to `since`. |
+| `record-baseline` | `--stage <name> --ticket <key> --ticket-dir <dir> [--files <csv>] [--capture-blobs] --cwd <dir>` | 0=ok, 2=git-error | Writes `<ticket-dir>/baseline.json` with `{stage, head_sha, planned_files, blobs}`. |
+| `capture-implement-diff` | `--ticket <key> --ticket-dir <dir> --cwd <dir>` | 0=ok, 1=missing-baseline, 2=git-error | Writes `<ticket-dir>/implement.diff` via `git diff --binary --raw`. |
+
+### `compose_commit.py`
+
+Skeleton conventional-commit emitter. Deterministic header; body is a
+template the LLM fills in.
+
+| Flag | Description |
+|------|-------------|
+| `--ticket <key>` | Ticket key (non-empty). |
+| `--type <t>` | One of: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `perf`, `style`, `build`, `ci`, `revert`. |
+| `--summary <s>` | One-line subject (non-empty). |
+| `--scope <s>` | Optional. With scope: `type(scope): summary`. Without: `type: summary`. |
+| `--files <csv>` | Optional list of files; emits a `files:` block. |
+
+Exit 0=ok, 1=invalid type or missing required arg.
+
+## Known phase 8-mvp holes (deferred to 8b/8c/8d)
+
+1. **TOML frontmatter scope** — flat scalars + string lists only. Nested tables
+   on hand-edit trigger read-side quarantine; write-side aborts with exit 2.
+2. **No content-ownership check on commit** — `diff_extract` records baseline +
+   captures implement-diff, but the commit-gate ("refuse if working tree
+   contains modifications outside expected file set") is dispatcher-side and
+   not wired in 8-mvp.
+3. **lint-ticket `required_fields`** — only 3 stages get non-empty lists. Other
+   stages get universal-only.
+4. **No retry knob** for ticket-frontmatter lock contention — hard-coded 3×1s.
+   Sufficient for serial human use; 8b can pull from workspace.toml.
+5. **`since`/`since-stage`** uses `--numstat`; renames surface only in
+   `capture-implement-diff` (`--raw`).
+6. **Dispatcher integration** — helpers ship as standalone CLIs. Subprocess
+   wiring into `dispatch_stage.py` (with exit-code matrix per plan line
+   1010-1020) lands in phase 5 or phase 8-glue.
