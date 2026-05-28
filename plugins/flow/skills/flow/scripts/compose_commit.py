@@ -7,7 +7,8 @@ fill in.
 
 Exit codes:
   0 = ok
-  1 = invalid type / missing required arg
+  1 = empty/whitespace --summary or --ticket
+  2 = invalid --type or missing required flag (argparse usage error)
 """
 
 from __future__ import annotations

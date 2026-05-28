@@ -59,7 +59,9 @@ from `git add .` — so unrelated edits in the working tree are NOT included.
      > /tmp/flow-commit-<KEY>.txt
    ```
    - Exit 0 → commit skeleton at `/tmp/flow-commit-<KEY>.txt`.
-   - Exit 1 → invalid type or missing args. Abort.
+   - Exit 1 → empty/whitespace `--summary` or `--ticket`. Abort.
+   - Exit 2 → invalid `--type` (not in the allowed set) or a missing
+     required flag (argparse usage error). Abort and fix the invocation.
 
 4. Fill in the body. Read the skeleton, append a body section describing
    *why* (not what — the diff shows what). Reference any failing-tests-now-

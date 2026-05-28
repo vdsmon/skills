@@ -128,11 +128,14 @@ JSON; this prose acts on each descriptor and calls back to `finish`.
       `next` refreshes the lease and verifies the snapshot before returning a
       descriptor. Handle the exits before parsing:
       - Exit 0 → continue to (b).
-      - Exit 1 **with a config/version-drift error** (the workspace.toml, the
-        stage-registry, or a handler plugin changed since the run started) →
-        surface the drift detail and the hint `/flow recover <ticket>`, then
-        break the loop. (Exit 1 *without* a drift detail is a
-        validate-workspace failure: surface stderr violations and break.)
+      - Exit 1 → distinguish by the stdout JSON payload, then break the loop:
+        - `detail` present → config/version drift (the workspace.toml, the
+          stage-registry, or a handler plugin changed mid-run). Surface the
+          drift detail + the hint `/flow recover <ticket>`.
+        - `violations` present → a validate-workspace failure. Surface the
+          violations and abort.
+        - bare `error` (e.g. `unrecoverable state.json`) → the run state is
+          corrupt. Surface the error + the `/flow recover <ticket>` hint.
       - Exit 7 → lost lease; another run took over this ticket. Surface the hint
         `/flow recover <ticket>`, then break the loop.
 
@@ -346,7 +349,9 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/baseline_collect.py show [--path <p>]
 ```
 
 - Exit 0 → writes/prints the baseline (median + p90 + n).
-- Exit 1 → no samples / bad args.
+- Exit 1 → no samples, or an unparseable `--samples-json` value.
+- Exit 2 → argparse usage error (missing subcommand or `--samples-json`).
+- Exit 3 → I/O error, or `show` found no stored baseline.
 
 ## status verb
 

@@ -724,13 +724,35 @@ def test_finish_cli_flag_contract_matches_skill_prose() -> None:
     # --head-sha would die "unrecognized arguments" (a bug the unit tests, which
     # call cmd_finish directly, cannot see).
     args = ds._parse_args(
-        ["finish", "--workspace-root", ".", "--ticket", "FT-1",
-         "--stage", "commit", "--status", "completed", "--output-path", "x.out"]
+        [
+            "finish",
+            "--workspace-root",
+            ".",
+            "--ticket",
+            "FT-1",
+            "--stage",
+            "commit",
+            "--status",
+            "completed",
+            "--output-path",
+            "x.out",
+        ]
     )
     assert args.cmd == "finish"
     assert args.status_value == "completed"
     with pytest.raises(SystemExit):
         ds._parse_args(
-            ["finish", "--workspace-root", ".", "--ticket", "FT-1",
-             "--stage", "commit", "--status", "completed", "--head-sha", "deadbeef"]
+            [
+                "finish",
+                "--workspace-root",
+                ".",
+                "--ticket",
+                "FT-1",
+                "--stage",
+                "commit",
+                "--status",
+                "completed",
+                "--head-sha",
+                "deadbeef",
+            ]
         )

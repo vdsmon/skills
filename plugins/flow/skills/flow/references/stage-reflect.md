@@ -38,8 +38,10 @@ The taxonomy is closed:
    ```
    - Exit 0 → JSON payload to stdout: `{ticket, run_id, state,
      ticket_frontmatter, final_diff, subagent_reports[]}`.
-   - Exit 1 → state.json missing / corrupt. Abort with status=failed.
-   - Exit 2/3 → diff or I/O error. Abort.
+   - Exit 1 → state.json missing/corrupt, or the diff environment is broken
+     (git not on PATH, bad `--cwd`). Abort with status=failed.
+   - Exit 2 → git ran but returned an error (bad ref). Abort.
+   - Exit 3 → I/O error reading state. Abort.
 
 2. Read the bundle JSON carefully. Look for novel signal:
    - **What** did the ticket teach you that wasn't already documented?
@@ -66,7 +68,8 @@ The taxonomy is closed:
    - Exit 1 → duplicate id (no-op). Fine; continue to next entry.
    - Exit 2 → lock contention. Retry once. If retry fails, log and skip.
    - Exit 3 → invalid type. Bug in your prompt; fix and retry.
-   - Exit 4 → I/O error. Log and skip.
+   - Exit 4 → I/O error, or the workspace memory config is missing/invalid.
+     Log and skip.
 
 4. **Zero novel signal path**: if you genuinely have nothing to append,
    emit exactly:
@@ -84,9 +87,9 @@ The taxonomy is closed:
      is-shipped --key <KEY>
    ```
    - Exit 0 → JSON `{state, shipped_at, evidence, source}`.
-   - Any non-zero exit (1 tracker error, 2 workspace config invalid, 3 bad
-     key/args) → skip ship-event observation; reflect still completes
-     successfully. Ship-event observation is best-effort.
+   - Any non-zero exit (1 tracker error, 2 workspace config invalid) → skip
+     ship-event observation; reflect still completes successfully. Ship-event
+     observation is best-effort.
 
    `state` decides what happens next. The immutable ship-event file is
    *created* exactly once, the first time the backend reports the ticket as
@@ -138,10 +141,12 @@ The taxonomy is closed:
        --workspace-root .
      ```
      - Exit 0 → primary ship-event file written. Continue.
-     - Exit 1 → bad evidence JSON. Abort stage with status=failed.
+     - Exit 1 → bad evidence JSON or a malformed `--run-id` (not 16 hex
+       chars). Abort stage with status=failed.
      - Exit 2 → duplicate (dupe.<n>.json written). Continue normally; this
        is informational, not an error.
-     - Exit 3 → I/O error (intent log written). Surface warning; continue.
+     - Exit 3 → I/O error, lock contention, or workspace memory config
+       missing/invalid (intent log written). Surface warning; continue.
 
 7. Stage completes with status=completed.
 
@@ -153,7 +158,8 @@ The taxonomy is closed:
 
 ## Errors
 
-- `reflect_inputs.py` exit 1 → state corrupt; abort.
+- `reflect_inputs.py` exit 1 → state missing/corrupt, or diff environment
+  broken (git not on PATH / bad cwd); abort.
 - `memory_append.py` exit 1 → duplicate id; fine, continue.
 - `observe_ship_event.py` exit 1 → bad evidence JSON; abort.
 - `observe_ship_event.py` exit 2 → duplicate ship-event; informational,

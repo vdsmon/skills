@@ -22,9 +22,10 @@ Evidence JSON validation rejects with exit 1 if:
 
 Exit codes:
   0 = primary write succeeded
-  1 = evidence JSON invalid
+  1 = evidence JSON invalid, or run_id not 16 hex chars
   2 = EEXIST — wrote .dupe.<n>.json instead (informational, not error)
-  3 = I/O error (intent log written; surfaces for /flow recover)
+  3 = I/O error, lock contention, or workspace memory config missing/invalid
+      (intent log written; surfaces for /flow recover)
 """
 
 from __future__ import annotations

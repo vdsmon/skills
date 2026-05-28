@@ -23,7 +23,7 @@ Exit codes:
   1 = duplicate id (no-op).
   2 = lock contention.
   3 = invalid type.
-  4 = I/O error.
+  4 = I/O error, or workspace memory config missing/invalid.
 """
 
 from __future__ import annotations

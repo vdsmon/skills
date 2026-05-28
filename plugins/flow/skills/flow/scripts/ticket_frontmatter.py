@@ -37,10 +37,12 @@ Invariants:
   6. Otherwise → TOML string (always double-quoted on write).
 
 Exit codes (per plan line 1017-1020):
-  0 = ok
+  0 = ok (read always returns 0, emitting {} when the file is absent or its
+      frontmatter is malformed)
   1 = lock contention (couldn't acquire after 3 x 1s retry)
-  2 = schema invalid (read-side returns empty + exit 2; write-side aborts
-      without touching the file)
+  2 = update-side schema invalid (file has content but no/!parseable
+      frontmatter block; aborts without touching the file), or a malformed
+      --set pair
   3 = I/O error
 """
 

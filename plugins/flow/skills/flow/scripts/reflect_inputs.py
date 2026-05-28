@@ -13,9 +13,10 @@ Output: single JSON object to stdout, structured for the reflect LLM.
 
 Exit codes:
   0 = ok.
-  1 = state.json invalid / missing.
-  2 = diff-extract failed.
-  3 = I/O error.
+  1 = state.json invalid/missing, or diff environment broken (git not on
+      PATH / bad cwd raises FileNotFoundError, caught before _GitError).
+  2 = diff-extract git error (git ran, returned nonzero — e.g. bad ref).
+  3 = I/O error reading state.
 """
 
 from __future__ import annotations

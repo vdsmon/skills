@@ -26,6 +26,7 @@ Exit codes (per plan line 1014-1016):
   0 = ok
   1 = missing baseline / state.json
   2 = git error (stderr propagated)
+  3 = check-ownership only: ownership violation (unowned paths in the diff)
 """
 
 from __future__ import annotations
