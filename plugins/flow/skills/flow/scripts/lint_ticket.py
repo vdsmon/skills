@@ -16,7 +16,7 @@ Required-field defaults baked into stage-registry.toml:
   - all stages implicitly require `ticket` and `status` (treated as universal
     by this helper; not declared per-stage in the registry).
   - implement.required_fields  = ["planned_files"]
-  - commit.required_fields     = ["commit_message"]
+  - commit.required_fields     = ["commit_type", "commit_summary"]
   - create_pr.required_fields  = ["pr_title"]
 
 Exit codes:

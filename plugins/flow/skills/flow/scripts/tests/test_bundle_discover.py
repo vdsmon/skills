@@ -181,6 +181,26 @@ handler_string = "inline"
     assert "handler_string" in result.invalid[0].reason
 
 
+@pytest.mark.parametrize("handler", ["skill:", "skill::args"])
+def test_handler_string_empty_skill_name_rejected(tmp_path: Path, handler: str) -> None:
+    _write_manifest(
+        tmp_path / "empty-name",
+        f"""schema_version = 1
+
+[bundle]
+name = "empty-name"
+description = ""
+
+[skills.create_pr]
+handler_string = "{handler}"
+""",
+    )
+    result = bd.discover(roots=[tmp_path])
+    assert result.valid == []
+    assert len(result.invalid) == 1
+    assert "non-empty skill name" in result.invalid[0].reason
+
+
 def test_env_override_search_roots(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     plugin_root = tmp_path / "custom_root"
     _write_manifest(plugin_root / "ship-it", _full_manifest_text())

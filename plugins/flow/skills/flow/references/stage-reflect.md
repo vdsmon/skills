@@ -77,30 +77,58 @@ The taxonomy is closed:
    outcome; the compounding rate doesn't need every ticket to add an
    entry.
 
-5. Check if the ticket has shipped:
+5. Check the ship state:
    ```bash
    ${CLAUDE_SKILL_DIR}/scripts/tracker_cli.py \
      --workspace-root . \
      is-shipped --key <KEY>
    ```
    - Exit 0 → JSON `{state, shipped_at, evidence, source}`.
-   - Exit 1 → tracker error. Skip ship-event observation; reflect still
-     completes successfully.
+   - Any non-zero exit (1 tracker error, 2 workspace config invalid, 3 bad
+     key/args) → skip ship-event observation; reflect still completes
+     successfully. Ship-event observation is best-effort.
 
-6. If `state == "shipped"`:
+   `state` decides what happens next. The immutable ship-event file is
+   *created* exactly once, the first time the backend reports the ticket as
+   landed-but-not-yet-frozen:
+   - `state == "not_yet_observed"` → CREATE the frozen event (step 6). This is
+     the only state that triggers observation. `evidence` is a non-null dict
+     here (`source == "live_backend_query"`); `shipped_at` is `null`.
+   - `state == "shipped"` → the frozen `.flow/` event already exists
+     (`source == "frozen_event_file"`). Already observed; skip step 6.
+   - `state == "not_shipped"` or `"indeterminate"` → not landed (or no
+     confirming evidence yet). Skip step 6; reflect completes.
+
+6. ONLY when `state == "not_yet_observed"`, observe the ship event:
    - Read `<ticket-dir>/state.json` to get `run_id`:
      ```bash
      RUN_ID=$(jq -r '.run_id' <ticket-dir>/state.json)
      ```
-   - Build the evidence JSON. The shape MUST be exactly:
+   - Synthesize `shipped_at`. The `shipped_at` from is-shipped output is `null`
+     for `not_yet_observed`, so do NOT pass it through. Use the tracker's
+     transition timestamp if the evidence carries one, else now:
+     ```bash
+     # SHIP_JSON holds the captured stdout of the step-5 is-shipped call.
+     SHIPPED_AT=$(jq -r '.evidence.closed_at // empty' <<<"$SHIP_JSON")
+     [ -z "$SHIPPED_AT" ] && SHIPPED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+     ```
+     The value MUST match `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$`
+     (`observe_ship_event.py` rejects anything else). If `evidence.closed_at`
+     is present but not in that exact form, normalize it to UTC `...Z` seconds
+     precision before use.
+   - Build the evidence JSON. The shape MUST be exactly these three top-level
+     keys (`observe_ship_event.py` rejects any extra key; it owns `observed_at`
+     and `observed_by_run_id`):
      ```json
      {
        "ticket": "<KEY>",
-       "shipped_at": "<UTC ISO from is-shipped output>",
-       "evidence": {<tracker-specific fields from is-shipped output>}
+       "shipped_at": "<synthesized UTC ...Z timestamp>",
+       "evidence": {<the evidence dict from is-shipped output, verbatim>}
      }
      ```
-     No extra top-level keys (observe-ship-event rejects them).
+     `evidence` MUST be the object from is-shipped output (e.g. jira
+     `{tracker, tracker_status, resolution}`; beads `{tracker, tracker_status,
+     commit_sha, closure_reason, closed_at}`), passed through as-is.
    - Observe the ship event:
      ```bash
      ${CLAUDE_SKILL_DIR}/scripts/observe_ship_event.py \

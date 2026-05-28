@@ -292,6 +292,21 @@ def test_create_returns_new_id() -> None:
     assert "a,b" in args
 
 
+def test_create_missing_top_level_id_raises_without_second_create() -> None:
+    # Response parses but lacks a top-level id (nested shape). create() must
+    # raise rather than re-running `bd create` (which would duplicate the ticket).
+    nested = {"issue": {"id": "bd-x"}}
+    adapter, runner = _build_adapter([_cp(stdout=json.dumps(nested))])
+    with pytest.raises(t.TrackerError, match="did not return a top-level id"):
+        adapter.create(
+            summary={"body": "title", "fmt": "plain"},
+            description={"body": "desc", "fmt": "md"},
+            type="task",
+        )
+    create_calls = [c for c in runner.calls if c[0][:2] == ["bd", "create"]]
+    assert len(create_calls) == 1
+
+
 def test_create_rejects_adf_description() -> None:
     adapter, _ = _build_adapter([])
     with pytest.raises(t.NotSupported, match="ADF"):

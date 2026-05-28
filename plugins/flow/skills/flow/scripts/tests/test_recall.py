@@ -81,12 +81,16 @@ def test_rank_empty_corpus_returns_empty() -> None:
     assert recall.rank("anything", []) == []
 
 
-def test_rank_empty_query_returns_zero_scores_but_all_entries() -> None:
+def test_rank_empty_query_returns_no_results() -> None:
+    # An empty query tokenizes to [], so nothing actually matched -> [] (not the
+    # newest entries masquerading as matches).
     entries = [_make_entry("a" * 16, "first"), _make_entry("b" * 16, "second")]
-    results = recall.rank("", entries, top_n=10)
-    assert len(results) == 2
-    for r in results:
-        assert r["score"] == 0
+    assert recall.rank("", entries, top_n=10) == []
+
+
+def test_rank_whitespace_query_returns_no_results() -> None:
+    entries = [_make_entry("a" * 16, "first"), _make_entry("b" * 16, "second")]
+    assert recall.rank("   \t\n", entries, top_n=10) == []
 
 
 # ─── rank() — basic BM25 ─────────────────────────────────────────────────────
@@ -138,27 +142,35 @@ def test_branch_exact_match_boosts_score() -> None:
     no_filter = recall.rank("fsync", entries, top_n=2)
     with_filter = recall.rank("fsync", entries, branch_filter="feature/x", top_n=2)
     # Without filter: ts-tied tiebreak, scores equal.
-    # With filter: feature/x entry gets x2.0 boost.
+    # With filter: feature/x entry gets the additive branch bonus.
     a_score_unfiltered = next(r["score"] for r in no_filter if r["id"] == "a" * 16)
     a_score_filtered = next(r["score"] for r in with_filter if r["id"] == "a" * 16)
-    # Scores are rounded to 6 decimals before comparison; multiplying by 2 can
-    # off-by-one at the last digit, so allow ~1e-5 relative tolerance.
-    assert a_score_filtered == pytest.approx(a_score_unfiltered * 2.0, rel=1e-5)
+    assert a_score_filtered == pytest.approx(
+        a_score_unfiltered + recall.BRANCH_EXACT_BONUS, rel=1e-9
+    )
 
 
 def test_branch_filter_case_insensitive() -> None:
     entries = [_make_entry("a" * 16, "fsync", branch="Feature/X")]
     results = recall.rank("fsync", entries, branch_filter="feature/x", top_n=1)
-    # Boost still applies despite case difference.
+    # Bonus still applies despite case difference.
     no_boost = recall.rank("fsync", entries, top_n=1)
-    assert results[0]["score"] == pytest.approx(no_boost[0]["score"] * 2.0, rel=1e-5)
+    assert results[0]["score"] == pytest.approx(
+        no_boost[0]["score"] + recall.BRANCH_EXACT_BONUS, rel=1e-9
+    )
 
 
-def test_ticket_exact_match_boosts_x3() -> None:
+def test_ticket_exact_match_boosts_score() -> None:
     entries = [_make_entry("a" * 16, "fsync", ticket="FT-1")]
     base = recall.rank("fsync", entries, top_n=1)
     boosted = recall.rank("fsync", entries, ticket_filters=["FT-1"], top_n=1)
-    assert boosted[0]["score"] == pytest.approx(base[0]["score"] * 3.0, rel=1e-5)
+    assert boosted[0]["score"] == pytest.approx(
+        base[0]["score"] + recall.TICKET_EXACT_BONUS, rel=1e-9
+    )
+
+
+def test_ticket_bonus_stronger_than_branch_bonus() -> None:
+    assert recall.TICKET_EXACT_BONUS > recall.BRANCH_EXACT_BONUS
 
 
 def test_ticket_filter_multiple_tickets_any_matches() -> None:
@@ -179,7 +191,22 @@ def test_branch_and_ticket_boosts_stack() -> None:
     entries = [_make_entry("a" * 16, "fsync", branch="main", ticket="FT-1")]
     base = recall.rank("fsync", entries, top_n=1)
     boosted = recall.rank("fsync", entries, branch_filter="main", ticket_filters=["FT-1"], top_n=1)
-    assert boosted[0]["score"] == pytest.approx(base[0]["score"] * 2.0 * 3.0, rel=1e-5)
+    assert boosted[0]["score"] == pytest.approx(
+        base[0]["score"] + recall.BRANCH_EXACT_BONUS + recall.TICKET_EXACT_BONUS, rel=1e-9
+    )
+
+
+def test_ticket_exact_match_ranks_first_even_with_zero_text_score() -> None:
+    # FT-9 body shares no tokens with the query, so its BM25 text score is 0.
+    # The additive ticket bonus must still float it above a non-requested record
+    # whose body matches a query term.
+    entries = [
+        _make_entry("a" * 16, "completely unrelated prose", ticket="FT-9"),
+        _make_entry("b" * 16, "fsync durability notes", ticket="FT-2"),
+    ]
+    results = recall.rank("fsync", entries, ticket_filters=["FT-9"], top_n=2)
+    assert results[0]["id"] == "a" * 16
+    assert results[0]["score"] > results[1]["score"]
 
 
 # ─── rank() — field weights ──────────────────────────────────────────────────
@@ -211,6 +238,23 @@ def test_tiebreak_ts_desc() -> None:
     results = recall.rank("fsync", entries, top_n=3)
     # All have same score; tiebreak orders by ts DESC.
     assert [r["id"] for r in results] == ["b" * 16, "c" * 16, "a" * 16]
+
+
+def test_tiebreak_missing_ts_sorts_last() -> None:
+    # Two records tied on score: one with a ts, one without. The one WITH ts
+    # ranks first (a missing ts is treated as oldest, not newest).
+    with_ts = _make_entry("a" * 16, "fsync", ts="2026-01-01T00:00:00.000Z")
+    no_ts = _make_entry("b" * 16, "fsync")
+    del no_ts["ts"]
+    results = recall.rank("fsync", [no_ts, with_ts], top_n=2)
+    assert [r["id"] for r in results] == ["a" * 16, "b" * 16]
+
+
+def test_tiebreak_empty_ts_sorts_last() -> None:
+    with_ts = _make_entry("a" * 16, "fsync", ts="2026-01-01T00:00:00.000Z")
+    empty_ts = _make_entry("b" * 16, "fsync", ts="")
+    results = recall.rank("fsync", [empty_ts, with_ts], top_n=2)
+    assert [r["id"] for r in results] == ["a" * 16, "b" * 16]
 
 
 # ─── Quarantine ──────────────────────────────────────────────────────────────

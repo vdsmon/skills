@@ -40,6 +40,7 @@ import tempfile
 import time
 import tomllib
 import unicodedata
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -195,6 +196,22 @@ def _marker_initialized(root: Path) -> Path:
 
 def _progress_path(root: Path) -> Path:
     return _flow_dir(root) / ".init-progress"
+
+
+def _ensure_init_run_id(initializing: Path) -> str:
+    """Create the `.initializing` marker with a run id, or read an existing one.
+
+    The id is stable across `--resume` so checkpoint-append can detect a
+    duplicate from a prior interrupted run.
+    """
+    initializing.parent.mkdir(parents=True, exist_ok=True)
+    if initializing.exists():
+        existing = initializing.read_text(encoding="utf-8").strip()
+        if existing:
+            return existing
+    run_id = uuid.uuid4().hex
+    initializing.write_text(run_id + "\n", encoding="utf-8")
+    return run_id
 
 
 def _workspace_toml_path(root: Path) -> Path:
@@ -429,13 +446,31 @@ def _compose_handlers(
                     (manifest.bundle_name, skill.handler_string)
                 )
 
+    covered_stages = 0
     for stage, providers in stage_providers.items():
         if len(providers) > 1:
             raise BundleConflictError(
                 f"stage {stage!r} has multiple providers: "
                 f"{[p[0] for p in providers]!r}; use --bundle custom to disambiguate"
             )
-        handlers[stage] = providers[0][1]
+        bundle_name, handler_string = providers[0]
+        if not _legal_handler_string(handler_string):
+            raise InitError(
+                f"bundle {bundle_name!r} provides an illegal handler for stage {stage!r}: "
+                f"{handler_string!r} (expected inline|none|subagent:*|skill:<name>)"
+            )
+        handlers[stage] = handler_string
+        covered_stages += 1
+
+    if covered_stages == 0:
+        # No-silent-degrade: --bundle recommended that resolves to zero stages
+        # is functionally identical to bare. Refuse so the caller picks bare or
+        # custom explicitly instead of silently getting bare defaults.
+        raise InitError(
+            "--bundle=recommended found no discovered manifests covering any "
+            "pipeline stage; use --bundle bare for defaults or --bundle custom "
+            "with explicit --handler overrides"
+        )
 
     if discovery.invalid:
         for err in discovery.invalid:
@@ -505,12 +540,19 @@ def _verify_bd_ready(config: InitConfig, runner: Runner) -> None:
 def _append_checkpoint_manifest(
     config: InitConfig,
     namespace: str,
+    init_run_id: str,
 ) -> None:
     path = config.checkpoint_manifest_path or _default_checkpoint_manifest_path()
+    workspace_root = str(config.workspace_root.resolve())
+    # Idempotent on --resume: a crash between this append and recording the
+    # progress phase must not double-count this init in the ledger.
+    if _checkpoint_already_recorded(path, workspace_root, init_run_id):
+        return
     path.parent.mkdir(parents=True, exist_ok=True)
     entry = {
         "ts": _utcnow_iso(),
-        "workspace_root": str(config.workspace_root.resolve()),
+        "workspace_root": workspace_root,
+        "init_run_id": init_run_id,
         "backend": config.backend,
         "namespace": namespace,
         "compounding": config.memory_compounding,
@@ -554,6 +596,105 @@ def _verify_workspace_toml(
         raise InitError("[memory] block missing or namespace not a string")
 
 
+# ─── Input validation ───────────────────────────────────────────────────────
+
+
+def _validate_config(config: InitConfig) -> None:
+    """Validate the resolved answer set. No side effects, safe to re-run."""
+    if config.backend not in ("jira", "beads"):
+        raise InitError(f"unknown backend {config.backend!r}")
+    if config.backend == "jira" and config.jira is None:
+        raise InitError("--backend=jira requires --jira-cloud-id + --jira-project-key")
+    if config.backend == "beads" and config.beads is None:
+        raise InitError("--backend=beads requires --beads-prefix")
+    if config.bundle not in ("bare", "recommended", "custom"):
+        raise InitError(f"unknown bundle {config.bundle!r}")
+    if config.bundle == "custom" and not config.handler_overrides:
+        raise InitError("--bundle=custom requires at least one --handler stage=value")
+
+
+# ─── Reconfigure backup / restore ───────────────────────────────────────────
+
+
+@dataclass
+class _ReconfigureBackup:
+    """Snapshot of the prior valid workspace so a failed reconfigure restores it.
+
+    `.initialized` is intentionally NOT unlinked up front; finalize swaps it
+    atomically. On failure the prior `workspace.toml` content is restored and
+    any stray `.initializing` marker we created is removed.
+    """
+
+    workspace_toml: str | None
+
+
+def _backup_for_reconfigure(root: Path) -> _ReconfigureBackup:
+    toml_path = _workspace_toml_path(root)
+    return _ReconfigureBackup(
+        workspace_toml=(toml_path.read_text(encoding="utf-8") if toml_path.exists() else None),
+    )
+
+
+def _restore_reconfigure_backup(root: Path, backup: _ReconfigureBackup) -> None:
+    """Roll the workspace back to its pre-reconfigure state on failure."""
+    initializing = _marker_initializing(root)
+    if initializing.exists():
+        initializing.unlink()
+    toml_path = _workspace_toml_path(root)
+    if backup.workspace_toml is not None:
+        _atomic_write_text(toml_path, backup.workspace_toml)
+    progress = _progress_path(root)
+    if progress.exists():
+        progress.unlink()
+
+
+# ─── Idempotency helpers (resume) ────────────────────────────────────────────
+
+
+def _checkpoint_already_recorded(path: Path, workspace_root: str, init_run_id: str) -> bool:
+    """True if the checkpoint manifest already has an entry for this run.
+
+    Guards `--resume` from appending a duplicate line when a crash landed
+    between writing the checkpoint and recording the progress phase.
+    """
+    if not path.exists():
+        return False
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if (
+            entry.get("workspace_root") == workspace_root
+            and entry.get("init_run_id") == init_run_id
+        ):
+            return True
+    return False
+
+
+def _bd_already_initialized(config: InitConfig, runner: Runner) -> bool:
+    """True if `bd ready --json` already returns parseable JSON.
+
+    Lets `--resume` skip a second `bd init` when the prior run created the bead
+    store but crashed before recording the phase.
+    """
+    result = runner(
+        ["bd", "ready", "--json"],
+        cwd=config.workspace_root,
+        check=False,
+    )
+    if result.returncode != 0:
+        return False
+    try:
+        json.loads(result.stdout or "[]")
+    except json.JSONDecodeError:
+        return False
+    return True
+
+
 # ─── Main orchestration ─────────────────────────────────────────────────────
 
 
@@ -566,8 +707,11 @@ def run_init(
 ) -> InitResult:
     """Drive the transactional init sequence. Returns InitResult on success.
 
-    On failure, raises InitError (or subclass). `.flow/.initializing` and
-    `.flow/.init-progress` remain on disk for `--resume`.
+    On failure, raises InitError (or subclass). For a plain or `--resume` run,
+    `.flow/.initializing` and `.flow/.init-progress` remain on disk for a later
+    `--resume`. For a failed `--reconfigure`, the prior `workspace.toml` is
+    restored and the stray `.initializing`/`.init-progress` are removed so the
+    workspace stays in its prior valid state.
     """
     root = config.workspace_root.resolve()
     flow_dir = _flow_dir(root)
@@ -583,12 +727,18 @@ def run_init(
             f"pass --resume to continue or --reconfigure to start over"
         )
 
+    # Validate inputs BEFORE any marker is created. A config that fails
+    # validation must not leave a `.initializing` marker that would then refuse
+    # a plain re-run with the corrected config.
+    _validate_config(config)
+
+    # For reconfigure, back up the prior `.initialized` + workspace.toml so a
+    # failed reconfigure can restore the workspace to its prior valid state.
+    # `.initialized` stays in place until finalize swaps it; on failure the
+    # backups are restored.
+    reconfigure_backup: _ReconfigureBackup | None = None
     if reconfigure:
-        # Clean prior markers + progress so the run is a fresh transaction.
-        if initialized.exists():
-            initialized.unlink()
-        if initializing.exists():
-            initializing.unlink()
+        reconfigure_backup = _backup_for_reconfigure(root)
         progress = _progress_path(root)
         if progress.exists():
             progress.unlink()
@@ -596,16 +746,12 @@ def run_init(
     completed = _read_progress(root) if resume else set()
 
     flow_dir.mkdir(parents=True, exist_ok=True)
-    initializing.touch(exist_ok=True)
+    init_run_id = _ensure_init_run_id(initializing)
 
     runner = runner or _default_runner()
     registry = _load_stage_registry()
     namespace = _derive_default_namespace(config)
     pipeline_stages = _default_pipeline_stages(registry, config.memory_compounding)
-
-    discovery = DiscoveryResult()
-    handlers: dict[str, str] = {}
-    warnings: list[str] = []
 
     def _run_phase(name: PhaseLiteral, fn: Callable[[], dict[str, Any] | None]) -> None:
         if name in completed:
@@ -617,18 +763,49 @@ def run_init(
             if progress_path.exists():
                 progress_path.unlink()
 
-    # Phase: validate_inputs
+    try:
+        return _run_init_phases(
+            config=config,
+            runner=runner,
+            registry=registry,
+            namespace=namespace,
+            pipeline_stages=pipeline_stages,
+            init_run_id=init_run_id,
+            root=root,
+            flow_dir=flow_dir,
+            initializing=initializing,
+            initialized=initialized,
+            run_phase=_run_phase,
+        )
+    except Exception:
+        if reconfigure_backup is not None:
+            _restore_reconfigure_backup(root, reconfigure_backup)
+        raise
+
+
+def _run_init_phases(
+    *,
+    config: InitConfig,
+    runner: Runner,
+    registry: list[StageRegistryEntry],
+    namespace: str,
+    pipeline_stages: list[str],
+    init_run_id: str,
+    root: Path,
+    flow_dir: Path,
+    initializing: Path,
+    initialized: Path,
+    run_phase: Callable[[PhaseLiteral, Callable[[], dict[str, Any] | None]], None],
+) -> InitResult:
+    _run_phase = run_phase
+    discovery = DiscoveryResult()
+    handlers: dict[str, str] = {}
+    warnings: list[str] = []
+
+    # Phase: validate_inputs (already enforced before any marker; re-run is a
+    # no-op so --resume bookkeeping stays simple).
     def _phase_validate_inputs() -> dict[str, Any] | None:
-        if config.backend not in ("jira", "beads"):
-            raise InitError(f"unknown backend {config.backend!r}")
-        if config.backend == "jira" and config.jira is None:
-            raise InitError("--backend=jira requires --jira-cloud-id + --jira-project-key")
-        if config.backend == "beads" and config.beads is None:
-            raise InitError("--backend=beads requires --beads-prefix")
-        if config.bundle not in ("bare", "recommended", "custom"):
-            raise InitError(f"unknown bundle {config.bundle!r}")
-        if config.bundle == "custom" and not config.handler_overrides:
-            raise InitError("--bundle=custom requires at least one --handler stage=value")
+        _validate_config(config)
         return None
 
     _run_phase("validate_inputs", _phase_validate_inputs)
@@ -670,6 +847,10 @@ def run_init(
     def _phase_bd_init() -> dict[str, Any] | None:
         if config.backend != "beads":
             return {"skipped": True, "reason": "backend is not beads"}
+        # Idempotent on --resume: if a prior interrupted run already created the
+        # bead store, `bd ready --json` parses and we skip re-running bd init.
+        if _bd_already_initialized(config, runner):
+            return {"skipped": True, "reason": "bd already initialized"}
         _run_bd_init(config, runner)
         return None
 
@@ -677,6 +858,9 @@ def run_init(
 
     # Phase: write_workspace_toml
     def _phase_write_workspace_toml() -> dict[str, Any] | None:
+        for stage, value in handlers.items():
+            if not _legal_handler_string(value):
+                raise InitError(f"refusing to write illegal handler for stage {stage!r}: {value!r}")
         content = _render_workspace_toml(config, namespace, pipeline_stages, handlers)
         _atomic_write_text(_workspace_toml_path(root), content)
         return None
@@ -694,7 +878,7 @@ def run_init(
 
     # Phase: append_checkpoint
     def _phase_append_checkpoint() -> dict[str, Any] | None:
-        _append_checkpoint_manifest(config, namespace)
+        _append_checkpoint_manifest(config, namespace, init_run_id)
         return None
 
     _run_phase("append_checkpoint", _phase_append_checkpoint)
@@ -729,6 +913,34 @@ def _parse_handler_overrides(values: list[str]) -> dict[str, str]:
             raise InitError(f"--handler stage and value must be non-empty: {raw!r}")
         out[stage] = value
     return out
+
+
+def _coerce_search_roots(value: object) -> list[Path] | None:
+    """Normalize --bundle-search-roots from CLI string OR --config JSON list.
+
+    CLI passes a `:`-separated string; a --config file may already hand us a
+    JSON list. Either way return list[Path] (or None when unset).
+    """
+    if value is None:
+        return None
+    if isinstance(value, list):
+        return [Path(str(p)).expanduser() for p in value if str(p)]
+    if isinstance(value, str):
+        return [Path(p).expanduser() for p in value.split(":") if p]
+    raise InitError(f"--bundle-search-roots must be a string or list, got {type(value).__name__}")
+
+
+def _coerce_checkpoint_path(value: object) -> Path | None:
+    """Normalize --checkpoint-manifest from a string or a single-element list."""
+    if value is None:
+        return None
+    if isinstance(value, list):
+        if len(value) != 1:
+            raise InitError("--checkpoint-manifest list must hold exactly one path")
+        value = value[0]
+    if isinstance(value, str):
+        return Path(value).resolve()
+    raise InitError(f"--checkpoint-manifest must be a string, got {type(value).__name__}")
 
 
 def _build_config_from_args(args: argparse.Namespace) -> InitConfig:
@@ -767,14 +979,8 @@ def _build_config_from_args(args: argparse.Namespace) -> InitConfig:
         handler_overrides=overrides,
         memory_namespace=args.memory_namespace or None,
         memory_compounding=compounding,
-        checkpoint_manifest_path=(
-            Path(args.checkpoint_manifest).resolve() if args.checkpoint_manifest else None
-        ),
-        bundle_search_roots=(
-            [Path(p).expanduser() for p in args.bundle_search_roots.split(":") if p]
-            if args.bundle_search_roots
-            else None
-        ),
+        checkpoint_manifest_path=_coerce_checkpoint_path(args.checkpoint_manifest),
+        bundle_search_roots=_coerce_search_roots(args.bundle_search_roots),
     )
 
 

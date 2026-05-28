@@ -26,6 +26,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Callable
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from typing import Any, cast
 
 from tracker import (
@@ -99,6 +101,7 @@ _GET_FIELDS = [
     "attachment",
     "resolution",
     "labels",
+    "issuelinks",
 ]
 
 # `HttpFn` signature: receives a urllib.request.Request, returns a response object
@@ -112,6 +115,32 @@ HttpFn = Callable[[urllib.request.Request], Any]
 def _basic_auth_header(email: str, token: str) -> str:
     raw = f"{email}:{token}".encode()
     return "Basic " + base64.b64encode(raw).decode("ascii")
+
+
+def _retry_after_seconds(value: str | None, default: float) -> float:
+    """Parse a Retry-After header value to a delay in seconds.
+
+    RFC 7231 permits either a delay in seconds or an HTTP-date. Try the numeric
+    form first, then the date form (delay = max(0, date - now)). Fall back to
+    `default` when both fail.
+    """
+    if value is None:
+        return default
+    value = value.strip()
+    try:
+        return float(value)
+    except ValueError:
+        pass
+    try:
+        then = parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        return default
+    if then is None:
+        return default
+    if then.tzinfo is None:
+        then = then.replace(tzinfo=UTC)
+    delta = (then - datetime.now(UTC)).total_seconds()
+    return max(0.0, delta)
 
 
 def _adf_paragraph(text: str) -> dict[str, Any]:
@@ -328,7 +357,8 @@ class JiraAdapter:
                 if status == 409:
                     raise TrackerError(f"conflict: {parsed_body or raw_body!r}") from e
                 if status == 429 and attempt < 3:
-                    retry_after = float(e.headers.get("Retry-After", "1") if e.headers else "1")
+                    header_val = e.headers.get("Retry-After") if e.headers else None
+                    retry_after = _retry_after_seconds(header_val, 1.0)
                     time.sleep(min(retry_after, 30.0))
                     last_err = TrackerError(f"rate-limited (attempt {attempt + 1})")
                     continue
@@ -589,12 +619,6 @@ class JiraAdapter:
             body["fields"] = fields
         try:
             self._request("POST", f"/issue/{urllib.parse.quote(key)}/transitions", body=body)
-            return {
-                "success": True,
-                "failure_kind": None,
-                "failure_detail": None,
-                "new_state": self.state(key),
-            }
         except _JiraHTTPError as e:
             failure_kind, detail = _classify_transition_error(e.status, e.body)
             return {
@@ -603,6 +627,17 @@ class JiraAdapter:
                 "failure_detail": detail,
                 "new_state": None,
             }
+        try:
+            new_state: TicketState | None = self.state(key)
+        except TrackerError:
+            # The transition applied; a failed follow-up read must not surface as failure.
+            new_state = None
+        return {
+            "success": True,
+            "failure_kind": None,
+            "failure_detail": None,
+            "new_state": new_state,
+        }
 
     def comment(self, key: str, body: Content) -> None:
         self._request(

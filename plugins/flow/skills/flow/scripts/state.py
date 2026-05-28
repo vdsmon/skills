@@ -28,6 +28,7 @@ import secrets
 import sys
 import tempfile
 import time
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal
@@ -147,6 +148,13 @@ def _atomic_write(path: Path, content: str) -> None:
         os.fsync(tmp.fileno())
         tmp_path = Path(tmp.name)
     os.replace(tmp_path, path)
+    # fsync the parent dir so the rename itself is durable across a crash.
+    with contextlib.suppress(OSError):
+        dir_fd = os.open(str(path.parent), os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
 
 
 class _Flock:
@@ -177,7 +185,7 @@ def _try_load_from_bak(ticket_dir: Path) -> TicketState | None:
         try:
             raw = bak.read_text(encoding="utf-8")
             return _deserialize(raw)
-        except (OSError, ValueError, json.JSONDecodeError):
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
             continue
     return None
 
@@ -194,6 +202,27 @@ def _quarantine_corrupt(ticket_dir: Path) -> None:
 # ─── Public API ──────────────────────────────────────────────────────────────
 
 
+def _read_locked(ticket_dir: Path) -> tuple[TicketState | None, int]:
+    """Read body assuming the flock is already held. See read() for semantics.
+
+    Must not re-acquire the lock: callers (read, _update) hold it via a single
+    _Flock and a second acquisition would deadlock under blocking LOCK_EX.
+    """
+    path = _state_path(ticket_dir)
+    if not path.exists():
+        return None, 0
+    try:
+        raw = path.read_text(encoding="utf-8")
+        return _deserialize(raw), 0
+    except (TypeError, ValueError, json.JSONDecodeError):
+        _quarantine_corrupt(ticket_dir)
+        recovered = _try_load_from_bak(ticket_dir)
+        if recovered is None:
+            return None, 2
+        _atomic_write(_state_path(ticket_dir), _serialize(recovered))
+        return recovered, 1
+
+
 def read(ticket_dir: Path) -> tuple[TicketState | None, int]:
     """Read state.json. Returns (state, exit_code).
 
@@ -206,20 +235,8 @@ def read(ticket_dir: Path) -> tuple[TicketState | None, int]:
     `state=None` with exit_code 2 is the "broken and no backup" signal —
     callers MUST distinguish these by checking exit_code.
     """
-    path = _state_path(ticket_dir)
-    if not path.exists():
-        return None, 0
     with _Flock(_lock_path(ticket_dir)):
-        try:
-            raw = path.read_text(encoding="utf-8")
-            return _deserialize(raw), 0
-        except (ValueError, json.JSONDecodeError):
-            _quarantine_corrupt(ticket_dir)
-            recovered = _try_load_from_bak(ticket_dir)
-            if recovered is None:
-                return None, 2
-            _atomic_write(_state_path(ticket_dir), _serialize(recovered))
-            return recovered, 1
+        return _read_locked(ticket_dir)
 
 
 def init(
@@ -247,24 +264,22 @@ def begin_stage(
     head_sha: str,
     agent_id: str | None = None,
 ) -> TicketState:
-    state, _ = read(ticket_dir)
-    if state is None:
-        raise StateUnrecoverable(f"no state.json at {ticket_dir}")
-    if stage not in state.stages:
-        raise ValueError(f"stage {stage!r} not in state.stages")
-    record = state.stages[stage]
-    if record.status not in ("pending", "in_progress"):
-        raise ValueError(f"cannot begin stage {stage!r}: current status is {record.status!r}")
-    new_record = replace(
-        record,
-        status="in_progress",
-        started_at_iso=record.started_at_iso or _utcnow_iso(),
-        started_at_sha=record.started_at_sha or head_sha,
-        agent_id=agent_id or record.agent_id,
-    )
-    new_state = replace(state, stages={**state.stages, stage: new_record})
-    _write(ticket_dir, new_state)
-    return new_state
+    def mutate(state: TicketState) -> TicketState:
+        if stage not in state.stages:
+            raise ValueError(f"stage {stage!r} not in state.stages")
+        record = state.stages[stage]
+        if record.status not in ("pending", "in_progress"):
+            raise ValueError(f"cannot begin stage {stage!r}: current status is {record.status!r}")
+        new_record = replace(
+            record,
+            status="in_progress",
+            started_at_iso=record.started_at_iso or _utcnow_iso(),
+            started_at_sha=record.started_at_sha or head_sha,
+            agent_id=agent_id or record.agent_id,
+        )
+        return replace(state, stages={**state.stages, stage: new_record})
+
+    return _update(ticket_dir, mutate)
 
 
 def finish_stage(
@@ -278,24 +293,23 @@ def finish_stage(
 ) -> TicketState:
     if status not in ("completed", "failed"):
         raise ValueError(f"finish_stage status must be completed|failed, got {status!r}")
-    state, _ = read(ticket_dir)
-    if state is None:
-        raise StateUnrecoverable(f"no state.json at {ticket_dir}")
-    if stage not in state.stages:
-        raise ValueError(f"stage {stage!r} not in state.stages")
-    record = state.stages[stage]
-    new_record = replace(
-        record,
-        status=status,
-        finished_at_iso=_utcnow_iso(),
-        finished_at_sha=head_sha,
-        output_path=output_path or record.output_path,
-        skill_output=skill_output if skill_output is not None else record.skill_output,
-        failure_detail=failure_detail,
-    )
-    new_state = replace(state, stages={**state.stages, stage: new_record})
-    _write(ticket_dir, new_state)
-    return new_state
+
+    def mutate(state: TicketState) -> TicketState:
+        if stage not in state.stages:
+            raise ValueError(f"stage {stage!r} not in state.stages")
+        record = state.stages[stage]
+        new_record = replace(
+            record,
+            status=status,
+            finished_at_iso=_utcnow_iso(),
+            finished_at_sha=head_sha,
+            output_path=output_path or record.output_path,
+            skill_output=skill_output if skill_output is not None else record.skill_output,
+            failure_detail=failure_detail,
+        )
+        return replace(state, stages={**state.stages, stage: new_record})
+
+    return _update(ticket_dir, mutate)
 
 
 def pick_next_pending(state: TicketState, pipeline_order: list[str]) -> str | None:
@@ -303,7 +317,9 @@ def pick_next_pending(state: TicketState, pipeline_order: list[str]) -> str | No
         record = state.stages.get(name)
         if record is None:
             continue
-        if record.status == "pending":
+        # in_progress is resumable: a stage left in_progress by a crashed run
+        # must be picked up again, not skipped forever.
+        if record.status in ("pending", "in_progress"):
             return name
     return None
 
@@ -318,16 +334,38 @@ def find_failed(state: TicketState) -> str | None:
 # ─── Internal: write under lock with rolling backup ──────────────────────────
 
 
+def _write_locked(ticket_dir: Path, state: TicketState) -> None:
+    """Write body assuming the flock is already held. See _write()."""
+    path = _state_path(ticket_dir)
+    if path.exists():
+        bak = ticket_dir / f"state.json.{_ts_token()}.bak"
+        with contextlib.suppress(OSError):
+            bak.write_bytes(path.read_bytes())
+    _atomic_write(path, _serialize(state))
+    _trim_backups(ticket_dir)
+
+
 def _write(ticket_dir: Path, state: TicketState) -> None:
     ticket_dir.mkdir(parents=True, exist_ok=True)
     with _Flock(_lock_path(ticket_dir)):
-        path = _state_path(ticket_dir)
-        if path.exists():
-            bak = ticket_dir / f"state.json.{_ts_token()}.bak"
-            with contextlib.suppress(OSError):
-                bak.write_bytes(path.read_bytes())
-        _atomic_write(path, _serialize(state))
-        _trim_backups(ticket_dir)
+        _write_locked(ticket_dir, state)
+
+
+def _update(ticket_dir: Path, mutate_fn: Callable[[TicketState], TicketState]) -> TicketState:
+    """Atomic read-modify-write under a single held flock.
+
+    Holds the lock across the whole read-mutate-write so two concurrent
+    callers cannot lose each other's update (the flock is never released
+    between the read and the write).
+    """
+    ticket_dir.mkdir(parents=True, exist_ok=True)
+    with _Flock(_lock_path(ticket_dir)):
+        state, _ = _read_locked(ticket_dir)
+        if state is None:
+            raise StateUnrecoverable(f"no state.json at {ticket_dir}")
+        new_state = mutate_fn(state)
+        _write_locked(ticket_dir, new_state)
+        return new_state
 
 
 # ─── CLI ─────────────────────────────────────────────────────────────────────

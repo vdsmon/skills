@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import json
 import multiprocessing
 import re
@@ -160,11 +161,56 @@ def test_update_empty_list(tmp_path: Path) -> None:
     assert data == {"labels": []}
 
 
+def test_update_list_with_quoted_commas(tmp_path: Path) -> None:
+    p = tmp_path / "FT-23.md"
+    ticket_frontmatter.update(p, {"labels": '["a,b", "c"]'})
+    data = ticket_frontmatter.read(p)
+    # naive comma-split would tear "a,b" apart and keep the quote chars; the
+    # tomllib-backed parse yields exactly two elements with the comma intact.
+    assert data == {"labels": ["a,b", "c"]}
+
+
 def test_update_quotes_strings_with_special_chars(tmp_path: Path) -> None:
     p = tmp_path / "FT-12.md"
     ticket_frontmatter.update(p, {"summary": 'has "quotes" inside'})
     data = ticket_frontmatter.read(p)
     assert data == {"summary": 'has "quotes" inside'}
+
+
+# ─── [O] key quoting on emit ─────────────────────────────────────────────────
+
+
+def test_update_key_with_space_round_trips_flat(tmp_path: Path) -> None:
+    p = tmp_path / "FT-20.md"
+    ticket_frontmatter.update(p, {"a key": "v"})
+    # without quoting, the emitted bare key `a key = ...` is invalid TOML and
+    # read() would quarantine + return {}, losing ALL frontmatter.
+    assert not list(tmp_path.glob("FT-20.md.quarantine.*"))
+    data = ticket_frontmatter.read(p)
+    assert data == {"a key": "v"}
+
+
+def test_update_dotted_key_stays_flat(tmp_path: Path) -> None:
+    p = tmp_path / "FT-21.md"
+    ticket_frontmatter.update(p, {"a.b": "v"})
+    data = ticket_frontmatter.read(p)
+    # quoted so it round-trips as a flat key, not nested {"a": {"b": ...}}.
+    assert data == {"a.b": "v"}
+
+
+# ─── [P] native datetime preserved across unrelated update ───────────────────
+
+
+def test_update_preserves_native_datetime(tmp_path: Path) -> None:
+    p = tmp_path / "FT-22.md"
+    p.write_text("+++\nstarted_at = 2026-05-28T14:32:00Z\n+++\n", encoding="utf-8")
+    first = ticket_frontmatter.read(p)
+    assert isinstance(first["started_at"], datetime.datetime)
+    ticket_frontmatter.update(p, {"status": "done"})
+    again = ticket_frontmatter.read(p)
+    # an unrelated --set must not rewrite the datetime as a quoted string.
+    assert isinstance(again["started_at"], datetime.datetime)
+    assert again["started_at"] == first["started_at"]
 
 
 def test_update_malformed_existing_raises(tmp_path: Path) -> None:

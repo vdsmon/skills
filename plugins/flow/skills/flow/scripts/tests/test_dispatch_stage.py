@@ -91,6 +91,65 @@ def test_init_fails_when_workspace_invalid(tmp_path: Path) -> None:
     assert "violations" in payload
 
 
+def test_init_is_idempotent_preserves_progress(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Second init without --force must resume: same run_id, completed stage
+    # stays completed (no replay of a finished commit stage).
+    _write_workspace(tmp_path, stages=["ticket", "plan"], compounding=False)
+    _stub_git_head(monkeypatch)
+    rc, first = ds.cmd_init(tmp_path, "FT-1")
+    assert rc == 0
+    assert first["resumed"] is False
+    ds.cmd_next(tmp_path, "FT-1")
+    ds.cmd_finish(tmp_path, "FT-1", "ticket", "completed")
+
+    rc, second = ds.cmd_init(tmp_path, "FT-1")
+    assert rc == 0
+    assert second["resumed"] is True
+    assert second["run_id"] == first["run_id"]
+
+    state_path = tmp_path / ".flow" / "runs" / "FT-1" / "state.json"
+    state_data = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state_data["stages"]["ticket"]["status"] == "completed"
+
+
+def test_init_force_resets_to_all_pending(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _write_workspace(tmp_path, stages=["ticket", "plan"], compounding=False)
+    _stub_git_head(monkeypatch)
+    rc, first = ds.cmd_init(tmp_path, "FT-1")
+    assert rc == 0
+    ds.cmd_next(tmp_path, "FT-1")
+    ds.cmd_finish(tmp_path, "FT-1", "ticket", "completed")
+
+    rc, forced = ds.cmd_init(tmp_path, "FT-1", force=True)
+    assert rc == 0
+    assert forced["resumed"] is False
+    assert forced["run_id"] != first["run_id"]
+
+    state_path = tmp_path / ".flow" / "runs" / "FT-1" / "state.json"
+    state_data = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state_data["stages"]["ticket"]["status"] == "pending"
+    assert state_data["stages"]["plan"]["status"] == "pending"
+
+
+def test_cli_init_force_flag_resets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_workspace(tmp_path, stages=["ticket"], compounding=False)
+    _stub_git_head(monkeypatch)
+    ds.cmd_init(tmp_path, "FT-1")
+    ds.cmd_next(tmp_path, "FT-1")
+    ds.cmd_finish(tmp_path, "FT-1", "ticket", "completed")
+    rc = ds.cli_main(["init", "--ticket", "FT-1", "--workspace-root", str(tmp_path), "--force"])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["resumed"] is False
+    state_path = tmp_path / ".flow" / "runs" / "FT-1" / "state.json"
+    state_data = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state_data["stages"]["ticket"]["status"] == "pending"
+
+
 # ─── next: handler routing ───────────────────────────────────────────────────
 
 
@@ -203,6 +262,28 @@ def test_next_routes_none_handler(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     rc, payload = ds.cmd_next(tmp_path, "FT-1")
     assert rc == 0
     assert payload["handler_type"] == "none"
+
+
+def test_next_keeps_stage_pending_when_descriptor_assembly_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # If descriptor assembly raises (handler parse here), begin_stage must NOT
+    # have run, so the stage stays pending rather than stuck in_progress.
+    _write_workspace(tmp_path, stages=["ticket"], compounding=False)
+    _stub_git_head(monkeypatch)
+    ds.cmd_init(tmp_path, "FT-1")
+
+    def boom(value: str) -> dict[str, Any]:
+        del value
+        raise RuntimeError("handler parse exploded")
+
+    monkeypatch.setattr(ds, "_parse_handler", boom)
+    with pytest.raises(RuntimeError):
+        ds.cmd_next(tmp_path, "FT-1")
+
+    state_path = tmp_path / ".flow" / "runs" / "FT-1" / "state.json"
+    state_data = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state_data["stages"]["ticket"]["status"] == "pending"
 
 
 def test_next_writes_in_progress_to_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

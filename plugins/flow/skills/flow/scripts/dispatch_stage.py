@@ -115,7 +115,7 @@ def _ticket_dir(workspace_root: Path, ticket: str) -> Path:
     return workspace_root / ".flow" / "runs" / ticket
 
 
-def cmd_init(workspace_root: Path, ticket: str) -> tuple[int, dict[str, Any]]:
+def cmd_init(workspace_root: Path, ticket: str, force: bool = False) -> tuple[int, dict[str, Any]]:
     result, snapshot = vw.validate(workspace_root)
     if snapshot is None:
         return 1, {
@@ -123,12 +123,26 @@ def cmd_init(workspace_root: Path, ticket: str) -> tuple[int, dict[str, Any]]:
             "violations": result.violations,
         }
     td = _ticket_dir(workspace_root, ticket)
+    if not force:
+        # idempotent resume: a valid existing state (read returns a state)
+        # must not be overwritten with all-pending, which would replay
+        # completed stages including a second git commit.
+        existing, exit_code = state.read(td)
+        if existing is not None and exit_code == 0:
+            return 0, {
+                "ticket": ticket,
+                "run_id": existing.run_id,
+                "stages": snapshot.stages,
+                "ticket_dir": str(td),
+                "resumed": True,
+            }
     new_state = state.init(td, ticket, snapshot.backend, snapshot.stages)
     return 0, {
         "ticket": ticket,
         "run_id": new_state.run_id,
         "stages": snapshot.stages,
         "ticket_dir": str(td),
+        "resumed": False,
     }
 
 
@@ -160,11 +174,12 @@ def cmd_next(workspace_root: Path, ticket: str) -> tuple[int, dict[str, Any]]:
         return 0, {"done": True}
 
     head_sha = _git_head_sha(workspace_root)
-    state.begin_stage(td, next_stage, head_sha)
 
+    # Assemble the full descriptor BEFORE mutating state. If descriptor
+    # assembly raises, the stage must stay pending rather than be stuck
+    # in_progress.
     stage_meta = _load_stage_meta(_skill_root_from_script()).get(next_stage)
     handler_descriptor = _parse_handler(snapshot.handlers[next_stage])
-
     output_path = td / "stages" / f"{next_stage}.out"
     payload: dict[str, Any] = {
         "done": False,
@@ -182,6 +197,8 @@ def cmd_next(workspace_root: Path, ticket: str) -> tuple[int, dict[str, Any]]:
         and handler_descriptor["handler_type"] == "inline"
     ):
         payload["reference_doc"] = stage_meta.reference_doc
+
+    state.begin_stage(td, next_stage, head_sha)
     return 0, payload
 
 
@@ -252,7 +269,12 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     common.add_argument("--ticket", required=True)
     common.add_argument("--workspace-root", default=".")
 
-    sub.add_parser("init", parents=[common], help="Initialize per-ticket state.json.")
+    p_init = sub.add_parser("init", parents=[common], help="Initialize per-ticket state.json.")
+    p_init.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite existing state with a fresh all-pending run.",
+    )
     sub.add_parser("next", parents=[common], help="Pick next pending stage.")
     sub.add_parser("status", parents=[common], help="Emit full state.json.")
 
@@ -273,7 +295,7 @@ def cli_main(argv: list[str]) -> int:
     workspace_root = Path(args.workspace_root).expanduser().resolve()
 
     if args.cmd == "init":
-        rc, payload = cmd_init(workspace_root, args.ticket)
+        rc, payload = cmd_init(workspace_root, args.ticket, force=args.force)
     elif args.cmd == "next":
         rc, payload = cmd_next(workspace_root, args.ticket)
     elif args.cmd == "finish":

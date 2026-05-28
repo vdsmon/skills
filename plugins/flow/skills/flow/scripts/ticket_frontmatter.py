@@ -31,7 +31,8 @@ Invariants:
   1. `null` → empty string `""` (TOML has no null).
   2. `true` / `false` → TOML bool.
   3. `^-?\\d+$` → TOML integer.
-  4. `^\\[.*\\]$` → TOML array of strings (comma-split, trim whitespace).
+  4. `^\\[.*\\]$` → TOML array, parsed via `tomllib` so quoted items with
+     commas survive; falls back to naive comma-split for bare-word lists.
   5. `NOW` → UTC ISO8601 string via `_utcnow_iso()`.
   6. Otherwise → TOML string (always double-quoted on write).
 
@@ -47,6 +48,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import datetime
 import fcntl
 import json
 import os
@@ -63,6 +65,7 @@ LOCK_RETRY_COUNT = 3
 LOCK_RETRY_DELAY_S = 1.0
 _INT_RE = re.compile(r"^-?\d+$")
 _LIST_RE = re.compile(r"^\[.*\]$")
+_BARE_KEY_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -207,15 +210,25 @@ def _emit_value(value: Any) -> str:
         return "true" if value else "false"
     if isinstance(value, int):
         return str(value)
+    # datetime is a subclass of date; one branch covers both. ISO 8601 with a
+    # `T` separator is a TOML datetime literal, emitted unquoted to keep the type.
+    if isinstance(value, datetime.date):
+        return value.isoformat()
     if isinstance(value, list):
         return "[" + ", ".join(_emit_value(v) for v in value) + "]"
     return _toml_escape(str(value))
 
 
+def _emit_key(key: str) -> str:
+    if _BARE_KEY_RE.match(key):
+        return key
+    return _toml_escape(key)
+
+
 def _emit_frontmatter(data: dict[str, Any]) -> str:
     lines: list[str] = []
     for key, value in data.items():
-        lines.append(f"{key} = {_emit_value(value)}")
+        lines.append(f"{_emit_key(key)} = {_emit_value(value)}")
     return "\n".join(lines) + ("\n" if lines else "")
 
 
@@ -301,10 +314,16 @@ def _coerce_value(raw: str) -> Any:
     if _INT_RE.match(raw):
         return int(raw)
     if _LIST_RE.match(raw):
-        inner = raw[1:-1].strip()
-        if not inner:
-            return []
-        return [item.strip() for item in inner.split(",")]
+        try:
+            parsed = tomllib.loads("_v = " + raw)["_v"]
+        except tomllib.TOMLDecodeError:
+            # legacy bare-word lists like `[a, b, c]` aren't valid TOML; fall
+            # back to naive comma split so they keep working.
+            inner = raw[1:-1].strip()
+            if not inner:
+                return []
+            return [item.strip() for item in inner.split(",")]
+        return parsed
     return raw
 
 

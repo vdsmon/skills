@@ -519,3 +519,325 @@ def test_derive_slug_normalizes() -> None:
     assert initmod._derive_slug("Foo--Bar") == "foo-bar"
     assert initmod._derive_slug("UPPER") == "upper"
     assert initmod._derive_slug("with/slashes") == "with-slashes"
+
+
+# ─── [U] --config JSON list normalization ─────────────────────────────────────
+
+
+def test_config_bundle_search_roots_as_json_list(tmp_path: Path) -> None:
+    # A --config file may hand bundle_search_roots as a JSON list. It must not
+    # crash on .split(":") and the listed root must be honored for discovery.
+    search_root = tmp_path / "plugins"
+    _write_manifest(search_root / "code-review", _code_review_manifest())
+    answers = tmp_path / "answers.json"
+    answers.write_text(
+        json.dumps(
+            {
+                "backend": "jira",
+                "bundle": "recommended",
+                "workspace_root": str(tmp_path),
+                "jira_cloud_id": "x",
+                "jira_project_key": "FT",
+                "checkpoint_manifest": str(tmp_path / "_ckpt.jsonl"),
+                "bundle_search_roots": [str(search_root)],
+            }
+        ),
+        encoding="utf-8",
+    )
+    rc = initmod.cli_main(["--config", str(answers)])
+    assert rc == 0
+    data = tomllib.loads((tmp_path / ".flow" / "workspace.toml").read_text(encoding="utf-8"))
+    assert data["pipeline"]["handlers"]["code_review"] == "skill:code-review"
+
+
+def test_coerce_search_roots_handles_string_and_list(tmp_path: Path) -> None:
+    a, b = tmp_path / "a", tmp_path / "b"
+    assert initmod._coerce_search_roots(None) is None
+    assert initmod._coerce_search_roots(f"{a}:{b}") == [a, b]
+    assert initmod._coerce_search_roots([str(a), str(b)]) == [a, b]
+
+
+def test_coerce_checkpoint_path_handles_string_and_list(tmp_path: Path) -> None:
+    p = tmp_path / "ckpt.jsonl"
+    assert initmod._coerce_checkpoint_path(None) is None
+    assert initmod._coerce_checkpoint_path(str(p)) == p.resolve()
+    assert initmod._coerce_checkpoint_path([str(p)]) == p.resolve()
+
+
+# ─── [V] validate before marker ──────────────────────────────────────────────
+
+
+def test_invalid_input_leaves_no_initializing_marker(tmp_path: Path) -> None:
+    # custom bundle with no handler overrides fails validation. The failure must
+    # NOT leave a .initializing marker behind.
+    bad = initmod.InitConfig(
+        backend="jira",
+        bundle="custom",
+        workspace_root=tmp_path,
+        jira=initmod.JiraConfig(cloud_id="x", project_key="FT", assignee_account_id=None),
+        bundle_search_roots=[tmp_path / "_empty"],
+        checkpoint_manifest_path=tmp_path / "_ckpt.jsonl",
+    )
+    with pytest.raises(initmod.InitError, match="custom requires"):
+        initmod.run_init(bad)
+    assert not (tmp_path / ".flow" / ".initializing").exists()
+
+    # A corrected plain re-run is accepted (not refused with a stale marker).
+    result = initmod.run_init(_jira_config(tmp_path))
+    assert (tmp_path / ".flow" / ".initialized").exists()
+    assert result.namespace == "FT"
+
+
+# ─── [W] reconfigure rollback ─────────────────────────────────────────────────
+
+
+def _bd_init_ok_ready_bad_runner() -> initmod.Runner:
+    # bd init succeeds, but `bd ready --json` returns non-JSON so the
+    # verify_postconditions phase fails after workspace.toml is rewritten.
+    def runner(
+        args: list[str],
+        *,
+        cwd: Path | None = None,
+        check: bool = False,
+    ) -> subprocess.CompletedProcess[str]:
+        del cwd, check
+        if args[:2] == ["bd", "init"]:
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+        if args[:2] == ["bd", "ready"]:
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout="nope", stderr="")
+        return subprocess.CompletedProcess(args=args, returncode=1, stdout="", stderr="")
+
+    return runner
+
+
+def test_failed_reconfigure_restores_prior_workspace(tmp_path: Path) -> None:
+    # First init: valid beads workspace with namespace "orig".
+    first = initmod.InitConfig(
+        backend="beads",
+        bundle="bare",
+        workspace_root=tmp_path,
+        beads=initmod.BeadsConfig(prefix="testpkg"),
+        memory_namespace="orig",
+        bundle_search_roots=[tmp_path / "_empty"],
+        checkpoint_manifest_path=tmp_path / "_ckpt.jsonl",
+    )
+    initmod.run_init(first, runner=_bd_ok_runner())
+    toml_path = tmp_path / ".flow" / "workspace.toml"
+    before = toml_path.read_text(encoding="utf-8")
+    assert (tmp_path / ".flow" / ".initialized").exists()
+
+    # Reconfigure that fails its postcondition (bd ready returns non-JSON) while
+    # attempting to change the namespace to "changed".
+    second = initmod.InitConfig(
+        backend="beads",
+        bundle="bare",
+        workspace_root=tmp_path,
+        beads=initmod.BeadsConfig(prefix="testpkg"),
+        memory_namespace="changed",
+        bundle_search_roots=[tmp_path / "_empty"],
+        checkpoint_manifest_path=tmp_path / "_ckpt.jsonl",
+    )
+    with pytest.raises(initmod.InitError, match="bd ready"):
+        initmod.run_init(second, runner=_bd_init_ok_ready_bad_runner(), reconfigure=True)
+
+    # Prior valid state intact: .initialized present, workspace.toml unchanged.
+    assert (tmp_path / ".flow" / ".initialized").exists()
+    assert toml_path.read_text(encoding="utf-8") == before
+    restored = tomllib.loads(toml_path.read_text(encoding="utf-8"))
+    assert restored["memory"]["namespace"] == "orig"
+
+
+def test_successful_reconfigure_swaps_workspace(tmp_path: Path) -> None:
+    # The other half of the atomic-swap contract: a reconfigure that passes all
+    # postconditions overwrites the toml and leaves no .initializing marker.
+    first = initmod.InitConfig(
+        backend="beads",
+        bundle="bare",
+        workspace_root=tmp_path,
+        beads=initmod.BeadsConfig(prefix="testpkg"),
+        memory_namespace="orig",
+        bundle_search_roots=[tmp_path / "_empty"],
+        checkpoint_manifest_path=tmp_path / "_ckpt.jsonl",
+    )
+    initmod.run_init(first, runner=_bd_ok_runner())
+    toml_path = tmp_path / ".flow" / "workspace.toml"
+    assert tomllib.loads(toml_path.read_text(encoding="utf-8"))["memory"]["namespace"] == "orig"
+
+    second = initmod.InitConfig(
+        backend="beads",
+        bundle="bare",
+        workspace_root=tmp_path,
+        beads=initmod.BeadsConfig(prefix="testpkg"),
+        memory_namespace="changed",
+        bundle_search_roots=[tmp_path / "_empty"],
+        checkpoint_manifest_path=tmp_path / "_ckpt.jsonl",
+    )
+    initmod.run_init(second, runner=_bd_ok_runner(), reconfigure=True)
+    assert tomllib.loads(toml_path.read_text(encoding="utf-8"))["memory"]["namespace"] == "changed"
+    assert (tmp_path / ".flow" / ".initialized").exists()
+    assert not (tmp_path / ".flow" / ".initializing").exists()
+
+
+# ─── [X] resume idempotency ───────────────────────────────────────────────────
+
+
+def test_resume_does_not_duplicate_checkpoint_line(tmp_path: Path) -> None:
+    # Simulate a crash after the checkpoint was appended but before its progress
+    # phase was recorded. The run id lives in the .initializing marker.
+    flow_dir = tmp_path / ".flow"
+    flow_dir.mkdir()
+    run_id = "fixedrunid"
+    (flow_dir / ".initializing").write_text(run_id + "\n", encoding="utf-8")
+    ckpt = tmp_path / "_ckpt.jsonl"
+    ckpt.write_text(
+        json.dumps(
+            {
+                "ts": "2026-05-28T00:00:00Z",
+                "workspace_root": str(tmp_path.resolve()),
+                "init_run_id": run_id,
+                "backend": "jira",
+                "namespace": "FT",
+                "compounding": True,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    # Progress recorded through verify_postconditions; append_checkpoint NOT yet.
+    done = [
+        "validate_inputs",
+        "bundle_compose",
+        "mkdirs",
+        "bd_init",
+        "write_workspace_toml",
+        "verify_postconditions",
+    ]
+    (flow_dir / ".init-progress").write_text(
+        "".join(json.dumps({"phase": p, "ts": "2026-05-28T00:00:00Z"}) + "\n" for p in done),
+        encoding="utf-8",
+    )
+
+    initmod.run_init(_jira_config(tmp_path), resume=True)
+    lines = ckpt.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1  # not duplicated
+
+
+class _StatefulBdRunner:
+    # `bd ready` fails until `bd init` has run; counts bd init invocations.
+    def __init__(self, *, already_initialized: bool = False) -> None:
+        self.init_calls = 0
+        self.initialized = already_initialized
+
+    def __call__(
+        self,
+        args: list[str],
+        *,
+        cwd: Path | None = None,
+        check: bool = False,
+    ) -> subprocess.CompletedProcess[str]:
+        del cwd, check
+        if args[:2] == ["bd", "init"]:
+            self.init_calls += 1
+            self.initialized = True
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+        if args[:2] == ["bd", "ready"]:
+            if self.initialized:
+                return subprocess.CompletedProcess(args=args, returncode=0, stdout="[]", stderr="")
+            return subprocess.CompletedProcess(
+                args=args, returncode=1, stdout="", stderr="no store"
+            )
+        return subprocess.CompletedProcess(args=args, returncode=1, stdout="", stderr="")
+
+
+def test_fresh_beads_init_runs_bd_init_once(tmp_path: Path) -> None:
+    runner = _StatefulBdRunner()
+    initmod.run_init(_beads_config(tmp_path), runner=runner)
+    assert runner.init_calls == 1
+
+
+def test_resume_skips_bd_init_when_store_ready(tmp_path: Path) -> None:
+    # Store already initialized externally; bd_init phase not yet recorded.
+    runner = _StatefulBdRunner(already_initialized=True)
+    flow_dir = tmp_path / ".flow"
+    flow_dir.mkdir()
+    (flow_dir / ".initializing").write_text("rid\n", encoding="utf-8")
+    done = ["validate_inputs", "bundle_compose", "mkdirs"]
+    (flow_dir / ".init-progress").write_text(
+        "".join(json.dumps({"phase": p, "ts": "2026-05-28T00:00:00Z"}) + "\n" for p in done),
+        encoding="utf-8",
+    )
+    initmod.run_init(_beads_config(tmp_path), runner=runner, resume=True)
+    # bd_init phase ran on resume but skipped the actual bd init call.
+    assert runner.init_calls == 0
+    assert (tmp_path / ".flow" / ".initialized").exists()
+
+
+# ─── [Y-init] recommended no-coverage + handler validation ────────────────────
+
+
+def test_recommended_with_no_coverage_refuses(tmp_path: Path) -> None:
+    # An empty search root yields zero discovered manifests. recommended would
+    # silently degrade to bare; refuse instead per no-silent-degrade.
+    config = initmod.InitConfig(
+        backend="jira",
+        bundle="recommended",
+        workspace_root=tmp_path,
+        jira=initmod.JiraConfig(cloud_id="x", project_key="FT", assignee_account_id=None),
+        bundle_search_roots=[tmp_path / "_empty"],
+        checkpoint_manifest_path=tmp_path / "_ckpt.jsonl",
+    )
+    with pytest.raises(initmod.InitError, match="no discovered manifests"):
+        initmod.run_init(config)
+    assert not (tmp_path / ".flow" / ".initialized").exists()
+
+
+def test_compose_rejects_empty_skill_handler(tmp_path: Path) -> None:
+    # Defense in depth: even if a manifest with handler_string "skill:" (empty
+    # name) reaches composition, init must reject it before it lands a nameless
+    # handler in workspace.toml. Built directly to bypass bundle_discover's own
+    # validation and exercise the init-level guard.
+    from bundle_discover import DiscoveryResult, Manifest, ManifestSkill
+
+    config = initmod.InitConfig(
+        backend="jira",
+        bundle="recommended",
+        workspace_root=tmp_path,
+        jira=initmod.JiraConfig(cloud_id="x", project_key="FT", assignee_account_id=None),
+        bundle_search_roots=[tmp_path / "_empty"],
+        checkpoint_manifest_path=tmp_path / "_ckpt.jsonl",
+    )
+    registry = initmod._load_stage_registry()
+    stages = initmod._default_pipeline_stages(registry, config.memory_compounding)
+    discovery = DiscoveryResult(
+        valid=[
+            Manifest(
+                path="x",
+                bundle_name="nameless",
+                bundle_description="",
+                skills=[ManifestSkill(stage="create_pr", handler_string="skill:")],
+            )
+        ]
+    )
+    with pytest.raises(initmod.InitError, match="illegal handler"):
+        initmod._compose_handlers(config, registry, stages, discovery)
+
+
+def test_write_phase_rejects_illegal_handler(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The write phase guards the toml: an illegal handler that slips past
+    # composition (e.g. a future _compose_handlers regression) never lands and
+    # the workspace is not finalized.
+    def _bad_compose(
+        config: initmod.InitConfig,
+        registry: list[initmod.StageRegistryEntry],
+        pipeline_stages: list[str],
+        discovery: object,
+    ) -> tuple[dict[str, str], list[str]]:
+        del config, registry, discovery
+        return {stage: "bogus" for stage in pipeline_stages}, []
+
+    monkeypatch.setattr(initmod, "_compose_handlers", _bad_compose)
+    with pytest.raises(initmod.InitError, match="illegal handler"):
+        initmod.run_init(_jira_config(tmp_path))
+    assert not (tmp_path / ".flow" / ".initialized").exists()

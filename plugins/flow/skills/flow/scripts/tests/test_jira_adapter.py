@@ -18,7 +18,9 @@ import json
 import urllib.error
 import urllib.request
 from collections.abc import Iterable
+from datetime import UTC, datetime, timedelta
 from email.message import Message
+from email.utils import format_datetime
 from io import BytesIO
 from typing import Any, cast
 
@@ -245,6 +247,35 @@ def test_classify_transition_default_catch_all() -> None:
     assert "something else" in detail
 
 
+# ─── Retry-After parsing ────────────────────────────────────────────────────
+
+
+def test_retry_after_seconds_numeric() -> None:
+    assert tj._retry_after_seconds("5", 1.0) == 5.0
+
+
+def test_retry_after_seconds_http_date_in_future() -> None:
+    # RFC 7231 permits an HTTP-date; float() would raise ValueError here.
+    future = datetime.now(UTC) + timedelta(seconds=120)
+    header = format_datetime(future, usegmt=True)
+    delay = tj._retry_after_seconds(header, 1.0)
+    assert 60.0 <= delay <= 120.0
+
+
+def test_retry_after_seconds_http_date_in_past_clamps_to_zero() -> None:
+    past = datetime.now(UTC) - timedelta(seconds=120)
+    header = format_datetime(past, usegmt=True)
+    assert tj._retry_after_seconds(header, 1.0) == 0.0
+
+
+def test_retry_after_seconds_garbage_falls_back_to_default() -> None:
+    assert tj._retry_after_seconds("not-a-date-or-number", 1.0) == 1.0
+
+
+def test_retry_after_seconds_none_falls_back_to_default() -> None:
+    assert tj._retry_after_seconds(None, 1.0) == 1.0
+
+
 # ─── Adapter HTTP integration (fake transport) ──────────────────────────────
 
 
@@ -286,6 +317,38 @@ def test_get_issue_returns_ticket(monkeypatch: pytest.MonkeyPatch) -> None:
     assert ticket["summary"] == "sample"
     assert ticket["type"] == "Task"
     assert len(http.calls) == 2
+
+
+def test_get_issue_populates_links_from_issuelinks(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = _issue_payload()
+    payload["fields"]["issuelinks"] = [
+        {
+            "type": {"name": "Blocks"},
+            "outwardIssue": {"key": "FT-2"},
+        },
+        {
+            "type": {"name": "Relates"},
+            "inwardIssue": {"key": "FT-3"},
+        },
+    ]
+    http = _FakeHttp(
+        [
+            _Response(payload),  # /issue/FT-1
+            _Response([]),  # /issue/FT-1/remotelink
+        ]
+    )
+    adapter = _make_adapter(monkeypatch, http)
+    ticket = adapter.get("FT-1")
+    links = ticket["links"]
+    assert {"kind": "blocks", "from_key": "FT-1", "to_key": "FT-2"} in links
+    assert {"kind": "relates", "from_key": "FT-3", "to_key": "FT-1"} in links
+    # `issuelinks` must be in the requested field set so the payload carries it.
+    requested = http.calls[0].full_url
+    assert "issuelinks" in requested
+
+
+def test_get_fields_includes_issuelinks() -> None:
+    assert "issuelinks" in tj._GET_FIELDS
 
 
 def test_list_assigned_open_filter(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -351,6 +414,24 @@ def test_transition_success_returns_new_state(monkeypatch: pytest.MonkeyPatch) -
     assert result["success"] is True
     assert result["new_state"] is not None
     assert result["new_state"]["normalized"] == "done"
+
+
+def test_transition_success_when_followup_state_read_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # POST applies the transition; the follow-up state() GET 404s and raises
+    # TrackerError. The applied transition must still report success.
+    http = _FakeHttp(
+        [
+            _Response(None),  # POST /transitions
+            _http_error("https://x", 404, {"errorMessages": ["Issue does not exist"]}),  # state()
+        ]
+    )
+    adapter = _make_adapter(monkeypatch, http)
+    result = adapter.transition("FT-1", "31")
+    assert result["success"] is True
+    assert result["failure_kind"] is None
+    assert result["new_state"] is None
 
 
 def test_transition_permission_denied_maps_to_failure_kind(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -466,6 +547,32 @@ def test_404_on_get_raises_tracker_error(monkeypatch: pytest.MonkeyPatch) -> Non
     adapter = _make_adapter(monkeypatch, http)
     with pytest.raises(t.TrackerError, match="Issue does not exist"):
         adapter.get("FT-999")
+
+
+def test_429_with_http_date_retry_after_retries_and_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A 429 carrying an HTTP-date Retry-After must not crash on float() parsing;
+    # the request retries and the second attempt succeeds.
+    future = datetime.now(UTC) + timedelta(seconds=2)
+    http = _FakeHttp(
+        [
+            _http_error(
+                "https://x",
+                429,
+                {"errorMessages": ["rate limited"]},
+                retry_after=format_datetime(future, usegmt=True),
+            ),
+            _Response({"key": "FT-1", "fields": {"status": {}, "resolution": None}}),
+        ]
+    )
+    adapter = _make_adapter(monkeypatch, http)
+    slept: list[float] = []
+    monkeypatch.setattr(tj.time, "sleep", lambda s: slept.append(s))
+    state = adapter.state("FT-1")
+    assert state["native_status"] == ""
+    assert len(http.calls) == 2
+    assert slept and slept[0] <= 30.0
 
 
 # ─── Capability-gated typed methods ─────────────────────────────────────────

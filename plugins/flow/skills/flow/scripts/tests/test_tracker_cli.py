@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 from pathlib import Path
 from typing import Any
@@ -305,7 +307,13 @@ def test_comment_invokes_tracker(tmp_path: Path) -> None:
         tracker_factory=_factory(tk),
     )
     assert rc == 0
-    assert tk.calls[0] == ("comment", ("FT-1", {"format": "markdown", "value": "looks good"}), {})
+    # Content TypedDict shape is {body, fmt}; JiraAdapter._content_to_adf reads content[fmt].
+    name, call_args, _ = tk.calls[0]
+    assert name == "comment"
+    assert call_args[0] == "FT-1"
+    body = call_args[1]
+    assert body == {"body": "looks good", "fmt": "md"}
+    assert body["fmt"] == "md"
 
 
 def test_is_shipped_emits_state(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -357,24 +365,78 @@ def test_tracker_error_returns_1(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert "tracker error" in capsys.readouterr().err
 
 
-def test_transition_failure_returns_1(tmp_path: Path) -> None:
+def _run_transition(tmp_path: Path, result: dict[str, Any]) -> tuple[int, str]:
+    """Drive `transition in_progress` with a tracker scripted to return `result`."""
     _seed_workspace(tmp_path)
 
-    class _FailingTransition(_FakeTracker):
+    class _ScriptedTransition(_FakeTracker):
         def transition(self, key, transition_id, fields=None):
-            return {"success": False, "failure_kind": "validation_error"}
+            self._record("transition", key, transition_id, fields)
+            return result
 
-    tk = _FailingTransition()
-    rc = tracker_cli.cli_main(
-        [
-            "--workspace-root",
-            str(tmp_path),
-            "transition",
-            "--key",
-            "FT-1",
-            "--to-state",
-            "in_progress",
-        ],
-        tracker_factory=_factory(tk),
+    tk = _ScriptedTransition()
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = tracker_cli.cli_main(
+            [
+                "--workspace-root",
+                str(tmp_path),
+                "transition",
+                "--key",
+                "FT-1",
+                "--to-state",
+                "in_progress",
+            ],
+            tracker_factory=_factory(tk),
+        )
+    return rc, buf.getvalue()
+
+
+def test_transition_success_returns_0(tmp_path: Path) -> None:
+    rc, _ = _run_transition(
+        tmp_path,
+        {"success": True, "failure_kind": None, "failure_detail": None},
     )
+    assert rc == 0
+
+
+@pytest.mark.parametrize(
+    ("failure_kind", "expected_rc"),
+    [
+        ("permission_denied", 4),
+        ("validator_failed", 4),
+        ("missing_required_field", 4),
+        ("wrong_source_state", 5),
+        ("ambiguous_transition", 5),
+    ],
+)
+def test_transition_failure_kind_maps_to_exit(
+    tmp_path: Path, failure_kind: str, expected_rc: int
+) -> None:
+    rc, out = _run_transition(
+        tmp_path,
+        {
+            "success": False,
+            "failure_kind": failure_kind,
+            "failure_detail": f"detail for {failure_kind}",
+        },
+    )
+    assert rc == expected_rc
+    # Full TransitionResult JSON (including failure_kind + failure_detail) is printed.
+    payload = json.loads(out)
+    assert payload["failure_kind"] == failure_kind
+    assert payload["failure_detail"] == f"detail for {failure_kind}"
+
+
+def test_transition_unknown_failure_kind_returns_1(tmp_path: Path) -> None:
+    rc, out = _run_transition(
+        tmp_path,
+        {"success": False, "failure_kind": "validation_error", "failure_detail": "x"},
+    )
+    assert rc == 1
+    assert json.loads(out)["failure_kind"] == "validation_error"
+
+
+def test_transition_failure_without_kind_returns_1(tmp_path: Path) -> None:
+    rc, _ = _run_transition(tmp_path, {"success": False})
     assert rc == 1

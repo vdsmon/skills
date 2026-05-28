@@ -112,12 +112,32 @@ def test_empty_list_required_field_is_violation(tmp_path: Path) -> None:
     assert any("planned_files:" in v and "empty" in v for v in violations)
 
 
-def test_commit_requires_commit_message(tmp_path: Path) -> None:
-    reg = _write_registry(tmp_path, [_stage("commit", required_fields=["commit_message"])])
+def test_commit_requires_commit_type_and_summary(tmp_path: Path) -> None:
+    reg = _write_registry(
+        tmp_path, [_stage("commit", required_fields=["commit_type", "commit_summary"])]
+    )
     tp = tmp_path / "FT-1.md"
     _write_ticket(tp, {"ticket": "FT-1", "status": "in_progress"})
     violations = lint_ticket.validate("commit", tp, reg)
-    assert any("commit_message:" in v for v in violations)
+    assert any("commit_type:" in v for v in violations)
+    assert any("commit_summary:" in v for v in violations)
+
+
+def test_commit_with_type_and_summary_passes(tmp_path: Path) -> None:
+    reg = _write_registry(
+        tmp_path, [_stage("commit", required_fields=["commit_type", "commit_summary"])]
+    )
+    tp = tmp_path / "FT-1.md"
+    _write_ticket(
+        tp,
+        {
+            "ticket": "FT-1",
+            "status": "in_progress",
+            "commit_type": "feat",
+            "commit_summary": "add thing",
+        },
+    )
+    assert lint_ticket.validate("commit", tp, reg) == []
 
 
 def test_create_pr_requires_pr_title(tmp_path: Path) -> None:
@@ -223,3 +243,10 @@ def test_cli_default_registry_path_resolves(tmp_path: Path) -> None:
     _write_ticket(tp, {"ticket": "FT-1", "status": "in_progress"})
     rc = lint_ticket.cli_main(["--stage", "ticket", "--ticket-path", str(tp)])
     assert rc == 0
+
+
+def test_real_registry_commit_fields_match_composer() -> None:
+    """The shipped registry must require what compose_commit.py consumes
+    (commit_type + commit_summary), not the unused commit_message field."""
+    fields = lint_ticket._load_required_fields(lint_ticket._default_registry_path(), "commit")
+    assert fields == ["commit_type", "commit_summary"]

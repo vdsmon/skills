@@ -255,6 +255,94 @@ def test_capture_implement_diff_with_rename(tmp_repo: Path, tmp_path: Path) -> N
     assert out.exists()
 
 
+def test_capture_implement_diff_includes_untracked_new_file(tmp_repo: Path, tmp_path: Path) -> None:
+    """A newly created, never-committed planned file must show in implement.diff.
+
+    Working-tree `git diff <sha>` is blind to untracked files; the capture stages
+    intent-to-add first so new files appear as additions.
+    """
+    ticket_dir = tmp_path / "runs" / "FT-1"
+    diff_extract.record_baseline("implement", ticket_dir, tmp_repo, files=["fresh.py"])
+    (tmp_repo / "fresh.py").write_text("brand new\n", encoding="utf-8")
+    # deliberately NOT committed and NOT staged
+    out = diff_extract.capture_implement_diff(ticket_dir, tmp_repo)
+    content = out.read_text(encoding="utf-8")
+    assert content.strip() != ""
+    assert "fresh.py" in content
+
+
+def test_capture_implement_diff_untracked_patch_applies_to_index(
+    tmp_repo: Path, tmp_path: Path
+) -> None:
+    """The captured patch for a new file must round-trip through the commit stage.
+
+    Mirrors the real downstream step: a non-dry-run `git apply --cached --binary`
+    that must stage the new file WITH its content. Forces diff.external
+    (difftastic-style) to confirm --no-ext-diff keeps the body a real patch.
+    """
+    _git(["config", "diff.external", "false"], tmp_repo)
+    ticket_dir = tmp_path / "runs" / "FT-1"
+    diff_extract.record_baseline("implement", ticket_dir, tmp_repo, files=["fresh.py"])
+    (tmp_repo / "fresh.py").write_text("brand new\n", encoding="utf-8")
+    out = diff_extract.capture_implement_diff(ticket_dir, tmp_repo)
+    apply = subprocess.run(
+        ["git", "apply", "--cached", "--binary", str(out)],
+        cwd=str(tmp_repo),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert apply.returncode == 0, apply.stderr
+    assert "fresh.py" in _git(["diff", "--cached", "--name-only"], tmp_repo)
+    assert _git(["show", ":fresh.py"], tmp_repo) == "brand new\n"
+
+
+def test_capture_implement_diff_leaves_index_clean(tmp_repo: Path, tmp_path: Path) -> None:
+    """Capturing must not leave the staged intent-to-add entry behind.
+
+    Capture is an observation, so the new file stays untracked afterward.
+    """
+    ticket_dir = tmp_path / "runs" / "FT-1"
+    diff_extract.record_baseline("implement", ticket_dir, tmp_repo, files=["fresh.py"])
+    (tmp_repo / "fresh.py").write_text("brand new\n", encoding="utf-8")
+    diff_extract.capture_implement_diff(ticket_dir, tmp_repo)
+    staged = _git(["diff", "--cached", "--name-only"], tmp_repo)
+    assert "fresh.py" not in staged
+    assert _git(["status", "--short", "fresh.py"], tmp_repo).strip() == "?? fresh.py"
+
+
+def test_capture_implement_diff_preserves_prestaged_file(tmp_repo: Path, tmp_path: Path) -> None:
+    """A planned file the user already staged must remain staged after capture.
+
+    The index restore only targets files that were untracked before capture, so a
+    deliberately staged file is left alone.
+    """
+    ticket_dir = tmp_path / "runs" / "FT-1"
+    diff_extract.record_baseline("implement", ticket_dir, tmp_repo, files=["staged.py"])
+    (tmp_repo / "staged.py").write_text("on purpose\n", encoding="utf-8")
+    _git(["add", "staged.py"], tmp_repo)
+    diff_extract.capture_implement_diff(ticket_dir, tmp_repo)
+    assert "staged.py" in _git(["diff", "--cached", "--name-only"], tmp_repo)
+
+
+def test_capture_implement_diff_ignores_missing_planned_file(
+    tmp_repo: Path, tmp_path: Path
+) -> None:
+    """A planned file absent from the working tree must not crash the capture.
+
+    intent-to-add on a nonexistent pathspec is a git error, so missing paths are
+    filtered out first.
+    """
+    ticket_dir = tmp_path / "runs" / "FT-1"
+    diff_extract.record_baseline(
+        "implement", ticket_dir, tmp_repo, files=["present.py", "absent.py"]
+    )
+    (tmp_repo / "present.py").write_text("here\n", encoding="utf-8")
+    out = diff_extract.capture_implement_diff(ticket_dir, tmp_repo)
+    content = out.read_text(encoding="utf-8")
+    assert "present.py" in content
+
+
 # ─── CLI ─────────────────────────────────────────────────────────────────────
 
 

@@ -10,10 +10,11 @@ BM25 pinned params:
   IDF scope: current namespace only.
   Field weights (multiplier on per-field token contribution):
     body=1.0, type=0.5, branch=1.5, ticket=2.0
-  Exact-match boost (multiplier on final score):
-    branch match -> x 2.0
-    ticket match -> x 3.0
-  Tiebreak: ts DESC (ms precision).
+  Exact-match boost (additive bonus on final score, so a requested exact match
+  ranks first even when its BM25 text score is 0):
+    branch match -> + BRANCH_EXACT_BONUS
+    ticket match -> + TICKET_EXACT_BONUS  (stronger than branch)
+  Tiebreak: ts DESC (ms precision); missing ts sorts last (oldest).
 
 `--metric tickets-per-week` deferred to phase 8d. Mvp = query mode only.
 
@@ -50,8 +51,12 @@ FIELD_WEIGHTS: dict[str, float] = {
     "branch": 1.5,
     "ticket": 2.0,
 }
-BRANCH_EXACT_BOOST = 2.0
-TICKET_EXACT_BOOST = 3.0
+# Additive exact-match bonuses. Sized to dominate any realistic BM25 text score
+# so a requested exact match always sorts ahead of non-requested term matches,
+# while preserving text-score ordering among records of equal exactness. Ticket
+# bonus stays stronger than branch.
+BRANCH_EXACT_BONUS = 100.0
+TICKET_EXACT_BONUS = 1000.0
 
 _TOKEN_RE = re.compile(r"\b\w+\b", re.UNICODE)
 
@@ -149,9 +154,10 @@ def _build_idf_map(
 ) -> dict[str, float]:
     n = len(docs_field_tokens)
     idf_map: dict[str, float] = {}
+    doc_token_sets = [set(toks) for toks in docs_field_tokens]
     unique_query = set(query_tokens)
     for q in unique_query:
-        df = sum(1 for toks in docs_field_tokens if q in set(toks))
+        df = sum(1 for toks in doc_token_sets if q in toks)
         idf_map[q] = _idf(n, df)
     return idf_map
 
@@ -167,6 +173,8 @@ def rank(
     if not entries:
         return []
     query_tokens = tokenize(query)
+    if not query_tokens:
+        return []
     # Per-field tokenization for every doc.
     per_field_tokens: dict[str, list[list[str]]] = {
         field: [tokenize(_doc_field_text(e, field)) for e in entries] for field in FIELD_WEIGHTS
@@ -191,11 +199,12 @@ def rank(
                 query_tokens, doc_toks, field_idf[field], field_avgdl[field]
             )
             weighted_sum += weight * field_score
-        # Boosts.
+        # Additive exact-match bonuses so a requested match ranks first even when
+        # its BM25 text score is 0.
         if branch_lower is not None and _doc_field_text(entry, "branch").lower() == branch_lower:
-            weighted_sum *= BRANCH_EXACT_BOOST
+            weighted_sum += BRANCH_EXACT_BONUS
         if ticket_set_lower and _doc_field_text(entry, "ticket").lower() in ticket_set_lower:
-            weighted_sum *= TICKET_EXACT_BOOST
+            weighted_sum += TICKET_EXACT_BONUS
         scored.append((weighted_sum, entry))
 
     # Sort by (score DESC, ts DESC). _neg_ts_key gives ts-descending via negated codepoints
@@ -220,9 +229,13 @@ def rank(
 
 def _neg_ts_key(ts: str) -> tuple[int, ...]:
     """Sort key for ts DESC tiebreak. ISO8601 lexical ordering matches chrono,
-    so negate via tuple of negative codepoints.
+    so negate via tuple of negative codepoints. The leading presence flag (0 for
+    present, 1 for missing/empty) forces a missing ts to sort last (oldest)
+    instead of first.
     """
-    return tuple(-ord(c) for c in ts)
+    if not ts:
+        return (1,)
+    return (0, *(-ord(c) for c in ts))
 
 
 # ─── CLI ─────────────────────────────────────────────────────────────────────
@@ -267,11 +280,11 @@ if __name__ == "__main__":
 
 
 __all__ = [
-    "BRANCH_EXACT_BOOST",
+    "BRANCH_EXACT_BONUS",
     "B_PARAM",
     "FIELD_WEIGHTS",
     "K1",
-    "TICKET_EXACT_BOOST",
+    "TICKET_EXACT_BONUS",
     "cli_main",
     "rank",
     "tokenize",

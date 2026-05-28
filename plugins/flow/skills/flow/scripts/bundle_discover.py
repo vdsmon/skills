@@ -168,6 +168,16 @@ def _validate_manifest(path: Path, data: dict[str, Any]) -> Manifest | ManifestE
                 reason=f"skills.{stage_name}.handler_string must be 'skill:<name>[:<args>]'",
             )
 
+        skill_name = handler_string[len("skill:") :].split(":", 1)[0]
+        if not skill_name:
+            return ManifestError(
+                path=str(path),
+                reason=(
+                    f"skills.{stage_name}.handler_string must have a non-empty "
+                    f"skill name (got {handler_string!r})"
+                ),
+            )
+
         def _str_list(key: str, *, _entry: dict[str, Any] = entry) -> list[str] | None:
             v = _entry.get(key, [])
             if not isinstance(v, list):

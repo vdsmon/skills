@@ -123,7 +123,6 @@ _RE_NO_DB = re.compile(r"(?i)no beads database found")
 _RE_NOT_FOUND = re.compile(r"(?i)(issue not found|no such issue|unknown id)")
 _RE_PERMISSION = re.compile(r"(?i)(permission denied|forbidden|not authorized)")
 
-_BD_ID_RE = re.compile(r"\bbd-[0-9a-z]{4,}\b")
 _BD_VERSION_RE = re.compile(r"bd version (\d+)\.(\d+)\.(\d+)")
 
 Runner = Callable[..., subprocess.CompletedProcess[str]]
@@ -440,17 +439,14 @@ class BeadsAdapter:
         if assignee:
             args.extend(["--assignee", assignee])
         raw = self._run_json(args)
-        # bd create --json returns either {"id": "bd-..."} or the full issue.
+        # bd create --json returns either {"id": "bd-..."} or the full issue;
+        # both carry a top-level id. Never re-run create on a parse miss: a
+        # second `bd create` would mint a duplicate ticket.
         if isinstance(raw, dict):
             new_id = str(raw.get("id", ""))
             if new_id:
                 return new_id
-        # Fall back to parsing the id out of stdout text (defensive).
-        cp = self._run(args)
-        match = _BD_ID_RE.search(cp.stdout)
-        if match:
-            return match.group(0)
-        raise TrackerError(f"bd create did not return an id; raw={raw!r}")
+        raise TrackerError(f"bd create did not return a top-level id; raw={raw!r}")
 
     def set_summary(self, key: str, summary: Content) -> None:
         cp = self._run(["update", key, "--title", summary["body"]])

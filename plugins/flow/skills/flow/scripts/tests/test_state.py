@@ -146,6 +146,19 @@ def test_pick_next_returns_first_pending_in_order(tmp_path: Path) -> None:
     assert state.pick_next_pending(ts2, order) == "plan"
 
 
+def test_pick_next_resumes_in_progress_stage(tmp_path: Path) -> None:
+    # A stage left in_progress by a crashed run must be resumed, not skipped.
+    _seed(tmp_path)
+    order = ["ticket", "plan", "implement", "commit", "reflect"]
+    state.begin_stage(tmp_path, "ticket", "h1")
+    state.finish_stage(tmp_path, "ticket", "completed", "h1")
+    state.begin_stage(tmp_path, "plan", "h2")  # crashes here, left in_progress
+    ts, _ = state.read(tmp_path)
+    assert ts is not None
+    assert ts.stages["plan"].status == "in_progress"
+    assert state.pick_next_pending(ts, order) == "plan"
+
+
 def test_pick_next_returns_none_when_all_done(tmp_path: Path) -> None:
     _seed(tmp_path)
     for s in ["ticket", "plan", "implement", "commit", "reflect"]:
@@ -184,6 +197,17 @@ def test_atomic_write_replaces_in_place(tmp_path: Path) -> None:
     # parses cleanly after the write.
     del inode_before, inode_after
     assert json.loads(path.read_text(encoding="utf-8"))["ticket"] == "FT-1234"
+
+
+def test_atomic_write_durable_with_parent_dir_fsync(tmp_path: Path) -> None:
+    # _atomic_write fsyncs the parent dir after os.replace for crash durability.
+    # The suppressed-OSError fsync must not break the write on any platform.
+    _seed(tmp_path)
+    state.begin_stage(tmp_path, "ticket", "h")
+    path = tmp_path / "state.json"
+    assert json.loads(path.read_text(encoding="utf-8"))["stages"]["ticket"]["status"] == (
+        "in_progress"
+    )
 
 
 def test_no_temp_files_leak_after_write(tmp_path: Path) -> None:
@@ -227,6 +251,32 @@ def test_quarantine_when_state_json_corrupt_loads_from_bak(tmp_path: Path) -> No
     assert exit_code == 1  # quarantine triggered, loaded from .bak
     assert loaded is not None
     # The recovered backup is the pre-begin_stage snapshot.
+    quarantines = list(tmp_path.glob("state.json.quarantine.*"))
+    assert len(quarantines) == 1
+
+
+def test_quarantine_on_unexpected_stage_record_key(tmp_path: Path) -> None:
+    # Schema drift: an extra/renamed key in a stage record makes
+    # StageRecord(**entry) raise TypeError. read() must treat that as corrupt
+    # (quarantine + recover from .bak), not crash with an uncaught TypeError.
+    _seed(tmp_path)
+    state.begin_stage(tmp_path, "ticket", "h1")  # produces a parseable .bak
+    (tmp_path / "state.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "ticket": "FT-1234",
+                "run_id": "0123456789abcdef",
+                "backend": "jira",
+                "started_at": "x",
+                "stages": {"ticket": {"status": "pending", "bogus_extra_key": 1}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    loaded, exit_code = state.read(tmp_path)
+    assert exit_code == 1
+    assert loaded is not None
     quarantines = list(tmp_path.glob("state.json.quarantine.*"))
     assert len(quarantines) == 1
 

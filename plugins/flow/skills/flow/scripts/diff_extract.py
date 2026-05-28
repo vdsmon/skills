@@ -105,6 +105,19 @@ def _implement_diff_path(ticket_dir: Path) -> Path:
     return ticket_dir / "implement.diff"
 
 
+def _untracked_files(files: list[str], cwd: Path, runner: Runner) -> list[str]:
+    """Return the subset of `files` that git does not currently track.
+
+    `git ls-files -- <paths>` lists only tracked or staged paths, so anything in
+    `files` missing from its output is untracked in the working tree.
+    """
+    if not files:
+        return []
+    raw = _git(["ls-files", "--", *files], cwd, runner)
+    tracked = {line for line in raw.splitlines() if line}
+    return [f for f in files if f not in tracked]
+
+
 # ─── since / since-stage ─────────────────────────────────────────────────────
 
 
@@ -221,11 +234,27 @@ def capture_implement_diff(
     planned = baseline.get("planned_files", [])
     if not isinstance(planned, list):
         raise _BaselineMissing("baseline.json planned_files is not a list")
-    args = ["diff", "--binary", "--raw", head_sha]
-    if planned:
-        args.append("--")
-        args.extend(str(p) for p in planned)
-    raw = _git(args, cwd, r)
+    paths = [str(p) for p in planned]
+    existing = [p for p in paths if (cwd / p).exists()]
+    # stage intent-to-add for any planned file that exists but is untracked, so
+    # newly created files show up in the diff against head_sha; without this
+    # `git diff` emits nothing for them and they vanish from the patch.
+    untracked = _untracked_files(existing, cwd, r) if existing else []
+    if untracked:
+        _git(["add", "--intent-to-add", "--", *untracked], cwd, r)
+    try:
+        # --no-ext-diff so a configured diff.external (e.g. difftastic) cannot
+        # replace the patch body with display output that `git apply` later rejects.
+        args = ["diff", "--no-ext-diff", "--binary", "--raw", head_sha]
+        if paths:
+            args.append("--")
+            args.extend(paths)
+        raw = _git(args, cwd, r)
+    finally:
+        # capture is an observation; undo the intent-to-add so the index is left
+        # exactly as it was found (these paths were untracked, so reset restores that).
+        if untracked:
+            _git(["reset", "--quiet", "--", *untracked], cwd, r)
     out_path = _implement_diff_path(ticket_dir)
     _atomic_write_text(out_path, raw)
     return out_path

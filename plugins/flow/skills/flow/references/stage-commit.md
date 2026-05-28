@@ -17,21 +17,23 @@ from `git add .` — so unrelated edits in the working tree are NOT included.
 - `<ticket-dir>/implement.diff` — the captured implement-stage diff (binary
   + raw).
 - `.flow/tickets/<KEY>.md` — ticket frontmatter (needs
-  `commit_message` field per `lint_ticket` HARD GATE).
+  `commit_type` + `commit_summary` fields per `lint_ticket` HARD GATE; these
+  feed `compose_commit.py` in step 3).
 - Current working tree.
 
 ## Steps
 
-1. HARD GATE: validate ticket frontmatter has `commit_message`:
+1. HARD GATE: validate ticket frontmatter has `commit_type` + `commit_summary`
+   (the fields `compose_commit.py` consumes in step 3):
    ```bash
    ${CLAUDE_SKILL_DIR}/scripts/lint_ticket.py \
      --stage commit \
      --ticket-path .flow/tickets/<KEY>.md
    ```
    - Exit 0 → continue.
-   - Exit 1 → frontmatter missing required field. Surface stderr; ask user
-     to populate `commit_message` in `.flow/tickets/<KEY>.md` then rerun.
-     Abort with status=failed.
+   - Exit 1 → frontmatter missing a required field. Surface stderr; ask user
+     to populate `commit_type` + `commit_summary` in `.flow/tickets/<KEY>.md`
+     then rerun. Abort with status=failed.
 
 2. Capture the implement-stage diff (idempotent if already captured):
    ```bash
@@ -83,13 +85,32 @@ from `git add .` — so unrelated edits in the working tree are NOT included.
      --workspace-root . \
      transition --key <KEY> --to-state in_review
    ```
+   The commit already landed in git before this step, so a *transient* tracker
+   failure must not fail the stage. A *hard* failure (permission / validator /
+   wrong-state) must, because it means the transition will never succeed
+   without intervention. Read the printed JSON for `failure_kind` +
+   `failure_detail`. Exit-code handling:
    - Exit 0 → continue. Stage completes.
-   - Exit 1 → tracker error. Commit is already made; surface the error and
-     continue (stage completes with a warning logged, not status=failed —
-     the diff is in git, the ticket transition is best-effort).
-   - Exit 3 → no such transition (workflow doesn't support `in_review`).
-     Try `--to-state done` as fallback; if also unavailable, surface and
-     continue.
+   - Exit 1 → transient/unknown tracker error (network / auth / retryable, or
+     an unmapped `failure_kind`). Commit is already made; log a warning
+     surfacing `failure_kind` + `failure_detail` from the printed JSON if
+     present, else the stderr message (a raised `TrackerError` prints to
+     stderr with no stdout JSON). Continue; stage completes (not
+     status=failed — the diff is in git, the ticket transition is best-effort
+     under transient faults).
+   - Exit 2 → workspace config invalid. Surface stderr; do not retry. Mark the
+     stage status=failed (workspace is misconfigured, not a tracker hiccup).
+   - Exit 3 → no transition to `in_review` available (workflow lacks it).
+     Try `--to-state done` as fallback. If the fallback also returns exit 3,
+     surface and continue with a warning (commit is in git). Any other exit
+     code from the fallback is handled by its own rule below.
+   - Exit 4 → hard failure (`permission_denied` / `validator_failed` /
+     `missing_required_field`). Do NOT swallow and do NOT try the `done`
+     fallback. Surface `failure_kind` + `failure_detail` and mark the stage
+     status=failed.
+   - Exit 5 → not applicable (`wrong_source_state` / `ambiguous_transition`).
+     Do NOT swallow. Surface `failure_kind` + `failure_detail` and mark the
+     stage status=failed.
 
 ## Outputs
 
@@ -99,10 +120,15 @@ from `git add .` — so unrelated edits in the working tree are NOT included.
 
 ## Errors
 
-- `lint_ticket.py` exit 1 → user must populate frontmatter.
+- `lint_ticket.py` exit 1 → user must populate `commit_type` +
+  `commit_summary` frontmatter.
 - `git apply --cached` fail → working tree drift. `/flow recover` in 8c.
-- `tracker_cli.py transition` exit 1 → log warning, do not block. The
-  commit is the source of truth.
+- `tracker_cli.py transition` exit 1 → transient; log warning, do not block.
+  The commit is the source of truth.
+- `tracker_cli.py transition` exit 3 → no `in_review` transition; try `done`,
+  else warn and continue.
+- `tracker_cli.py transition` exit 2 / 4 / 5 → hard stop. Surface
+  `failure_kind` + `failure_detail`; mark stage status=failed.
 
 ## Skip conditions
 

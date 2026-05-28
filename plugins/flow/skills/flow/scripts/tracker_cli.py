@@ -19,10 +19,12 @@ the per-backend sub-block (`[tracker.jira]` or `[tracker.beads]`) into the
 config dict that `tracker.make_tracker()` expects.
 
 Exit codes:
-  0 = ok
-  1 = tracker error (network / auth / unknown key / TrackerError subclass)
+  0 = success
+  1 = transient/unknown tracker error (network / auth / retryable / unknown failure_kind)
   2 = workspace config invalid (no workspace.toml, malformed, missing block)
-  3 = invalid args (no such key, bad transition lookup)
+  3 = invalid CLI args (no such key, bad transition lookup, malformed --field)
+  4 = hard transition failure (permission_denied / validator_failed / missing_required_field)
+  5 = transition not applicable (wrong_source_state / ambiguous_transition)
 """
 
 from __future__ import annotations
@@ -77,6 +79,17 @@ def _parse_field(field_arg: str) -> tuple[str, str]:
     return key, value
 
 
+# Transition failure_kind -> exit code. Unmapped/unknown kinds fall through to 1
+# (transient/unknown). The commit reference doc depends on these exact codes.
+_FAILURE_KIND_EXIT: dict[str | None, int] = {
+    "permission_denied": 4,
+    "validator_failed": 4,
+    "missing_required_field": 4,
+    "wrong_source_state": 5,
+    "ambiguous_transition": 5,
+}
+
+
 # ─── Subcommand dispatch ─────────────────────────────────────────────────────
 
 
@@ -128,11 +141,13 @@ def _cmd_transition(tracker_obj: Any, args: argparse.Namespace) -> int:
             fields[k] = v
     result = tracker_obj.transition(args.key, selected_id, fields=fields or None)
     sys.stdout.write(json.dumps(result, indent=2, sort_keys=True, default=str) + "\n")
-    return 0 if result.get("success", False) else 1
+    if result.get("success", False):
+        return 0
+    return _FAILURE_KIND_EXIT.get(result.get("failure_kind"), 1)
 
 
 def _cmd_comment(tracker_obj: Any, args: argparse.Namespace) -> int:
-    body = {"format": "markdown", "value": args.text}
+    body = {"body": args.text, "fmt": "md"}
     tracker_obj.comment(args.key, body)
     sys.stdout.write(json.dumps({"ok": True, "key": args.key}) + "\n")
     return 0
