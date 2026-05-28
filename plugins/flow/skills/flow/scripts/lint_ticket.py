@@ -28,11 +28,11 @@ from __future__ import annotations
 
 import argparse
 import sys
-import tomllib
 from pathlib import Path
 from typing import Any
 
 import ticket_frontmatter
+from _registry import registry_by_name
 
 UNIVERSAL_REQUIRED: tuple[str, ...] = ("ticket", "status")
 
@@ -46,23 +46,14 @@ def _default_registry_path() -> Path:
 
 
 def _load_required_fields(registry_path: Path, stage_name: str) -> list[str]:
+    # exists() guard first so a missing registry keeps this file's FileNotFoundError
+    # wording; registry_by_name's read_text would raise a different message.
     if not registry_path.exists():
         raise FileNotFoundError(f"stage-registry.toml not found at {registry_path}")
-    data = tomllib.loads(registry_path.read_text(encoding="utf-8"))
-    stages = data.get("stage", [])
-    if not isinstance(stages, list):
-        raise ValueError("stage-registry.toml [stage] is not a list")
-    for entry in stages:
-        if not isinstance(entry, dict):
-            continue
-        if entry.get("name") == stage_name:
-            req = entry.get("required_fields", [])
-            if not isinstance(req, list):
-                raise ValueError(
-                    f"stage-registry.toml [{stage_name}].required_fields is not a list"
-                )
-            return [str(item) for item in req]
-    raise ValueError(f"stage {stage_name!r} not in stage-registry.toml")
+    entries = registry_by_name(registry_path)
+    if stage_name not in entries:
+        raise ValueError(f"stage {stage_name!r} not in stage-registry.toml")
+    return entries[stage_name].required_fields
 
 
 def _is_empty(value: Any) -> bool:

@@ -46,6 +46,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
+from _registry import StageEntry, load_registry
 from bundle_discover import DiscoveryResult
 from bundle_discover import discover as bundle_discover_run
 
@@ -131,42 +132,21 @@ class BundleConflictError(InitError):
 # ─── Stage-registry parsing ─────────────────────────────────────────────────
 
 
-@dataclass(frozen=True)
-class StageRegistryEntry:
-    name: str
-    default_handler: str
-    required: bool
-    required_when_compounding: bool
-
-
 def _stage_registry_path() -> Path:
     # `__file__` points at scripts/init.py; registry lives at the skill root.
     return Path(__file__).resolve().parent.parent / "stage-registry.toml"
 
 
-def _load_stage_registry(path: Path | None = None) -> list[StageRegistryEntry]:
-    target = path or _stage_registry_path()
-    raw = target.read_bytes()
-    data = tomllib.loads(raw.decode("utf-8"))
-    stages = data.get("stage", [])
-    if not isinstance(stages, list):
-        raise InitError("stage-registry.toml malformed: 'stage' is not an array")
-    out: list[StageRegistryEntry] = []
-    for s in stages:
-        if not isinstance(s, dict):
-            raise InitError("stage-registry.toml entry is not a table")
-        out.append(
-            StageRegistryEntry(
-                name=str(s["name"]),
-                default_handler=str(s["default_handler"]),
-                required=bool(s.get("required", False)),
-                required_when_compounding=bool(s.get("required_when_compounding", False)),
-            )
-        )
-    return out
+def _load_stage_registry(path: Path | None = None) -> list[StageEntry]:
+    # Called outside run_init's try block (line ~752), so map the shared loader's
+    # ValueError to InitError here to keep the CLI's "init failed" (rc=1) wording.
+    try:
+        return load_registry(path or _stage_registry_path())
+    except ValueError as exc:
+        raise InitError(str(exc)) from exc
 
 
-def _default_pipeline_stages(registry: list[StageRegistryEntry], compounding: bool) -> list[str]:
+def _default_pipeline_stages(registry: list[StageEntry], compounding: bool) -> list[str]:
     """All registered stages; drops reflect iff compounding=false.
 
     Day-1 simplest policy: include every stage. Workspaces prune at hand-edit
@@ -406,7 +386,7 @@ def _legal_handler_string(value: str) -> bool:
 
 def _compose_handlers(
     config: InitConfig,
-    registry: list[StageRegistryEntry],
+    registry: list[StageEntry],
     pipeline_stages: list[str],
     discovery: DiscoveryResult,
 ) -> tuple[dict[str, str], list[str]]:
@@ -787,7 +767,7 @@ def _run_init_phases(
     *,
     config: InitConfig,
     runner: Runner,
-    registry: list[StageRegistryEntry],
+    registry: list[StageEntry],
     namespace: str,
     pipeline_stages: list[str],
     init_run_id: str,

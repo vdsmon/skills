@@ -830,7 +830,7 @@ def test_write_phase_rejects_illegal_handler(
     # the workspace is not finalized.
     def _bad_compose(
         config: initmod.InitConfig,
-        registry: list[initmod.StageRegistryEntry],
+        registry: list[initmod.StageEntry],
         pipeline_stages: list[str],
         discovery: object,
     ) -> tuple[dict[str, str], list[str]]:

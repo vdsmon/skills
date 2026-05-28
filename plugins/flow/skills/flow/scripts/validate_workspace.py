@@ -34,6 +34,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from _registry import StageEntry, load_registry
+
 KNOWN_BACKENDS: tuple[str, ...] = ("jira", "beads")
 _HANDLER_RE = re.compile(r"^(inline|none|subagent:[A-Za-z0-9_-]+|skill:[A-Za-z0-9_.-]+(?::.+)?)$")
 
@@ -53,41 +55,8 @@ class ValidationResult:
 # ─── stage-registry loader ──────────────────────────────────────────────────
 
 
-@dataclass(frozen=True)
-class StageRegistryEntry:
-    name: str
-    required: bool
-    required_when_compounding: bool
-    required_predecessors: list[str]
-
-
 def _stage_registry_path() -> Path:
     return Path(__file__).resolve().parent.parent / "stage-registry.toml"
-
-
-def _load_stage_registry(path: Path | None = None) -> list[StageRegistryEntry]:
-    target = path or _stage_registry_path()
-    raw = target.read_bytes()
-    data = tomllib.loads(raw.decode("utf-8"))
-    stages_raw = data.get("stage", [])
-    if not isinstance(stages_raw, list):
-        raise ValueError("stage-registry.toml: 'stage' is not an array")
-    out: list[StageRegistryEntry] = []
-    for entry in stages_raw:
-        if not isinstance(entry, dict):
-            raise ValueError("stage-registry.toml: entry is not a table")
-        preds = entry.get("required_predecessors", [])
-        if not isinstance(preds, list):
-            preds = []
-        out.append(
-            StageRegistryEntry(
-                name=str(entry["name"]),
-                required=bool(entry.get("required", False)),
-                required_when_compounding=bool(entry.get("required_when_compounding", False)),
-                required_predecessors=[str(p) for p in preds],
-            )
-        )
-    return out
 
 
 # ─── Workspace-toml shape validators ────────────────────────────────────────
@@ -121,7 +90,7 @@ def _validate_tracker_block(data: dict[str, Any], result: ValidationResult) -> s
 
 def _validate_pipeline_block(
     data: dict[str, Any],
-    registry: list[StageRegistryEntry],
+    registry: list[StageEntry],
     compounding: bool,
     result: ValidationResult,
 ) -> tuple[list[str], dict[str, str]]:
@@ -233,7 +202,7 @@ class WorkspaceSnapshot:
 
 def validate(
     workspace_root: Path,
-    stage_registry: list[StageRegistryEntry] | None = None,
+    stage_registry: list[StageEntry] | None = None,
 ) -> tuple[ValidationResult, WorkspaceSnapshot | None]:
     """Validate the workspace at `workspace_root`. Returns (result, snapshot|None).
 
@@ -261,7 +230,7 @@ def validate(
     backend = _validate_tracker_block(data, result)
     compounding = _validate_memory_block(data, result)
 
-    registry = stage_registry or _load_stage_registry()
+    registry = stage_registry or load_registry(_stage_registry_path())
     stages, handlers = _validate_pipeline_block(data, registry, compounding, result)
 
     if not result.ok or backend is None:
@@ -309,7 +278,6 @@ if __name__ == "__main__":
 
 __all__ = [
     "KNOWN_BACKENDS",
-    "StageRegistryEntry",
     "ValidationResult",
     "WorkspaceSnapshot",
     "cli_main",

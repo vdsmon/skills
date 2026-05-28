@@ -29,8 +29,6 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
-import contextlib
-import fcntl
 import hashlib
 import json
 import os
@@ -42,6 +40,8 @@ from pathlib import Path
 from typing import Any
 
 import _memory_paths
+from _jsonl import iter_jsonl
+from _locking import LockContention, flock_retry
 
 VALID_TYPES: tuple[str, ...] = (
     "LEARNED",
@@ -52,18 +52,11 @@ VALID_TYPES: tuple[str, ...] = (
     "DEVIATION",
 )
 
-LOCK_RETRY_COUNT = 3
-LOCK_RETRY_DELAY_S = 1.0
-
 _WS_RE = re.compile(r"\s+")
 _TRAILING_PUNCT_RE = re.compile(r"[\.\,\;\:\!\?\-\—\s]+$")
 
 
 # ─── Errors ──────────────────────────────────────────────────────────────────
-
-
-class _LockContention(Exception):
-    """Could not acquire knowledge.jsonl.lock within retry budget."""
 
 
 class _InvalidType(Exception):
@@ -100,70 +93,15 @@ def compute_id(namespace: str, ticket: str, type_: str, body: str) -> str:
     return hashlib.sha256(src.encode("utf-8")).hexdigest()[:16]
 
 
-class _Flock:
-    """POSIX fcntl.flock context manager. Non-blocking + bounded retry."""
-
-    def __init__(self, lock_path: Path) -> None:
-        self._lock_path = lock_path
-        self._fd: int | None = None
-
-    def __enter__(self) -> _Flock:
-        self._lock_path.parent.mkdir(parents=True, exist_ok=True)
-        self._fd = os.open(str(self._lock_path), os.O_RDWR | os.O_CREAT, 0o644)
-        for attempt in range(LOCK_RETRY_COUNT):
-            try:
-                fcntl.flock(self._fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                return self
-            except BlockingIOError:
-                if attempt == LOCK_RETRY_COUNT - 1:
-                    os.close(self._fd)
-                    self._fd = None
-                    raise _LockContention(
-                        f"could not lock {self._lock_path} after {LOCK_RETRY_COUNT} attempts"
-                    ) from None
-                time.sleep(LOCK_RETRY_DELAY_S)
-        raise _LockContention(f"lock loop exited without lock on {self._lock_path}")
-
-    def __exit__(self, *exc: object) -> None:
-        if self._fd is not None:
-            fcntl.flock(self._fd, fcntl.LOCK_UN)
-            os.close(self._fd)
-            self._fd = None
-
-
-def _append_quarantine(sidecar: Path, raw_line: str, reason: str) -> None:
-    sidecar.parent.mkdir(parents=True, exist_ok=True)
-    record = {"reason": reason, "raw": raw_line}
-    with sidecar.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(record) + "\n")
-        fh.flush()
-        with contextlib.suppress(OSError):
-            os.fsync(fh.fileno())
-
-
 def _scan_for_id(
     knowledge_path: Path,
     target_id: str,
     quarantine_sidecar: Path,
 ) -> bool:
     """Returns True if target_id present. Malformed lines → sidecar."""
-    if not knowledge_path.exists():
-        return False
-    with knowledge_path.open("r", encoding="utf-8") as fh:
-        for line in fh:
-            stripped = line.rstrip("\n")
-            if not stripped.strip():
-                continue
-            try:
-                entry = json.loads(stripped)
-            except json.JSONDecodeError as exc:
-                _append_quarantine(quarantine_sidecar, stripped, f"json: {exc}")
-                continue
-            if not isinstance(entry, dict):
-                _append_quarantine(quarantine_sidecar, stripped, "not an object")
-                continue
-            if entry.get("id") == target_id:
-                return True
+    for entry in iter_jsonl(knowledge_path, quarantine_sidecar):
+        if entry.get("id") == target_id:
+            return True
     return False
 
 
@@ -183,7 +121,7 @@ def append(
     Raises:
         _InvalidType
         _DuplicateId
-        _LockContention
+        LockContention
         _memory_paths._MemoryConfigError
         OSError
     """
@@ -195,7 +133,7 @@ def append(
     entry_id = id_override or compute_id(namespace, ticket, type_, body)
     quarantine_sidecar = kpath.with_name(f"{kpath.name}.quarantine.{_ts_token()}")
 
-    with _Flock(lpath):
+    with flock_retry(lpath):
         if _scan_for_id(kpath, entry_id, quarantine_sidecar):
             raise _DuplicateId(entry_id)
         entry = {
@@ -249,7 +187,7 @@ def cli_main(argv: list[str]) -> int:
     except _DuplicateId as exc:
         sys.stderr.write(f"memory-append: duplicate id {exc}; no-op\n")
         return 1
-    except _LockContention as exc:
+    except LockContention as exc:
         sys.stderr.write(f"memory-append: {exc}\n")
         return 2
     except _memory_paths._MemoryConfigError as exc:

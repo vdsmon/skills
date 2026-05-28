@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import fcntl
 import json
 import os
 import secrets
@@ -32,6 +31,8 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal
+
+from _locking import flock_blocking
 
 SCHEMA_VERSION = 1
 
@@ -157,26 +158,6 @@ def _atomic_write(path: Path, content: str) -> None:
             os.close(dir_fd)
 
 
-class _Flock:
-    """POSIX fcntl.flock context manager. Exclusive, blocking."""
-
-    def __init__(self, lock_path: Path) -> None:
-        self._lock_path = lock_path
-        self._fd: int | None = None
-
-    def __enter__(self) -> _Flock:
-        self._lock_path.parent.mkdir(parents=True, exist_ok=True)
-        self._fd = os.open(str(self._lock_path), os.O_RDWR | os.O_CREAT, 0o644)
-        fcntl.flock(self._fd, fcntl.LOCK_EX)
-        return self
-
-    def __exit__(self, *exc: object) -> None:
-        if self._fd is not None:
-            fcntl.flock(self._fd, fcntl.LOCK_UN)
-            os.close(self._fd)
-            self._fd = None
-
-
 # ─── Quarantine ──────────────────────────────────────────────────────────────
 
 
@@ -206,7 +187,7 @@ def _read_locked(ticket_dir: Path) -> tuple[TicketState | None, int]:
     """Read body assuming the flock is already held. See read() for semantics.
 
     Must not re-acquire the lock: callers (read, _update) hold it via a single
-    _Flock and a second acquisition would deadlock under blocking LOCK_EX.
+    flock_blocking and a second acquisition would deadlock under blocking LOCK_EX.
     """
     path = _state_path(ticket_dir)
     if not path.exists():
@@ -235,7 +216,7 @@ def read(ticket_dir: Path) -> tuple[TicketState | None, int]:
     `state=None` with exit_code 2 is the "broken and no backup" signal —
     callers MUST distinguish these by checking exit_code.
     """
-    with _Flock(_lock_path(ticket_dir)):
+    with flock_blocking(_lock_path(ticket_dir)):
         return _read_locked(ticket_dir)
 
 
@@ -347,7 +328,7 @@ def _write_locked(ticket_dir: Path, state: TicketState) -> None:
 
 def _write(ticket_dir: Path, state: TicketState) -> None:
     ticket_dir.mkdir(parents=True, exist_ok=True)
-    with _Flock(_lock_path(ticket_dir)):
+    with flock_blocking(_lock_path(ticket_dir)):
         _write_locked(ticket_dir, state)
 
 
@@ -359,7 +340,7 @@ def _update(ticket_dir: Path, mutate_fn: Callable[[TicketState], TicketState]) -
     between the read and the write).
     """
     ticket_dir.mkdir(parents=True, exist_ok=True)
-    with _Flock(_lock_path(ticket_dir)):
+    with flock_blocking(_lock_path(ticket_dir)):
         state, _ = _read_locked(ticket_dir)
         if state is None:
             raise StateUnrecoverable(f"no state.json at {ticket_dir}")

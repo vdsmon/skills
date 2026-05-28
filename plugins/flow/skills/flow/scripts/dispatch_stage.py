@@ -25,43 +25,14 @@ import argparse
 import json
 import subprocess
 import sys
-import tomllib
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import state
 import validate_workspace as vw
+from _registry import registry_by_name
 
 _STAGE_REGISTRY_RELATIVE = Path("stage-registry.toml")
-
-
-# ─── Stage-registry handler defaults ─────────────────────────────────────────
-
-
-@dataclass(frozen=True)
-class StageMeta:
-    name: str
-    default_timeout_min: int
-    reference_doc: str | None
-    roles: list[str]
-
-
-def _load_stage_meta(skill_root: Path) -> dict[str, StageMeta]:
-    raw = (skill_root / _STAGE_REGISTRY_RELATIVE).read_bytes()
-    data = tomllib.loads(raw.decode("utf-8"))
-    stages = data.get("stage", [])
-    out: dict[str, StageMeta] = {}
-    for entry in stages:
-        if not isinstance(entry, dict):
-            continue
-        out[entry["name"]] = StageMeta(
-            name=entry["name"],
-            default_timeout_min=int(entry.get("default_timeout_min", 10)),
-            reference_doc=entry.get("reference_doc"),
-            roles=list(entry.get("roles", []) or []),
-        )
-    return out
 
 
 # ─── Handler-string parsing ──────────────────────────────────────────────────
@@ -178,7 +149,8 @@ def cmd_next(workspace_root: Path, ticket: str) -> tuple[int, dict[str, Any]]:
     # Assemble the full descriptor BEFORE mutating state. If descriptor
     # assembly raises, the stage must stay pending rather than be stuck
     # in_progress.
-    stage_meta = _load_stage_meta(_skill_root_from_script()).get(next_stage)
+    registry_path = _skill_root_from_script() / _STAGE_REGISTRY_RELATIVE
+    stage_meta = registry_by_name(registry_path).get(next_stage)
     handler_descriptor = _parse_handler(snapshot.handlers[next_stage])
     output_path = td / "stages" / f"{next_stage}.out"
     payload: dict[str, Any] = {

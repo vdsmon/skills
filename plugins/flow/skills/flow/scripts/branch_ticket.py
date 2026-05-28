@@ -19,10 +19,11 @@ import argparse
 import re
 import subprocess
 import sys
-import tomllib
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+
+import _workspace
 
 Runner = Callable[..., subprocess.CompletedProcess[str]]
 
@@ -52,13 +53,10 @@ class _BranchTicketError(Exception):
 
 
 def _read_tracker_config(workspace_root: Path) -> _TrackerConfig:
-    path = workspace_root / ".flow" / "workspace.toml"
-    if not path.exists():
-        raise _BranchTicketError(f"no workspace.toml at {path}")
     try:
-        data = tomllib.loads(path.read_text(encoding="utf-8"))
-    except tomllib.TOMLDecodeError as exc:
-        raise _BranchTicketError(f"workspace.toml does not parse: {exc}") from exc
+        data = _workspace.load_workspace_toml(workspace_root)
+    except _workspace.WorkspaceConfigError as exc:
+        raise _BranchTicketError(str(exc)) from exc
     tracker = data.get("tracker")
     if not isinstance(tracker, dict):
         raise _BranchTicketError("workspace.toml missing [tracker] block")

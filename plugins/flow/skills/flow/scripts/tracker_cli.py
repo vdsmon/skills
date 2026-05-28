@@ -32,10 +32,10 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import tomllib
 from pathlib import Path
 from typing import Any
 
+import _workspace
 from tracker import TrackerError, make_tracker
 
 
@@ -50,13 +50,10 @@ def _read_tracker_config(workspace_root: Path) -> dict[str, Any]:
     Sub-block fields (`tracker.jira.*` or `tracker.beads.*`) are lifted into
     the top level. The `backend` field is preserved.
     """
-    path = workspace_root / ".flow" / "workspace.toml"
-    if not path.exists():
-        raise _WorkspaceConfigError(f"no workspace.toml at {path}")
     try:
-        data = tomllib.loads(path.read_text(encoding="utf-8"))
-    except tomllib.TOMLDecodeError as exc:
-        raise _WorkspaceConfigError(f"workspace.toml does not parse: {exc}") from exc
+        data = _workspace.load_workspace_toml(workspace_root)
+    except _workspace.WorkspaceConfigError as exc:
+        raise _WorkspaceConfigError(str(exc)) from exc
     tracker = data.get("tracker")
     if not isinstance(tracker, dict):
         raise _WorkspaceConfigError("workspace.toml missing [tracker] block")

@@ -32,7 +32,6 @@ from __future__ import annotations
 import argparse
 import contextlib
 import errno
-import fcntl
 import json
 import os
 import re
@@ -42,14 +41,12 @@ from pathlib import Path
 from typing import Any
 
 import _memory_paths
+from _locking import LockContention, flock_retry
 
 _SHIPPED_AT_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 _RUN_ID_RE = re.compile(r"^[0-9a-f]{16}$")
 
 _ALLOWED_TOP_KEYS: frozenset[str] = frozenset({"ticket", "shipped_at", "evidence"})
-
-LOCK_RETRY_COUNT = 3
-LOCK_RETRY_DELAY_S = 1.0
 
 
 # ─── Errors ──────────────────────────────────────────────────────────────────
@@ -116,35 +113,6 @@ def _write_o_excl(path: Path, content: str) -> None:
         os.close(dir_fd)
 
 
-class _Flock:
-    """POSIX fcntl.flock with bounded retry. Used for dupe.<n> serialization."""
-
-    def __init__(self, lock_path: Path) -> None:
-        self._lock_path = lock_path
-        self._fd: int | None = None
-
-    def __enter__(self) -> _Flock:
-        self._lock_path.parent.mkdir(parents=True, exist_ok=True)
-        self._fd = os.open(str(self._lock_path), os.O_RDWR | os.O_CREAT, 0o644)
-        for attempt in range(LOCK_RETRY_COUNT):
-            try:
-                fcntl.flock(self._fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                return self
-            except BlockingIOError:
-                if attempt == LOCK_RETRY_COUNT - 1:
-                    os.close(self._fd)
-                    self._fd = None
-                    raise
-                time.sleep(LOCK_RETRY_DELAY_S)
-        raise RuntimeError(f"lock loop exited without lock on {self._lock_path}")
-
-    def __exit__(self, *exc: object) -> None:
-        if self._fd is not None:
-            fcntl.flock(self._fd, fcntl.LOCK_UN)
-            os.close(self._fd)
-            self._fd = None
-
-
 def _next_dupe_path(primary: Path) -> Path:
     """Pick `<primary>.dupe.<n>.json` for next monotonic n (max + 1, or 1)."""
     pattern = primary.name + ".dupe."
@@ -198,6 +166,7 @@ def observe(
     Raises `_EvidenceInvalid` if payload fails validation.
     Raises `_memory_paths._MemoryConfigError` if namespace can't resolve.
     Raises `OSError` on non-EEXIST I/O errors (intent log written first).
+    Raises `LockContention` if the dupe lock can't be acquired (intent log written first).
     """
     validated = validate_evidence(evidence_payload, ticket)
     if not _RUN_ID_RE.match(run_id):
@@ -221,7 +190,7 @@ def observe(
     # EEXIST → dupe path under lock.
     dupe_lock = primary.parent / f"{primary.name}.dupe.lock"
     try:
-        with _Flock(dupe_lock):
+        with flock_retry(dupe_lock):
             dupe_path = _next_dupe_path(primary)
             record["superseded_by_dupe"] = False
             try:
@@ -229,7 +198,7 @@ def observe(
             except FileExistsError:
                 # Extremely unlikely under flock; surface as I/O error.
                 raise OSError(errno.EEXIST, "dupe path collision under flock") from None
-    except OSError as exc:
+    except (OSError, LockContention) as exc:
         _write_intent_log(primary, record, f"dupe write failed: {exc}")
         raise
     return dupe_path, True
@@ -262,6 +231,9 @@ def cli_main(argv: list[str]) -> int:
         return 1
     except _memory_paths._MemoryConfigError as exc:
         sys.stderr.write(f"observe-ship-event: {exc}\n")
+        return 3
+    except LockContention as exc:
+        sys.stderr.write(f"observe-ship-event: I/O error: {exc}\n")
         return 3
     except OSError as exc:
         sys.stderr.write(f"observe-ship-event: I/O error: {exc}\n")

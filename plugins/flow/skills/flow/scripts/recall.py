@@ -30,10 +30,8 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
-import contextlib
 import json
 import math
-import os
 import re
 import sys
 import time
@@ -42,6 +40,7 @@ from pathlib import Path
 from typing import Any
 
 import _memory_paths
+from _jsonl import iter_jsonl
 
 K1 = 1.5
 B_PARAM = 0.75
@@ -76,39 +75,15 @@ def _ts_token() -> str:
     return time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
 
 
-def _append_quarantine(sidecar: Path, raw_line: str, reason: str) -> None:
-    sidecar.parent.mkdir(parents=True, exist_ok=True)
-    record = {"reason": reason, "raw": raw_line}
-    with sidecar.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(record) + "\n")
-        fh.flush()
-        with contextlib.suppress(OSError):
-            os.fsync(fh.fileno())
-
-
 # ─── Load ────────────────────────────────────────────────────────────────────
 
 
 def _load_entries(knowledge_path: Path) -> list[dict[str, Any]]:
     if not knowledge_path.exists():
         return []
+    # per-invocation sidecar so each scan's malformed lines land in their own file
     sidecar = knowledge_path.with_name(f"{knowledge_path.name}.quarantine.{_ts_token()}")
-    entries: list[dict[str, Any]] = []
-    with knowledge_path.open("r", encoding="utf-8") as fh:
-        for line in fh:
-            stripped = line.rstrip("\n")
-            if not stripped.strip():
-                continue
-            try:
-                entry = json.loads(stripped)
-            except json.JSONDecodeError as exc:
-                _append_quarantine(sidecar, stripped, f"json: {exc}")
-                continue
-            if not isinstance(entry, dict):
-                _append_quarantine(sidecar, stripped, "not an object")
-                continue
-            entries.append(entry)
-    return entries
+    return list(iter_jsonl(knowledge_path, sidecar))
 
 
 # ─── BM25 ────────────────────────────────────────────────────────────────────
