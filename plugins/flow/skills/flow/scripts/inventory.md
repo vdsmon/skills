@@ -180,6 +180,87 @@ If the Jira project is **classic / company-managed**, the field name is
 
 This handles both project styles without forcing users to know which they're on.
 
+## `.flow-bundle.toml` schema (phase 4)
+
+External plugins declare which flow stages they provide handlers for via a top-
+level `.flow-bundle.toml`. `bundle-discover.py` walks `~/.claude/plugins/*/` and
+`<repo>/.claude/plugins/*/` (override: `FLOW_BUNDLE_SEARCH_ROOTS`, colon-separated)
+and parses each manifest. Schema:
+
+```toml
+schema_version = 1     # closed enum: { 1 }; mismatch = invalid (warning unless --select)
+
+[bundle]
+name        = "ship-it"   # bundle slug, used by --bundle-name selectors
+description = "Push branch + open draft PR + CI loop"
+
+# One [skills.<stage>] table per stage the bundle provides. `stage` MUST be a
+# closed-vocabulary flow stage (ticket | plan | implement | code_review | e2e |
+# commit | create_pr | review_loop | reflect). Unknown stages = invalid manifest.
+[skills.create_pr]
+handler_string         = "skill:ship-it:create"   # required; MUST start with "skill:"
+required_capabilities  = []                       # optional, list[str]; CAPABILITY_ENUM names
+args_schema            = {}                       # optional, dict; opaque, validated by skill
+required_outputs       = ["pr_url"]               # optional, list[str]
+side_effects           = ["git push", "gh pr create"]   # optional, list[str]
+stage_compatibility    = ["create_pr"]            # optional, list[str]; cross-check vs stage roles
+
+[skills.review_loop]
+handler_string = "skill:ship-it:feedback"
+```
+
+### Discovery contract
+
+| Condition                                       | Result                                         |
+|-------------------------------------------------|------------------------------------------------|
+| Manifest absent                                 | not discovered; not an error                   |
+| Manifest parses + schema valid                  | listed in `valid`                              |
+| Manifest invalid + UNRELATED to selected bundle | listed in `invalid` (warning; `cli_main` exit 0)|
+| Manifest invalid + IS the `--select`ed bundle   | `cli_main` exit 2; init.py exit 1              |
+| Two valid manifests advertise the same stage    | listed in `duplicates`; `recommended` refuses  |
+
+### Composition rules
+
+- **bare**: every stage in `pipeline.stages` uses `stage-registry.toml`'s
+  `default_handler`. Always available.
+- **recommended**: discovered manifests' `handler_string` values override the
+  defaults for every stage they advertise. Two-provider conflict on ANY stage
+  rejects the whole `recommended` choice (caller must use `--bundle custom` to
+  disambiguate). Day-1 design choice: don't try to auto-rank conflicting
+  providers — surface the conflict.
+- **custom**: caller supplies `--handler <stage>=<handler_string>` flags. Init
+  validates handler strings against the closed grammar
+  (`inline | none | subagent:<type> | skill:<name>[:<args>]`) and rejects
+  unknown stages.
+
+### Transactional bootstrap markers
+
+| File                          | Lifecycle                                                  |
+|-------------------------------|------------------------------------------------------------|
+| `.flow/.initializing`         | created BEFORE any mutation; left in place on failure      |
+| `.flow/.init-progress`        | append-only JSONL of completed phases; consumed by --resume |
+| `.flow/.initialized`          | atomic rename from `.initializing` ONLY after postconditions pass |
+| `~/.config/flow/checkpoint-manifest.jsonl` | append-only ledger of participating workspaces (one line per init / reconfigure) |
+
+Pre-flight refusal:
+
+| Marker state                        | Default behavior        | Override            |
+|-------------------------------------|-------------------------|---------------------|
+| `.initialized` present              | exit 4 (`InitPreflightError`) | `--reconfigure`     |
+| `.initializing` present (no marker) | exit 4 (`InitPreflightError`) | `--resume` or `--reconfigure` |
+
+### Postconditions (verified before atomic rename)
+
+1. `.flow/workspace.toml` parses as valid TOML.
+2. `[tracker]` block has `backend` matching the chosen backend.
+3. `[pipeline.stages]` matches the computed stage list (drops `reflect` iff
+   `memory.compounding = false`).
+4. `[pipeline.handlers]` contains an entry for every stage in
+   `[pipeline.stages]`.
+5. `[memory]` block has `namespace`, `compounding`, `auto_recall`, `recall_by`,
+   `recall_top_n`.
+6. For backend=beads: `bd ready --json` returns parseable JSON.
+
 ## Out-of-scope for phase 3
 
 - `comments_markdown=true` (Jira would need a separate markdown wrapper; ADF
