@@ -357,6 +357,132 @@ retry. `pending-mutations.py` is phase-8 work; the adapter currently surfaces
 the error as `_BeadsError(TrackerError)` and lets the dispatcher (phase 7)
 decide.
 
+## Dispatcher state machine (phase 7-mvp)
+
+The dispatcher is a state-machine driver — NOT an orchestrator. It reads /
+writes `.flow/runs/<ticket>/state.json` and emits a handler-descriptor JSON
+for the SKILL.md prose layer to act on (call Agent, read reference doc,
+invoke a skill, or skip).
+
+### Stage lifecycle (mvp; phase 7-full adds dispatched/timed_out/hung)
+
+```
+pending → in_progress → (completed | failed)
+```
+
+`next` writes `pending → in_progress`. The handler runs between `next` and
+`finish`. `finish` writes `in_progress → completed | failed`.
+
+### state.json schema (`schema_version = 1`)
+
+```json
+{
+  "schema_version": 1,
+  "ticket": "FT-1234",
+  "run_id": "0123456789abcdef",
+  "backend": "jira",
+  "started_at": "2026-05-28T12:00:00Z",
+  "stages": {
+    "ticket": {
+      "status": "completed",
+      "started_at_iso": "2026-05-28T12:00:01Z",
+      "started_at_sha": "abc123",
+      "finished_at_iso": "2026-05-28T12:00:05Z",
+      "finished_at_sha": "abc123",
+      "agent_id": null,
+      "output_path": null,
+      "skill_output": null,
+      "failure_detail": null
+    },
+    "plan": { "status": "pending", "...": "..." }
+  }
+}
+```
+
+### Atomic-write contract
+
+1. Write via `tempfile.NamedTemporaryFile` in the parent dir.
+2. `fsync()` the temp file.
+3. `os.replace(tmp, final)`.
+4. Acquire `state.json.lock` via `fcntl.flock(LOCK_EX)` around the
+   read-modify-write sequence.
+5. Before each write, copy old state.json to `state.json.<ts>.bak`.
+6. After each write, trim backups to the last `BACKUP_RETENTION = 5`.
+
+### Quarantine path (best-effort)
+
+Malformed JSON on `state.read()`:
+1. Move corrupt file to `state.json.quarantine.<ts>`.
+2. Try newest `.bak` → if parses, restore + return; exit 1.
+3. If all `.bak` files corrupt → exit 2; library raises
+   `StateUnrecoverable`.
+
+Mvp does NOT deeply schema-validate each backup; "parses as JSON with
+schema_version=1 + required top-level keys" is sufficient. Phase 7-full adds
+per-field structural validation.
+
+### Subprocess exit codes
+
+| Script              | Exit | Action                                          |
+|---------------------|------|-------------------------------------------------|
+| state.py            | 0    | ok                                              |
+| state.py            | 1    | quarantine triggered (loaded from .bak)         |
+| state.py            | 2    | no valid backup; abort                          |
+| validate_workspace  | 0    | ok                                              |
+| validate_workspace  | 1    | schema invalid; stderr lists violations         |
+| dispatch_stage      | 0    | ok                                              |
+| dispatch_stage      | 1    | validate failed / state malformed / generic     |
+| dispatch_stage      | 2    | no ticket dir / not yet initialized             |
+| dispatch_stage      | 7    | RESERVED (lost lease, phase 7-full)             |
+
+### Handler-descriptor JSON shape (`dispatch next` stdout)
+
+```json
+{
+  "done": false,
+  "stage": "plan",
+  "handler_type": "subagent" | "inline" | "skill" | "none",
+  "subagent_type": "Plan",
+  "reference_doc": "references/stage-plan.md",
+  "skill_name": "ship-it",
+  "skill_args": "create",
+  "timeout_min": 10,
+  "head_sha": "<current git HEAD>",
+  "ticket_dir": ".flow/runs/FT-1234",
+  "output_path": ".flow/runs/FT-1234/stages/plan.out"
+}
+```
+
+Terminal shapes:
+- `{"done": true}` — every stage completed.
+- `{"done": false, "blocked_by": "<stage>", "reason": "<detail>"}` — a
+  prior stage is failed.
+
+### TOCTOU invariant (mvp)
+
+`validate_workspace.validate()` runs on every `dispatch_stage` invocation
+(`init` and `next`). Cheap (parses 2-3 small TOML files). Catches mid-run
+workspace.toml edits. Phase 7-full replaces this with the canonical-snapshot
+pattern from the literal plan (hash captured once at init, compared on each
+subsequent next).
+
+### Deferred to phase 7-full / 8
+
+| Concern                                          | Phase     |
+|--------------------------------------------------|-----------|
+| Lease-style run.lock (pid + boot_id + ...)       | 7-full    |
+| Background lease refresher thread                | 7-full    |
+| `--emit-canonical-snapshot` content-tree hash    | 7-full    |
+| FS capability probe (flock detection)            | 7-full    |
+| Heartbeat `.progress` files + hung detection     | 7-full    |
+| `lint-ticket.py` HARD GATE pre-stage             | 8         |
+| `branch-ticket.py` ticket resolution             | 8         |
+| `ticket-frontmatter.py` YAML r/w                 | 8         |
+| `diff-extract.py` baseline + since-stage         | 8         |
+| `recover.py` takeover modes                      | 8         |
+| Capability cross-check (handler vs adapter)      | 7-full    |
+| Subagent / skill handler spawn harness           | 7-full    |
+
 ## Out-of-scope for phase 3
 
 - `comments_markdown=true` (Jira would need a separate markdown wrapper; ADF
