@@ -1,0 +1,110 @@
+#!/bin/bash
+# Canonical iterate.sh template for loop-finder gates.
+#
+# Copy to tools/<class>/iterate.sh and customize the GATE COMMAND section
+# (marked below). Everything else stays — these are the invariants that
+# kept biting variant agents in cycles 1-4 of the loop-finder dogfood.
+#
+# Why this template exists:
+# - Hardcoded ROOT races parallel worktree variants through main's binary.
+#   Surfaced TWICE in dogfood. Always derive from script location.
+# - Shared OUT dir across concurrent variants causes flake-rate false-fails.
+#   Cost a flake_rate=0.20 false-fail in cycle 3. Always per-PID.
+# - Oracle direction (similarity vs dissimilarity) must be verified
+#   empirically. magick 7 `compare -metric SSIM` emits DISSIMILARITY in
+#   the parenthesised value, NOT similarity (0=identical, 0.5=max).
+# - Output must include path AND a structured summary tag so agents can
+#   act without opening binary artifacts (blindness rule compliance).
+#
+# Exit codes:
+#   0 ACCEPT (oracle within threshold)
+#   1 SETUP failure (build broke, sidecar absent, etc.)
+#   3 REJECT (oracle outside threshold)
+#
+# Standard env overrides:
+#   <CLASS>_THRESHOLD       gate-specific threshold (lower-better convention preferred)
+#   <CLASS>_OUT             override per-PID OUT dir (debug only)
+#   <CLASS>_SETTLE_MS       sidecar settle time (UI gates)
+#   KEEP_OUT=1              skip cleanup of OUT dir on exit (debug)
+
+set -e
+
+# ─── ROOT derivation ─────────────────────────────────────────────────────
+# Always derive from script location. Works in main checkout AND worktrees.
+# Never hardcode `/Users/.../repo` — that's the #1 way to race variants
+# through main's binary.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+if [ -d "$ROOT/.git" ] || [ -f "$ROOT/.git" ]; then
+  GIT_ROOT="$(cd "$ROOT" && git rev-parse --show-toplevel 2>/dev/null || true)"
+  if [ -n "$GIT_ROOT" ]; then ROOT="$GIT_ROOT"; fi
+fi
+
+# ─── Per-PID OUT dir ─────────────────────────────────────────────────────
+# Concurrent variants must NOT share. Cycle 3 V5+V6 racing on /tmp/foo/
+# cost a 0.20 false-flake. $$ is per-process; survives a single iterate.sh
+# invocation. Set KEEP_OUT=1 to preserve on exit for debugging.
+OUT="${LOOPFINDER_OUT:-/tmp/loopfinder-snap-$$}"
+mkdir -p "$OUT"
+trap '[ "${KEEP_OUT:-0}" = "0" ] && rm -rf "$OUT"' EXIT
+
+# ─── Gate-specific config (customize per class) ──────────────────────────
+THRESHOLD="${LOOPFINDER_THRESHOLD:-0.04}"
+# CLASS_ID — referenced by output for traceability across runs.
+CLASS_ID="UNSET-fill-this-in"
+
+# ─── Build the sidecar (customize: package name) ─────────────────────────
+( cd "$ROOT" && cargo build -p YOUR_SIDECAR_PKG --target aarch64-apple-darwin 2>&1 ) | tail -3
+
+# Kill any lingering sidecar (idempotent across parallel runs).
+pkill -f "target/aarch64-apple-darwin/debug/YOUR_SIDECAR_PKG" 2>/dev/null || true
+
+# ─── ★ GATE COMMAND (customize) ──────────────────────────────────────────
+# This is the only block that should change per-class. Produce machine-
+# readable output to $OUT, then evaluate oracle below.
+#
+# Example for headless visual probe:
+#   BIN="$ROOT/target/aarch64-apple-darwin/debug/YOUR_SIDECAR_PKG"
+#   out="$OUT/render.png"
+#   SAFEMIC_PREVIEW_SNAPSHOT="$out" "$BIN" >/dev/null 2>&1
+#
+out="$OUT/render.png"
+echo "TODO: run gate, produce $out"
+
+# ─── Oracle direction precondition ───────────────────────────────────────
+# IMPORTANT: before pinning a threshold, run this script with two known
+# inputs (self-vs-self and known-different) to confirm the predicate
+# direction. If the oracle emits DISSIMILARITY (0=identical), the predicate
+# must be `<= threshold`. If similarity (1=identical), `>= threshold`.
+#
+# Document the verified direction here:
+#
+#   Oracle: <name>
+#   Verified self-vs-self: <value>
+#   Verified known-different: <value>
+#   Direction: <lower-better | higher-better>
+
+# ─── Compute oracle (customize) ──────────────────────────────────────────
+# Lower-better convention preferred. If your oracle is higher-better,
+# either flip the predicate OR emit a derived "distance = max - score".
+ORACLE_VALUE="TODO"
+
+# ─── Structured output ───────────────────────────────────────────────────
+# Must include:
+# - Path to any binary artifact (avoids orphan-artifact blindness)
+# - A recognized verdict tag (PASS / FAIL / OK / ERR / ACCEPT / REJECT)
+# - A SUMMARY stat (px-count, scalar score, error count — gives agent
+#   actionable info without opening binaries)
+# - Optional per-region breakdown for visual / multi-modal oracles
+#   (lowers blindness_count: agent can target specific region)
+echo "class:    $CLASS_ID"
+echo "oracle:   $ORACLE_VALUE"
+echo "threshold: $THRESHOLD"
+echo "artifact: $out"
+
+if awk -v v="$ORACLE_VALUE" -v t="$THRESHOLD" 'BEGIN {exit !(v <= t)}'; then
+  echo "ACCEPT"
+  exit 0
+else
+  echo "REJECT (oracle $ORACLE_VALUE > $THRESHOLD)"
+  exit 3
+fi

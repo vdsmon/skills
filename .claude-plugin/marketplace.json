@@ -40,12 +40,6 @@
       "version": "1.3.0"
     },
     {
-      "name": "converge",
-      "source": "./plugins/converge",
-      "description": "Run a prompt or slash command in a loop until changes converge or start churning. Each pass runs in a fresh subagent for impartial review. Portable (subagent dispatch varies by host).",
-      "version": "1.1.0"
-    },
-    {
       "name": "ship-it",
       "source": "./plugins/ship-it",
       "description": "Push branch, open draft PR, attach reviewers, then wait on CI and the AI code reviewer in a fix loop until green. Ticket-agnostic. Supported stack today: Bitbucket Cloud + bkt CLI + CodeRabbit. Adapter slots reserved for gh + other reviewer bots.",
@@ -55,6 +49,12 @@
       "name": "adx-loop",
       "source": "./plugins/adx-loop",
       "description": "Agent Development Experience self-improvement loop. Each cycle: ship prior retro's queued harness fix → ship a gameplay feature that pressure-tests the surface → retro (top pain + one queued fix) → log a single composite metric. Karpathy autoresearch discipline: one change per iteration, mechanical metric, git as memory, binary keep/discard. Optimizes the dev environment, not the product.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "loop-finder",
+      "source": "./plugins/loop-finder",
+      "description": "Engineers a self-verifiable end-to-end feedback loop for a task class, baselines it, races parallel variants against the baseline, and converges on the best loop config. HITL is concentrated at permission gates (install CLI, register MCP, touch shared files) — never mid-iteration. Caches per task class so future runs reuse. Foundation skill that adx-loop consumes.",
       "version": "0.1.0"
     }
   ]

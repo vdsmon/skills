@@ -1,0 +1,955 @@
+# Loop-pattern catalog. Source of variants for Step 3 of the loop-finder algorithm.
+# Each item: a pattern for constructing an end-to-end self-verifiable feedback loop.
+# Field schema is described in SKILL.md and the plan at
+# /Users/victordsm/.claude/plans/awesome-now-deeper-question-hashed-wozniak.md.
+#
+# Status: v0.1 seed. Items have functional metadata (id, name, brief, oracle_type,
+# task_domains, applies_when, breaks_when, tooling_signature, gap_detection,
+# environment_isolation). Deeper fields (setup_cost, false_positive_risk,
+# gameability, etc) marked TBD and filled by a /research-deep pass.
+
+version: 1
+
+items:
+  # ─── Probe / harness shape ─────────────────────────────────────────────
+  - id: headless_probe_sidecar
+    name: Headless probe sidecar
+    brief: Minimal binary exercising one module with stubbed deps.
+    oracle_type: exit-code
+    determinism_strategy: mocks
+    task_domains: [code, UI]
+    vision_required: maybe   # only when the sidecar renders a surface (UI domain)
+    environment_isolation: in-process
+    tooling_preconditions:
+      - "Harness invocation script (iterate.sh) MUST derive ROOT from \\${BASH_SOURCE[0]} location, NOT hardcoded. Use templates/iterate.sh.tmpl in this plugin as starting point. Hardcoded ROOT races parallel worktree variants through main's binary — bit cycle 1 settings AND cycle 1 about."
+      - "Sidecar must use per-PID OUT dir (default /tmp/loopfinder-snap-\\$\\$). Shared /tmp paths cause flake under concurrent variants — cost a flake_rate=0.20 false-fail in cycle 3."
+      - "If sidecar uses #[path] include of files outside its own crate, verify env!() CARGO_PKG_VERSION references are sourced from the parent crate (build script), not the sidecar's own version (0.0.0)."
+    applies_when:
+      - module has clear boundary
+      - full app rebuild dominates inner loop
+      - external deps stubbable
+    breaks_when:
+      - module deeply entangled with cross-cutting framework
+      - stubs would lie about behavior under test
+    tooling_signature:
+      - cargo workspace member with #[path] include (Rust)
+      - python -m pkg.module (Python)
+      - go test ./pkg (Go test harness as sidecar)
+      - dedicated entrypoint + LD_PRELOAD or DI for stubs
+    gap_detection:
+      - no workspace member exists for the module
+      - module's external deps are not interface-typed (hard to stub)
+    composes_with: [snapshot_golden_oracle, visual_diff_oracle, mock_stub_harness]
+
+  - id: test_suite_as_loop
+    name: Test-suite-as-loop
+    brief: Existing unit/integration test suite IS the loop.
+    oracle_type: exit-code
+    determinism_strategy: mocks
+    task_domains: [code]
+    environment_isolation: in-process
+    applies_when:
+      - test coverage already exists for the touched surface
+      - test runner ≤ 10s for relevant subset
+    breaks_when:
+      - coverage absent on the task surface
+      - tests are themselves the thing being changed
+    tooling_signature:
+      - cargo test / cargo nextest
+      - pytest -k / pytest --xdoctest
+      - go test
+      - vitest / jest --findRelatedTests
+    gap_detection:
+      - test command exists but path is untested (coverage tool reports 0%)
+      - test runner > 30s on cold; > 5s warm
+    composes_with: [property_oracle, snapshot_golden_oracle, mutation_meta_oracle]
+
+  - id: repl_notebook_loop
+    name: REPL / notebook loop
+    brief: Persistent process loaded once; drive interactively, capture output.
+    oracle_type: exit-code
+    determinism_strategy: pure
+    task_domains: [code, text]
+    environment_isolation: in-process
+    applies_when:
+      - startup cost > iteration cost
+      - module is hot-reloadable
+    breaks_when:
+      - stateful globals corrupt across iterations
+      - hot-reload semantics surprise
+    tooling_signature:
+      - ipython / jupyter / marimo
+      - clojure REPL (lein repl, deps.edn)
+      - sbt ~run / dune utop
+      - ghci
+    gap_detection:
+      - language has no usable REPL for current module
+      - module init has side effects
+    composes_with: [snapshot_golden_oracle, property_oracle]
+
+  - id: blackbox_artifact_loop
+    name: Black-box artifact loop
+    brief: Input fixture → run → file artifact → diff.
+    oracle_type: exit-code
+    determinism_strategy: pure
+    task_domains: [code, UI, audio, multi-modal]
+    environment_isolation: in-process
+    applies_when:
+      - tool transforms input → output deterministically
+      - output is comparable byte-for-byte or via tolerant diff
+    breaks_when:
+      - output embeds timestamps / nonces without filter
+      - tolerance threshold ill-defined
+    tooling_signature:
+      - diff / cmp / hexdump
+      - jq --sort-keys
+      - dprint / prettier --check
+    gap_detection:
+      - no representative input fixture exists
+      - no canonical-output normalizer wired
+    composes_with: [snapshot_golden_oracle, capture_replay]
+
+  - id: ci_as_loop
+    name: CI-as-loop
+    brief: Push → remote CI → read result. Universal fallback.
+    oracle_type: exit-code
+    determinism_strategy: sandbox
+    task_domains: [code, UI, distributed-system]
+    environment_isolation: container
+    applies_when:
+      - no local loop possible (cross-platform, secrets, fleet-only)
+      - changes are committable
+    breaks_when:
+      - CI latency > task budget
+      - CI cost per run prohibitive
+      - changes are pre-commit (not yet PR-able)
+    tooling_signature:
+      - gh run watch / bkt pr / circleci-cli
+      - act (local GH Actions runner)
+    gap_detection:
+      - no CI configured for the repo
+      - branch protections force a PR before any CI signal
+    composes_with: [synthetic_monitoring, otel_trace_assertion]
+
+  - id: mock_stub_harness
+    name: Mock / stub harness
+    brief: Substitute external deps so the loop becomes deterministic.
+    oracle_type: exit-code
+    determinism_strategy: mocks
+    task_domains: [code, distributed-system]
+    environment_isolation: in-process
+    applies_when:
+      - external dep dominates flakiness
+      - dep has a stable interface
+    breaks_when:
+      - mocks lie about real behavior (covered by canary fixtures)
+    tooling_signature:
+      - mockito / wiremock / nock / msw
+      - dependency injection container
+      - LSP-aware refactor to interface-type the dep
+    gap_detection:
+      - dep accessed via global / singleton
+      - no interface boundary
+    composes_with: [test_suite_as_loop, capture_replay]
+
+  - id: capture_replay
+    name: Capture / replay
+    brief: Record real-world session; replay deterministically.
+    oracle_type: exit-code
+    determinism_strategy: record-replay
+    task_domains: [code, distributed-system]
+    environment_isolation: in-process
+    applies_when:
+      - real-world session needed to surface behavior
+      - external interactions are HTTP / RPC (recordable)
+    breaks_when:
+      - non-replayable timing / hardware interaction
+      - PII in recordings (replay-restricted)
+    tooling_signature:
+      - vcr.py / polly.js / cassette
+      - mitmproxy / proxyman recordings
+      - rr (record-replay debugger)
+    gap_detection:
+      - no recording fixture available
+      - recordings drift from current API (stale)
+    composes_with: [tracing_replay_diff, mock_stub_harness]
+
+  # ─── Oracle shape ──────────────────────────────────────────────────────
+  - id: snapshot_golden_oracle
+    name: Snapshot / golden-file oracle
+    brief: First run records, future runs diff.
+    oracle_type: golden
+    determinism_strategy: pure
+    task_domains: [code, UI, text]
+    environment_isolation: in-process
+    applies_when:
+      - output is deterministic and stable across runs
+      - human review possible at baseline-update time
+    breaks_when:
+      - output includes timestamps without filter
+      - team rubber-stamps snapshot updates
+    tooling_signature:
+      - cargo-insta / insta
+      - jest --ci snapshots
+      - syrupy (Python)
+      - approvaltests
+    gap_detection:
+      - no snapshot dir / file pattern in repo
+      - existing snapshots stale (last update months back)
+    composes_with: [visual_diff_oracle, blackbox_artifact_loop]
+
+  - id: property_oracle
+    name: Property-based oracle
+    brief: No golden output; invariants must hold over generated inputs.
+    oracle_type: property
+    determinism_strategy: invariant
+    task_domains: [code]
+    environment_isolation: in-process
+    applies_when:
+      - invariants are expressible
+      - input space is generator-friendly
+    breaks_when:
+      - invariants are themselves the thing being changed
+      - generator distribution misses adversarial inputs
+    tooling_signature:
+      - hypothesis (Python)
+      - quickcheck / proptest (Rust)
+      - fast-check (TS) / scalacheck
+    gap_detection:
+      - no property library installed
+      - no invariants defined for the module
+    composes_with: [metamorphic_oracle, fuzzing_oracle]
+
+  - id: visual_diff_oracle
+    name: Visual-diff oracle
+    brief: PNG / accessibility-tree / OCR diff.
+    oracle_type: exit-code
+    determinism_strategy: pure
+    task_domains: [UI]
+    vision_required: true
+    environment_isolation: in-process
+    applies_when:
+      - output is rendered surface
+      - rendering deterministic per platform
+    breaks_when:
+      - font / GPU drift across machines
+      - antialiasing differences below human-visible threshold
+    tooling_signature:
+      - odiff / pixelmatch
+      - playwright snapshot
+      - percy / chromatic (cloud)
+      - axe-core (accessibility tree)
+    gap_detection:
+      - diff CLI not installed
+      - no baseline images committed
+    composes_with: [headless_probe_sidecar, snapshot_golden_oracle]
+
+  - id: target_conformance_oracle
+    name: Target-conformance oracle
+    brief: User-provided design target image; verdict = similarity ≥ threshold (or distance ≤ threshold — verify direction).
+    oracle_type: similarity-score
+    determinism_strategy: pure
+    task_domains: [UI, multi-modal]
+    vision_required: true
+    environment_isolation: in-process
+    tooling_preconditions:
+      - MUST run oracle-direction smoke (self-vs-self + known-different inputs) before pinning threshold. Without this, predicate direction is unverified. magick 7's `compare -metric SSIM` emits DISSIMILARITY (0=identical) in the parenthesised value despite the metric name.
+      - MUST measure render-jitter noise floor (5 same-input runs, pairwise variance) before pinning threshold. Threshold above `floor + small margin`. If requested threshold is below floor, threshold is physically unreachable.
+      - MUST seed canary fixtures (mid-range corruption — 1-3 element edits, color shifts <30%, not extremes). magick SSIM is non-monotone under extreme corruption; gate may give false-pass on full-white or full-noise renders.
+      - MUST emit spatial signal (per-quadrant / per-patch / per-region dissim), not a single scalar. Scalar gate forces agents to Read the binary artifact (high blindness_count, defeats the run-time no-HITL promise for UI-visual classes).
+    applies_when:
+      - design mockup / screenshot / Figma export exists as target
+      - render-to-target gap closes iteratively (refactor toward design)
+      - rendering surface is deterministic at the bit level (snapshot pipeline must not introduce noise; see render-jitter floor)
+    breaks_when:
+      - composition fundamentally different (rotation, aspect) — SSIM bottoms out non-monotonically; small edits become indistinguishable from large edits
+      - feature scale << frame scale — scalar / coarse-grid oracle under-rewards small high-fidelity additions (e.g. an icon ~0.5% of frame registers as noise even when visually correct)
+      - font rasterization differs between target's renderer and live runtime — residual gap may be irreducible at the SSIM level; switch to LPIPS or LLM-vision-judge
+    tooling_signature:
+      - magick compare -metric SSIM (CAUTION: emits dissimilarity not similarity; use lower-is-better predicate)
+      - LPIPS python lib (alex/vgg/squeeze backbones); AlexNet pretrained on ImageNet has weak priors for UI imagery, vgg/squeeze may align better
+      - DINO patch similarity — per-patch cosine distance, finer spatial signal
+      - LLM-vision-judge w/ pinned rubric — rich but gameable, slower
+    gap_detection:
+      - oracle direction not verified
+      - threshold pinned without empirical floor probe
+      - per-quadrant or per-patch breakdown not emitted
+      - artifact OUT dir shared across concurrent runs (use per-PID)
+      - canary fixtures absent for adoption guard
+    composes_with: [headless_probe_sidecar, visual_diff_oracle, snapshot_golden_oracle, llm_judge]
+
+  - id: multimodal_oracle
+    name: Multi-modal oracle (audio / video / embedding similarity)
+    brief: Fingerprint / keyframe / cosine-similarity for non-text outputs.
+    oracle_type: exit-code
+    determinism_strategy: pure
+    task_domains: [audio, multi-modal]
+    vision_required: maybe   # depends on modality — video/image yes, audio no
+    environment_isolation: in-process
+    applies_when:
+      - output is non-text but has a stable fingerprint
+    breaks_when:
+      - no deterministic encoding (lossy compression varies)
+    tooling_signature:
+      - chromaprint / fpcalc (audio fingerprint)
+      - ffmpeg + ssim/psnr keyframe diff
+      - sentence-transformers cosine similarity
+    gap_detection:
+      - no fingerprint / embedding tool in PATH
+      - threshold not pinned
+    composes_with: [snapshot_golden_oracle, blackbox_artifact_loop]
+
+  - id: llm_judge
+    name: LLM-as-judge
+    brief: Rubric-driven model evaluation when no machine oracle fits.
+    oracle_type: rubric
+    determinism_strategy: pure
+    task_domains: [text, code, UI, multi-modal]
+    environment_isolation: in-process
+    applies_when:
+      - rubric expressible in natural language
+      - judge model + threshold can be pinned
+    breaks_when:
+      - rubric drifts without versioning
+      - judge model upgraded silently
+      - reward-hackable by the system under test
+    tooling_signature:
+      - anthropic / openai SDK
+      - LM eval frameworks (Inspect, lm-eval-harness)
+      - prompt-foo / promptfoo
+    gap_detection:
+      - no rubric file committed
+      - judge model not version-pinned
+      - threshold absent
+    composes_with: [self_verifier_reflection, reward_model_preference_judge]
+
+  - id: fuzzing_oracle
+    name: Fuzzing-as-oracle (crash / assert / sanitizer)
+    brief: Generated inputs; crash / assert / UBSan as signal.
+    oracle_type: exit-code
+    determinism_strategy: sandbox
+    task_domains: [code]
+    environment_isolation: sandbox
+    applies_when:
+      - native code with memory safety surface
+      - sanitizers compilable
+    breaks_when:
+      - JIT / hosted language with no sanitizer
+      - fuzz target requires complex valid input structure
+    tooling_signature:
+      - libFuzzer / cargo-fuzz / honggfuzz / AFL++
+      - jazzer (JVM) / atheris (Python)
+      - go-fuzz
+    gap_detection:
+      - no fuzz target wired
+      - sanitizer build flag missing
+    composes_with: [property_oracle, taint_tracking]
+
+  - id: differential_testing
+    name: Differential testing
+    brief: Two implementations, diff outputs.
+    oracle_type: exit-code
+    determinism_strategy: pure
+    task_domains: [code]
+    environment_isolation: in-process
+    applies_when:
+      - reference impl exists (slow but trusted) OR
+      - same code compiled two ways (opt levels, targets, versions)
+    breaks_when:
+      - no reference exists
+      - tolerance design hard for floating-point
+    tooling_signature:
+      - csmith / yarpgen (compiler differential)
+      - diff with normalizer
+      - quickcheck-style with two oracles
+    gap_detection:
+      - no second impl available
+      - normalizer absent
+    composes_with: [tracing_replay_diff, fuzzing_oracle]
+    sub_flavors:
+      - cross_impl_vs_reference
+      - cross_version
+      - cross_optimization_level
+      - cross_platform
+
+  - id: telemetry_replay
+    name: Telemetry / log replay
+    brief: Captured prod telemetry as input, expected output recorded.
+    oracle_type: exit-code
+    determinism_strategy: record-replay
+    task_domains: [code, distributed-system]
+    environment_isolation: in-process
+    applies_when:
+      - prod telemetry exists
+      - telemetry sanitizable for PII
+    breaks_when:
+      - PII restrictions block replay
+      - telemetry drifts faster than baseline updates
+    tooling_signature:
+      - sentry / honeycomb / datadog log export
+      - custom replay harness
+    gap_detection:
+      - no telemetry pipeline
+      - no replay tooling
+    composes_with: [shadow_traffic, otel_trace_assertion]
+
+  - id: formal_proof_oracle
+    name: Formal-methods proof obligation
+    brief: TLA+ / Dafny / Lean / Coq / F* — proof script IS the loop.
+    oracle_type: proof
+    determinism_strategy: pure
+    task_domains: [code, distributed-system]
+    environment_isolation: in-process
+    applies_when:
+      - module is small enough for formal model
+      - team has FM literacy
+    breaks_when:
+      - state space explosion
+      - spec drifts from impl
+    tooling_signature:
+      - tla+ (tlc, apalache)
+      - dafny / lean / coq / fstar
+      - alloy
+    gap_detection:
+      - no proof artifact in repo
+      - spec absent
+    composes_with: [model_based_testing, type_lint_as_proof]
+
+  - id: type_lint_as_proof
+    name: Type-system / lint as lightweight proof loop
+    brief: ts / mypy / ruff / clippy as fast partial proof oracles.
+    oracle_type: exit-code
+    determinism_strategy: pure
+    task_domains: [code]
+    environment_isolation: in-process
+    applies_when:
+      - language has a usable type system / linter
+      - desired property is type-expressible (incl. branded types, refinement)
+    breaks_when:
+      - property is dynamic / runtime-only
+      - type-check passes but program is still wrong (false negative high)
+    tooling_signature:
+      - tsc --noEmit
+      - mypy / pyright / ty
+      - clippy / cargo check
+      - ruff / biome
+    gap_detection:
+      - linter not configured strict
+      - missing types / annotations on touched surface
+    composes_with: [test_suite_as_loop, formal_proof_oracle]
+
+  - id: observability_oracle
+    name: Observability-driven (metric / trace shape as signal)
+    brief: Metric or histogram bound as acceptance signal.
+    oracle_type: metric
+    determinism_strategy: pure
+    task_domains: [distributed-system, code]
+    environment_isolation: production
+    applies_when:
+      - service emits useful metrics
+      - SLO/SLI baseline defined
+    breaks_when:
+      - low-traffic surfaces (sparse signal)
+      - alert thresholds noisy
+    tooling_signature:
+      - prometheus / grafana query
+      - datadog metrics API
+      - opentelemetry collector
+    gap_detection:
+      - no metrics on touched surface
+      - no SLO defined
+    composes_with: [otel_trace_assertion, canary_progressive]
+
+  - id: otel_trace_assertion
+    name: Trace-based testing (OpenTelemetry)
+    brief: Assert on captured trace shape, span ordering, attributes.
+    oracle_type: exit-code
+    determinism_strategy: record-replay
+    task_domains: [distributed-system]
+    environment_isolation: container
+    applies_when:
+      - OTel instrumentation already present
+      - causal flow is what's being tested
+    breaks_when:
+      - non-instrumented paths
+      - span ID generation non-deterministic without seed
+    tooling_signature:
+      - tracetest
+      - otel collector with file exporter
+    gap_detection:
+      - tracetest not installed
+      - instrumentation absent on touched paths
+    composes_with: [observability_oracle, telemetry_replay]
+
+  - id: metamorphic_oracle
+    name: Metamorphic-relation oracle
+    brief: Properties relating two runs (input → transformed input → predictable output relation).
+    oracle_type: property
+    determinism_strategy: invariant
+    task_domains: [code, multi-modal]
+    environment_isolation: in-process
+    applies_when:
+      - input transformation map is known
+      - relation between outputs is predictable
+    breaks_when:
+      - no known transformation map
+      - relation is non-deterministic
+    tooling_signature:
+      - hypothesis with custom strategies
+      - rapidcheck / scalacheck
+    gap_detection:
+      - no metamorphic relation documented
+    composes_with: [property_oracle, fuzzing_oracle]
+
+  - id: model_based_testing
+    name: Model-based testing (FSM / EFSM)
+    brief: State machine model generates sequences, data, AND oracle.
+    oracle_type: property
+    determinism_strategy: invariant
+    task_domains: [code, distributed-system, UI]
+    environment_isolation: in-process
+    applies_when:
+      - system has clean state model
+      - state transitions enumerable
+    breaks_when:
+      - data-rich state without clean transition map
+      - concurrency explodes state space
+    tooling_signature:
+      - graphwalker
+      - stateful hypothesis
+      - tlc / apalache (counter-example generation)
+    gap_detection:
+      - no state model defined
+    composes_with: [formal_proof_oracle, property_oracle]
+
+  - id: dynamic_invariant_inference
+    name: Dynamic-invariant inference (Daikon-style)
+    brief: Oracle LEARNED from observed traces.
+    oracle_type: property
+    determinism_strategy: invariant
+    task_domains: [code]
+    environment_isolation: in-process
+    applies_when:
+      - legacy code without spec
+      - regression sentinel needed quickly
+    breaks_when:
+      - cold-start (no traces yet)
+      - high-noise observations
+    tooling_signature:
+      - daikon
+      - custom trace + invariant inference
+    gap_detection:
+      - no trace collection wired
+    composes_with: [telemetry_replay, property_oracle]
+
+  - id: spec_mining
+    name: Specification mining from logs / API usage
+    brief: Oracle mined from prod logs or OSS corpora.
+    oracle_type: property
+    determinism_strategy: invariant
+    task_domains: [code, distributed-system]
+    environment_isolation: production
+    applies_when:
+      - access to large corpus of real usage
+    breaks_when:
+      - mined "normal" includes vulns
+      - novel APIs (no corpus)
+    tooling_signature:
+      - MINES
+      - log mining custom pipeline
+    gap_detection:
+      - no corpus
+    composes_with: [observability_oracle, dynamic_invariant_inference]
+
+  - id: mutation_meta_oracle
+    name: Mutation testing as meta-oracle
+    brief: Tests the test suite. Checks loop sensitivity.
+    oracle_type: exit-code
+    determinism_strategy: pure
+    task_domains: [code]
+    environment_isolation: in-process
+    applies_when:
+      - already have a test suite
+      - want to validate test sensitivity before adopting loop
+    breaks_when:
+      - cost > available cycle budget
+    tooling_signature:
+      - pitest (JVM)
+      - cargo-mutants / mutagen (Rust)
+      - mutmut (Python)
+      - stryker (JS/TS)
+    gap_detection:
+      - no mutation tool installed
+    composes_with: [test_suite_as_loop]
+
+  - id: contract_testing
+    name: Contract testing (Pact, CDC)
+    brief: Shared contract artifact between consumer and provider.
+    oracle_type: exit-code
+    determinism_strategy: pure
+    task_domains: [distributed-system]
+    environment_isolation: container
+    applies_when:
+      - microservice boundary
+      - both sides controllable
+    breaks_when:
+      - monolith
+      - third-party provider with no CDC opt-in
+    tooling_signature:
+      - pact / pact-broker
+      - spring cloud contract
+    gap_detection:
+      - no contract artifacts in repo
+    composes_with: [otel_trace_assertion]
+
+  - id: bdd_atdd_specs
+    name: ATDD / BDD executable specifications
+    brief: Oracle co-authored with non-engineers in domain language.
+    oracle_type: exit-code
+    determinism_strategy: pure
+    task_domains: [code]
+    environment_isolation: in-process
+    applies_when:
+      - business-rule-heavy / regulated domain
+      - non-engineer stakeholders engaged
+    breaks_when:
+      - low-level / perf-critical
+      - ML-component-as-system
+    tooling_signature:
+      - cucumber / gherkin
+      - behave / pytest-bdd
+      - specflow
+    gap_detection:
+      - no .feature files
+      - no PO / stakeholder writing them
+    composes_with: [test_suite_as_loop]
+
+  - id: shadow_traffic
+    name: Shadow traffic / dark launch
+    brief: Mirror prod requests to new build, diff outputs in real time.
+    oracle_type: exit-code
+    determinism_strategy: record-replay
+    task_domains: [distributed-system]
+    environment_isolation: production
+    applies_when:
+      - read-heavy backend
+      - prod traffic exists
+    breaks_when:
+      - write-heavy non-idempotent paths
+      - PII replay restrictions
+    tooling_signature:
+      - goreplay
+      - envoy/nginx mirror module
+      - diffy (twitter)
+    gap_detection:
+      - no shadow infrastructure
+    composes_with: [telemetry_replay, canary_progressive]
+
+  - id: canary_progressive
+    name: Canary / progressive delivery as oracle
+    brief: Prod itself is the loop; decisions on SLO deltas.
+    oracle_type: metric
+    determinism_strategy: sandbox
+    task_domains: [distributed-system]
+    environment_isolation: production
+    applies_when:
+      - high-traffic service with baselines
+      - rollback automation in place
+    breaks_when:
+      - low-traffic / pre-launch
+      - regulated (no progressive in prod)
+    tooling_signature:
+      - argo rollouts / flagger
+      - launchdarkly / unleash
+      - datadog SLO + automated rollback
+    gap_detection:
+      - no flag system
+      - no automated rollback
+    composes_with: [observability_oracle, shadow_traffic]
+
+  - id: self_verifier_reflection
+    name: Self-verifier / reflection loop
+    brief: LLM as critic; iterate until judge accepts (Reflexion / Self-Refine / Voyager).
+    oracle_type: rubric
+    determinism_strategy: pure
+    task_domains: [text, code]
+    environment_isolation: in-process
+    applies_when:
+      - open-ended generation tasks
+      - paired with executable env check (Voyager)
+    breaks_when:
+      - high-stakes correctness
+      - reward-hackable judges (no executable backstop)
+    tooling_signature:
+      - reflexion / self-refine prompt scaffolds
+      - openhands / inspect
+    gap_detection:
+      - no executable backstop
+      - rubric not version-pinned
+    composes_with: [llm_judge, sandboxed_agent_harness]
+
+  - id: llm_evolutionary_search
+    name: LLM-evolutionary search (FunSearch / AlphaEvolve)
+    brief: LLM proposer + programmatic evaluator + evolutionary selection over population.
+    oracle_type: exit-code
+    determinism_strategy: pure
+    task_domains: [code]
+    environment_isolation: sandbox
+    applies_when:
+      - search problems with cheap programmatic evaluator
+      - algorithm-discovery / combinatorial optimization
+    breaks_when:
+      - verification is as hard as solution
+      - evaluator is itself an LLM (gameable)
+    tooling_signature:
+      - funsearch (open-source impls)
+      - alphaevolve patterns (paper, not OSS yet)
+      - custom evo loop + LLM API
+    gap_detection:
+      - no fast programmatic evaluator
+    composes_with: [sandboxed_agent_harness, fuzzing_oracle]
+
+  - id: sandboxed_agent_harness
+    name: Sandboxed agent harness (SWE-bench / SWE-Gym / MLE-bench / Inspect / OpenHands)
+    brief: Containerized full-repo env; agent operates via shell/edit/test.
+    oracle_type: exit-code
+    determinism_strategy: sandbox
+    task_domains: [code]
+    environment_isolation: container
+    applies_when:
+      - repo-scale task
+      - task script / test suite exists as oracle
+    breaks_when:
+      - GUI / hardware in the loop
+      - non-Dockerizable deps
+      - sandbox fingerprinting (AISI documented)
+    tooling_signature:
+      - swe-bench harness
+      - inspect_ai (UK AISI)
+      - openhands
+      - mle-bench
+    gap_detection:
+      - no Dockerfile
+      - no canonical task script
+    composes_with: [test_suite_as_loop, ci_as_loop]
+
+  - id: hardware_in_the_loop
+    name: Hardware-in-the-loop (HIL) / software-in-the-loop (SIL)
+    brief: Real-time embedded loop with plant or device. Oracle = sensor readings within tolerance.
+    oracle_type: metric
+    determinism_strategy: pure
+    task_domains: [code]
+    environment_isolation: hardware
+    applies_when:
+      - firmware / control / robotics
+      - rig accessible
+    breaks_when:
+      - pure SW work
+      - rig cost prohibitive
+    tooling_signature:
+      - matlab simulink HIL
+      - speedgoat / dspace
+      - custom test fixture + telemetry
+    gap_detection:
+      - no rig
+      - no fixture interface
+    composes_with: [emulator_as_loop, observability_oracle]
+
+  - id: emulator_as_loop
+    name: Emulator-as-loop (QEMU / Renode / Wokwi)
+    brief: Software-only target emulation. Cheaper CI without devices.
+    oracle_type: exit-code
+    determinism_strategy: sandbox
+    task_domains: [code]
+    environment_isolation: VM
+    applies_when:
+      - target board well-emulated
+      - timing tolerances loose
+    breaks_when:
+      - unemulated peripherals
+      - timing-sensitive code
+    tooling_signature:
+      - qemu-system-*
+      - renode
+      - wokwi cli
+    gap_detection:
+      - target not in emulator's catalog
+    composes_with: [hardware_in_the_loop, fuzzing_oracle]
+
+  - id: digital_twin
+    name: Digital-twin loop
+    brief: Bidirectional sim with real-time data exchange.
+    oracle_type: metric
+    determinism_strategy: record-replay
+    task_domains: [distributed-system, code]
+    environment_isolation: VM
+    applies_when:
+      - physical or business system with sensors
+      - sim fidelity sufficient
+    breaks_when:
+      - sim drifts from real
+      - sensor pipeline unreliable
+    tooling_signature:
+      - simio / anylogic
+      - custom sim + telemetry feed
+    gap_detection:
+      - no sim model
+    composes_with: [observability_oracle, telemetry_replay]
+
+  - id: chaos_fault_injection
+    name: Chaos / fault injection as oracle
+    brief: Oracle = "SLO holds during injected fault" or "recovery < N".
+    oracle_type: metric
+    determinism_strategy: sandbox
+    task_domains: [distributed-system]
+    environment_isolation: container
+    applies_when:
+      - distributed system with redundancy claims
+      - chaos tooling installable
+    breaks_when:
+      - single-process SW
+      - prod-only deployment
+    tooling_signature:
+      - chaos-mesh / litmuschaos / gremlin
+      - toxiproxy
+    gap_detection:
+      - no chaos tooling
+      - no SLO baseline
+    composes_with: [observability_oracle, canary_progressive]
+
+  - id: taint_tracking
+    name: Taint-tracking / information-flow oracle
+    brief: Oracle = "tainted input did/did-not reach sink".
+    oracle_type: property
+    determinism_strategy: pure
+    task_domains: [code]
+    environment_isolation: in-process
+    applies_when:
+      - security / PII compliance / sandbox escape domains
+    breaks_when:
+      - value-based correctness questions
+    tooling_signature:
+      - phosphor (JVM)
+      - libdft / conflux
+      - pyt (python)
+    gap_detection:
+      - no instrumentation framework
+      - sources / sinks not annotated
+    composes_with: [fuzzing_oracle, formal_proof_oracle]
+
+  - id: synthetic_monitoring
+    name: Synthetic monitoring / smoke canary
+    brief: Lightweight periodic probe in prod/staging running canonical journey.
+    oracle_type: exit-code
+    determinism_strategy: sandbox
+    task_domains: [distributed-system, UI]
+    environment_isolation: production
+    applies_when:
+      - SaaS or public API
+      - canonical journey definable
+    breaks_when:
+      - pre-launch
+      - expensive probes (paid third party)
+    tooling_signature:
+      - datadog synthetics
+      - checkly
+      - pingdom
+    gap_detection:
+      - no synthetic provider
+    composes_with: [ci_as_loop, observability_oracle]
+
+  - id: crash_only_supervised
+    name: Crash-only / supervised-restart oracle
+    brief: Operational signal — process recovered after kill -9 with state intact.
+    oracle_type: exit-code
+    determinism_strategy: sandbox
+    task_domains: [distributed-system]
+    environment_isolation: container
+    applies_when:
+      - HA daemon
+      - queue worker w/ durability claim
+    breaks_when:
+      - stateless / no durability claim
+    tooling_signature:
+      - systemd unit + restart policy
+      - k8s liveness/readiness probes
+      - custom supervisor (testcontainers)
+    gap_detection:
+      - no supervised mode wired
+    composes_with: [chaos_fault_injection, observability_oracle]
+
+  - id: reward_model_preference_judge
+    name: Reward-model / preference-judge loop (RLHF / RLAIF / RLVR)
+    brief: Learned verifier; bootstrap oracle from preferences.
+    oracle_type: rubric
+    determinism_strategy: pure
+    task_domains: [text, multi-modal]
+    environment_isolation: in-process
+    applies_when:
+      - have preference data
+      - judge can be trained / fine-tuned
+    breaks_when:
+      - reward hacking (well-documented, especially RLVR)
+      - judge model upgraded silently
+    tooling_signature:
+      - openai preference fine-tuning
+      - openrlhf / trl
+    gap_detection:
+      - no preference dataset
+      - judge model version-pinned
+    composes_with: [llm_judge, self_verifier_reflection]
+
+  - id: tracing_replay_diff
+    name: Tracing-replay differential (rr-style)
+    brief: Record one run, replay against modified build, diff observables.
+    oracle_type: exit-code
+    determinism_strategy: record-replay
+    task_domains: [code]
+    environment_isolation: in-process
+    applies_when:
+      - heisenbug isolation
+      - native code under rr / time-travel debug
+    breaks_when:
+      - large memory state
+      - non-x86 native (rr is x86-only)
+    tooling_signature:
+      - rr-debugger
+      - hermit
+      - undodb
+    gap_detection:
+      - rr not installed
+      - target arch unsupported
+    composes_with: [capture_replay, differential_testing]
+
+  - id: game_tree_search
+    name: Game-tree / search-based oracle (MCTS / Lean tactic search)
+    brief: Loop runs search whose eval function is the oracle.
+    oracle_type: exit-code
+    determinism_strategy: pure
+    task_domains: [code, RL env]
+    environment_isolation: in-process
+    applies_when:
+      - planning / theorem-proving / constraint-solving
+      - cheap eval function exists
+    breaks_when:
+      - linear tasks
+      - eval is itself expensive
+    tooling_signature:
+      - lean tactic mode
+      - mcts impl + eval
+      - z3 / cvc5
+    gap_detection:
+      - no search framework
+    composes_with: [formal_proof_oracle, model_based_testing]
+
+# ─── Sub-flavor index (slices, not separate rows) ────────────────────────
+sub_flavors:
+  differential_testing:
+    - cross_impl_vs_reference
+    - cross_version
+    - cross_optimization_level
+    - cross_platform
+  snapshot_golden_oracle:
+    - inline_snapshot
+    - external_snapshot_file
+    - mcp_backed_snapshot
