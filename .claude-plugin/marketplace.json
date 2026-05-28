@@ -54,8 +54,8 @@
     {
       "name": "flow",
       "source": "./plugins/flow",
-      "description": "Multi-tracker pipeline (Jira | beads) with pluggable per-stage handlers, immutable ship-event evidence, and a compounding memory layer fed by the reflect stage and recalled at SessionStart. Fire-and-forget mode: /flow spec plans in plan mode, then hands the autonomous implement→PR tail to claude --bg. Claude-Code-only.",
-      "version": "0.13.0"
+      "description": "Fire-and-forget ticket pipeline: /flow <ticket> plans in plan mode (ExitPlanMode = the one gate), then hands the autonomous implement→PR tail to claude --bg; you spec and review the draft PR, managing 3-5 in flight via claude agents. Multi-tracker engine (Jira | beads) with pluggable per-stage handlers, immutable ship-event evidence, and a compounding memory layer (reflect-stage extraction + SessionStart recall). Claude-Code-only.",
+      "version": "0.14.0"
     }
   ]
 }

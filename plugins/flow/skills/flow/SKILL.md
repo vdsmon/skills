@@ -1,45 +1,67 @@
 ---
 name: flow
-description: Multi-tracker pipeline (Jira | beads) with pluggable per-stage handlers, immutable ship-event evidence, and a compounding memory layer fed by the reflect stage and recalled at SessionStart. Workspace-configurable stages via stage-registry.toml + workspace.toml.
-when_to_use: User runs /flow init, /flow do <ticket>, /flow recall <query>, /flow status, /flow recover, /flow sync, or /flow baseline. Also use proactively when opening a worktree under a project that has .flow/.initialized to remind users of the pipeline verbs.
-allowed-tools: Bash(python3:*), Bash(git:*), Bash(bd:*), Bash(jq:*), Bash(cat:*), Bash(mkdir:*), Bash(mktemp:*), Bash(rm:*), Read, Write, Edit, Agent, AskUserQuestion
+description: Fire-and-forget ticket pipeline. /flow <ticket> plans in plan mode (ExitPlanMode = the one gate), then hands the autonomous implement→PR tail to claude --bg; you spec and review the draft PR. Multi-tracker engine (Jira | beads), pluggable handlers, compounding memory.
+when_to_use: User runs /flow <ticket> or /flow spec <ticket> to spec-and-background a ticket, /flow do <ticket> to run the pipeline (foreground or the bg tail), or /flow init, recall, status, recover, sync, baseline. A bare ticket key with no verb defaults to spec. Also use proactively when opening a worktree under a project with .flow/.initialized.
+allowed-tools: Bash(python3:*), Bash(git:*), Bash(bd:*), Bash(jq:*), Bash(cat:*), Bash(mkdir:*), Bash(mktemp:*), Bash(rm:*), Read, Write, Edit, Agent, AskUserQuestion, PushNotification
 ---
 
 # /flow
 
-Multi-tracker pipeline. Tracker is pluggable (Jira | beads). Stages, handlers,
-and memory namespace come from `.flow/workspace.toml` + `stage-registry.toml`.
+Fire-and-forget ticket pipeline. You spec the work and review the PR; the
+machine owns everything in between, unattended.
 
-`/flow init`, `do`, `spec`, `recall` (with `--metric`), `status`, `recover`,
-`sync`, and `baseline` all work end-to-end against bare and skill-bundled
-workspaces. `skill:<name>` handler dispatch, per-subagent-stage reference docs,
-the run lease + canonical snapshot, and the work-mode quality gate are all wired.
+```
+ME                 MACHINE (unattended)                ME
+spec  ─────────→  implement → … → draft PR  ─────────→  PR review
+plan mode         claude --bg, in a worktree           the deliverable
+ExitPlanMode = the one gate                            claude agents = cockpit
+```
 
-**Fire-and-forget model**: `/flow spec <ticket>` runs the read-only front half
-(ticket + plan) in plan mode; `ExitPlanMode` is the one human gate. It then
-seeds a worktree and hands the autonomous tail (implement → … → draft PR) to
-`claude --bg "/flow do <ticket>"`. You manage in-flight tickets with
-`claude agents` and review the resulting draft PRs. See
-`references/background-pipeline.md`. `/flow do` is the executor/tail — it runs
-the full pipeline and resumes at the next pending stage, so it works both
-foreground (one interactive run) and backgrounded in a seeded worktree.
+`/flow <ticket>` (or `/flow spec <ticket>`) runs the read-only front half —
+fetch the ticket, design the plan WITH you, in plan mode. `ExitPlanMode` is the
+single human gate. On approval it seeds a git worktree and hands the autonomous
+tail (implement → code_review → e2e → commit → draft PR) to a backgrounded
+`claude --bg "/flow do <ticket>"`. You run 3–5 at once, manage them with
+`claude agents`, and the deliverable is a draft PR you review. See
+`references/background-pipeline.md`.
+
+`/flow do` is the **executor primitive** — the full pipeline, resuming at the
+next pending stage. `spec` normally backgrounds it in a seeded worktree, but it
+also runs foreground for one interactive pass. Everything else (`recall`,
+`status`, `recover`, `sync`, `baseline`) is a work-state verb around the same
+pipeline.
+
+Built on a multi-tracker engine: the tracker is pluggable (Jira | beads);
+stages, handlers, and the memory namespace come from `.flow/workspace.toml` +
+`stage-registry.toml`. The memory layer compounds across tickets (reflect-stage
+extraction, SessionStart recall). `skill:<name>` handler dispatch, the run lease
++ canonical snapshot, and the work-mode quality gate are all wired.
 
 ## Argument parsing
 
-Match `$ARGUMENTS` against the verb:
+Match the **first whitespace-delimited token** of `$ARGUMENTS` against the verb
+set below by exact string equality. If it equals a verb, route there. If
+`$ARGUMENTS` is empty, print the verb listing. Otherwise — a first token that is
+not any verb (a bare ticket key like `FT-123`, or a beads key like `sync-42`) —
+route to **spec**, taking that positional token as the ticket key (same
+key-resolution as spec step 2). Spec is the default
+because fire-and-forget is the primary path. (Exact-token match is what keeps
+this unambiguous: `sync-42` ≠ the verb `sync`, so a ticket key never collides
+with a verb.)
 
-| Args | Verb |
+| First token | Verb |
 |------|------|
 | `init` (optionally `--reconfigure`, `--resume`) | init |
-| `spec [<ticket>]` | spec (read-only front half → bootstrap → bg handoff) |
-| `do [<ticket>]` | do (executor/tail) |
+| `spec` (optionally `<ticket>`) | spec (read-only front half → bootstrap → bg handoff) |
+| `do` (optionally `<ticket>`, `--notify`) | do (executor primitive / tail) |
 | `recall <query> [--branch X --top-n N]` | recall |
 | `recall --metric tickets-per-week [...]` | metric (recall passthrough) |
-| `status [<ticket>]` | status |
-| `recover [<ticket>]` | recover |
+| `status` (optionally `<ticket>`) | status |
+| `recover` (optionally `<ticket>`) | recover |
 | `sync` | sync |
 | `baseline` | baseline |
 | (empty) | print verb listing |
+| anything else (e.g. `FT-123`) | spec; that positional token is the ticket key |
 
 ## init verb
 
@@ -144,21 +166,52 @@ and the eventual PR review; the machine owns everything between.
    trust`s the worktree. Surface any `WARN` lines (e.g. mise trust failures — the
    tail would die on the first `mise run`).
 
-7. **Hand off the tail.** The bootstrap prints a launch line; surface it:
+7. **Hand off the tail.** The bootstrap prints a `launch_cmd` of the form
+   `cd <worktree> && claude --bg "/flow do $KEY"` — **without** `--notify`. Append
+   `--notify` to its inner command yourself; this appended line is what you
+   surface or run in **both** branches below, so the tail pings you when it lands
+   the PR or hits a blocker (see the do-verb `--notify` note):
    ```bash
-   cd <worktree> && claude --bg "/flow do $KEY"
+   cd <worktree> && claude --bg "/flow do $KEY --notify"
    ```
-   v1: the user fires it (so MCP/keychain auth is confirmed). Manage in-flight
-   tickets with `claude agents` (attach to peek, answer a blocker, detach). The
-   deliverable is a draft PR you review. See `references/background-pipeline.md`.
+   Whether you fire that line or the skill fires it for you is gated on one marker
+   in the main checkout. Probe it first:
+   ```bash
+   test -f .flow/.bg-autofire-enabled && echo AUTOFIRE || echo PRINT
+   ```
+   - **`PRINT` (marker absent, default)** → print the appended line above; the
+     user fires it. This is the v1 path, and it is how bg auth gets proven on the
+     first ticket: a `--bg` session inherits cached MCP / keychain creds, but a
+     claude.ai OAuth refresh can 401 silently (see
+     `references/background-pipeline.md`).
+   - **`AUTOFIRE` (marker present)** → run the appended line above yourself via
+     Bash (zero-touch). Tell the user to create the marker
+     (`touch .flow/.bg-autofire-enabled`) only after one ticket has gone
+     end-to-end and bg auth is confirmed.
+
+   Either way: manage in-flight tickets with `claude agents` (attach to peek,
+   answer a blocker, detach); the deliverable is a draft PR you review. See
+   `references/background-pipeline.md`.
 
 ## do verb
 
-Drive the dispatcher state machine. The dispatcher emits handler-descriptor
-JSON; this prose acts on each descriptor and calls back to `finish`. Run it
-foreground for one interactive pass, or backgrounded (`claude --bg "/flow do
-<ticket>"`) inside a worktree seeded by `/flow spec` — `init` resumes at the
-next pending stage either way, so a seeded worktree picks up at `implement`.
+The **executor primitive**: the full ticket→PR pipeline, driven off the
+dispatcher state machine. `spec` normally backgrounds it in a seeded worktree
+(`claude --bg "/flow do <ticket> --notify"`), where `init` resumes at the next
+pending stage — a spec-seeded worktree picks up at `implement`. It also runs
+foreground for one interactive pass. The dispatcher emits handler-descriptor
+JSON; this prose acts on each descriptor and calls back to `finish`.
+
+**`--notify` (set by the bg handoff).** When `$ARGUMENTS` carries `--notify`,
+the tail pings you via the PushNotification tool at two points: (1) after the
+`create_pr` stage finishes `completed`, with the PR URL (`"flow <KEY>: PR ready
+for review — <url>"`); (2) before any `AskUserQuestion` this run would raise,
+naming the blocker (`"flow <KEY> blocked: <reason> — attach via claude agents"`),
+then it asks (which pauses the bg session). PushNotification is harness-local
+(your terminal, plus your phone if Remote Control is on), so it fires even when
+tracker / MCP auth has died in the bg session — that is how you learn the tail
+stalled. `--notify` is a flag, not the ticket key; ignore it when reading the
+positional in step 1. Foreground `/flow do` without `--notify` stays silent.
 
 1. Resolve the ticket key. If `$ARGUMENTS` had a positional, use it. Else:
    ```bash
@@ -234,8 +287,9 @@ next pending stage either way, so a seeded worktree picks up at `implement`.
         --capture-blobs --cwd .
       ```
       `PLANNED_FILES` comes from `.flow/tickets/<KEY>.md` frontmatter
-      (`planned_files = [...]`). If absent, ask the user. Exit non-zero
-      aborts the stage with status=failed.
+      (`planned_files = [...]`). If absent, ask the user (under `--notify`, push
+      first — see the `--notify` note). Exit non-zero aborts the stage with
+      status=failed.
 
    d. Dispatch by `handler_type`:
 
@@ -331,6 +385,10 @@ next pending stage either way, so a seeded worktree picks up at `implement`.
       included for subagent/skill stages where you captured the response.
       For inline stages, omit unless the inline prose explicitly produced a
       captured output.
+
+      If `--notify` is set and `$STAGE` is `create_pr` with `$STATUS` completed,
+      send the PR-ready PushNotification now (read the PR URL from the captured
+      `create_pr.out`). See the `--notify` note above.
 
    f. Loop back to (a).
 
