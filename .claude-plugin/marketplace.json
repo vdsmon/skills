@@ -43,7 +43,7 @@
       "name": "ship-it",
       "source": "./plugins/ship-it",
       "description": "Push branch, open draft PR, attach reviewers, then wait on CI and the AI code reviewer in a fix loop until green. Ticket-agnostic. Supported stack today: Bitbucket Cloud + bkt CLI + CodeRabbit. Adapter slots reserved for gh + other reviewer bots.",
-      "version": "0.3.1"
+      "version": "0.3.2"
     },
     {
       "name": "loop-finder",
@@ -54,8 +54,8 @@
     {
       "name": "flow",
       "source": "./plugins/flow",
-      "description": "Multi-tracker pipeline (Jira | beads) with pluggable per-stage handlers, immutable ship-event evidence, and a compounding memory layer fed by the reflect stage and recalled at SessionStart. Workspace-configurable stages via stage-registry.toml + workspace.toml. Claude-Code-only (SessionStart hook + dynamic context injection wired in later phases).",
-      "version": "0.12.0"
+      "description": "Multi-tracker pipeline (Jira | beads) with pluggable per-stage handlers, immutable ship-event evidence, and a compounding memory layer fed by the reflect stage and recalled at SessionStart. Fire-and-forget mode: /flow spec plans in plan mode, then hands the autonomous implement→PR tail to claude --bg. Claude-Code-only.",
+      "version": "0.13.0"
     }
   ]
 }

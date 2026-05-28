@@ -1,0 +1,223 @@
+"""Tests for flow_worktree.py — the post-approval worktree bootstrap.
+
+git/mise are injected via a fake runner; the worktree dir is materialized by the
+fake `git worktree add` (simulating a checkout where .flow is gitignored, so the
+bootstrap must copy config in).
+"""
+
+from __future__ import annotations
+
+import subprocess
+from pathlib import Path
+
+import flow_worktree as fw
+import state
+
+
+def _main_checkout(tmp: Path, *, with_mise: bool = False, stages: list[str] | None = None) -> Path:
+    stages = stages or ["ticket", "plan", "implement", "commit", "reflect"]
+    main = tmp / "main"
+    flow = main / ".flow"
+    flow.mkdir(parents=True)
+    (flow / ".initialized").touch()
+    lines = [
+        "[tracker]",
+        'backend = "jira"',
+        "[tracker.jira]",
+        'cloud_id = "x"',
+        'project_key = "FT"',
+        "[pipeline]",
+        "stages = [" + ", ".join(f'"{s}"' for s in stages) + "]",
+        "[memory]",
+        'namespace = "FT"',
+        "compounding = true",
+    ]
+    (flow / "workspace.toml").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    (main / ".env").write_text("SECRET=1\n", encoding="utf-8")
+    (main / ".claude").mkdir()
+    (main / ".claude" / "settings.json").write_text("{}", encoding="utf-8")
+    if with_mise:
+        (main / "mise.toml").write_text("[tools]\npython = '3.12'\n", encoding="utf-8")
+    return main
+
+
+def _fake_runner(
+    *,
+    worktree_has_flow: bool = False,
+    mise_rc: int = 0,
+    calls: list | None = None,
+    main: Path | None = None,
+) -> fw.Runner:
+    def run(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
+        if calls is not None:
+            calls.append(args)
+        if args[:3] == ["git", "worktree", "add"]:
+            wt = Path(args[5])  # git worktree add -b <branch> <path> <base>
+            wt.mkdir(parents=True, exist_ok=True)
+            # real `git worktree add` checks out committed files (e.g. mise.toml)
+            if main is not None:
+                for committed in ("mise.toml", ".mise.toml"):
+                    if (main / committed).exists():
+                        (wt / committed).write_text(
+                            (main / committed).read_text(), encoding="utf-8"
+                        )
+            if worktree_has_flow:
+                (wt / ".flow").mkdir()
+                (wt / ".flow" / "workspace.toml").write_text(
+                    '[tracker]\nbackend = "jira"\n[pipeline]\nstages = ["ticket", "plan", "implement"]\n[memory]\nnamespace = "FT"\n',
+                    encoding="utf-8",
+                )
+            return subprocess.CompletedProcess(args, 0, "", "")
+        if args[:2] == ["git", "rev-parse"]:
+            return subprocess.CompletedProcess(args, 0, "wtsha0001\n", "")
+        if args[:2] == ["mise", "trust"]:
+            return subprocess.CompletedProcess(
+                args, mise_rc, "", "" if mise_rc == 0 else "untrusted"
+            )
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    return run
+
+
+def _plan_file(tmp: Path, text: str = "Goal: do the thing.\nFiles: a.py\n") -> Path:
+    p = tmp / "plan.md"
+    p.write_text(text, encoding="utf-8")
+    return p
+
+
+def _run(tmp: Path, main: Path, **kw):
+    wt = kw.pop("worktree", tmp / "wt")
+    return fw.bootstrap(
+        ticket="FT-1",
+        plan_from=_plan_file(tmp),
+        base="main",
+        branch="feature/FT-1-thing",
+        main_root=main,
+        worktree_override=str(wt),
+        runner=kw.pop("runner", _fake_runner()),
+        **kw,
+    )
+
+
+# ─── _set_memory_root (pure) ──────────────────────────────────────────────────
+
+
+def test_set_memory_root_inserts_under_memory() -> None:
+    toml = '[tracker]\nbackend = "jira"\n[memory]\nnamespace = "FT"\ncompounding = true\n'
+    out = fw._set_memory_root(toml, "/abs/main/.flow")
+    assert 'root = "/abs/main/.flow"' in out
+    assert out.index("[memory]") < out.index("root =")
+    # tracker section untouched
+    assert "[tracker]" in out and 'backend = "jira"' in out
+
+
+def test_set_memory_root_replaces_existing() -> None:
+    toml = '[memory]\nnamespace = "FT"\nroot = "/old/.flow"\n'
+    out = fw._set_memory_root(toml, "/new/.flow")
+    assert 'root = "/new/.flow"' in out
+    assert "/old/.flow" not in out
+
+
+def test_set_memory_root_memory_is_last_table() -> None:
+    toml = '[tracker]\nbackend = "jira"\n[memory]\nnamespace = "FT"\n'
+    out = fw._set_memory_root(toml, "/x/.flow")
+    assert 'root = "/x/.flow"' in out
+
+
+# ─── bootstrap ────────────────────────────────────────────────────────────────
+
+
+def test_seeds_plan_completed_with_output_path(tmp_path: Path) -> None:
+    main = _main_checkout(tmp_path)
+    res = _run(tmp_path, main)
+    td = Path(res["worktree"]) / ".flow" / "runs" / "FT-1"
+    ts, code = state.read(td)
+    assert code == 0 and ts is not None
+    assert ts.stages["plan"].status == "completed"
+    plan_out = td / "stages" / "plan.out"
+    assert ts.stages["plan"].output_path == str(plan_out)
+    assert "Goal: do the thing." in plan_out.read_text(encoding="utf-8")
+    # ticket left pending so the bg tail self-fetches ticket.json + frontmatter
+    assert ts.stages["ticket"].status == "pending"
+
+
+def test_copies_gitignored_config(tmp_path: Path) -> None:
+    main = _main_checkout(tmp_path)
+    res = _run(tmp_path, main)
+    wt = Path(res["worktree"])
+    assert (wt / ".env").read_text(encoding="utf-8") == "SECRET=1\n"
+    assert (wt / ".claude" / "settings.json").exists()
+    assert ".env" in res["copied"] and ".claude" in res["copied"]
+
+
+def test_sets_memory_root_to_main_flow(tmp_path: Path) -> None:
+    main = _main_checkout(tmp_path)
+    res = _run(tmp_path, main)
+    wt_ws = (Path(res["worktree"]) / ".flow" / "workspace.toml").read_text(encoding="utf-8")
+    assert f'root = "{main.resolve() / ".flow"}"' in wt_ws
+
+
+def test_prepopulates_commit_frontmatter(tmp_path: Path) -> None:
+    main = _main_checkout(tmp_path)
+    res = _run(tmp_path, main, commit_type="feat", commit_summary="add the thing")
+    fm = (Path(res["worktree"]) / ".flow" / "tickets" / "FT-1.md").read_text(encoding="utf-8")
+    assert "commit_type" in fm and "feat" in fm
+    assert "add the thing" in fm
+
+
+def test_mise_trust_invoked_when_mise_present(tmp_path: Path) -> None:
+    main = _main_checkout(tmp_path, with_mise=True)
+    calls: list = []
+    _run(tmp_path, main, runner=_fake_runner(calls=calls, main=main))
+    assert any(c[:2] == ["mise", "trust"] for c in calls)
+
+
+def test_mise_trust_failure_is_warning_not_fatal(tmp_path: Path) -> None:
+    main = _main_checkout(tmp_path, with_mise=True)
+    res = _run(tmp_path, main, runner=_fake_runner(mise_rc=1, main=main))
+    assert any("mise trust failed" in w for w in res["warnings"])
+    # still seeded successfully
+    td = Path(res["worktree"]) / ".flow" / "runs" / "FT-1"
+    ts, _ = state.read(td)
+    assert ts is not None and ts.stages["plan"].status == "completed"
+
+
+def test_works_when_worktree_already_has_committed_flow(tmp_path: Path) -> None:
+    # committed-.flow case: the worktree already carries workspace.toml; bootstrap
+    # still sets memory_root and seeds state without clobbering it.
+    main = _main_checkout(tmp_path)
+    res = _run(tmp_path, main, runner=_fake_runner(worktree_has_flow=True))
+    wt_ws = (Path(res["worktree"]) / ".flow" / "workspace.toml").read_text(encoding="utf-8")
+    assert "root =" in wt_ws
+
+
+def test_launch_cmd_targets_worktree(tmp_path: Path) -> None:
+    main = _main_checkout(tmp_path)
+    res = _run(tmp_path, main)
+    assert res["launch_cmd"] == f'cd {res["worktree"]} && claude --bg "/flow do FT-1"'
+
+
+def test_cli_missing_main_workspace_exits_2(tmp_path: Path, monkeypatch, capsys) -> None:
+    # main has no .flow/workspace.toml -> _ConfigError -> exit 2
+    main = tmp_path / "bare"
+    main.mkdir()
+    monkeypatch.setattr(fw, "_default_runner", lambda: _fake_runner())
+    plan = _plan_file(tmp_path)
+    rc = fw.cli_main(
+        [
+            "create",
+            "--ticket",
+            "FT-1",
+            "--plan-from",
+            str(plan),
+            "--base",
+            "main",
+            "--branch",
+            "feature/FT-1-x",
+            "--main-root",
+            str(main),
+            "--worktree-path",
+            str(tmp_path / "wt"),
+        ]
+    )
+    assert rc == 2

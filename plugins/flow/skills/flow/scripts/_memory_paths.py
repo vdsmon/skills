@@ -35,8 +35,30 @@ def resolve_namespace(workspace_root: Path) -> str:
     return namespace
 
 
+def resolve_memory_base(workspace_root: Path) -> Path:
+    """Resolve the base dir that holds the memory store (the `.flow` to write under).
+
+    Reads `.flow/workspace.toml` [memory].root when set — an absolute path to a
+    shared `.flow` dir — so a git-worktree run (cwd = the worktree) writes into the
+    main checkout's store instead of fragmenting per worktree. Falls back to the
+    workspace-local `.flow` when unset, keeping non-worktree runs byte-identical.
+    """
+    path = workspace_root / ".flow" / "workspace.toml"
+    if path.exists():
+        try:
+            data = tomllib.loads(path.read_text(encoding="utf-8"))
+        except tomllib.TOMLDecodeError:
+            data = {}
+        memory = data.get("memory")
+        if isinstance(memory, dict):
+            root = memory.get("root")
+            if isinstance(root, str) and root:
+                return Path(root).expanduser()
+    return workspace_root / ".flow"
+
+
 def namespace_root(workspace_root: Path, namespace: str) -> Path:
-    return workspace_root / ".flow" / namespace
+    return resolve_memory_base(workspace_root) / namespace
 
 
 def knowledge_path(workspace_root: Path, namespace: str) -> Path:

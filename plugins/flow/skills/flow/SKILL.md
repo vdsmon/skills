@@ -10,11 +10,19 @@ allowed-tools: Bash(python3:*), Bash(git:*), Bash(bd:*), Bash(jq:*), Bash(cat:*)
 Multi-tracker pipeline. Tracker is pluggable (Jira | beads). Stages, handlers,
 and memory namespace come from `.flow/workspace.toml` + `stage-registry.toml`.
 
-This skill is **feature-complete** (phases 1-8d): `/flow init`, `do`, `recall`
-(with `--metric`), `status`, `recover`, `sync`, and `baseline` all work
-end-to-end against bare and skill-bundled workspaces. `skill:<name>` handler
-dispatch, per-subagent-stage reference docs, the run lease + canonical snapshot,
-and the work-mode quality gate are all wired.
+`/flow init`, `do`, `spec`, `recall` (with `--metric`), `status`, `recover`,
+`sync`, and `baseline` all work end-to-end against bare and skill-bundled
+workspaces. `skill:<name>` handler dispatch, per-subagent-stage reference docs,
+the run lease + canonical snapshot, and the work-mode quality gate are all wired.
+
+**Fire-and-forget model**: `/flow spec <ticket>` runs the read-only front half
+(ticket + plan) in plan mode; `ExitPlanMode` is the one human gate. It then
+seeds a worktree and hands the autonomous tail (implement → … → draft PR) to
+`claude --bg "/flow do <ticket>"`. You manage in-flight tickets with
+`claude agents` and review the resulting draft PRs. See
+`references/background-pipeline.md`. `/flow do` is the executor/tail — it runs
+the full pipeline and resumes at the next pending stage, so it works both
+foreground (one interactive run) and backgrounded in a seeded worktree.
 
 ## Argument parsing
 
@@ -23,7 +31,8 @@ Match `$ARGUMENTS` against the verb:
 | Args | Verb |
 |------|------|
 | `init` (optionally `--reconfigure`, `--resume`) | init |
-| `do [<ticket>]` | do |
+| `spec [<ticket>]` | spec (read-only front half → bootstrap → bg handoff) |
+| `do [<ticket>]` | do (executor/tail) |
 | `recall <query> [--branch X --top-n N]` | recall |
 | `recall --metric tickets-per-week [...]` | metric (recall passthrough) |
 | `status [<ticket>]` | status |
@@ -80,10 +89,70 @@ Match `$ARGUMENTS` against the verb:
    rm -f "$ANSWERS"
    ```
 
+## spec verb
+
+The read-only front half of the fire-and-forget model: fetch the ticket, design
+the plan WITH the user, then seed a worktree and hand the autonomous tail to a
+backgrounded `/flow do`. This is the human/machine boundary — you own the spec
+and the eventual PR review; the machine owns everything between.
+
+1. **Be in plan mode.** The front half must perform no writes. If you are not
+   already in plan mode, call `EnterPlanMode` before doing anything else. (Plan
+   mode also makes `ExitPlanMode` the natural approval gate.)
+
+2. Resolve the ticket key (positional `$ARGUMENTS`, else
+   `branch_ticket.py --workspace-root .`).
+
+3. Fetch ticket context **into the conversation** — do NOT write files (plan
+   mode forbids it):
+   ```bash
+   python3 ${CLAUDE_SKILL_DIR}/scripts/tracker_cli.py --workspace-root . get --key "$KEY"
+   ```
+   Read the stdout. Explore the codebase read-only (Read/Grep/Glob, or a
+   subagent). `recall` is auto-injected at SessionStart; weave relevant prior
+   knowledge into the plan.
+
+4. Iterate the implementation plan with the user: goal, files to change,
+   approach, test strategy, risks. This is the same depth a `subagent:Plan`
+   handler would produce — but interactive, so the user shapes it.
+
+5. **`ExitPlanMode`** with the plan = Gate 1, the one human gate. On approval you
+   return to normal mode.
+
+6. (Normal mode) Persist the approved plan and bootstrap the worktree:
+   ```bash
+   PLAN=/tmp/flow-plan-$KEY.md   # write the approved plan text here (Write tool)
+   python3 ${CLAUDE_SKILL_DIR}/scripts/flow_worktree.py create \
+     --ticket "$KEY" \
+     --plan-from "$PLAN" \
+     --base "$(git rev-parse --abbrev-ref HEAD)" \
+     --branch "feature/$KEY-<slug>" \
+     --main-root . \
+     --commit-type <feat|fix|chore|...> \
+     --commit-summary "<one-line summary from the plan>"
+   ```
+   Derive `<slug>` from the ticket summary. The bootstrap seeds state (plan
+   pre-completed, ticket left pending), injects the plan, points the worktree's
+   memory store at this checkout's `.flow` (shared, so memory compounds across
+   worktrees), copies gitignored config, and `mise trust`s the worktree. Surface
+   any `WARN` lines (e.g. mise trust failures — the tail would die on the first
+   `mise run`).
+
+7. **Hand off the tail.** The bootstrap prints a launch line; surface it:
+   ```bash
+   cd <worktree> && claude --bg "/flow do $KEY"
+   ```
+   v1: the user fires it (so MCP/keychain auth is confirmed). Manage in-flight
+   tickets with `claude agents` (attach to peek, answer a blocker, detach). The
+   deliverable is a draft PR you review. See `references/background-pipeline.md`.
+
 ## do verb
 
 Drive the dispatcher state machine. The dispatcher emits handler-descriptor
-JSON; this prose acts on each descriptor and calls back to `finish`.
+JSON; this prose acts on each descriptor and calls back to `finish`. Run it
+foreground for one interactive pass, or backgrounded (`claude --bg "/flow do
+<ticket>"`) inside a worktree seeded by `/flow spec` — `init` resumes at the
+next pending stage either way, so a seeded worktree picks up at `implement`.
 
 1. Resolve the ticket key. If `$ARGUMENTS` had a positional, use it. Else:
    ```bash

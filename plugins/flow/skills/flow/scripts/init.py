@@ -103,6 +103,10 @@ class InitConfig:
     handler_overrides: dict[str, str] = field(default_factory=dict)
     memory_namespace: str | None = None
     memory_compounding: bool = True
+    # Absolute path to a shared `.flow` dir. When set, written as [memory].root so a
+    # git-worktree run shares the main checkout's store instead of fragmenting. None
+    # -> store lives in the workspace-local `.flow` (the default, non-worktree case).
+    memory_root: str | None = None
     # Override the default checkpoint-manifest location (tests).
     checkpoint_manifest_path: Path | None = None
     # personal | work | scratch. None -> derived from backend. The backend
@@ -372,6 +376,8 @@ def _render_workspace_toml(
     lines.append('recall_by = ["branch", "current-ticket", "ready-tickets"]')
     lines.append("recall_top_n = 5")
     lines.append(f"compounding = {str(config.memory_compounding).lower()}")
+    if config.memory_root is not None:
+        lines.append(f"root = {_toml_escape(config.memory_root)}")
     lines.append("")
     return "\n".join(lines)
 
@@ -988,6 +994,7 @@ def _build_config_from_args(args: argparse.Namespace) -> InitConfig:
         handler_overrides=overrides,
         memory_namespace=args.memory_namespace or None,
         memory_compounding=compounding,
+        memory_root=args.memory_root or None,
         checkpoint_mode=args.checkpoint_mode or None,
         checkpoint_manifest_path=_coerce_checkpoint_path(args.checkpoint_manifest),
         bundle_search_roots=_coerce_search_roots(args.bundle_search_roots),
@@ -1022,6 +1029,12 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 
     parser.add_argument("--memory-namespace", default=None)
     parser.add_argument("--memory-compounding", default=None)
+    parser.add_argument(
+        "--memory-root",
+        default=None,
+        help="absolute path to a shared .flow dir; written as [memory].root so a "
+        "worktree run shares the main checkout's store",
+    )
 
     parser.add_argument("--config", default=None, help="path to JSON file with all answers")
     parser.add_argument(
