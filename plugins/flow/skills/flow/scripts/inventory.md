@@ -261,6 +261,102 @@ Pre-flight refusal:
    `recall_top_n`.
 6. For backend=beads: `bd ready --json` returns parseable JSON.
 
+## Beads CLI surface (phase 6)
+
+`bd` is the local-only beads tracker (v1.0.4). JSON output is supported globally
+via `--json`. Adapter wraps a subprocess runner; tests inject a fake.
+
+### Subcommands used by BeadsAdapter
+
+| bd subcommand           | flags used                                         | --json | mutates | Protocol method(s)                          |
+|-------------------------|----------------------------------------------------|--------|---------|---------------------------------------------|
+| `bd version`            | —                                                  | ✗      | ✗       | constructor preflight                       |
+| `bd show <key>`         | `--json`                                           | ✓      | ✗       | `get`, `state`, `is_shipped`, post-write verify |
+| `bd list`               | `--status`, `--assignee`, `--json`                 | ✓      | ✗       | `list_assigned`                             |
+| `bd dep list <key>`     | `--json`                                           | ✓      | ✗       | `list_linked`                               |
+| `bd create`             | `--title`, `--description`, `--type`, `--parent`, `--labels`, `--assignee`, `--json` | ✓ | ✓ | `create` |
+| `bd update <key>`       | `--title`, `--description`, `--labels`, `--assignee`, `--status` | ✗ | ✓ | setters, `transition` (non-close) |
+| `bd close <key>`        | —                                                  | ✗      | ✓       | `transition` to closed                      |
+| `bd reopen <key>`       | —                                                  | ✗      | ✓       | `transition` to open from closed            |
+| `bd priority <key> <n>` | —                                                  | ✗      | ✓       | `set_priority`                              |
+| `bd comment <key>`      | `--stdin`                                          | ✗      | ✓       | `comment` (markdown via stdin)              |
+| `bd dep add <a> <b>`    | `--type`                                           | ✗      | ✓       | `link`                                      |
+| `git log`               | `--grep=<key>`, `--pretty=format:%H`, `-n 1`       | ✗      | ✗       | `is_shipped` evidence probe (read-only)     |
+
+### State normalization
+
+| bd native      | NORMALIZED_STATES |
+|----------------|-------------------|
+| open           | open              |
+| in_progress    | in_progress       |
+| blocked        | blocked           |
+| deferred       | cancelled         |
+| closed         | done              |
+
+Unknown natives default to `open` with an `adapter_mapping_diagnostic` flagging
+the fallback so dashboards can surface the unfamiliar status.
+
+### Transition synthesis
+
+bd has no `list_transitions` subcommand; the workflow is "any state → any other
+state". Adapter advertises the legal target set per current native status:
+
+| current native | available targets                 |
+|----------------|-----------------------------------|
+| open           | in_progress, blocked, closed      |
+| in_progress    | open, blocked, closed             |
+| blocked        | open, in_progress, closed         |
+| deferred       | open, closed                      |
+| closed         | open  (via `bd reopen`)           |
+
+`Transition.id` is `"bd:to:<target>"`. The `transition` method routes:
+- `bd:to:closed` → `bd close <key>`
+- `bd:to:open` from `closed` → `bd reopen <key>`; otherwise `bd update --status open`
+- everything else → `bd update --status <target>`
+
+Postcondition: re-read `bd show --json` and assert the normalized state moved
+to the requested target.
+
+### Stderr → failure_kind classification
+
+| stderr pattern                         | TransitionFailureKind |
+|----------------------------------------|-----------------------|
+| `Error: no beads database found`       | wrong_source_state    |
+| `Error: issue not found`               | wrong_source_state    |
+| `permission denied` / `forbidden`      | permission_denied     |
+| anything else (non-zero exit)          | validator_failed      |
+
+### Capability advertisement
+
+14 entries; only `comments_markdown` (bd accepts markdown via `bd comment
+--stdin`) and `resolutions` (bd records `closure_reason` on `bd close`) flip
+true. Every other capability is false → `set_sprint`, `add_watcher`,
+`set_fix_versions`, `set_components`, `set_epic_link`, `board_rank`,
+`set_custom_field`, `get_attachments`, `upload_attachment` raise
+`NotSupported`.
+
+### is_shipped contract (PURE READ; never writes under `.flow/`)
+
+1. `bd show <key> --json`.
+2. If `status != closed` → `not_shipped` (evidence None, source none).
+3. If closed:
+   - `git log --grep=<key> --pretty=format:%H -n 1`.
+   - Commit found → `not_yet_observed` (evidence has tracker, status,
+     commit_sha, closure_reason, closed_at; source `live_backend_query`).
+   - No commit → `indeterminate` (evidence has tracker, status, commit_sha=null;
+     source none).
+4. Workspace's `observe-ship-event.py` (phase ≥7) is the writer that promotes
+   `not_yet_observed` into a frozen `<key>.json` ship-event record. Adapter
+   never returns `state="shipped"` — that's the frozen-file reader's domain.
+
+### Transient-failure handling (deferred to phase 8)
+
+Plan line 990 calls for transient `bd` failures (network blips, lock
+contention) to append to `.flow/pending-mutations.jsonl` so `/flow sync` can
+retry. `pending-mutations.py` is phase-8 work; the adapter currently surfaces
+the error as `_BeadsError(TrackerError)` and lets the dispatcher (phase 7)
+decide.
+
 ## Out-of-scope for phase 3
 
 - `comments_markdown=true` (Jira would need a separate markdown wrapper; ADF

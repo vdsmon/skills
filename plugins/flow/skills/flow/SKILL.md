@@ -8,7 +8,7 @@ when_to_use: User runs /flow init, /flow do <ticket>, /flow plan, /flow implemen
 
 Pipeline router. Tracker is pluggable (Jira | beads). Stages, handlers, memory namespace come from `.flow/workspace.toml` + `stage-registry.toml`.
 
-This skill is currently a **skeleton** (build phases 1-4 of the implementation plan complete). The tracker Protocol, factory, JiraAdapter, bundle discovery, and transactional init wizard exist; BeadsAdapter, dispatcher, and memory layer land in later phases.
+This skill is currently a **skeleton** (build phases 1-4 + 6 of the implementation plan complete; phase 5 + 7-12 still pending). The tracker Protocol, factory, both adapters (Jira + beads), bundle discovery, and transactional init wizard exist; SKILL.md MCP-call refactor (lands with the dispatcher), dispatcher, helper scripts, and memory layer land in later phases.
 
 ## Verbs (planned surface)
 
@@ -24,4 +24,4 @@ Canonical stages live in `stage-registry.toml`. Workspaces pick a subset via `[p
 
 ## Status
 
-Phases 1-4 complete: `plugin.json`, `stage-registry.toml`, `scripts/tracker.py` (Protocol + factory + types), `scripts/tracker_jira.py` (full JiraAdapter — stdlib urllib, env-var auth, ADF-only comments, error-classification per `scripts/inventory.md`), `scripts/bundle_discover.py` (`.flow-bundle.toml` schema v1 walker + validator), `scripts/init.py` (pure-CLI transactional workspace bootstrap: `.flow/.initializing` → atomic rename to `.flow/.initialized` only after postconditions; `--resume` reads `.flow/.init-progress`; bundle compose handles bare/recommended/custom with conflict-refusal). BeadsAdapter, dispatcher, memory layer = not yet built. Do not call verbs against this skill until phase ≥7.
+Phases 1-4 + 6 complete: `plugin.json`, `stage-registry.toml`, `scripts/tracker.py` (Protocol + factory + types), `scripts/tracker_jira.py` (full JiraAdapter — stdlib urllib, env-var auth, ADF-only comments, error-classification per `scripts/inventory.md`), `scripts/tracker_beads.py` (full BeadsAdapter — stdlib subprocess wrapper around `bd` CLI v1.0.0+, comments-via-stdin markdown, postcondition-verify-after-write, `is_shipped` PURE READ via `bd show` + `git log --grep=<key>`), `scripts/bundle_discover.py` (`.flow-bundle.toml` schema v1 walker + validator), `scripts/init.py` (pure-CLI transactional workspace bootstrap: `.flow/.initializing` → atomic rename to `.flow/.initialized` only after postconditions; `--resume` reads `.flow/.init-progress`; bundle compose handles bare/recommended/custom with conflict-refusal). Dispatcher + helper scripts + memory layer = not yet built. Do not call verbs against this skill until phase ≥7.

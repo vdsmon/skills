@@ -52,19 +52,62 @@ def test_make_tracker_jira_without_creds_raises_config_error(
         t.make_tracker({"backend": "jira", "cloud_id": "x", "project_key": "FT"})
 
 
-def test_make_tracker_beads_constructs_stub_then_raises_not_implemented() -> None:
-    # Phase 1-2: the Beads adapter is a stub that raises at construction.
-    # Phase 6 will replace this; the assertion flips at that point.
-    with pytest.raises(NotImplementedError, match="phase 6"):
+def test_make_tracker_beads_constructs_with_runner(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Phase 6: the factory should pass through to BeadsAdapter, which preflights
+    # `bd --version`. With no live bd available it would raise; here we replace
+    # the default runner with one that reports a recent version.
+    import subprocess
+
+    import tracker_beads as tb
+
+    def fake_runner(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        del args, kwargs
+        return subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="bd version 1.0.4 (test)\n", stderr=""
+        )
+
+    monkeypatch.setattr(tb, "_default_runner", lambda: fake_runner)
+    adapter = t.make_tracker({"backend": "beads", "prefix": "safemic"})
+    assert adapter.backend == "beads"
+    assert any(c["name"] == "comments_markdown" and c["supported"] for c in adapter.capabilities)
+
+
+def test_make_tracker_beads_refuses_when_bd_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    import tracker_beads as tb
+
+    def fake_runner(args: list[str], **kwargs: Any) -> Any:
+        del args, kwargs
+        raise FileNotFoundError("bd not on PATH")
+
+    monkeypatch.setattr(tb, "_default_runner", lambda: fake_runner)
+    with pytest.raises(t.TrackerConfigError, match="bd CLI not found"):
         t.make_tracker({"backend": "beads", "prefix": "safemic"})
 
 
-def test_known_backends_enum_matches_factory_branches() -> None:
+def test_known_backends_enum_matches_factory_branches(monkeypatch: pytest.MonkeyPatch) -> None:
     # If KNOWN_BACKENDS grows, the factory MUST grow with it. This test catches
     # a future drift where a new backend is added to the enum but not wired in.
+    # Stub credentials + runners so the live preflight doesn't escape the test.
+    monkeypatch.setenv("ATLASSIAN_EMAIL", "x@x")
+    monkeypatch.setenv("ATLASSIAN_API_TOKEN", "fake")
+
+    import subprocess
+
+    import tracker_beads as tb
+
+    def fake_runner(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        del args, kwargs
+        return subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="bd version 1.0.4 (test)\n", stderr=""
+        )
+
+    monkeypatch.setattr(tb, "_default_runner", lambda: fake_runner)
     for backend in t.KNOWN_BACKENDS:
-        with pytest.raises((NotImplementedError, t.TrackerConfigError)):
-            t.make_tracker({"backend": backend})
+        # Construction should succeed for every wired backend.
+        adapter = t.make_tracker(
+            {"backend": backend, "cloud_id": "x", "project_key": "FT", "prefix": "p"}
+        )
+        assert adapter.backend == backend
 
 
 # ─── Exception hierarchy ─────────────────────────────────────────────────────
