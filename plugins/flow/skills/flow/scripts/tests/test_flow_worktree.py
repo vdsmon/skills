@@ -165,6 +165,18 @@ def test_prepopulates_commit_frontmatter(tmp_path: Path) -> None:
     assert "add the thing" in fm
 
 
+def test_seeds_planned_files_as_list(tmp_path: Path) -> None:
+    # the implement pre-hook reads frontmatter planned_files; without it the bg tail
+    # would pause to ask. Confirm it lands as a TOML array (a list when parsed back).
+    import ticket_frontmatter
+
+    main = _main_checkout(tmp_path)
+    res = _run(tmp_path, main, planned_files=["src/a.py", "src/b.py"])
+    fm_path = Path(res["worktree"]) / ".flow" / "tickets" / "FT-1.md"
+    parsed = ticket_frontmatter.read(fm_path)
+    assert parsed["planned_files"] == ["src/a.py", "src/b.py"]
+
+
 def test_mise_trust_invoked_when_mise_present(tmp_path: Path) -> None:
     main = _main_checkout(tmp_path, with_mise=True)
     calls: list = []

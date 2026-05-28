@@ -63,9 +63,11 @@ ends at `commit` (committed branch, no PR).
 
 A backgrounded session cannot answer `AskUserQuestion` live, so it **pauses** and
 surfaces as needs-input in `claude agents`. Attach, answer, detach — the run
-resumes. To minimize pauses, the bootstrap pre-populates `commit_type` +
-`commit_summary` in frontmatter so the commit stage does not prompt. Other tail
-stages avoid prompts; any genuine ambiguity pauses rather than guessing.
+resumes. To minimize pauses, the bootstrap pre-populates the two frontmatter keys
+the tail's prose would otherwise ask for: `planned_files` (read by the implement
+pre-handler hook that records the diff baseline, and reused by the commit stage)
+and `commit_type` + `commit_summary` (read by the commit stage). Other tail stages
+avoid prompts; any genuine ambiguity pauses rather than guessing.
 
 ## Validate before scaling (open risks)
 

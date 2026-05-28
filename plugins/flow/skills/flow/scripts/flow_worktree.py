@@ -192,6 +192,7 @@ def bootstrap(
     main_root: Path,
     worktree_override: str | None = None,
     extra_copy: list[str] | None = None,
+    planned_files: list[str] | None = None,
     commit_type: str | None = None,
     commit_summary: str | None = None,
     mise_trust: bool = True,
@@ -219,6 +220,11 @@ def bootstrap(
     run_id = _seed_state(worktree, ticket, plan_text, head_sha)
 
     fm_updates: dict[str, str] = {}
+    if planned_files:
+        # the implement pre-handler hook (records_diff_baseline) reads frontmatter
+        # `planned_files`; seeding it here keeps the bg tail from pausing to ask.
+        # Pass a TOML-array literal so ticket_frontmatter coerces it to a list.
+        fm_updates["planned_files"] = "[" + ", ".join(f'"{f}"' for f in planned_files) + "]"
     if commit_type:
         fm_updates["commit_type"] = commit_type
     if commit_summary:
@@ -250,6 +256,12 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--main-root", default=".", help="path to the main checkout (default cwd)")
     p.add_argument("--worktree-path", default=None, help="override the derived worktree path")
     p.add_argument("--copy", default=None, help="extra comma-separated gitignored paths to copy")
+    p.add_argument(
+        "--planned-files",
+        default=None,
+        help="comma-separated files the plan will touch; seeds frontmatter planned_files "
+        "so the implement pre-hook + commit stage don't pause to ask",
+    )
     p.add_argument("--commit-type", default=None)
     p.add_argument("--commit-summary", default=None)
     p.add_argument("--no-mise-trust", action="store_true")
@@ -261,6 +273,11 @@ def cli_main(argv: list[str]) -> int:
 
     args = _parse_args(argv)
     extra = [s.strip() for s in args.copy.split(",")] if args.copy else []
+    planned = (
+        [s.strip() for s in args.planned_files.split(",") if s.strip()]
+        if args.planned_files
+        else []
+    )
     try:
         result = bootstrap(
             ticket=args.ticket,
@@ -270,6 +287,7 @@ def cli_main(argv: list[str]) -> int:
             main_root=Path(args.main_root),
             worktree_override=args.worktree_path,
             extra_copy=extra,
+            planned_files=planned,
             commit_type=args.commit_type,
             commit_summary=args.commit_summary,
             mise_trust=not args.no_mise_trust,

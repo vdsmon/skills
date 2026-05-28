@@ -119,7 +119,9 @@ and the eventual PR review; the machine owns everything between.
 5. **`ExitPlanMode`** with the plan = Gate 1, the one human gate. On approval you
    return to normal mode.
 
-6. (Normal mode) Persist the approved plan and bootstrap the worktree:
+6. (Normal mode) Persist the approved plan and bootstrap the worktree. The tail
+   branches off whatever `--base` you pass, so run `/flow spec` from your
+   integration branch (the example uses the current branch):
    ```bash
    PLAN=/tmp/flow-plan-$KEY.md   # write the approved plan text here (Write tool)
    python3 ${CLAUDE_SKILL_DIR}/scripts/flow_worktree.py create \
@@ -128,15 +130,19 @@ and the eventual PR review; the machine owns everything between.
      --base "$(git rev-parse --abbrev-ref HEAD)" \
      --branch "feature/$KEY-<slug>" \
      --main-root . \
+     --planned-files "<comma-separated files the plan will touch>" \
      --commit-type <feat|fix|chore|...> \
      --commit-summary "<one-line summary from the plan>"
    ```
-   Derive `<slug>` from the ticket summary. The bootstrap seeds state (plan
-   pre-completed, ticket left pending), injects the plan, points the worktree's
-   memory store at this checkout's `.flow` (shared, so memory compounds across
-   worktrees), copies gitignored config, and `mise trust`s the worktree. Surface
-   any `WARN` lines (e.g. mise trust failures — the tail would die on the first
-   `mise run`).
+   Derive `<slug>` from the ticket summary, and `--planned-files` from the plan's
+   "files to change" list. The bootstrap seeds state (plan pre-completed, ticket
+   left pending), injects the plan, stamps `planned_files` + `commit_type` +
+   `commit_summary` into frontmatter (so the implement pre-hook and the commit
+   stage never pause to ask the user — the whole point of an unattended tail),
+   points the worktree's memory store at this checkout's `.flow` (shared, so
+   memory compounds across worktrees), copies gitignored config, and `mise
+   trust`s the worktree. Surface any `WARN` lines (e.g. mise trust failures — the
+   tail would die on the first `mise run`).
 
 7. **Hand off the tail.** The bootstrap prints a launch line; surface it:
    ```bash
