@@ -218,10 +218,10 @@ JSON; this prose acts on each descriptor and calls back to `finish`.
            - Exit 1 → skill not installed. Surface "handler
              `<handler_string>` not installed; `/flow init --reconfigure`
              or install the skill." Set `STATUS=failed` and fall through to
-             step (f) to record the failure in state.json (do not bare-break
+             step (e) to record the failure in state.json (do not bare-break
              the loop).
            - Exit 2 → skill installed but manifest invalid. Surface the
-             stderr error. Set `STATUS=failed` and fall through to (f).
+             stderr error. Set `STATUS=failed` and fall through to (e).
            - Exit 0 → proceed. The stdout JSON gives `skill_name`,
              `skill_args`, and `invocation`; use those as authoritative.
         2. Invoke the skill via the Skill tool (or its slash command) using
@@ -235,30 +235,26 @@ JSON; this prose acts on each descriptor and calls back to `finish`.
            for the `--output-path` flag on the `finish` call. Set
            `STATUS=completed` (or `failed` if the skill reported failure).
 
-      - **`none`** — Skip. Immediately transition to step (f) with
+      - **`none`** — Skip. Immediately transition to step (e) with
         status=completed.
 
       - **`unknown`** — Should never reach here (validate_workspace catches
         it). If it does, surface and abort.
 
-   e. Capture the current HEAD sha:
-      ```bash
-      HEAD_SHA=$(git rev-parse HEAD)
-      ```
-
-   f. Finish the stage:
+   e. Finish the stage:
       ```bash
       python3 ${CLAUDE_SKILL_DIR}/scripts/dispatch_stage.py finish \
         --workspace-root . --ticket "$KEY" \
         --stage "$STAGE" --status "$STATUS" \
-        --head-sha "$HEAD_SHA" \
         [--output-path "$OUTPUT_PATH"]
       ```
-      The `--output-path` flag is included for subagent stages where you
-      captured the response. For inline stages, omit unless the inline
-      prose explicitly produced a captured output.
+      `finish` records the current HEAD sha itself (via `git rev-parse` in
+      the workspace root); you do not pass it. The `--output-path` flag is
+      included for subagent/skill stages where you captured the response.
+      For inline stages, omit unless the inline prose explicitly produced a
+      captured output.
 
-   g. Loop back to (a).
+   f. Loop back to (a).
 
 5. After the loop exits — on **every** path (clean done, blocked, drift, or
    lost lease) — release the lease:

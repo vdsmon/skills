@@ -716,3 +716,21 @@ def test_full_loop_init_to_done_releases_lease(
     assert all(r.status == "completed" for r in ts.stages.values())
     # lease released on terminal completion
     assert not (td / "run.lock").exists()
+
+
+def test_finish_cli_flag_contract_matches_skill_prose() -> None:
+    # Guards the prose<->CLI seam: SKILL.md's do-loop finish call must parse.
+    # head_sha is derived internally by cmd_finish, NOT a flag — prose passing
+    # --head-sha would die "unrecognized arguments" (a bug the unit tests, which
+    # call cmd_finish directly, cannot see).
+    args = ds._parse_args(
+        ["finish", "--workspace-root", ".", "--ticket", "FT-1",
+         "--stage", "commit", "--status", "completed", "--output-path", "x.out"]
+    )
+    assert args.cmd == "finish"
+    assert args.status_value == "completed"
+    with pytest.raises(SystemExit):
+        ds._parse_args(
+            ["finish", "--workspace-root", ".", "--ticket", "FT-1",
+             "--stage", "commit", "--status", "completed", "--head-sha", "deadbeef"]
+        )
