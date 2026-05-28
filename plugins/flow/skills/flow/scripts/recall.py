@@ -1,0 +1,278 @@
+"""BM25 ranker over `.flow/<namespace>/knowledge.jsonl`.
+
+Library + thin CLI. Stdlib-only. Hand-rolled BM25 implementation per plan spec
+(no rank-bm25 dep).
+
+BM25 pinned params:
+  k1 = 1.5
+  b  = 0.75
+  Tokenizer: re.findall(r'\\b\\w+\\b', NFKC(text).lower()). No stopwords.
+  IDF scope: current namespace only.
+  Field weights (multiplier on per-field token contribution):
+    body=1.0, type=0.5, branch=1.5, ticket=2.0
+  Exact-match boost (multiplier on final score):
+    branch match -> x 2.0
+    ticket match -> x 3.0
+  Tiebreak: ts DESC (ms precision).
+
+`--metric tickets-per-week` deferred to phase 8d. Mvp = query mode only.
+
+Quarantine: malformed JSONL lines appended to sidecar
+`<file>.quarantine.<ts>` (per-invocation); main file untouched; scan
+continues with valid entries; never crash.
+
+Exit codes:
+  0 = ok (empty result still 0 with `[]`).
+  1 = workspace invalid / namespace unresolvable.
+"""
+
+from __future__ import annotations
+
+import argparse
+import contextlib
+import json
+import math
+import os
+import re
+import sys
+import time
+import unicodedata
+from pathlib import Path
+from typing import Any
+
+import _memory_paths
+
+K1 = 1.5
+B_PARAM = 0.75
+FIELD_WEIGHTS: dict[str, float] = {
+    "body": 1.0,
+    "type": 0.5,
+    "branch": 1.5,
+    "ticket": 2.0,
+}
+BRANCH_EXACT_BOOST = 2.0
+TICKET_EXACT_BOOST = 3.0
+
+_TOKEN_RE = re.compile(r"\b\w+\b", re.UNICODE)
+
+
+# ─── Tokenize ────────────────────────────────────────────────────────────────
+
+
+def tokenize(text: str) -> list[str]:
+    normalized = unicodedata.normalize("NFKC", text).lower()
+    return _TOKEN_RE.findall(normalized)
+
+
+# ─── Quarantine ──────────────────────────────────────────────────────────────
+
+
+def _ts_token() -> str:
+    return time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+
+
+def _append_quarantine(sidecar: Path, raw_line: str, reason: str) -> None:
+    sidecar.parent.mkdir(parents=True, exist_ok=True)
+    record = {"reason": reason, "raw": raw_line}
+    with sidecar.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(record) + "\n")
+        fh.flush()
+        with contextlib.suppress(OSError):
+            os.fsync(fh.fileno())
+
+
+# ─── Load ────────────────────────────────────────────────────────────────────
+
+
+def _load_entries(knowledge_path: Path) -> list[dict[str, Any]]:
+    if not knowledge_path.exists():
+        return []
+    sidecar = knowledge_path.with_name(f"{knowledge_path.name}.quarantine.{_ts_token()}")
+    entries: list[dict[str, Any]] = []
+    with knowledge_path.open("r", encoding="utf-8") as fh:
+        for line in fh:
+            stripped = line.rstrip("\n")
+            if not stripped.strip():
+                continue
+            try:
+                entry = json.loads(stripped)
+            except json.JSONDecodeError as exc:
+                _append_quarantine(sidecar, stripped, f"json: {exc}")
+                continue
+            if not isinstance(entry, dict):
+                _append_quarantine(sidecar, stripped, "not an object")
+                continue
+            entries.append(entry)
+    return entries
+
+
+# ─── BM25 ────────────────────────────────────────────────────────────────────
+
+
+def _idf(n_docs: int, df: int) -> float:
+    """Robertson/Spärck Jones with +1 smoothing; max(0, ...) to avoid negative IDF."""
+    return max(0.0, math.log((n_docs - df + 0.5) / (df + 0.5) + 1.0))
+
+
+def _doc_field_text(entry: dict[str, Any], field: str) -> str:
+    value = entry.get(field, "")
+    return str(value) if value is not None else ""
+
+
+def _bm25_field_score(
+    query_tokens: list[str],
+    doc_tokens: list[str],
+    idf_map: dict[str, float],
+    avgdl: float,
+) -> float:
+    if not doc_tokens or avgdl == 0:
+        return 0.0
+    tf: dict[str, int] = {}
+    for tok in doc_tokens:
+        tf[tok] = tf.get(tok, 0) + 1
+    score = 0.0
+    dl = len(doc_tokens)
+    for q in query_tokens:
+        if q not in tf:
+            continue
+        f = tf[q]
+        idf = idf_map.get(q, 0.0)
+        num = f * (K1 + 1.0)
+        den = f + K1 * (1.0 - B_PARAM + B_PARAM * dl / avgdl)
+        score += idf * (num / den)
+    return score
+
+
+def _build_idf_map(
+    query_tokens: list[str],
+    docs_field_tokens: list[list[str]],
+) -> dict[str, float]:
+    n = len(docs_field_tokens)
+    idf_map: dict[str, float] = {}
+    unique_query = set(query_tokens)
+    for q in unique_query:
+        df = sum(1 for toks in docs_field_tokens if q in set(toks))
+        idf_map[q] = _idf(n, df)
+    return idf_map
+
+
+def rank(
+    query: str,
+    entries: list[dict[str, Any]],
+    branch_filter: str | None = None,
+    ticket_filters: list[str] | None = None,
+    top_n: int = 5,
+) -> list[dict[str, Any]]:
+    """Score entries with BM25, apply boosts, sort, return top_n."""
+    if not entries:
+        return []
+    query_tokens = tokenize(query)
+    # Per-field tokenization for every doc.
+    per_field_tokens: dict[str, list[list[str]]] = {
+        field: [tokenize(_doc_field_text(e, field)) for e in entries] for field in FIELD_WEIGHTS
+    }
+    # Per-field IDF map + avgdl.
+    field_idf: dict[str, dict[str, float]] = {}
+    field_avgdl: dict[str, float] = {}
+    for field, docs_toks in per_field_tokens.items():
+        field_idf[field] = _build_idf_map(query_tokens, docs_toks)
+        total = sum(len(t) for t in docs_toks)
+        field_avgdl[field] = total / len(docs_toks) if docs_toks else 0.0
+
+    ticket_set_lower = {t.lower() for t in (ticket_filters or [])}
+    branch_lower = branch_filter.lower() if branch_filter else None
+
+    scored: list[tuple[float, dict[str, Any]]] = []
+    for idx, entry in enumerate(entries):
+        weighted_sum = 0.0
+        for field, weight in FIELD_WEIGHTS.items():
+            doc_toks = per_field_tokens[field][idx]
+            field_score = _bm25_field_score(
+                query_tokens, doc_toks, field_idf[field], field_avgdl[field]
+            )
+            weighted_sum += weight * field_score
+        # Boosts.
+        if branch_lower is not None and _doc_field_text(entry, "branch").lower() == branch_lower:
+            weighted_sum *= BRANCH_EXACT_BOOST
+        if ticket_set_lower and _doc_field_text(entry, "ticket").lower() in ticket_set_lower:
+            weighted_sum *= TICKET_EXACT_BOOST
+        scored.append((weighted_sum, entry))
+
+    # Sort by (score DESC, ts DESC). _neg_ts_key gives ts-descending via negated codepoints
+    # (ISO8601 lexical order matches chronological, so negation flips to DESC).
+    scored.sort(key=lambda pair: (-pair[0], _neg_ts_key(pair[1].get("ts", ""))))
+
+    results: list[dict[str, Any]] = []
+    for score, entry in scored[:top_n]:
+        results.append(
+            {
+                "id": entry.get("id"),
+                "type": entry.get("type"),
+                "branch": entry.get("branch"),
+                "ticket": entry.get("ticket"),
+                "body": entry.get("body"),
+                "ts": entry.get("ts"),
+                "score": round(score, 6),
+            }
+        )
+    return results
+
+
+def _neg_ts_key(ts: str) -> tuple[int, ...]:
+    """Sort key for ts DESC tiebreak. ISO8601 lexical ordering matches chrono,
+    so negate via tuple of negative codepoints.
+    """
+    return tuple(-ord(c) for c in ts)
+
+
+# ─── CLI ─────────────────────────────────────────────────────────────────────
+
+
+def _parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="BM25 ranker over knowledge.jsonl.")
+    parser.add_argument("query")
+    parser.add_argument("--branch", default=None)
+    parser.add_argument("--tickets", default=None, help="comma-separated ticket keys.")
+    parser.add_argument("--top-n", type=int, default=5)
+    parser.add_argument("--workspace-root", default=".")
+    return parser.parse_args(argv)
+
+
+def cli_main(argv: list[str]) -> int:
+    args = _parse_args(argv)
+    workspace_root = Path(args.workspace_root).resolve()
+    try:
+        namespace = _memory_paths.resolve_namespace(workspace_root)
+    except _memory_paths._MemoryConfigError as exc:
+        sys.stderr.write(f"recall: {exc}\n")
+        return 1
+    kpath = _memory_paths.knowledge_path(workspace_root, namespace)
+    entries = _load_entries(kpath)
+    tickets: list[str] = []
+    if args.tickets:
+        tickets = [t.strip() for t in args.tickets.split(",") if t.strip()]
+    results = rank(
+        query=args.query,
+        entries=entries,
+        branch_filter=args.branch,
+        ticket_filters=tickets or None,
+        top_n=args.top_n,
+    )
+    sys.stdout.write(json.dumps(results, indent=2, sort_keys=True) + "\n")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(cli_main(sys.argv[1:]))
+
+
+__all__ = [
+    "BRANCH_EXACT_BOOST",
+    "B_PARAM",
+    "FIELD_WEIGHTS",
+    "K1",
+    "TICKET_EXACT_BOOST",
+    "cli_main",
+    "rank",
+    "tokenize",
+]

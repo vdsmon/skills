@@ -586,3 +586,126 @@ Exit 0=ok, 1=invalid type or missing required arg.
 6. **Dispatcher integration** — helpers ship as standalone CLIs. Subprocess
    wiring into `dispatch_stage.py` (with exit-code matrix per plan line
    1010-1020) lands in phase 5 or phase 8-glue.
+
+---
+
+## Phase 8b-mvp memory cohort
+
+Four stdlib-only scripts that own `.flow/<namespace>/knowledge.jsonl`,
+`.flow/<namespace>/ship-events/<ticket>.json`, and the reflect-stage input
+bundle. Same library + thin-CLI shape as 8-mvp. Shared `_memory_paths.py`
+module handles namespace resolution + path conventions.
+
+### `_memory_paths.py` (shared helper)
+
+Public API: `resolve_namespace(workspace_root) -> str`,
+`knowledge_path(root, ns) -> Path`,
+`ship_events_dir(root, ns) -> Path`,
+`ship_event_path(root, ns, ticket) -> Path`.
+
+### `memory_append.py`
+
+Single-writer JSONL append. Idempotency key:
+`sha256(namespace + ticket + type + normalized_body)[:16]` where
+`normalize(body) = NFKC + lowercase + collapse-ws + strip-trailing-punct`.
+
+| Flag | Description |
+|------|-------------|
+| `--type` | One of: `LEARNED`, `DECISION`, `FACT`, `PATTERN`, `INVESTIGATION`, `DEVIATION`. |
+| `--text` | Entry body (raw, not normalized — normalize is for id only). |
+| `--branch` | Branch name. |
+| `--ticket` | Ticket key. |
+| `--id` | Override the computed id (for ship-event-derived entries). |
+| `--workspace-root` | Default `.`. |
+
+Exit codes: 0=appended, 1=duplicate id (no-op), 2=lock contention,
+3=invalid type, 4=I/O error / workspace config error.
+
+Locking: `fcntl.flock(LOCK_EX | LOCK_NB)` on `knowledge.jsonl.lock`, retry 3×1s.
+Sidecar quarantine: malformed lines appended to
+`knowledge.jsonl.quarantine.<ts>` (one per invocation); main file untouched.
+
+### `recall.py`
+
+Hand-rolled BM25 ranker. `--metric` mode deferred to 8d.
+
+| Flag | Description |
+|------|-------------|
+| `<query>` | Positional. Raw text; tokenized via `\b\w+\b` Unicode-NFKC-lowercase. |
+| `--branch` | Optional. Exact-match boost × 2.0. Case-insensitive. |
+| `--tickets` | Optional CSV. Exact-match boost × 3.0 (any match in CSV). |
+| `--top-n` | Default 5. |
+| `--workspace-root` | Default `.`. |
+
+BM25 params (pinned): k1=1.5, b=0.75. Field weights: body=1.0, type=0.5,
+branch=1.5, ticket=2.0. Tiebreak: ts DESC (ms precision via negated-codepoint
+sort key over ISO8601 string). IDF scope: current namespace only.
+
+Output: JSON array of top-N entries with `score` field appended. Empty corpus
+returns `[]` exit 0.
+
+Exit codes: 0=ok, 1=workspace invalid / namespace unresolvable.
+
+### `reflect_inputs.py`
+
+Pure composition layer. Bundles the reflect-stage's inputs into a single JSON
+payload for the reflect LLM.
+
+| Flag | Description |
+|------|-------------|
+| `--ticket` | Ticket key. |
+| `--ticket-dir` | `.flow/runs/<ticket>` directory. |
+| `--ticket-frontmatter` | Optional path to ticket .md frontmatter file. |
+| `--cwd` | Git repo working dir (for `diff_since_stage` call). Default `.`. |
+
+Payload shape: `{ticket, run_id, state, ticket_frontmatter, final_diff,
+subagent_reports[]}`. `final_diff` is null when ticket stage never started.
+Missing report files → `body: null` + warning to stderr (not fatal).
+
+Exit codes: 0=ok, 1=state missing/corrupt, 2=diff-extract git error, 3=I/O.
+
+Reuses: `state.read()`, `ticket_frontmatter.read()`,
+`diff_extract.diff_since_stage()`.
+
+### `observe_ship_event.py`
+
+Sole writer of `<namespace>/ship-events/<ticket>.json`. Atomic + crash-safe.
+
+| Flag | Description |
+|------|-------------|
+| `--ticket` | Ticket key (must match the `ticket` field in evidence JSON). |
+| `--evidence-json` | JSON string. Top-level keys allowed: `ticket`, `shipped_at`, `evidence`. Extras rejected. |
+| `--run-id` | 16-hex run_id from caller. Injected as `observed_by_run_id`. |
+| `--workspace-root` | Default `.`. |
+
+Two-phase write:
+1. **Primary** via `os.open(O_CREAT | O_EXCL | O_WRONLY)`. Success → write +
+   fsync file + fsync parent dir → exit 0.
+2. **Dupe fallback on EEXIST** — under `<ticket>.json.dupe.lock` flock, pick
+   next monotonic `n` from existing `.dupe.*.json` siblings (max + 1 or 1),
+   then O_EXCL-create `<ticket>.json.dupe.<n>.json` with
+   `superseded_by_dupe: false`. Exit 2.
+
+On non-EEXIST I/O error: write intent log to
+`<ticket>.json.quarantine-intent.<ts>.json` (best-effort) BEFORE re-raising.
+`/flow recover` in phase 8c replays the intent log.
+
+Exit codes: 0=primary success, 1=evidence JSON invalid, 2=dupe (informational),
+3=I/O error (intent log written).
+
+## Known phase 8b-mvp holes (deferred to 8c/8d)
+
+1. **`recall.py --metric` deferred** — throughput / shipped-count aggregator;
+   8d work-mode quality gate needs it.
+2. **No cross-namespace IDF** — recall.py IDF is per-namespace.
+3. **BM25 hand-rolled, not rank-bm25** — stdlib-only convention. Swap in if
+   corpus > 10K entries per namespace.
+4. **No recover.py dupe reconciliation** — `.dupe.<n>.json` files sit until 8c.
+5. **No SessionStart hook script** — observe/recall/reflect are
+   write/read primitives only. SessionStart prose = phase 5.
+6. **No retry knob for memory-append flock** — hardcoded 3×1s.
+7. **observe-ship-event intent log write-only** — phase 8c recover reads it.
+8. **Idempotency formula collapses near-duplicates** — `"Foo."` and `"foo"`
+   dedup. First-write wins; second gets exit 1 no-op.
+9. **Dedup scan is O(N) per append** — fine for mvp corpus sizes. Swap in
+   `.idx` sidecar if corpus grows.

@@ -55,7 +55,7 @@
       "name": "flow",
       "source": "./plugins/flow",
       "description": "Multi-tracker pipeline (Jira | beads) with pluggable per-stage handlers, immutable ship-event evidence, and a compounding memory layer fed by the reflect stage and recalled at SessionStart. Workspace-configurable stages via stage-registry.toml + workspace.toml. Claude-Code-only (SessionStart hook + dynamic context injection wired in later phases).",
-      "version": "0.6.0"
+      "version": "0.7.0"
     }
   ]
 }
