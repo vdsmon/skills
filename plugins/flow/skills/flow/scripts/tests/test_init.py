@@ -841,3 +841,33 @@ def test_write_phase_rejects_illegal_handler(
     with pytest.raises(initmod.InitError, match="illegal handler"):
         initmod.run_init(_jira_config(tmp_path))
     assert not (tmp_path / ".flow" / ".initialized").exists()
+
+
+# ─── checkpoint mode (phase 8d) ──────────────────────────────────────────────
+
+
+def test_resolve_checkpoint_mode_defaults_and_matrix() -> None:
+    assert initmod._resolve_checkpoint_mode("jira", None) == "work"
+    assert initmod._resolve_checkpoint_mode("beads", None) == "personal"
+    assert initmod._resolve_checkpoint_mode("beads", "scratch") == "scratch"
+    assert initmod._resolve_checkpoint_mode("jira", "scratch") == "scratch"
+
+
+def test_jira_personal_checkpoint_mode_rejected() -> None:
+    with pytest.raises(initmod.InitError, match="not allowed"):
+        initmod._resolve_checkpoint_mode("jira", "personal")
+
+
+def test_beads_work_checkpoint_mode_rejected() -> None:
+    with pytest.raises(initmod.InitError, match="not allowed"):
+        initmod._resolve_checkpoint_mode("beads", "work")
+
+
+def test_checkpoint_entry_records_mode_and_initialized_at(tmp_path: Path) -> None:
+    initmod.run_init(_jira_config(tmp_path))
+    ckpt = tmp_path / "_ckpt.jsonl"
+    entries = [
+        json.loads(line) for line in ckpt.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
+    assert entries[-1]["checkpoint_mode"] == "work"
+    assert entries[-1]["initialized_at"] == entries[-1]["ts"]

@@ -260,6 +260,49 @@ def capture_implement_diff(
     return out_path
 
 
+def check_ownership(
+    ticket_dir: Path,
+    cwd: Path,
+    runner: Runner | None = None,
+) -> dict[str, object]:
+    """Refuse if the working tree has changes outside the baseline planned_files.
+
+    Filename-level gate (the commit stage stages by patch from implement.diff, so
+    this guards against unrelated edits sneaking into the commit). Hunk-level
+    ownership against implement.diff is a deeper check deferred to a later phase.
+    """
+    r = runner or _default_runner()
+    bpath = _baseline_path(ticket_dir)
+    if not bpath.exists():
+        raise _BaselineMissing(f"no baseline.json at {bpath}")
+    try:
+        baseline = json.loads(bpath.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise _BaselineMissing(f"baseline.json malformed: {exc}") from exc
+    planned = baseline.get("planned_files", [])
+    owned = {str(p) for p in planned} if isinstance(planned, list) else set()
+    raw = _git(["status", "--porcelain"], cwd, r)
+    changed: list[str] = []
+    for line in raw.splitlines():
+        if not line.strip():
+            continue
+        path = line[3:].strip()
+        if " -> " in path:  # rename: take the destination path
+            path = path.split(" -> ", 1)[1].strip()
+        # flow's own run state lives under .flow/; its writes are never an
+        # unrelated user edit, so they never count against ownership.
+        if path == ".flow" or path.startswith(".flow/"):
+            continue
+        changed.append(path)
+    unowned = sorted(p for p in changed if p not in owned)
+    return {
+        "ok": not unowned,
+        "planned_files": sorted(owned),
+        "changed": sorted(changed),
+        "unowned_changes": unowned,
+    }
+
+
 # ─── CLI ─────────────────────────────────────────────────────────────────────
 
 
@@ -289,6 +332,11 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     p_capture.add_argument("--ticket", required=True)
     p_capture.add_argument("--ticket-dir", required=True)
     p_capture.add_argument("--cwd", default=".")
+
+    p_own = sub.add_parser("check-ownership", help="refuse changes outside planned_files.")
+    p_own.add_argument("--ticket", required=True)
+    p_own.add_argument("--ticket-dir", required=True)
+    p_own.add_argument("--cwd", default=".")
 
     return parser.parse_args(argv)
 
@@ -330,6 +378,12 @@ def cli_main(argv: list[str]) -> int:
             sys.stdout.write(json.dumps({"diff_path": str(out)}) + "\n")
             return 0
 
+        if args.cmd == "check-ownership":
+            ticket_dir = Path(args.ticket_dir).resolve()
+            payload = check_ownership(ticket_dir, cwd)
+            sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+            return 0 if payload["ok"] else 3
+
     except _BaselineMissing as exc:
         sys.stderr.write(f"diff-extract: {exc}\n")
         return 1
@@ -346,6 +400,7 @@ if __name__ == "__main__":
 
 __all__ = [
     "capture_implement_diff",
+    "check_ownership",
     "cli_main",
     "diff_since",
     "diff_since_stage",

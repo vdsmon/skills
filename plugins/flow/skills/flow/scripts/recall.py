@@ -227,6 +227,12 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def cli_main(argv: list[str]) -> int:
+    # `recall.py --metric <...>` is a passthrough to the metric calculator so the
+    # 14-day checkpoint has one entry point. Everything else is BM25 query mode.
+    if "--metric" in argv:
+        import metric
+
+        return metric.cli_main([a for a in argv if a != "--metric"])
     args = _parse_args(argv)
     workspace_root = Path(args.workspace_root).resolve()
     try:

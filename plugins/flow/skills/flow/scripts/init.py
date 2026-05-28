@@ -105,6 +105,9 @@ class InitConfig:
     memory_compounding: bool = True
     # Override the default checkpoint-manifest location (tests).
     checkpoint_manifest_path: Path | None = None
+    # personal | work | scratch. None -> derived from backend. The backend
+    # alignment matrix is enforced (jira != personal, beads != work).
+    checkpoint_mode: str | None = None
     # Override default search roots for bundle discovery (tests).
     bundle_search_roots: list[Path] | None = None
 
@@ -529,13 +532,16 @@ def _append_checkpoint_manifest(
     if _checkpoint_already_recorded(path, workspace_root, init_run_id):
         return
     path.parent.mkdir(parents=True, exist_ok=True)
+    ts = _utcnow_iso()
     entry = {
-        "ts": _utcnow_iso(),
+        "ts": ts,
+        "initialized_at": ts,
         "workspace_root": workspace_root,
         "init_run_id": init_run_id,
         "backend": config.backend,
         "namespace": namespace,
         "compounding": config.memory_compounding,
+        "checkpoint_mode": _resolve_checkpoint_mode(config.backend, config.checkpoint_mode),
     }
     line = json.dumps(entry, sort_keys=True) + "\n"
     with path.open("a", encoding="utf-8") as fh:
@@ -579,10 +585,33 @@ def _verify_workspace_toml(
 # ─── Input validation ───────────────────────────────────────────────────────
 
 
+# Backend alignment matrix: a jira workspace cannot be "personal" (that would
+# dodge the work time-to-PR gate); a beads workspace cannot be "work". "scratch"
+# opts out of both gates and is allowed for either backend.
+_CHECKPOINT_MODES: dict[str, tuple[str, ...]] = {
+    "jira": ("work", "scratch"),
+    "beads": ("personal", "scratch"),
+}
+_CHECKPOINT_MODE_DEFAULT: dict[str, str] = {"jira": "work", "beads": "personal"}
+
+
+def _resolve_checkpoint_mode(backend: str, mode: str | None) -> str:
+    allowed = _CHECKPOINT_MODES.get(backend, ())
+    if mode is None:
+        return _CHECKPOINT_MODE_DEFAULT.get(backend, "scratch")
+    if mode not in allowed:
+        raise InitError(
+            f"checkpoint_mode={mode!r} not allowed for backend={backend!r}; "
+            f"allowed: {list(allowed)}"
+        )
+    return mode
+
+
 def _validate_config(config: InitConfig) -> None:
     """Validate the resolved answer set. No side effects, safe to re-run."""
     if config.backend not in ("jira", "beads"):
         raise InitError(f"unknown backend {config.backend!r}")
+    _resolve_checkpoint_mode(config.backend, config.checkpoint_mode)
     if config.backend == "jira" and config.jira is None:
         raise InitError("--backend=jira requires --jira-cloud-id + --jira-project-key")
     if config.backend == "beads" and config.beads is None:
@@ -959,6 +988,7 @@ def _build_config_from_args(args: argparse.Namespace) -> InitConfig:
         handler_overrides=overrides,
         memory_namespace=args.memory_namespace or None,
         memory_compounding=compounding,
+        checkpoint_mode=args.checkpoint_mode or None,
         checkpoint_manifest_path=_coerce_checkpoint_path(args.checkpoint_manifest),
         bundle_search_roots=_coerce_search_roots(args.bundle_search_roots),
     )
@@ -971,6 +1001,12 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--backend", choices=("jira", "beads"), required=False)
     parser.add_argument("--bundle", choices=("bare", "recommended", "custom"), required=False)
     parser.add_argument("--workspace-root", default=None)
+    parser.add_argument(
+        "--checkpoint-mode",
+        choices=("personal", "work", "scratch"),
+        default=None,
+        help="14-day-gate participation mode; derived from backend if omitted.",
+    )
 
     parser.add_argument("--jira-cloud-id", default=None)
     parser.add_argument("--jira-project-key", default=None)

@@ -69,6 +69,43 @@ def test_since_counts_insertions_deletions(tmp_repo: Path) -> None:
     assert payload["deletions"] == 0
 
 
+def test_check_ownership_ok_when_only_planned_changed(tmp_repo: Path, tmp_path: Path) -> None:
+    ticket_dir = tmp_repo / ".flow" / "runs" / "FT-1"
+    diff_extract.record_baseline("implement", ticket_dir, tmp_repo, files=["a.py"])
+    (tmp_repo / "a.py").write_text("print('hi')\n", encoding="utf-8")
+    payload = diff_extract.check_ownership(ticket_dir, tmp_repo)
+    assert payload["ok"] is True
+    assert payload["unowned_changes"] == []
+
+
+def test_check_ownership_refuses_unowned_change(tmp_repo: Path, tmp_path: Path) -> None:
+    ticket_dir = tmp_repo / ".flow" / "runs" / "FT-1"
+    diff_extract.record_baseline("implement", ticket_dir, tmp_repo, files=["a.py"])
+    (tmp_repo / "a.py").write_text("print('hi')\n", encoding="utf-8")
+    (tmp_repo / "b.py").write_text("print('unrelated')\n", encoding="utf-8")
+    payload = diff_extract.check_ownership(ticket_dir, tmp_repo)
+    assert payload["ok"] is False
+    assert "b.py" in payload["unowned_changes"]
+
+
+def test_check_ownership_cli_exit_3(tmp_repo: Path, tmp_path: Path) -> None:
+    ticket_dir = tmp_repo / ".flow" / "runs" / "FT-1"
+    diff_extract.record_baseline("implement", ticket_dir, tmp_repo, files=["a.py"])
+    (tmp_repo / "b.py").write_text("x\n", encoding="utf-8")
+    rc = diff_extract.cli_main(
+        [
+            "check-ownership",
+            "--ticket",
+            "FT-1",
+            "--ticket-dir",
+            str(ticket_dir),
+            "--cwd",
+            str(tmp_repo),
+        ]
+    )
+    assert rc == 3
+
+
 def test_since_detects_binary(tmp_repo: Path) -> None:
     initial = _git(["rev-parse", "HEAD"], tmp_repo).strip()
     (tmp_repo / "blob.bin").write_bytes(bytes(range(256)))

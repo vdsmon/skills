@@ -10,12 +10,11 @@ allowed-tools: Bash(python3:*), Bash(git:*), Bash(bd:*), Bash(jq:*), Bash(cat:*)
 Multi-tracker pipeline. Tracker is pluggable (Jira | beads). Stages, handlers,
 and memory namespace come from `.flow/workspace.toml` + `stage-registry.toml`.
 
-This skill is in **phase 8c**: `/flow init`, `/flow do`, `/flow recall`,
-`/flow status`, and `/flow recover` work end-to-end against bare and
-skill-bundled workspaces. `skill:<name>` handler dispatch and
-per-subagent-stage reference docs are wired (see the do verb). `/flow sync`
-and `/flow baseline` are stubbed with a "not yet implemented" warning + a
-workaround hint.
+This skill is **feature-complete** (phases 1-8d): `/flow init`, `do`, `recall`
+(with `--metric`), `status`, `recover`, `sync`, and `baseline` all work
+end-to-end against bare and skill-bundled workspaces. `skill:<name>` handler
+dispatch, per-subagent-stage reference docs, the run lease + canonical snapshot,
+and the work-mode quality gate are all wired.
 
 ## Argument parsing
 
@@ -26,21 +25,12 @@ Match `$ARGUMENTS` against the verb:
 | `init` (optionally `--reconfigure`, `--resume`) | init |
 | `do [<ticket>]` | do |
 | `recall <query> [--branch X --top-n N]` | recall |
+| `recall --metric tickets-per-week [...]` | metric (recall passthrough) |
 | `status [<ticket>]` | status |
 | `recover [<ticket>]` | recover |
-| `sync` | stub |
-| `baseline` | stub |
+| `sync` | sync |
+| `baseline` | baseline |
 | (empty) | print verb listing |
-
-For stubs, surface:
-```
-/flow <verb> is not implemented yet.
-Workaround: <verb-specific hint>.
-Track progress in plugins/flow/skills/flow/scripts/inventory.md.
-```
-
-Stub hints:
-- `sync` / `baseline` → work-mode quality-gate verbs; deferred to phase 8d.
 
 ## init verb
 
@@ -312,6 +302,56 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/recall.py "<query>" \
 - Exit 0 → JSON array to stdout. Surface as a formatted list to the user.
 - Exit 1 → workspace unresolvable. Surface stderr + `/flow init` hint.
 
+### recall --metric (the 14-day checkpoint calculator)
+
+`/flow recall --metric tickets-per-week [...]` is a pass-through to the metric
+calculator (recall.py forwards `--metric` to `metric.py`):
+
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/recall.py --metric tickets-per-week \
+  --namespace <ns> --workspace-root . \
+  [--since YYYY-MM-DD] [--until YYYY-MM-DD] \
+  [--checkpoint --mode personal|work --manifest-path <p>]
+```
+
+It counts shipped tickets in the window from the immutable ship-event evidence
+and splits `shipped_via_flow` (ticket+run+reflect three-way binding verified)
+from `shipped_backend_not_attributed`. `--checkpoint --mode` aggregates across
+the checkpoint manifest's participants of that mode. Surface the JSON report.
+
+## sync verb
+
+`/flow sync` drains `.flow/pending-mutations.jsonl` — tracker writes (transition
+/ comment / link / edit) that an adapter queued after a transient failure — and
+reconciles them against live tracker state. Work-mode verb.
+
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/sync.py --workspace-root .
+```
+
+- Exit 0 → JSON report `{applied, applied_externally, superseded, failed,
+  removed}`. Surface counts; `applied_externally` = the op was already done
+  (idempotency win), `superseded` = the pre-state changed under it (skipped).
+- Exit 1 → some entries still failed; they stay queued for the next sync.
+- Exit 2 → workspace / tracker unavailable. Surface stderr.
+
+## baseline verb
+
+`/flow baseline` manages the pre-migration time-to-PR baseline the work-mode
+gate compares against (±30%). Live collection from Jira/Bitbucket is manual;
+this verb owns the file + the statistics.
+
+```bash
+# build from samples (a JSON list of {ticket, time_to_pr_hours}):
+python3 ${CLAUDE_SKILL_DIR}/scripts/baseline_collect.py build \
+  --samples-json <file-or-inline-json> [--path <p>] [--source <s>]
+# show the stored baseline:
+python3 ${CLAUDE_SKILL_DIR}/scripts/baseline_collect.py show [--path <p>]
+```
+
+- Exit 0 → writes/prints the baseline (median + p90 + n).
+- Exit 1 → no samples / bad args.
+
 ## status verb
 
 Read-only. `/flow status [<ticket>]` reports run state, stage progress, the
@@ -423,11 +463,19 @@ the lease + verifies the snapshot; release drops the lease post-loop). Phase 8c
 added `/flow status` (read-only run/stage/lease report) and `/flow recover`
 (lease takeover, failed-stage retry/skip/abort, snapshot reload). Hung
 detection is post-hoc: there is no live poller, so `/flow recover` reads the
-lease state after a stage returns or on demand. The skill is now **usable** for
-end-to-end `/flow do <ticket>` against bare and skill-bundled workspaces.
+lease state after a stage returns or on demand. Phase 8d added the work-mode
+quality gate: `recall.py --metric tickets-per-week` (+ `--checkpoint --mode`),
+`/flow sync` (drain + reconcile pending tracker mutations), `/flow baseline`
+(time-to-PR baseline file + stats), `validate_postmortem.py` (postmortem schema
++ week-over-week trend), the commit content-ownership gate
+(`diff_extract.py check-ownership`), and the init checkpoint-mode + backend
+alignment matrix. The skill is now **feature-complete** for end-to-end
+`/flow do <ticket>` against bare and skill-bundled workspaces.
 
-Still pending:
-- `/flow sync`, `/flow baseline` (phase 8d).
-- `recall.py --metric` + work-mode quality gate (phase 8d).
+Still pending (deliberately deferred, not blocking):
 - Deep ship-event reconciliation (duplicate / corrupt ship-event files;
   `/flow recover` flags them via `ship_event_attention` but does not auto-fix).
+- Live `baseline_collect` ingestion from Jira changelog + Bitbucket PR history
+  (the file format + stats ship; collection is manual for now).
+- Cross-project `/flow status --all` dashboard.
+- Hunk-level commit ownership (current gate is filename-level).

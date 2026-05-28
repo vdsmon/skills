@@ -1,6 +1,6 @@
 {
   "name": "flow",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "Multi-tracker pipeline. Same proven ticket→PR pipeline; swap tracker (Jira | beads). Memory layer compounds across tickets via reflect-stage extraction + SessionStart recall. Workspace-configurable stages and handlers.",
   "author": {
     "name": "Victor De Simone",
