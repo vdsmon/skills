@@ -107,6 +107,36 @@ def test_next_routes_inline_handler(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert payload["head_sha"] == "abc123"
 
 
+def test_next_surfaces_roles_for_stage_with_roles(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_workspace(
+        tmp_path,
+        handlers={"ticket": "inline", "implement": "subagent:general-purpose"},
+        stages=["ticket", "implement"],
+        compounding=False,
+    )
+    _stub_git_head(monkeypatch, "abc123")
+    ds.cmd_init(tmp_path, "FT-1")
+    # advance past ticket stage
+    ds.cmd_finish(tmp_path, "FT-1", "ticket", "completed")
+    rc, payload = ds.cmd_next(tmp_path, "FT-1")
+    assert rc == 0
+    assert payload["stage"] == "implement"
+    assert payload["roles"] == ["records_diff_baseline"]
+
+
+def test_next_surfaces_empty_roles_for_stage_without(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_workspace(tmp_path, handlers={"ticket": "inline"}, stages=["ticket"], compounding=False)
+    _stub_git_head(monkeypatch, "abc123")
+    ds.cmd_init(tmp_path, "FT-1")
+    rc, payload = ds.cmd_next(tmp_path, "FT-1")
+    assert rc == 0
+    assert payload["roles"] == []
+
+
 def test_next_routes_subagent_handler(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _write_workspace(
         tmp_path,

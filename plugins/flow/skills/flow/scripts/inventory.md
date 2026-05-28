@@ -709,3 +709,91 @@ Exit codes: 0=primary success, 1=evidence JSON invalid, 2=dupe (informational),
    dedup. First-write wins; second gets exit 1 no-op.
 9. **Dedup scan is O(N) per append** — fine for mvp corpus sizes. Swap in
    `.idx` sidecar if corpus grows.
+
+---
+
+## Phase 5-mvp integration layer
+
+SKILL.md rewrite + 4 reference docs + `tracker_cli.py` + a small dispatcher
+descriptor extension. `/flow do <ticket>` now runs end-to-end against a
+bare workspace.
+
+### `tracker_cli.py`
+
+CLI wrapper around the Tracker Protocol. Lets reference-doc prose call
+`tracker.<method>()` from Bash. Reads `.flow/workspace.toml` `[tracker]`
+block, flattens the per-backend sub-block (`tracker.jira` or
+`tracker.beads`) into the config dict `tracker.make_tracker()` expects.
+
+| Subcommand | Flags | Notes |
+|------------|-------|-------|
+| `get` | `--key FT-1` | `tracker.get(key)` → JSON |
+| `list-assigned` | `[--filter open]` | `tracker.list_assigned()` → array |
+| `state` | `--key FT-1` | `tracker.state(key)` → JSON |
+| `transition` | `--key FT-1 --to-state in_progress [--field k=v ...]` | Looks up transition id by `to_normalized_state` / `to_state` / `name` (any match). Fields k=v pairs string-only in mvp. |
+| `comment` | `--key FT-1 --text "..."` | Wraps body as `{format: markdown, value: text}`. |
+| `is-shipped` | `--key FT-1` | `tracker.is_shipped(key)` → JSON. |
+
+Exit codes: 0=ok, 1=tracker error (network/auth/unknown key/TrackerError
+subclass), 2=workspace config invalid, 3=invalid args.
+
+Reuses: `tracker.make_tracker()` factory, `tracker.TrackerError` class.
+Tests via injectable `tracker_factory` shim — no real tracker construction.
+
+### Dispatcher descriptor extension
+
+`dispatch_stage.py cmd_next` now surfaces the stage's `roles` list in its
+JSON descriptor (read from stage-registry.toml). SKILL.md prose uses
+`roles` to know when to run the `records_diff_baseline` pre-handler hook
+(implement stage). Without this, commit-stage's `capture_implement_diff`
+would fail with `_BaselineMissing`.
+
+### SKILL.md verb router
+
+Replaces the 28-line skeleton with ~250 lines of prose. Verbs:
+
+- `init` — AskUserQuestion-driven; writes answers to tmp JSON, calls
+  `init.py --config <path>`.
+- `do <ticket>` — orchestration loop: `branch_ticket` → `validate_workspace`
+  → `dispatch_stage init` → loop(`next` → pre-handler-hook → handler
+  dispatch → `git rev-parse HEAD` → `finish`).
+- `recall <query>` — passthrough to `recall.py`.
+- `status` / `recover` / `sync` / `baseline` — stubs with workaround
+  hints.
+
+Handler dispatch:
+- `inline` → Read reference doc, follow prose.
+- `subagent:<type>` → Spawn Agent, capture response, write to
+  `<ticket-dir>/stages/<stage>.out`, pass `--output-path` to finish.
+- `skill:<name>` → not implemented in 5-mvp; surface error + abort.
+- `none` → skip; immediately finish with status=completed.
+
+### Reference docs
+
+Four files in `references/`:
+
+| File | Stage | Purpose |
+|------|-------|---------|
+| `stage-ticket.md` | ticket | Resolve key, fetch ticket via tracker_cli, cache to ticket.json, stamp frontmatter. |
+| `stage-code_review.md` | code_review | Inline main-agent diff review. No tracker calls. |
+| `stage-commit.md` | commit | lint_ticket HARD GATE → capture-implement-diff → compose_commit → user fills body → git apply + commit → tracker transition. |
+| `stage-reflect.md` | reflect | reflect_inputs bundle → extract knowledge per 6-type taxonomy → memory_append per entry → if shipped, observe_ship_event. Zero-novel-signal path documented. |
+
+## Known phase 5-mvp holes (deferred to 5b / 7-full / 8c / 8d)
+
+1. `/flow status` + `/flow recover` are stubs → 8c.
+2. No `skill:<name>` handler dispatch → 5b.
+3. No SessionStart recall hook (`recall-pending.jsonl` writer) → 5b.
+4. No subagent stage reference docs (plan / implement) → 5b. Spawned
+   agents work from stage name + ticket dir only.
+5. `/flow do` orchestration is in prose, not a script. Cannot run
+   unattended; Claude must be in the loop.
+6. No retry/backoff on tracker-cli failures → tunable in later phase.
+7. `tracker_cli` exit code 1 lumps network/auth/not-found → split in
+   later phase.
+8. `timeout_min` in handler descriptor is informational only. No
+   enforcement until phase 7-full ships heartbeat.
+9. The do-loop bash prose uses `"<KEY>"` / `"$STAGE"` syntax — variable
+   substitution into the actual Bash invocations is on Claude. Reference
+   docs document the variable names; the loop in SKILL.md sets them from
+   the descriptor JSON.

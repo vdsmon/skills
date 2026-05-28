@@ -173,6 +173,7 @@ def cmd_next(workspace_root: Path, ticket: str) -> tuple[int, dict[str, Any]]:
         "head_sha": head_sha,
         "ticket_dir": str(td),
         "output_path": str(output_path),
+        "roles": stage_meta.roles if stage_meta else [],
         **handler_descriptor,
     }
     if (
