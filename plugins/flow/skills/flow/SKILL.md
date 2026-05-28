@@ -111,12 +111,24 @@ JSON; this prose acts on each descriptor and calls back to `finish`.
    ```
    Non-zero → surface stderr violations; abort.
 
-3. Initialize the run:
+3. Initialize the run. `init` acquires the per-ticket run lease and writes the
+   canonical snapshot (workspace.toml + stage-registry + handler plugin trees)
+   before returning:
    ```bash
    python3 ${CLAUDE_SKILL_DIR}/scripts/dispatch_stage.py init \
      --workspace-root . --ticket "$KEY"
    ```
-   Captures the `run_id` from stdout JSON if needed later.
+   Capture the `run_id` from stdout JSON if needed later. Handle the exits:
+   - Exit 0 → run initialized; proceed to the loop.
+   - Exit 1 **with a `holder` block in the stdout JSON** → the ticket is locked
+     by a live run. Surface the holder JSON and the hint
+     `/flow recover --takeover <ticket>`, then abort. (Exit 1 *without* a
+     `holder` block is a validate-workspace failure: surface stderr violations
+     and abort, same as step 2.)
+   - Exit 5 → a stale lease from a dead run holds the ticket. Surface the holder
+     JSON and the hint `/flow recover --takeover <ticket>`, then abort.
+   - Do NOT auto-clear a lease on exit 1 or 5. The run acquired nothing on these
+     paths, so do not call `release` (see step 5).
 
 4. **Orchestration loop** — repeat until done:
 
@@ -125,6 +137,17 @@ JSON; this prose acts on each descriptor and calls back to `finish`.
       DESCRIPTOR=$(python3 ${CLAUDE_SKILL_DIR}/scripts/dispatch_stage.py next \
         --workspace-root . --ticket "$KEY")
       ```
+      `next` refreshes the lease and verifies the snapshot before returning a
+      descriptor. Handle the exits before parsing:
+      - Exit 0 → continue to (b).
+      - Exit 1 **with a config/version-drift error** (the workspace.toml, the
+        stage-registry, or a handler plugin changed since the run started) →
+        surface the drift detail and the hint
+        `/flow recover --reload-snapshot or --abort`, then break the loop.
+        (Exit 1 *without* a drift detail is a validate-workspace failure:
+        surface stderr violations and break.)
+      - Exit 7 → lost lease; another run took over this ticket. Surface the hint
+        `/flow recover`, then break the loop.
 
    b. Parse `DESCRIPTOR` (JSON). Check shape:
       - `{"done": true}` → all stages completed. Break loop. Stage 5 prints
@@ -250,14 +273,25 @@ JSON; this prose acts on each descriptor and calls back to `finish`.
 
    g. Loop back to (a).
 
-5. After loop exits cleanly: surface "ticket <KEY> pipeline complete. State:
+5. After the loop exits — on **every** path (clean done, blocked, drift, or
+   lost lease) — release the lease:
+   ```bash
+   python3 ${CLAUDE_SKILL_DIR}/scripts/dispatch_stage.py release \
+     --workspace-root . --ticket "$KEY"
+   ```
+   `release` is a no-op when the lease is not ours (the exit-7 takeover case),
+   so it is safe to call unconditionally here. Do not call it on the init-abort
+   paths of step 3, which acquired no lease.
+
+   When the loop exited cleanly: surface "ticket <KEY> pipeline complete. State:
    `cat .flow/runs/<KEY>/state.json | jq`."
 
 ### Timeout note (mvp hole)
 
 The descriptor's `timeout_min` is informational only. Agent tool does not
-accept a timeout argument; nothing in the prose enforces it. Phase 7-full
-ships heartbeat-based hung detection that makes this enforceable.
+accept a timeout argument; nothing in the prose enforces it. The prose-driven
+model has no live poller, so hung detection is deferred to phase 8c, where
+`/flow recover` reads the lease state to surface (and take over) a stalled run.
 
 ### Working-tree drift
 
@@ -308,14 +342,17 @@ and its `.flow-bundle.toml` manifest is valid, then returns the concrete
 
 ## Status
 
-Phases 1-4 + 6 + 7-mvp + 8-mvp + 8b-mvp + 5-mvp + 5b complete. Phase 5b
-wired skill-handler dispatch (via `resolve_handler.py`), subagent stage
+Phases 1-4 + 6 + 7-mvp + 7-full + 8-mvp + 8b-mvp + 5-mvp + 5b complete. Phase
+5b wired skill-handler dispatch (via `resolve_handler.py`), subagent stage
 reference docs (plan / implement / e2e), and the SessionStart recall hook.
-The skill is now **usable** for end-to-end `/flow do <ticket>` against bare
-and skill-bundled workspaces.
+Phase 7-full added the run-lease lifecycle and the canonical-snapshot TOCTOU
+defense (init acquires the lease + writes the snapshot; next refreshes the
+lease + verifies the snapshot; release drops the lease post-loop). Heartbeat /
+hung-detection is deferred to phase 8c, since the prose-driven model has no
+live poller. The skill is now **usable** for end-to-end `/flow do <ticket>`
+against bare and skill-bundled workspaces.
 
 Still pending:
-- `/flow status`, `/flow recover` (phase 8c).
+- `/flow status`, `/flow recover`, heartbeat / hung-detection (phase 8c).
 - `/flow sync`, `/flow baseline` (phase 8d).
-- Lease lifecycle + canonical-snapshot TOCTOU + heartbeat (phase 7-full).
 - `recall.py --metric` + work-mode quality gate (phase 8d).

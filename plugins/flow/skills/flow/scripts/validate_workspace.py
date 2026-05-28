@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import snapshot
 from _registry import StageEntry, load_registry
 
 KNOWN_BACKENDS: tuple[str, ...] = ("jira", "beads")
@@ -254,7 +255,12 @@ def validate(
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Validate .flow/ workspace schema.")
     parser.add_argument("--workspace-root", default=".")
-    return parser.parse_args(argv)
+    parser.add_argument("--ticket", default=None)
+    parser.add_argument("--emit-canonical-snapshot", action="store_true")
+    args = parser.parse_args(argv)
+    if args.emit_canonical_snapshot and not args.ticket:
+        parser.error("--emit-canonical-snapshot requires --ticket")
+    return args
 
 
 def cli_main(argv: list[str]) -> int:
@@ -265,11 +271,17 @@ def cli_main(argv: list[str]) -> int:
     except (OSError, ValueError) as exc:
         sys.stderr.write(f"validate-workspace: {exc}\n")
         return 1
-    if result.ok:
-        return 0
-    for line in result.violations:
-        sys.stderr.write(line + "\n")
-    return 1
+    if not result.ok:
+        for line in result.violations:
+            sys.stderr.write(line + "\n")
+        return 1
+    if args.emit_canonical_snapshot:
+        # same skill_root resolution as snapshot.py emit and dispatch_stage init,
+        # so all three paths hash identical on-disk content.
+        skill_root = Path(__file__).resolve().parent.parent
+        path = snapshot.write_snapshot(root, args.ticket, skill_root=skill_root)
+        sys.stdout.write(str(path) + "\n")
+    return 0
 
 
 if __name__ == "__main__":

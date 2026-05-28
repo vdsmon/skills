@@ -8,13 +8,16 @@ via monkeypatch.setattr(subprocess, "run", ...) — no real git repo needed.
 from __future__ import annotations
 
 import json
+import socket
 import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 import dispatch_stage as ds
+import lease
 
 # ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -125,7 +128,10 @@ def test_init_force_resets_to_all_pending(tmp_path: Path, monkeypatch: pytest.Mo
     rc, forced = ds.cmd_init(tmp_path, "FT-1", force=True)
     assert rc == 0
     assert forced["resumed"] is False
-    assert forced["run_id"] != first["run_id"]
+    # --force resets state to all-pending but keeps the same run_id so the run
+    # stays the lease owner; a fresh run_id would make the still-live lease
+    # foreign and force could not reset it.
+    assert forced["run_id"] == first["run_id"]
 
     state_path = tmp_path / ".flow" / "runs" / "FT-1" / "state.json"
     state_data = json.loads(state_path.read_text(encoding="utf-8"))
@@ -560,3 +566,111 @@ def test_cli_finish_skill_output_invalid_json(
     )
     assert rc == 1
     assert "not JSON" in capsys.readouterr().err
+
+
+# ─── Phase 7-full: lease (mutex) + canonical snapshot ────────────────────────
+
+
+def _now_iso() -> str:
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _identity() -> tuple[str, str]:
+    return lease.boot_id(), socket.gethostname()
+
+
+def test_init_acquires_lease(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _write_workspace(tmp_path)
+    _stub_git_head(monkeypatch)
+    rc, payload = ds.cmd_init(tmp_path, "FT-1")
+    assert rc == 0
+    td = tmp_path / ".flow" / "runs" / "FT-1"
+    assert (td / "run.lock").exists()
+    held = lease.read_lease(td)
+    assert held is not None
+    assert held.run_id == payload["run_id"]
+
+
+def test_init_writes_snapshot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _write_workspace(tmp_path)
+    _stub_git_head(monkeypatch)
+    rc, _ = ds.cmd_init(tmp_path, "FT-1")
+    assert rc == 0
+    td = tmp_path / ".flow" / "runs" / "FT-1"
+    assert (td / "snapshot.json").exists()
+    assert (td / "snapshot.sha").exists()
+
+
+def test_init_refuses_foreign_live_lease(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _write_workspace(tmp_path)
+    _stub_git_head(monkeypatch)
+    td = tmp_path / ".flow" / "runs" / "FT-1"
+    boot, host = _identity()
+    lease.acquire(td, "other-run", 600, _now_iso(), current_boot=boot, hostname=host, cwd=str(td))
+    rc, payload = ds.cmd_init(tmp_path, "FT-1")
+    assert rc == 1
+    assert payload["holder"]["run_id"] == "other-run"
+    assert "recover --takeover" in payload["hint"]
+
+
+def test_init_stale_foreign_lease_returns_5(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_workspace(tmp_path)
+    _stub_git_head(monkeypatch)
+    td = tmp_path / ".flow" / "runs" / "FT-1"
+    boot, host = _identity()
+    # expired foreign lease with the current boot id -> not reboot-clearable.
+    lease.acquire(
+        td, "old-run", 1, "2020-01-01T00:00:00Z", current_boot=boot, hostname=host, cwd=str(td)
+    )
+    rc, payload = ds.cmd_init(tmp_path, "FT-1")
+    assert rc == 5
+    assert payload["holder"]["run_id"] == "old-run"
+
+
+def test_next_refuses_on_snapshot_drift(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _write_workspace(tmp_path)
+    _stub_git_head(monkeypatch)
+    ds.cmd_init(tmp_path, "FT-1")
+    wt = tmp_path / ".flow" / "workspace.toml"
+    wt.write_text(wt.read_text(encoding="utf-8") + "\n# drift\n", encoding="utf-8")
+    rc, payload = ds.cmd_next(tmp_path, "FT-1")
+    assert rc == 1
+    assert "drift" in payload["error"]
+
+
+def test_next_lost_lease_returns_7(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _write_workspace(tmp_path)
+    _stub_git_head(monkeypatch)
+    ds.cmd_init(tmp_path, "FT-1")
+    lock = tmp_path / ".flow" / "runs" / "FT-1" / "run.lock"
+    data = json.loads(lock.read_text(encoding="utf-8"))
+    data["run_id"] = "someone-else"
+    lock.write_text(json.dumps(data), encoding="utf-8")
+    rc, payload = ds.cmd_next(tmp_path, "FT-1")
+    assert rc == 7
+    assert payload["error"] == "lost lease"
+
+
+def test_finish_releases_lease_on_terminal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _write_workspace(tmp_path, stages=["ticket"], handlers={"ticket": "inline"}, compounding=False)
+    _stub_git_head(monkeypatch)
+    ds.cmd_init(tmp_path, "FT-1")
+    ds.cmd_next(tmp_path, "FT-1")
+    rc, payload = ds.cmd_finish(tmp_path, "FT-1", "ticket", "completed")
+    assert rc == 0
+    assert payload["next_pending"] is None
+    assert not (tmp_path / ".flow" / "runs" / "FT-1" / "run.lock").exists()
+
+
+def test_release_subcommand_removes_lock(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _write_workspace(tmp_path)
+    _stub_git_head(monkeypatch)
+    ds.cmd_init(tmp_path, "FT-1")
+    td = tmp_path / ".flow" / "runs" / "FT-1"
+    assert (td / "run.lock").exists()
+    rc, payload = ds.cmd_release(tmp_path, "FT-1")
+    assert rc == 0
+    assert payload["released"] is True
+    assert not (td / "run.lock").exists()

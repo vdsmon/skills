@@ -14,9 +14,11 @@ HARD GATE: validate_workspace.validate() runs on every `init` and every
 
 Exit codes:
     0 = ok
-    1 = generic error / validate-workspace failure / state malformed
+    1 = generic error / validate-workspace failure / state malformed /
+        ticket locked by a live run / config-version drift mid-run
     2 = no such ticket dir / not yet initialized
-    7 = lost lease (RESERVED for phase 7-full; mvp never returns 7)
+    5 = stale foreign lease (needs /flow recover --takeover)
+    7 = lost lease (another run took over)
 """
 
 from __future__ import annotations
@@ -24,18 +26,32 @@ from __future__ import annotations
 import argparse
 import contextlib
 import json
+import secrets
+import socket
 import subprocess
 import sys
+from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import lease
 import recall_pending
 import state
 import validate_workspace as vw
 from _registry import registry_by_name
+from snapshot import verify_snapshot, write_snapshot
 
 _STAGE_REGISTRY_RELATIVE = Path("stage-registry.toml")
+
+# Lease covering the init handshake before the first stage timeout is known.
+_INIT_TTL_S = 600
+# Slack added to a stage's timeout so the lease outlives the stage it covers.
+_LEASE_BUFFER_S = 300
+
+
+def _now_iso() -> str:
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 # ─── Handler-string parsing ──────────────────────────────────────────────────
@@ -120,33 +136,69 @@ def _ticket_dir(workspace_root: Path, ticket: str) -> Path:
 
 
 def cmd_init(workspace_root: Path, ticket: str, force: bool = False) -> tuple[int, dict[str, Any]]:
-    result, snapshot = vw.validate(workspace_root)
-    if snapshot is None:
+    result, ws = vw.validate(workspace_root)
+    if ws is None:
         return 1, {
             "error": "validate-workspace failed",
             "violations": result.violations,
         }
     td = _ticket_dir(workspace_root, ticket)
-    if not force:
-        # idempotent resume: a valid existing state (read returns a state)
-        # must not be overwritten with all-pending, which would replay
-        # completed stages including a second git commit.
-        existing, exit_code = state.read(td)
-        if existing is not None and exit_code == 0:
-            _promote_recall_log(workspace_root, ticket)
-            return 0, {
-                "ticket": ticket,
-                "run_id": existing.run_id,
-                "stages": snapshot.stages,
-                "ticket_dir": str(td),
-                "resumed": True,
-            }
-    new_state = state.init(td, ticket, snapshot.backend, snapshot.stages)
+
+    # run_id is the stable per-ticket identity. Reuse the existing one whenever a
+    # valid state is present (resume AND --force reset stay the same logical run),
+    # so the lease sees us as the owner rather than a foreign run.
+    existing, exit_code = state.read(td)
+    have_valid = existing is not None and exit_code == 0
+    resuming = have_valid and not force
+    run_id = existing.run_id if (existing is not None and exit_code == 0) else secrets.token_hex(8)
+
+    boot, host, cwd, now = lease.boot_id(), socket.gethostname(), str(workspace_root), _now_iso()
+    try:
+        lease.acquire(
+            td,
+            run_id,
+            _INIT_TTL_S,
+            now,
+            stage="init",
+            current_boot=boot,
+            hostname=host,
+            cwd=cwd,
+            force=force,
+        )
+    except lease.LeaseHeld as exc:
+        return 1, {
+            "error": "ticket locked by another live run",
+            "holder": asdict(exc.holder),
+            "hint": f"/flow recover --takeover {ticket}",
+        }
+    except lease.LeaseExpiredForeign as exc:
+        return 5, {
+            "error": "stale lease from another run",
+            "holder": asdict(exc.holder),
+            "hint": f"/flow recover --takeover {ticket}",
+        }
+
+    # Canonical snapshot for later `next` TOCTOU checks. Best-effort: a snapshot
+    # write failure must not block the run (verify treats absence as no-op).
+    with contextlib.suppress(Exception):
+        write_snapshot(workspace_root, ticket, skill_root=_skill_root_from_script())
+
+    if resuming:
+        _promote_recall_log(workspace_root, ticket)
+        return 0, {
+            "ticket": ticket,
+            "run_id": run_id,
+            "stages": ws.stages,
+            "ticket_dir": str(td),
+            "resumed": True,
+        }
+
+    state.init(td, ticket, ws.backend, ws.stages, run_id=run_id)
     _promote_recall_log(workspace_root, ticket)
     return 0, {
         "ticket": ticket,
-        "run_id": new_state.run_id,
-        "stages": snapshot.stages,
+        "run_id": run_id,
+        "stages": ws.stages,
         "ticket_dir": str(td),
         "resumed": False,
     }
@@ -165,6 +217,28 @@ def cmd_next(workspace_root: Path, ticket: str) -> tuple[int, dict[str, Any]]:
         if exit_code == 2:
             return 1, {"error": f"unrecoverable state.json at {td}"}
         return 2, {"error": f"no state.json at {td}; run `dispatch init` first"}
+
+    # TOCTOU: refuse if workspace.toml / registry / a handler plugin drifted
+    # since the run started.
+    ok, detail = verify_snapshot(workspace_root, ticket, skill_root=_skill_root_from_script())
+    if not ok:
+        return 1, {
+            "error": "config/version drift mid-run",
+            "detail": detail,
+            "hint": "/flow recover --reload-snapshot or --abort",
+        }
+    # Lease: if one exists it must still be ours (detects a takeover). A run with
+    # no lease (legacy / direct test call) proceeds without one.
+    boot, host = lease.boot_id(), socket.gethostname()
+    if lease.read_lease(td) is not None:
+        try:
+            lease.assert_lease_still_mine(td, ts.run_id, current_boot=boot, hostname=host)
+        except lease.LeaseLost as exc:
+            return lease.EXIT_LEASE_LOST, {
+                "error": "lost lease",
+                "detail": str(exc),
+                "hint": "/flow recover",
+            }
 
     failed = state.find_failed(ts)
     if failed is not None:
@@ -203,6 +277,28 @@ def cmd_next(workspace_root: Path, ticket: str) -> tuple[int, dict[str, Any]]:
     if stage_meta is not None and stage_meta.reference_doc:
         payload["reference_doc"] = stage_meta.reference_doc
 
+    # Refresh the lease to cover this stage's timeout window before marking it
+    # in_progress, so a multi-minute stage does not self-expire the lease.
+    if lease.read_lease(td) is not None:
+        ttl = (stage_meta.default_timeout_min if stage_meta else 10) * 60 + _LEASE_BUFFER_S
+        try:
+            lease.refresh(
+                td,
+                ts.run_id,
+                ttl,
+                _now_iso(),
+                stage=next_stage,
+                current_boot=boot,
+                hostname=host,
+                cwd=str(workspace_root),
+            )
+        except lease.LeaseLost as exc:
+            return lease.EXIT_LEASE_LOST, {
+                "error": "lost lease",
+                "detail": str(exc),
+                "hint": "/flow recover",
+            }
+
     state.begin_stage(td, next_stage, head_sha)
     return 0, payload
 
@@ -225,6 +321,18 @@ def cmd_finish(
             return 1, {"error": f"unrecoverable state.json at {td}"}
         return 2, {"error": f"no state.json at {td}; run `dispatch init` first"}
 
+    if lease.read_lease(td) is not None:
+        try:
+            lease.assert_lease_still_mine(
+                td, ts.run_id, current_boot=lease.boot_id(), hostname=socket.gethostname()
+            )
+        except lease.LeaseLost as exc:
+            return lease.EXIT_LEASE_LOST, {
+                "error": "lost lease",
+                "detail": str(exc),
+                "hint": "/flow recover",
+            }
+
     head_sha = _git_head_sha(workspace_root)
     try:
         new_state = state.finish_stage(
@@ -244,6 +352,18 @@ def cmd_finish(
     next_pending: str | None = None
     if snapshot is not None and state.find_failed(new_state) is None:
         next_pending = state.pick_next_pending(new_state, snapshot.stages)
+
+    # Run finished cleanly (last stage completed, nothing pending or failed):
+    # drop the lease. A failed run keeps its lease so /flow recover can act.
+    if (
+        status_value == "completed"
+        and snapshot is not None
+        and next_pending is None
+        and state.find_failed(new_state) is None
+    ):
+        with contextlib.suppress(Exception):
+            lease.release(td, new_state.run_id)
+
     return 0, {
         "stage": stage_name,
         "status": status_value,
@@ -258,9 +378,16 @@ def cmd_status(workspace_root: Path, ticket: str) -> tuple[int, dict[str, Any]]:
         if exit_code == 2:
             return 1, {"error": f"unrecoverable state.json at {td}"}
         return 2, {"error": f"no state.json at {td}"}
-    from dataclasses import asdict
-
     return exit_code, asdict(ts)
+
+
+def cmd_release(workspace_root: Path, ticket: str) -> tuple[int, dict[str, Any]]:
+    td = _ticket_dir(workspace_root, ticket)
+    ts, _ = state.read(td)
+    released = False
+    if ts is not None:
+        released = lease.release(td, ts.run_id)
+    return 0, {"ticket": ticket, "released": released}
 
 
 # ─── CLI ─────────────────────────────────────────────────────────────────────
@@ -282,6 +409,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     )
     sub.add_parser("next", parents=[common], help="Pick next pending stage.")
     sub.add_parser("status", parents=[common], help="Emit full state.json.")
+    sub.add_parser("release", parents=[common], help="Release the run lease.")
 
     p_finish = sub.add_parser("finish", parents=[common], help="Mark stage terminal.")
     p_finish.add_argument("--stage", required=True)
@@ -326,6 +454,8 @@ def cli_main(argv: list[str]) -> int:
         )
     elif args.cmd == "status":
         rc, payload = cmd_status(workspace_root, args.ticket)
+    elif args.cmd == "release":
+        rc, payload = cmd_release(workspace_root, args.ticket)
     else:
         sys.stderr.write(f"unknown subcommand {args.cmd!r}\n")
         return 1
@@ -349,5 +479,6 @@ __all__ = [
     "cmd_finish",
     "cmd_init",
     "cmd_next",
+    "cmd_release",
     "cmd_status",
 ]
