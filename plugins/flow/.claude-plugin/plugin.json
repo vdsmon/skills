@@ -1,0 +1,14 @@
+{
+  "name": "flow",
+  "version": "0.1.0",
+  "description": "Multi-tracker pipeline. Same proven ticket→PR pipeline; swap tracker (Jira | beads). Memory layer compounds across tickets via reflect-stage extraction + SessionStart recall. Workspace-configurable stages and handlers.",
+  "author": {
+    "name": "Victor De Simone",
+    "email": "victorsmoliveira@gmail.com",
+    "url": "https://github.com/vdsmon"
+  },
+  "homepage": "https://github.com/vdsmon/claude-skills",
+  "repository": "https://github.com/vdsmon/claude-skills",
+  "license": "MIT",
+  "skills": "./skills"
+}

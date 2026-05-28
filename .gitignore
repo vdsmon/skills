@@ -17,3 +17,8 @@
 
 # ship-it local config (reviewer account IDs); example tracked
 plugins/ship-it/skills/ship-it/config.toml
+
+# Python script caches under the flow plugin (ruff, pytest, bytecode)
+plugins/flow/skills/flow/scripts/.pytest_cache/
+plugins/flow/skills/flow/scripts/.ruff_cache/
+plugins/flow/skills/flow/scripts/**/__pycache__/
