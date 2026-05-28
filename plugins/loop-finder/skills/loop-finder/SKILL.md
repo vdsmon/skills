@@ -6,17 +6,16 @@ description: >-
   parallel variants against the baseline, and converges on the best loop
   config. HITL is concentrated at permission boundaries (install CLI,
   register MCP, touch shared files) — never mid-iteration. Caches per
-  task class so future runs reuse. Foundation skill that adx-loop
-  consumes — adx-loop iterates against a gate; this skill produces and
-  races the gate itself.
+  task class so future runs reuse. Sibling to loop-finder:feature-cycle
+  which runs the outer queued-fix chain against the converged gate.
 when_to_use: >-
   Use when the user says "find me a loop for X", "engineer a feedback
   loop", "race loop variants", "I keep hitting HITL", "set up a self-
-  verifiable harness for X", or invokes /loop-finder. Also use when
-  adx-loop needs an acceptance gate and none exists for the current
-  task class. Do NOT use
-  for one-shot fixes that don't repeat — the cache and exploration cost
-  only pay off across multiple iterations.
+  verifiable harness for X", or invokes /loop-finder. Also use when the
+  sibling feature-cycle skill needs an acceptance gate and none exists
+  for the current task class. Do NOT use for one-shot fixes that don't
+  repeat — the cache and exploration cost only pay off across multiple
+  iterations.
 argument-hint: "[task description | --status | --halt | --max-cycles N]"
 allowed-tools:
   - Read
@@ -28,7 +27,7 @@ allowed-tools:
 
 # loop-finder
 
-Generalized procedure for engineering a self-verifiable feedback loop for any task class, then racing variants against it. Foundation underneath `adx-loop:loop` — adx-loop iterates against a gate; this skill produces the gate and pushes it toward the best loop config the available tooling can build.
+Generalized procedure for engineering a self-verifiable feedback loop for any task class, then racing variants against it. Foundation underneath the sibling `loop-finder:feature-cycle` skill — feature-cycle iterates against a gate; this skill produces the gate and pushes it toward the best loop config the available tooling can build.
 
 ## Core promise
 
@@ -52,6 +51,7 @@ Run-time loops never need HITL. All approval gates are concentrated at permissio
 - **Menu** — `menu.yaml`, the catalog of loop patterns this skill picks variants from. Each entry has the fields needed for the decision matrix.
 - **Cycle** — one iteration of the explore phase. Spawns `N` parallel agents, each implementing one variant.
 - **HITL touchpoint** — a moment where the user is asked to approve a permission gate. Exactly two kinds: (1) Step-1 gap report, (2) Step-3 batched permission requests.
+- **`blindness_count`** (this skill) — mechanical rule matches against gate output, summed across the 10-run sample. Driven by `~/.claude/loop-finder/blindness-rules.yaml`. Distinct from **`blindness_subjective`** in the sibling feature-cycle skill, which is the agent's self-tallied count of groping moments during a feature cycle. The two metrics are not interchangeable.
 
 ## Files
 
@@ -66,6 +66,8 @@ baseline-history.jsonl  append-only audit log of baseline changes
 known-bad/              canary regression fixtures (frozen)
 variants/               per-cycle exploration artifacts
 summary.md              written on halt
+feature-log.jsonl       written by sibling feature-cycle skill (outer cycle)
+retro.md                written by sibling feature-cycle skill (outer cycle)
 ```
 
 Per-repo pin (optional, committed): `.loop-finder.yaml` at repo root pinning which `class-id` this repo uses and any repo-specific overrides.
@@ -201,9 +203,9 @@ Anything else surfaces only on halt or hard regression. No mid-iteration "should
 
 ## Relationship to other skills
 
-- **adx-loop:loop** — consumes the loop produced here for its inner iteration. ADX runs sequentially with queued harness fixes; loop-finder runs parallel variants. They compose: loop-finder picks the gate, ADX uses it to ship features.
+- **`loop-finder:feature-cycle`** (sibling skill in this plugin) — runs the outer queued-fix chain against the gate this skill converges. loop-finder finds and races the gate (the loop-as-artifact, parallel variants per cycle); feature-cycle ships features against a fixed gate (the system-under-test, sequential queued-fix chain across cycles). They compose: loop-finder picks the gate, feature-cycle uses it to ship features and accumulate harness fixes.
 
-Loop-finder is the foundation. If it has converged for a class, the downstream skills run smoother.
+Loop-finder is the foundation. If it has converged for a class, the downstream feature-cycle runs smoother.
 
 ## Anti-patterns
 
@@ -218,7 +220,7 @@ Loop-finder is the foundation. If it has converged for a class, the downstream s
 - **Codex variant agent for vision-required gates** — codex runtime is sandboxed without NSScreen; tao window construction panics on launch. Use codex for substantial Rust / algorithm work where rendering is NOT required; `general-purpose` for any vision-required task.
 - **Caveman builder for measurement-required variants** — caveman:cavecrew-builder lacks the Bash tool; it can edit files but cannot run gates. Reserve for edit-only diff emitters.
 - **Skipping the worktree bootstrap step** — every variant agent must run `helpers/bootstrap-worktree.sh` first. Without it, the agent measures stale state (older HEAD, missing tools/) and the result is meaningless.
-- **Dispatching the entire skill to a subagent** — the cache and HITL touchpoints are stateful. Inner cycles can dispatch variants to subagents; the orchestration stays inline. Same constraint as `adx-loop:loop`.
+- **Dispatching the entire skill to a subagent** — the cache and HITL touchpoints are stateful. Inner cycles can dispatch variants to subagents; the orchestration stays inline. Same constraint as the sibling `loop-finder:feature-cycle`.
 
 ## Bootstrap
 
@@ -262,7 +264,7 @@ Adding a rule later is an HITL approval moment in itself.
 ## Origin
 
 Derived from:
-- `adx-loop:loop` (Karpathy autoresearch discipline applied to dev experience). Loop-finder is its prerequisite — adx-loop assumes the loop exists.
+- Karpathy autoresearch (one change per iteration, mechanical metric, git as memory, binary keep/discard). Loop-finder is the prerequisite for the queued-fix-chain pattern that lives in the sibling feature-cycle skill — feature-cycle assumes the loop already exists.
 - mic-mute `tools/settings-preview/` (reference instance: headless probe sidecar + visual diff + odiff baseline + exit-code gate).
 - Voyager / Self-Refine / AlphaEvolve (LLM-driven exploration with executable verifier).
 - SWE-bench / Inspect harness (sandboxed agent harness as one menu pattern, not the whole story).

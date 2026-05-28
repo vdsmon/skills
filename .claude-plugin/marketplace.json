@@ -46,16 +46,10 @@
       "version": "0.3.1"
     },
     {
-      "name": "adx-loop",
-      "source": "./plugins/adx-loop",
-      "description": "Agent Development Experience self-improvement loop. Each cycle: ship prior retro's queued harness fix → ship a gameplay feature that pressure-tests the surface → retro (top pain + one queued fix) → log a single composite metric. Karpathy autoresearch discipline: one change per iteration, mechanical metric, git as memory, binary keep/discard. Optimizes the dev environment, not the product.",
-      "version": "0.1.0"
-    },
-    {
       "name": "loop-finder",
       "source": "./plugins/loop-finder",
-      "description": "Engineers a self-verifiable end-to-end feedback loop for a task class, baselines it, races parallel variants against the baseline, and converges on the best loop config. HITL is concentrated at permission gates (install CLI, register MCP, touch shared files) — never mid-iteration. Caches per task class so future runs reuse. Foundation skill that adx-loop consumes.",
-      "version": "0.1.0"
+      "description": "Loop discovery + race + feature-driven iteration. Two skills: loop-finder (engineers a self-verifiable gate for a task class, races parallel variants, converges on the best loop config; HITL concentrated at permission boundaries) and feature-cycle (outer queued-fix chain that ships features against the converged gate, retros pain, queues one harness fix per cycle — Karpathy autoresearch discipline applied to dev experience).",
+      "version": "0.2.0"
     }
   ]
 }

@@ -18,7 +18,6 @@ Plugins **without** the `cc-` prefix are portable. They follow the open Agent Sk
 | `humanize` | — | Any host |
 | `skill-polish` | — | Any host |
 | `ship-it` | — | Any host |
-| `adx-loop` | — | Any host |
 | `loop-finder` | — | Any host |
 
 ## Install — Claude Code
@@ -37,7 +36,6 @@ Install whichever plugins you want:
 /plugin install humanize@vdsmon-skills
 /plugin install pre-compact@vdsmon-skills
 /plugin install ship-it@vdsmon-skills
-/plugin install adx-loop@vdsmon-skills
 /plugin install loop-finder@vdsmon-skills
 
 # Claude-Code-specific
@@ -131,6 +129,15 @@ Trigger: `compact`, `let's compact`, `ready to compact?`, `prep for compact`, `s
 Rewrites text to strip AI-writing tells and inject human voice. Detects em-dash overuse, AI vocabulary, inflated significance, rule-of-three, negative parallelisms, sycophancy, and 20+ more patterns.
 
 Trigger: `humanize this`, `remove AI tells`, `edit for voice`, `sounds too AI`, `make this more human`.
+
+### `loop-finder` (portable)
+
+Ships two skills in one plugin.
+
+- **`/loop-finder`** — engineers a self-verifiable end-to-end feedback loop for a task class, baselines it, races parallel variants against the baseline, and converges on the best loop config. HITL is concentrated at permission gates (install CLI, register MCP, touch shared files), never mid-iteration. Caches per task class so future runs reuse.
+- **`/loop-finder:feature-cycle`** — outer queued-fix chain wrapping the converged gate. One cycle = ship the prior cycle's queued harness fix, ship the next feature against the gate, retro Pain / Workaround / Fix queued, log to per-class `feature-log.jsonl`. Karpathy autoresearch discipline applied to dev experience. Absorbed the standalone `adx-loop` plugin in v0.2.0.
+
+Trigger: `/loop-finder`, `engineer a feedback loop`, `race loop variants`, `set up a self-verifiable harness for X` (gate discovery); `/loop-finder:feature-cycle`, `self-improvement loop`, `harness pressure-test`, `dogfood tooling against feature backlog`, `ADX loop` (outer cycle).
 
 ## Layout
 

@@ -22,7 +22,7 @@ Two invariants preserve when add/rename plugins:
 1. **Every plugin listed in `.claude-plugin/marketplace.json`** with `name`, `source: ./plugins/<name>`, `description`, `version`. Forget = plugin invisible to `/plugin install`.
 2. **`plugin.json` `name` must match marketplace `name` and directory name.** Skill dir name under `skills/` independent but conventionally matches.
 
-Current plugins: `skill-polish`, `cc-tokenomics`, `cc-cache-keepalive`, `pre-compact`, `humanize`, `ship-it`, `adx-loop`, `loop-finder`. Plugins prefixed with `cc-` are Claude-Code-specific (hooks, `` !`cmd` `` dynamic injection, `${CLAUDE_SKILL_DIR}`); unprefixed plugins port cleanly to other Agent Skills hosts (Codex CLI, Gemini CLI, Cursor, Goose, etc.). `cc-tokenomics` is analysis + education only; cache warmup lives in `cc-cache-keepalive`.
+Current plugins: `skill-polish`, `cc-tokenomics`, `cc-cache-keepalive`, `pre-compact`, `humanize`, `ship-it`, `loop-finder`. Plugins prefixed with `cc-` are Claude-Code-specific (hooks, `` !`cmd` `` dynamic injection, `${CLAUDE_SKILL_DIR}`); unprefixed plugins port cleanly to other Agent Skills hosts (Codex CLI, Gemini CLI, Cursor, Goose, etc.). `cc-tokenomics` is analysis + education only; cache warmup lives in `cc-cache-keepalive`. `loop-finder` ships two skills: `loop-finder` (gate discovery + race + converge) and `loop-finder:feature-cycle` (outer queued-fix chain for shipping features against the converged gate; absorbed the adx-loop discipline).
 
 ## Anatomy of a skill
 
