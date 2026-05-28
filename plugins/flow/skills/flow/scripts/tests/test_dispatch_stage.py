@@ -18,6 +18,7 @@ import pytest
 
 import dispatch_stage as ds
 import lease
+import state
 
 # ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -673,4 +674,45 @@ def test_release_subcommand_removes_lock(tmp_path: Path, monkeypatch: pytest.Mon
     rc, payload = ds.cmd_release(tmp_path, "FT-1")
     assert rc == 0
     assert payload["released"] is True
+    assert not (td / "run.lock").exists()
+
+
+def test_full_loop_init_to_done_releases_lease(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # End-to-end dispatcher drive: init -> (next -> finish)* -> done -> lease gone.
+    # Exercises lease acquire/refresh/assert/release + snapshot write/verify + state
+    # transitions interacting across the whole sequence (no tracker/subagents).
+    _write_workspace(
+        tmp_path,
+        stages=["ticket", "plan", "commit"],
+        handlers={"ticket": "inline", "plan": "none", "commit": "inline"},
+        compounding=False,
+    )
+    _stub_git_head(monkeypatch)
+    td = tmp_path / ".flow" / "runs" / "FT-1"
+
+    rc, _ = ds.cmd_init(tmp_path, "FT-1")
+    assert rc == 0
+    assert (td / "run.lock").exists()
+
+    seen: list[str] = []
+    guard = 0
+    while True:
+        guard += 1
+        assert guard < 20, "dispatcher loop did not terminate"
+        rc, nxt = ds.cmd_next(tmp_path, "FT-1")
+        assert rc == 0, nxt
+        if nxt.get("done"):
+            break
+        stage = nxt["stage"]
+        seen.append(stage)
+        rc, fin = ds.cmd_finish(tmp_path, "FT-1", stage, "completed")
+        assert rc == 0, fin
+
+    assert seen == ["ticket", "plan", "commit"]
+    ts, _ = state.read(td)
+    assert ts is not None
+    assert all(r.status == "completed" for r in ts.stages.values())
+    # lease released on terminal completion
     assert not (td / "run.lock").exists()
