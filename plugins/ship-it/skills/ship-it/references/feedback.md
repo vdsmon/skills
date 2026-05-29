@@ -97,6 +97,14 @@ After pushing fixes, **must** re-run both CI and reviewer Monitors. The reviewer
 
 Stop the prior two Monitors (Step 3.0), launch both fresh concurrently (one for CI, one for the reviewer, same inline patterns as 3.1 and 3.2). If CI fails again, re-enter the fix loop (max 3 attempts across all cycles). If the reviewer has new actionable findings, loop Step 3.3-3.5 again.
 
+### Convergence — the loop MUST terminate
+
+Re-verify can spiral: fix -> new commit -> reviewer flags a new nit -> fix -> new commit -> ... There is no automatic contraction, so enforce it:
+
+1. **Only an unresolved Major+ finding (or CI red) justifies another code-change commit + push.** Minor / nit findings never trigger their own cycle. Batch a nit into a cycle that is already happening for a Major+ issue; otherwise reply / resolve it (Step 3.6.5/3.6.6) or leave it as a documented open thread and stop. Nit-chasing is the usual non-termination source.
+2. **Each cycle must strictly reduce the unresolved Major+ count.** If a cycle does not reduce it (the same Major persists, or your own fix introduced a new Major), that is not convergence: stop and escalate to the user with both sides, do not push again. Absolute cap is 3 fix cycles across CI and reviewer combined (the same budget as Step 3.1) regardless of finding count.
+3. **Terminal condition is explicit: STOP when CI is green AND there are zero unresolved Major+ findings.** Remaining Minor threads are reported open with one-line reasons in Step 3.7, not chased. A docs-only or comment-only commit re-triggers review but adds no Major+ surface, so the first green-with-no-Major re-verify is terminal by these rules: one cycle, not a loop.
+
 ## Step 3.6.5: Resolve addressed threads (default)
 
 After the post-fix re-verify shows CI and the reviewer green, resolve every CodeRabbit thread that a pushed commit actually addressed. This is the default, not opt-in: an unresolved thread re-surfaces on every future re-fetch and reads as an open defect to anyone scanning the PR.

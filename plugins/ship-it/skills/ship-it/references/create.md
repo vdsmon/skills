@@ -10,17 +10,20 @@ A PR may already exist from a prior run, an auto-create on push, or a manual `bk
 
 ```bash
 BRANCH=$(git branch --show-current)
-PR_ID=$(bkt pr list --mine --json 2>/dev/null \
-  | jq -r --arg b "$BRANCH" '.values // [] | map(select(.source.branch.name==$b)) | .[0].id // empty')
+PR_ID=$(bkt pr list --json 2>/dev/null \
+  | jq -r --arg b "$BRANCH" '(.values // .pull_requests // []) | map(select(.source.branch.name==$b)) | .[0].id // empty')
 ```
+
+Do NOT pass `--mine` here: on some `bkt` versions it returns `pull_requests: null` even for a PR you just created, so the freshly-opened PR is invisible to the detection and the skill wrongly creates a duplicate. The unfiltered list plus a source-branch match is reliable. The list payload keys the array under `pull_requests` on current `bkt` (older builds used `values`); the `.values // .pull_requests // []` fallback handles both.
 
 - `PR_ID` empty -> Step 2.4 (create new).
 - `PR_ID` set -> Step 2.5 (update existing).
 
 ### bkt CLI quirks
 
-- `bkt pr list --source <BRANCH>` errors with `unknown flag: --source`. Use the `--mine --json` form above.
-- `bkt pr list` returns `pull_requests: null` when the user has zero PRs. Piping null into `jq` raises `cannot iterate over null`. The `// []` fallback in the jq expression above prevents that.
+- `bkt pr list --source <BRANCH>` errors with `unknown flag: --source`. Use the unfiltered `bkt pr list --json` form above and match by source branch in jq.
+- `bkt pr list --mine` can return `pull_requests: null` even when you have an open PR (including one just created), so it is unreliable for detection. Use the unfiltered list.
+- The list payload keys the PR array under `pull_requests` on current `bkt` (older builds used `values`), and the key is `null` when empty. Pipe through `(.values // .pull_requests // [])` so both shapes and the empty case survive `jq`.
 - `bkt pr update` does not exist. The right subcommand is `bkt pr edit <id>`.
 - `bkt pr create` has no `--draft` flag. Step 2.4 routes creation through `bkt api` to set `draft:true`.
 - `bkt api -d @file` does not work, it returns `invalid character '@' looking for beginning of value`. Use `-d "$(cat file)"`.
@@ -120,7 +123,15 @@ PR_URL=$(echo "$PR_RESPONSE" | jq -r '.links.html.href // empty')
 
 `PR_TITLE` defaults to the latest commit subject, `git log -1 --format=%s`. Override with the first line of a committed PR title file or with explicit user input.
 
-If `PR_ID` is empty or non-numeric, the POST failed. Inspect `$PR_RESPONSE` for the error payload before proceeding. Common cause: invalid JSON in the body (Bitbucket sometimes echoes literal newlines back into the response, but the request itself rarely fails on body content; far more common is missing auth).
+Empty `PR_ID` here does NOT reliably mean the POST failed. Bitbucket echoes your multi-line `description` back into the response with literal newlines, which is invalid JSON, so the `jq` extraction above raises `Invalid string: control characters ... must be escaped` and yields empty `PR_ID`/`PR_URL` even though the PR was created. Do not retry the POST on empty id (that creates a duplicate). Instead re-detect the PR you just created via the Step 2.1 list and read its id/url from there:
+
+```bash
+LIST=$(bkt pr list --json 2>/dev/null)
+PR_ID=$(echo "$LIST" | jq -r --arg b "$BRANCH" '(.values // .pull_requests // []) | map(select(.source.branch.name==$b)) | .[0].id // empty')
+PR_URL="https://bitbucket.org/$WORKSPACE/$REPO_SLUG/pull-requests/$PR_ID"
+```
+
+Only if the re-detect also finds no PR for `$BRANCH` did the POST genuinely fail. Then inspect `$PR_RESPONSE` for the error payload (most often missing auth) before proceeding.
 
 If `--ready` was passed instead of the default `--draft`, omit `draft:true` from the JSON above.
 
