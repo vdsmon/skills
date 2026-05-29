@@ -119,6 +119,10 @@ This is the human/machine boundary — you own the spec and the eventual PR revi
 
 4. Iterate the implementation plan with the user: goal, files to change, approach, test strategy, risks.
    This is the same depth a `subagent:Plan` handler would produce — but interactive, so the user shapes it.
+   **If the workspace opts into e2e** (`workspace.toml [pipeline.handlers] e2e` is not `none`), the plan MUST also settle the **e2e recipe** — this is the moment to decide it, while you (and any live tracker/AWS auth) are present.
+   Elicit from the user: which suite/runner the e2e stage runs, the exact command + any env-prep it needs, the fixture (the concrete input — a sample id, account, dataset), and the expected pass signal.
+   If this ticket has no meaningful e2e, settle that too — the recipe value becomes `skip: <reason>` or `test-ci-only`. The point is a conscious decision per ticket, never a silent omission.
+   The bootstrap in step 6 **refuses** when e2e is enabled and no recipe is passed, so do not skip this.
 
 5. **`ExitPlanMode`** with the plan = Gate 1, the one human gate.
    On approval you return to normal mode.
@@ -135,10 +139,13 @@ This is the human/machine boundary — you own the spec and the eventual PR revi
      --main-root . \
      --planned-files "<comma-separated files the plan will touch>" \
      --commit-type <feat|fix|chore|...> \
-     --commit-summary "<one-line summary from the plan>"
+     --commit-summary "<one-line summary from the plan>" \
+     --e2e-recipe "<the e2e recipe from step 4 — omit ONLY when e2e is none>"
    ```
    Derive `<slug>` from the ticket summary, and `--planned-files` from the plan's "files to change" list.
-   The bootstrap seeds state (plan pre-completed, ticket left pending), injects the plan, stamps `planned_files` + `commit_type` + `commit_summary` into frontmatter (so the implement pre-hook and the commit stage never pause to ask the user — the whole point of an unattended tail), points the worktree's memory store at this checkout's `.flow` (shared, so memory compounds across worktrees), copies gitignored config, and `mise trust`s the worktree.
+   `--e2e-recipe` carries the recipe settled in step 4 (runner + command + env-prep + fixture + expected, or `skip: <reason>` / `test-ci-only`); pass it whenever e2e is enabled and omit it only when the handler is `none`.
+   The bootstrap seeds state (plan pre-completed, ticket left pending), injects the plan, stamps `planned_files` + `commit_type` + `commit_summary` (+ `e2e_recipe` when given) into frontmatter (so the implement pre-hook, the commit stage, and the e2e stage never pause to ask the user — the whole point of an unattended tail), points the worktree's memory store at this checkout's `.flow` (shared, so memory compounds across worktrees), copies gitignored config, and `mise trust`s the worktree.
+   If e2e is enabled and you omit `--e2e-recipe`, create exits 2 (`_ConfigError`) — go back to step 4 and settle the recipe.
    Surface any `WARN` lines (e.g. mise trust failures — the tail would die on the first `mise run`).
 
 7. **Hand off the tail.** The bootstrap prints a `launch_cmd` of the form `cd <worktree> && claude --bg "/flow do $KEY"` — **without** `--notify`.

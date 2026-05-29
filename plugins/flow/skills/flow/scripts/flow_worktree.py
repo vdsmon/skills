@@ -12,8 +12,8 @@ fresh `claude --bg "/flow do <KEY>"` resumes directly at the implement stage:
   5. seed state.json: plan marked completed with its output_path; plan.out written
      from --plan-from; ticket left pending so the bg tail self-fetches ticket.json
      and stamps frontmatter (keeps the bootstrap offline; tracker auth stays in bg)
-  6. stamp commit_type/commit_summary into the worktree frontmatter so the commit
-     stage does not block on AskUserQuestion under --bg
+  6. stamp commit_type/commit_summary (and e2e_recipe when e2e is opted in) into
+     the worktree frontmatter so the commit + e2e stages do not block under --bg
   7. print the worktree path + the `claude --bg` launch line
 
 The bootstrap holds NO lease; the bg session's cmd_init acquires it under the
@@ -188,6 +188,22 @@ def _seed_state(worktree: Path, ticket: str, plan_text: str, head_sha: str) -> s
     return run_id
 
 
+def _e2e_enabled(main_root: Path) -> bool:
+    """True when the workspace wires e2e to a real handler (not 'none').
+
+    A 'none' handler short-circuits the stage before its reference doc loads, so
+    no recipe is needed there. Only an opted-in e2e demands a recipe.
+    """
+    try:
+        data = _workspace.load_workspace_toml(main_root)
+    except _workspace.WorkspaceConfigError:
+        return False
+    pipeline = data.get("pipeline")
+    handlers = pipeline.get("handlers") if isinstance(pipeline, dict) else None
+    handler = handlers.get("e2e") if isinstance(handlers, dict) else None
+    return isinstance(handler, str) and handler.strip().lower() != "none"
+
+
 def _worktree_path(main_root: Path, branch: str, override: str | None) -> Path:
     if override:
         return Path(override).expanduser().resolve()
@@ -207,11 +223,22 @@ def bootstrap(
     planned_files: list[str] | None = None,
     commit_type: str | None = None,
     commit_summary: str | None = None,
+    e2e_recipe: str | None = None,
     mise_trust: bool = True,
     runner: Runner | None = None,
 ) -> dict:
     run = runner or _default_runner()
     main_root = main_root.expanduser().resolve()
+
+    # e2e is opt-in; when a workspace enables it the approved plan must declare
+    # what the e2e stage runs. Refuse here, while the user is still present at the
+    # spec gate, rather than let the unattended tail block at the e2e lint gate.
+    if _e2e_enabled(main_root) and not (e2e_recipe and e2e_recipe.strip()):
+        raise _ConfigError(
+            "e2e handler is enabled in workspace.toml; pass --e2e-recipe "
+            "(the approved plan must declare the e2e recipe/fixture, or 'skip: <reason>')"
+        )
+
     plan_text = plan_from.read_text(encoding="utf-8")
     worktree = _worktree_path(main_root, branch, worktree_override)
     warnings: list[str] = []
@@ -241,6 +268,11 @@ def bootstrap(
         fm_updates["commit_type"] = commit_type
     if commit_summary:
         fm_updates["commit_summary"] = commit_summary
+    if e2e_recipe:
+        # the e2e stage reads frontmatter `e2e_recipe` (lint_ticket HARD GATE +
+        # the recipe-executor doc); seeding it here is what lets the opted-in
+        # e2e stage run unattended without pausing to ask.
+        fm_updates["e2e_recipe"] = e2e_recipe
     if fm_updates:
         ticket_frontmatter.update(worktree / ".flow" / "tickets" / f"{ticket}.md", fm_updates)
 
@@ -276,6 +308,13 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     )
     p.add_argument("--commit-type", default=None)
     p.add_argument("--commit-summary", default=None)
+    p.add_argument(
+        "--e2e-recipe",
+        default=None,
+        help="the e2e recipe the plan declared (runner + fixture + command + expected, "
+        "or 'skip: <reason>' / 'test-ci-only'); required when the workspace enables e2e. "
+        "Seeds frontmatter e2e_recipe so the opted-in e2e stage runs unattended",
+    )
     p.add_argument("--no-mise-trust", action="store_true")
     return parser.parse_args(argv)
 
@@ -302,6 +341,7 @@ def cli_main(argv: list[str]) -> int:
             planned_files=planned,
             commit_type=args.commit_type,
             commit_summary=args.commit_summary,
+            e2e_recipe=args.e2e_recipe,
             mise_trust=not args.no_mise_trust,
         )
     except _ConfigError as exc:

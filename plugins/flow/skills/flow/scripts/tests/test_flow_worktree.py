@@ -268,3 +268,46 @@ def test_cli_missing_main_workspace_exits_2(tmp_path: Path, monkeypatch, capsys)
         ]
     )
     assert rc == 2
+
+
+# ─── e2e recipe gate ──────────────────────────────────────────────────────────
+
+
+def _main_with_e2e_handler(tmp: Path, handler: str) -> Path:
+    """Main checkout whose workspace.toml wires the e2e stage to `handler`."""
+    main = _main_checkout(tmp, stages=["ticket", "plan", "implement", "e2e", "commit", "reflect"])
+    ws = main / ".flow" / "workspace.toml"
+    ws.write_text(
+        ws.read_text(encoding="utf-8") + f'[pipeline.handlers]\ne2e = "{handler}"\n',
+        encoding="utf-8",
+    )
+    return main
+
+
+def test_e2e_enabled_without_recipe_refuses(tmp_path: Path) -> None:
+    main = _main_with_e2e_handler(tmp_path, "subagent:general-purpose")
+    try:
+        _run(tmp_path, main)
+    except fw._ConfigError as exc:
+        assert "e2e-recipe" in str(exc)
+    else:
+        raise AssertionError("expected _ConfigError when e2e enabled and no recipe")
+    # gate fires before any git side effect: no worktree dir
+    assert not (tmp_path / "wt").exists()
+
+
+def test_e2e_enabled_with_recipe_stamps_frontmatter(tmp_path: Path) -> None:
+    import ticket_frontmatter
+
+    main = _main_with_e2e_handler(tmp_path, "subagent:general-purpose")
+    recipe = "runner=duckdb fixture=load 42 cmd='mise run ...' expected=green"
+    _run(tmp_path, main, runner=_fake_runner(main=main), e2e_recipe=recipe)
+    fm = ticket_frontmatter.read(tmp_path / "wt" / ".flow" / "tickets" / "FT-1.md")
+    assert fm["e2e_recipe"] == recipe
+
+
+def test_e2e_none_does_not_require_recipe(tmp_path: Path) -> None:
+    main = _main_with_e2e_handler(tmp_path, "none")
+    # no recipe passed, but e2e=none → no gate, bootstrap succeeds
+    res = _run(tmp_path, main, runner=_fake_runner(main=main))
+    assert res["ticket"] == "FT-1"

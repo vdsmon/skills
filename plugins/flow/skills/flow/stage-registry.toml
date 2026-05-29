@@ -92,6 +92,7 @@ default_heartbeat_required = true
 default_max_no_progress_min = 15
 required_capabilities = []
 required_predecessors = ["code_review"]
+required_fields = ["e2e_recipe"]
 required = false
 required_when_compounding = false
 reference_doc = "references/stage-e2e.md"
