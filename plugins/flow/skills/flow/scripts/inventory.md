@@ -1,12 +1,10 @@
 # Jira API inventory
 
-Source: `~/.claude/skills/jira-workflow/{SKILL.md,references/*.md}` — the proven
-8-stage pipeline that JiraAdapter must replicate as REST calls.
+Source: `~/.claude/skills/jira-workflow/{SKILL.md,references/*.md}` — the proven 8-stage pipeline that JiraAdapter must replicate as REST calls.
 
-Distinct MCP Atlassian functions exercised: **7**. Direct REST replacements
-listed below. Anything in the Tracker Protocol not exercised by jira-workflow is
-marked **NEW** — implemented for cross-backend completeness and validated via
-mocks (no live jira-workflow precedent).
+Distinct MCP Atlassian functions exercised: **7**.
+Direct REST replacements listed below.
+Anything in the Tracker Protocol not exercised by jira-workflow is marked **NEW** — implemented for cross-backend completeness and validated via mocks (no live jira-workflow precedent).
 
 ## Calls used by jira-workflow
 
@@ -27,8 +25,8 @@ JQL used:
 
 ## Tracker Protocol surface NOT exercised by jira-workflow
 
-These are required by the Tracker Protocol for cross-backend parity. No reference
-in jira-workflow — implemented from Atlassian REST API v3 docs + Agile REST API.
+These are required by the Tracker Protocol for cross-backend parity.
+No reference in jira-workflow — implemented from Atlassian REST API v3 docs + Agile REST API.
 
 | Protocol method            | REST endpoint                                                                  | Notes |
 |----------------------------|--------------------------------------------------------------------------------|-------|
@@ -56,7 +54,8 @@ in jira-workflow — implemented from Atlassian REST API v3 docs + Agile REST AP
 
 ## Capabilities advertised by JiraAdapter
 
-Closed enum (`tracker.py:CAPABILITY_ENUM`). All `supported=true` for Jira Cloud:
+Closed enum (`tracker.py:CAPABILITY_ENUM`).
+All `supported=true` for Jira Cloud:
 
 ```
 comments_adf=true, comments_markdown=false, attachments=true, watchers=true,
@@ -65,19 +64,19 @@ pr_links=true, ci_links=true, boards=true, custom_fields=true,
 transitions_with_validators=true, resolutions=true
 ```
 
-`comments_markdown=false` is intentional. Jira Cloud's comment API requires ADF;
-markdown round-trips lose formatting. Callers MUST send either:
+`comments_markdown=false` is intentional.
+Jira Cloud's comment API requires ADF; markdown round-trips lose formatting.
+Callers MUST send either:
 
 - `Content{fmt="adf"}` — body is a pre-built ADF JSON string. Adapter parses + sends as-is.
 - `Content{fmt="plain"}` — adapter wraps as single-paragraph ADF: `{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":body}]}]}`.
 
-`Content{fmt="md"}` is REJECTED with `NotSupported("markdown not supported by Jira; use fmt=adf or fmt=plain")`. No heuristic md→ADF conversion; richer markdown silently breaks in Jira UI without errors, so we refuse rather than guess.
+`Content{fmt="md"}` is REJECTED with `NotSupported("markdown not supported by Jira; use fmt=adf or fmt=plain")`.
+No heuristic md→ADF conversion; richer markdown silently breaks in Jira UI without errors, so we refuse rather than guess.
 
 ## Status normalization mapping
 
-`TicketState.normalized` is derived from Jira's `status.statusCategory.key` (the
-3-bucket category: `new` / `indeterminate` / `done`) combined with native status
-string heuristics:
+`TicketState.normalized` is derived from Jira's `status.statusCategory.key` (the 3-bucket category: `new` / `indeterminate` / `done`) combined with native status string heuristics:
 
 | Jira statusCategory.key | Jira native status (case-insensitive) | NORMALIZED_STATES |
 |-------------------------|---------------------------------------|--------------------|
@@ -94,23 +93,23 @@ so dashboards can audit unexpected categorizations.
 
 ## Authentication
 
-**Basic auth with API token**, per user decision. Adapter reads:
+**Basic auth with API token**, per user decision.
+Adapter reads:
 
 - `ATLASSIAN_EMAIL` — Atlassian account email (the username for basic auth)
 - `ATLASSIAN_API_TOKEN` — token from `https://id.atlassian.com/manage-profile/security/api-tokens`
 
 Auth header: `Authorization: Basic base64(email:token)`.
 
-Adapter raises `TrackerConfigError` at construction if either env var is missing
-or empty.
+Adapter raises `TrackerConfigError` at construction if either env var is missing or empty.
 
-`cloud_id` is taken from `workspace.toml` ([tracker.jira].cloud_id) — cached at
-init time via `getAccessibleAtlassianResources`. Not re-queried per request.
+`cloud_id` is taken from `workspace.toml` ([tracker.jira].cloud_id) — cached at init time via `getAccessibleAtlassianResources`.
+Not re-queried per request.
 
 ## HTTP error → exception / TransitionResult mapping
 
-All `_request()` responses flow through one classifier. This table is the
-contract — every Jira REST call returns one of these outcomes.
+All `_request()` responses flow through one classifier.
+This table is the contract — every Jira REST call returns one of these outcomes.
 
 | Status | Endpoint family            | Body signal                                                | Outcome                                                                                  |
 |--------|----------------------------|------------------------------------------------------------|------------------------------------------------------------------------------------------|
@@ -128,16 +127,12 @@ contract — every Jira REST call returns one of these outcomes.
 | 429    | any                        | `Retry-After` header                                       | sleep + retry up to 3× then raise `TrackerError("rate-limited after 3 retries")`         |
 | 5xx    | any                        | —                                                          | retry up to 2× (exponential 1s/3s); raise `TrackerError("upstream 5xx: {status}")` if persists |
 
-`ambiguous_transition` is a CLIENT-side classification: when `list_transitions()`
-returns multiple entries sharing the same `name`, callers see them all and MUST
-select by id. If a caller passes a `name` that resolves to >1 id, that's a
-client-side error; the Protocol contract is strictly id-keyed (see tracker.py
-docstring for `Transition.id`). The Jira REST call itself never reports
-"ambiguous_transition" — it just runs whichever id was sent.
+`ambiguous_transition` is a CLIENT-side classification: when `list_transitions()` returns multiple entries sharing the same `name`, callers see them all and MUST select by id.
+If a caller passes a `name` that resolves to >1 id, that's a client-side error; the Protocol contract is strictly id-keyed (see tracker.py docstring for `Transition.id`).
+The Jira REST call itself never reports "ambiguous_transition" — it just runs whichever id was sent.
 
-Status normalization to `TransitionFailureKind` happens in
-`_classify_transition_error(response_json) -> TransitionFailureKind`. Regex
-patterns for 400-body signal detection:
+Status normalization to `TransitionFailureKind` happens in `_classify_transition_error(response_json) -> TransitionFailureKind`.
+Regex patterns for 400-body signal detection:
 
 ```python
 _RE_WRONG_SOURCE  = re.compile(r"(?i)\btransition\b.*\b(not valid|invalid|cannot be applied)\b")
@@ -145,22 +140,20 @@ _RE_VALIDATOR     = re.compile(r"(?i)\bvalidat(or|ion)\b.*\b(fail|error|reject)\
 _RE_REQUIRED_HINT = re.compile(r"(?i)\b(required|must be)\b")
 ```
 
-`errors` dict (key-by-fieldname) takes precedence over `errorMessages` list
-when both are present — `errors` is structured and unambiguously identifies
-missing fields.
+`errors` dict (key-by-fieldname) takes precedence over `errorMessages` list when both are present — `errors` is structured and unambiguously identifies missing fields.
 
 ## Board strategy for `list_sprints(project)`
 
-Jira sprints belong to boards, not projects. Adapter resolves:
+Jira sprints belong to boards, not projects.
+Adapter resolves:
 
 1. `GET /rest/agile/1.0/board?projectKeyOrId={project}&type=scrum`
 2. Pick the **first active scrum board** returned.
 3. `GET /rest/agile/1.0/board/{boardId}/sprint?state=active,future,closed&maxResults=50`
 
 If step 1 returns zero boards → raise `NotSupported("no scrum board configured for project={project}")`.
-If multiple boards exist → adapter picks first, logs a diagnostic. Callers
-needing deterministic board selection should set `tracker.jira.board_id` in
-`workspace.toml` (future enhancement; not phase 3).
+If multiple boards exist → adapter picks first, logs a diagnostic.
+Callers needing deterministic board selection should set `tracker.jira.board_id` in `workspace.toml` (future enhancement; not phase 3).
 
 ## Epic link strategy
 
@@ -170,9 +163,8 @@ needing deterministic board selection should set `tracker.jira.board_id` in
 PUT /rest/api/3/issue/{key}  body: {"fields": {"parent": {"key": epic_key}}}
 ```
 
-If the Jira project is **classic / company-managed**, the field name is
-`customfield_10014` (legacy Epic Link). Adapter probes project style at first
-`set_epic_link` invocation:
+If the Jira project is **classic / company-managed**, the field name is `customfield_10014` (legacy Epic Link).
+Adapter probes project style at first `set_epic_link` invocation:
 
 - `GET /rest/api/3/project/{projectKey}` → `style` field: `"next-gen"` vs `"classic"`
 - Cache result on the adapter instance.
@@ -182,10 +174,9 @@ This handles both project styles without forcing users to know which they're on.
 
 ## `.flow-bundle.toml` schema (phase 4)
 
-External plugins declare which flow stages they provide handlers for via a top-
-level `.flow-bundle.toml`. `bundle-discover.py` walks `~/.claude/plugins/*/` and
-`<repo>/.claude/plugins/*/` (override: `FLOW_BUNDLE_SEARCH_ROOTS`, colon-separated)
-and parses each manifest. Schema:
+External plugins declare which flow stages they provide handlers for via a top-level `.flow-bundle.toml`.
+`bundle-discover.py` walks `~/.claude/plugins/*/` and `<repo>/.claude/plugins/*/` (override: `FLOW_BUNDLE_SEARCH_ROOTS`, colon-separated) and parses each manifest.
+Schema:
 
 ```toml
 schema_version = 1     # closed enum: { 1 }; mismatch = invalid (warning unless --select)
@@ -263,8 +254,9 @@ Pre-flight refusal:
 
 ## Beads CLI surface (phase 6)
 
-`bd` is the local-only beads tracker (v1.0.4). JSON output is supported globally
-via `--json`. Adapter wraps a subprocess runner; tests inject a fake.
+`bd` is the local-only beads tracker (v1.0.4).
+JSON output is supported globally via `--json`.
+Adapter wraps a subprocess runner; tests inject a fake.
 
 ### Subcommands used by BeadsAdapter
 
@@ -293,13 +285,12 @@ via `--json`. Adapter wraps a subprocess runner; tests inject a fake.
 | deferred       | cancelled         |
 | closed         | done              |
 
-Unknown natives default to `open` with an `adapter_mapping_diagnostic` flagging
-the fallback so dashboards can surface the unfamiliar status.
+Unknown natives default to `open` with an `adapter_mapping_diagnostic` flagging the fallback so dashboards can surface the unfamiliar status.
 
 ### Transition synthesis
 
-bd has no `list_transitions` subcommand; the workflow is "any state → any other
-state". Adapter advertises the legal target set per current native status:
+bd has no `list_transitions` subcommand; the workflow is "any state → any other state".
+Adapter advertises the legal target set per current native status:
 
 | current native | available targets                 |
 |----------------|-----------------------------------|
@@ -309,13 +300,13 @@ state". Adapter advertises the legal target set per current native status:
 | deferred       | open, closed                      |
 | closed         | open  (via `bd reopen`)           |
 
-`Transition.id` is `"bd:to:<target>"`. The `transition` method routes:
+`Transition.id` is `"bd:to:<target>"`.
+The `transition` method routes:
 - `bd:to:closed` → `bd close <key>`
 - `bd:to:open` from `closed` → `bd reopen <key>`; otherwise `bd update --status open`
 - everything else → `bd update --status <target>`
 
-Postcondition: re-read `bd show --json` and assert the normalized state moved
-to the requested target.
+Postcondition: re-read `bd show --json` and assert the normalized state moved to the requested target.
 
 ### Stderr → failure_kind classification
 
@@ -328,12 +319,8 @@ to the requested target.
 
 ### Capability advertisement
 
-14 entries; only `comments_markdown` (bd accepts markdown via `bd comment
---stdin`) and `resolutions` (bd records `closure_reason` on `bd close`) flip
-true. Every other capability is false → `set_sprint`, `add_watcher`,
-`set_fix_versions`, `set_components`, `set_epic_link`, `board_rank`,
-`set_custom_field`, `get_attachments`, `upload_attachment` raise
-`NotSupported`.
+14 entries; only `comments_markdown` (bd accepts markdown via `bd comment --stdin`) and `resolutions` (bd records `closure_reason` on `bd close`) flip true.
+Every other capability is false → `set_sprint`, `add_watcher`, `set_fix_versions`, `set_components`, `set_epic_link`, `board_rank`, `set_custom_field`, `get_attachments`, `upload_attachment` raise `NotSupported`.
 
 ### is_shipped contract (PURE READ; never writes under `.flow/`)
 
@@ -351,18 +338,13 @@ true. Every other capability is false → `set_sprint`, `add_watcher`,
 
 ### Transient-failure handling (deferred to phase 8)
 
-Plan line 990 calls for transient `bd` failures (network blips, lock
-contention) to append to `.flow/pending-mutations.jsonl` so `/flow sync` can
-retry. `pending-mutations.py` is phase-8 work; the adapter currently surfaces
-the error as `_BeadsError(TrackerError)` and lets the dispatcher (phase 7)
-decide.
+Plan line 990 calls for transient `bd` failures (network blips, lock contention) to append to `.flow/pending-mutations.jsonl` so `/flow sync` can retry.
+`pending-mutations.py` is phase-8 work; the adapter currently surfaces the error as `_BeadsError(TrackerError)` and lets the dispatcher (phase 7) decide.
 
 ## Dispatcher state machine (phase 7-mvp)
 
-The dispatcher is a state-machine driver — NOT an orchestrator. It reads /
-writes `.flow/runs/<ticket>/state.json` and emits a handler-descriptor JSON
-for the SKILL.md prose layer to act on (call Agent, read reference doc,
-invoke a skill, or skip).
+The dispatcher is a state-machine driver — NOT an orchestrator.
+It reads / writes `.flow/runs/<ticket>/state.json` and emits a handler-descriptor JSON for the SKILL.md prose layer to act on (call Agent, read reference doc, invoke a skill, or skip).
 
 ### Stage lifecycle (mvp; phase 7-full adds dispatched/timed_out/hung)
 
@@ -370,8 +352,9 @@ invoke a skill, or skip).
 pending → in_progress → (completed | failed)
 ```
 
-`next` writes `pending → in_progress`. The handler runs between `next` and
-`finish`. `finish` writes `in_progress → completed | failed`.
+`next` writes `pending → in_progress`.
+The handler runs between `next` and `finish`.
+`finish` writes `in_progress → completed | failed`.
 
 ### state.json schema (`schema_version = 1`)
 
@@ -417,9 +400,8 @@ Malformed JSON on `state.read()`:
 3. If all `.bak` files corrupt → exit 2; library raises
    `StateUnrecoverable`.
 
-Mvp does NOT deeply schema-validate each backup; "parses as JSON with
-schema_version=1 + required top-level keys" is sufficient. Phase 7-full adds
-per-field structural validation.
+Mvp does NOT deeply schema-validate each backup; "parses as JSON with schema_version=1 + required top-level keys" is sufficient.
+Phase 7-full adds per-field structural validation.
 
 ### Subprocess exit codes
 
@@ -460,11 +442,10 @@ Terminal shapes:
 
 ### TOCTOU invariant (mvp)
 
-`validate_workspace.validate()` runs on every `dispatch_stage` invocation
-(`init` and `next`). Cheap (parses 2-3 small TOML files). Catches mid-run
-workspace.toml edits. Phase 7-full replaces this with the canonical-snapshot
-pattern from the literal plan (hash captured once at init, compared on each
-subsequent next).
+`validate_workspace.validate()` runs on every `dispatch_stage` invocation (`init` and `next`).
+Cheap (parses 2-3 small TOML files).
+Catches mid-run workspace.toml edits.
+Phase 7-full replaces this with the canonical-snapshot pattern from the literal plan (hash captured once at init, compared on each subsequent next).
 
 ### Deferred to phase 7-full / 8
 
@@ -500,14 +481,14 @@ subsequent next).
 
 ## Phase 8-mvp helpers
 
-Five bookkeeping scripts. All stdlib-only, library + thin CLI shape, atomic
-writes where they touch files, `fcntl.flock` where they touch shared mutable
-state. Built to be subprocess'd by `dispatch_stage.py` (phase 5 wiring) but
-shippable as standalone CLIs first.
+Five bookkeeping scripts.
+All stdlib-only, library + thin CLI shape, atomic writes where they touch files, `fcntl.flock` where they touch shared mutable state.
+Built to be subprocess'd by `dispatch_stage.py` (phase 5 wiring) but shippable as standalone CLIs first.
 
 ### `branch_ticket.py`
 
-Pure read. Resolves ticket key from current git branch.
+Pure read.
+Resolves ticket key from current git branch.
 
 | Subcommand | Flags | Exits | Notes |
 |------------|-------|-------|-------|
@@ -515,8 +496,8 @@ Pure read. Resolves ticket key from current git branch.
 
 ### `ticket_frontmatter.py`
 
-TOML frontmatter r/w under flock + atomic rename. Frontmatter delimiter is
-`+++` (deviation from plan-source "YAML" wording — locked at design review).
+TOML frontmatter r/w under flock + atomic rename.
+Frontmatter delimiter is `+++` (deviation from plan-source "YAML" wording — locked at design review).
 
 | Subcommand | Flags | Exits | Notes |
 |------------|-------|-------|-------|
@@ -533,8 +514,8 @@ HARD GATE pre-stage: validate required ticket frontmatter fields per stage.
 | `--ticket-path <path>` | Path to ticket `.md` file. |
 | `--workspace-root <dir>` | Override stage-registry source (default: plugin root). |
 
-Exit 0=continue, 1=block (violations to stderr as `<key>: <reason>`). Required
-fields per stage (8-mvp set, baked into stage-registry.toml):
+Exit 0=continue, 1=block (violations to stderr as `<key>: <reason>`).
+Required fields per stage (8-mvp set, baked into stage-registry.toml):
 
 - **universal** (every stage): `ticket`, `status`.
 - `implement.required_fields = ["planned_files"]`
@@ -556,8 +537,8 @@ Git diff capture for implement / commit / reflect stages.
 
 ### `compose_commit.py`
 
-Skeleton conventional-commit emitter. Deterministic header; body is a
-template the LLM fills in.
+Skeleton conventional-commit emitter.
+Deterministic header; body is a template the LLM fills in.
 
 | Flag | Description |
 |------|-------------|
@@ -591,10 +572,9 @@ Exit 0=ok, 1=invalid type or missing required arg.
 
 ## Phase 8b-mvp memory cohort
 
-Four stdlib-only scripts that own `.flow/<namespace>/knowledge.jsonl`,
-`.flow/<namespace>/ship-events/<ticket>.json`, and the reflect-stage input
-bundle. Same library + thin-CLI shape as 8-mvp. Shared `_memory_paths.py`
-module handles namespace resolution + path conventions.
+Four stdlib-only scripts that own `.flow/<namespace>/knowledge.jsonl`, `.flow/<namespace>/ship-events/<ticket>.json`, and the reflect-stage input bundle.
+Same library + thin-CLI shape as 8-mvp.
+Shared `_memory_paths.py` module handles namespace resolution + path conventions.
 
 ### `_memory_paths.py` (shared helper)
 
@@ -605,9 +585,8 @@ Public API: `resolve_namespace(workspace_root) -> str`,
 
 ### `memory_append.py`
 
-Single-writer JSONL append. Idempotency key:
-`sha256(namespace + ticket + type + normalized_body)[:16]` where
-`normalize(body) = NFKC + lowercase + collapse-ws + strip-trailing-punct`.
+Single-writer JSONL append.
+Idempotency key: `sha256(namespace + ticket + type + normalized_body)[:16]` where `normalize(body) = NFKC + lowercase + collapse-ws + strip-trailing-punct`.
 
 | Flag | Description |
 |------|-------------|
@@ -622,12 +601,12 @@ Exit codes: 0=appended, 1=duplicate id (no-op), 2=lock contention,
 3=invalid type, 4=I/O error / workspace config error.
 
 Locking: `fcntl.flock(LOCK_EX | LOCK_NB)` on `knowledge.jsonl.lock`, retry 3×1s.
-Sidecar quarantine: malformed lines appended to
-`knowledge.jsonl.quarantine.<ts>` (one per invocation); main file untouched.
+Sidecar quarantine: malformed lines appended to `knowledge.jsonl.quarantine.<ts>` (one per invocation); main file untouched.
 
 ### `recall.py`
 
-Hand-rolled BM25 ranker. `--metric` mode deferred to 8d.
+Hand-rolled BM25 ranker.
+`--metric` mode deferred to 8d.
 
 | Flag | Description |
 |------|-------------|
@@ -637,19 +616,20 @@ Hand-rolled BM25 ranker. `--metric` mode deferred to 8d.
 | `--top-n` | Default 5. |
 | `--workspace-root` | Default `.`. |
 
-BM25 params (pinned): k1=1.5, b=0.75. Field weights: body=1.0, type=0.5,
-branch=1.5, ticket=2.0. Tiebreak: ts DESC (ms precision via negated-codepoint
-sort key over ISO8601 string). IDF scope: current namespace only.
+BM25 params (pinned): k1=1.5, b=0.75.
+Field weights: body=1.0, type=0.5, branch=1.5, ticket=2.0.
+Tiebreak: ts DESC (ms precision via negated-codepoint sort key over ISO8601 string).
+IDF scope: current namespace only.
 
-Output: JSON array of top-N entries with `score` field appended. Empty corpus
-returns `[]` exit 0.
+Output: JSON array of top-N entries with `score` field appended.
+Empty corpus returns `[]` exit 0.
 
 Exit codes: 0=ok, 1=workspace invalid / namespace unresolvable.
 
 ### `reflect_inputs.py`
 
-Pure composition layer. Bundles the reflect-stage's inputs into a single JSON
-payload for the reflect LLM.
+Pure composition layer.
+Bundles the reflect-stage's inputs into a single JSON payload for the reflect LLM.
 
 | Flag | Description |
 |------|-------------|
@@ -658,8 +638,8 @@ payload for the reflect LLM.
 | `--ticket-frontmatter` | Optional path to ticket .md frontmatter file. |
 | `--cwd` | Git repo working dir (for `diff_since_stage` call). Default `.`. |
 
-Payload shape: `{ticket, run_id, state, ticket_frontmatter, final_diff,
-subagent_reports[]}`. `final_diff` is null when ticket stage never started.
+Payload shape: `{ticket, run_id, state, ticket_frontmatter, final_diff, subagent_reports[]}`.
+`final_diff` is null when ticket stage never started.
 Missing report files → `body: null` + warning to stderr (not fatal).
 
 Exit codes: 0=ok, 1=state missing/corrupt, 2=diff-extract git error, 3=I/O.
@@ -669,7 +649,8 @@ Reuses: `state.read()`, `ticket_frontmatter.read()`,
 
 ### `observe_ship_event.py`
 
-Sole writer of `<namespace>/ship-events/<ticket>.json`. Atomic + crash-safe.
+Sole writer of `<namespace>/ship-events/<ticket>.json`.
+Atomic + crash-safe.
 
 | Flag | Description |
 |------|-------------|
@@ -686,8 +667,7 @@ Two-phase write:
    then O_EXCL-create `<ticket>.json.dupe.<n>.json` with
    `superseded_by_dupe: false`. Exit 2.
 
-On non-EEXIST I/O error: write intent log to
-`<ticket>.json.quarantine-intent.<ts>.json` (best-effort) BEFORE re-raising.
+On non-EEXIST I/O error: write intent log to `<ticket>.json.quarantine-intent.<ts>.json` (best-effort) BEFORE re-raising.
 `/flow recover` in phase 8c replays the intent log.
 
 Exit codes: 0=primary success, 1=evidence JSON invalid, 2=dupe (informational),
@@ -714,16 +694,14 @@ Exit codes: 0=primary success, 1=evidence JSON invalid, 2=dupe (informational),
 
 ## Phase 5-mvp integration layer
 
-SKILL.md rewrite + 4 reference docs + `tracker_cli.py` + a small dispatcher
-descriptor extension. `/flow do <ticket>` now runs end-to-end against a
-bare workspace.
+SKILL.md rewrite + 4 reference docs + `tracker_cli.py` + a small dispatcher descriptor extension.
+`/flow do <ticket>` now runs end-to-end against a bare workspace.
 
 ### `tracker_cli.py`
 
-CLI wrapper around the Tracker Protocol. Lets reference-doc prose call
-`tracker.<method>()` from Bash. Reads `.flow/workspace.toml` `[tracker]`
-block, flattens the per-backend sub-block (`tracker.jira` or
-`tracker.beads`) into the config dict `tracker.make_tracker()` expects.
+CLI wrapper around the Tracker Protocol.
+Lets reference-doc prose call `tracker.<method>()` from Bash.
+Reads `.flow/workspace.toml` `[tracker]` block, flattens the per-backend sub-block (`tracker.jira` or `tracker.beads`) into the config dict `tracker.make_tracker()` expects.
 
 | Subcommand | Flags | Notes |
 |------------|-------|-------|
@@ -734,23 +712,21 @@ block, flattens the per-backend sub-block (`tracker.jira` or
 | `comment` | `--key FT-1 --text "..."` | Wraps body as `{format: markdown, value: text}`. |
 | `is-shipped` | `--key FT-1` | `tracker.is_shipped(key)` → JSON. |
 
-Exit codes: 0=ok, 1=tracker error (network/auth/unknown key/TrackerError
-subclass), 2=workspace config invalid, 3=invalid args.
+Exit codes: 0=ok, 1=tracker error (network/auth/unknown key/TrackerError subclass), 2=workspace config invalid, 3=invalid args.
 
 Reuses: `tracker.make_tracker()` factory, `tracker.TrackerError` class.
 Tests via injectable `tracker_factory` shim — no real tracker construction.
 
 ### Dispatcher descriptor extension
 
-`dispatch_stage.py cmd_next` now surfaces the stage's `roles` list in its
-JSON descriptor (read from stage-registry.toml). SKILL.md prose uses
-`roles` to know when to run the `records_diff_baseline` pre-handler hook
-(implement stage). Without this, commit-stage's `capture_implement_diff`
-would fail with `_BaselineMissing`.
+`dispatch_stage.py cmd_next` now surfaces the stage's `roles` list in its JSON descriptor (read from stage-registry.toml).
+SKILL.md prose uses `roles` to know when to run the `records_diff_baseline` pre-handler hook (implement stage).
+Without this, commit-stage's `capture_implement_diff` would fail with `_BaselineMissing`.
 
 ### SKILL.md verb router
 
-Replaces the 28-line skeleton with ~250 lines of prose. Verbs:
+Replaces the 28-line skeleton with ~250 lines of prose.
+Verbs:
 
 - `init` — AskUserQuestion-driven; writes answers to tmp JSON, calls
   `init.py --config <path>`.

@@ -2,15 +2,13 @@
 
 ## Purpose
 
-Run the project's end-to-end / integration / smoke suite and surface any
-failures. This stage is opt-in: the default handler is `none`, so it normally
-does nothing. A workspace enables it by wiring `e2e` to `subagent:*` or
-`skill:*` in `workspace.toml [pipeline.handlers]`. This doc is the instruction
-set for the handler that runs when it is enabled.
+Run the project's end-to-end / integration / smoke suite and surface any failures.
+This stage is opt-in: the default handler is `none`, so it normally does nothing.
+A workspace enables it by wiring `e2e` to `subagent:*` or `skill:*` in `workspace.toml [pipeline.handlers]`.
+This doc is the instruction set for the handler that runs when it is enabled.
 
-e2e sits AFTER `code_review` so cheap inline review catches obvious issues
-before a slow end-to-end run burns time. By the time you run, the implement
-diff has already passed review.
+e2e sits AFTER `code_review` so cheap inline review catches obvious issues before a slow end-to-end run burns time.
+By the time you run, the implement diff has already passed review.
 
 ## Inputs
 
@@ -31,12 +29,11 @@ diff has already passed review.
    - an `e2e` / `test:e2e` script in `package.json`.
    - any CI workflow that names an e2e job — mirror its command.
 
-2. Resolve the run command from what you found. Prefer the project's own
-   declared command (Makefile target, package script, CI step) over a guessed
-   invocation, so you match how the suite actually runs.
+2. Resolve the run command from what you found.
+   Prefer the project's own declared command (Makefile target, package script, CI step) over a guessed invocation, so you match how the suite actually runs.
 
-3. Run the suite. Let it complete; e2e suites are slow but the stage timeout is
-   sized for that.
+3. Run the suite.
+   Let it complete; e2e suites are slow but the stage timeout is sized for that.
 
 4. Surface the result:
    - All green → report the suite name, the command run, and the pass summary.

@@ -2,19 +2,16 @@
 
 ## Purpose
 
-Inline main-agent self-review of the implement-stage diff. Bare workspace
-default; richer review is wired by installing a code-review skill via the
-init wizard.
+Inline main-agent self-review of the implement-stage diff.
+Bare workspace default; richer review is wired by installing a code-review skill via the init wizard.
 
-This is the lowest-cost gate against regressions. The main agent is the same
-context that just produced the implement-stage code, so the review is biased
-toward what it just wrote. That bias is acceptable for personal-mode flow;
-work-mode users opt in to `skill:code-review` via init.
+This is the lowest-cost gate against regressions.
+The main agent is the same context that just produced the implement-stage code, so the review is biased toward what it just wrote.
+That bias is acceptable for personal-mode flow; work-mode users opt in to `skill:code-review` via init.
 
 ## Inputs
 
-- `<ticket-dir>/state.json` — `stages.implement.started_at_sha` for the diff
-  range.
+- `<ticket-dir>/state.json` — `stages.implement.started_at_sha` for the diff range.
 - The current working tree (uncommitted changes from the implement stage).
 
 ## Steps
@@ -28,12 +25,12 @@ work-mode users opt in to `skill:code-review` via init.
      --cwd .
    ```
    - Exit 0 → JSON with `files_touched / insertions / deletions / binary`.
-   - Exit 1 → no started_at_sha (implement didn't run). Abort with
-     status=failed; rerun `/flow do --stage implement` first.
+   - Exit 1 → no started_at_sha (implement didn't run).
+     Abort with status=failed; rerun `/flow do --stage implement` first.
    - Exit 2 → git error. Surface stderr.
 
-2. For each file in `files_touched`, Read the file and read the diff via
-   `git diff <started_at_sha> -- <path>`. Assess for:
+2. For each file in `files_touched`, Read the file and read the diff via `git diff <started_at_sha> -- <path>`.
+   Assess for:
    - Obvious bugs (off-by-one, null-deref, missing await, etc.).
    - Regressions in nearby tests not updated by implement stage.
    - Style violations against existing file conventions.
@@ -44,11 +41,11 @@ work-mode users opt in to `skill:code-review` via init.
    - **Major** — should fix but not blocking.
    - **Minor** — nitpick / style.
 
-4. If any Critical finding: abort stage with status=failed. Surface the
-   finding so the user can decide between rerunning implement vs overriding.
+4. If any Critical finding: abort stage with status=failed.
+   Surface the finding so the user can decide between rerunning implement vs overriding.
 
-5. Otherwise: stage completes with status=completed. Major/Minor findings
-   are logged but do not block.
+5. Otherwise: stage completes with status=completed.
+   Major/Minor findings are logged but do not block.
 
 ## Outputs
 

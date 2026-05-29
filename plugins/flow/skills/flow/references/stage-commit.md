@@ -2,13 +2,11 @@
 
 ## Purpose
 
-Compose a conventional commit, apply the recorded implement-stage diff, and
-transition the tracker ticket. Bare workspace default.
+Compose a conventional commit, apply the recorded implement-stage diff, and transition the tracker ticket.
+Bare workspace default.
 
-The commit message header is deterministic (built by `compose_commit.py`);
-the body is filled in by the main agent based on the implement-stage
-context. The applied patch comes from the recorded `implement.diff` — NOT
-from `git add .` — so unrelated edits in the working tree are NOT included.
+The commit message header is deterministic (built by `compose_commit.py`); the body is filled in by the main agent based on the implement-stage context.
+The applied patch comes from the recorded `implement.diff` — NOT from `git add .` — so unrelated edits in the working tree are NOT included.
 
 ## Inputs
 
@@ -31,9 +29,9 @@ from `git add .` — so unrelated edits in the working tree are NOT included.
      --ticket-path .flow/tickets/<KEY>.md
    ```
    - Exit 0 → continue.
-   - Exit 1 → frontmatter missing a required field. Surface stderr; ask user
-     to populate `commit_type` + `commit_summary` in `.flow/tickets/<KEY>.md`
-     then rerun. Abort with status=failed.
+   - Exit 1 → frontmatter missing a required field.
+     Surface stderr; ask user to populate `commit_type` + `commit_summary` in `.flow/tickets/<KEY>.md` then rerun.
+     Abort with status=failed.
 
 2. Capture the implement-stage diff (idempotent if already captured):
    ```bash
@@ -43,12 +41,12 @@ from `git add .` — so unrelated edits in the working tree are NOT included.
      --cwd .
    ```
    - Exit 0 → `<ticket-dir>/implement.diff` exists.
-   - Exit 1 → no baseline. Abort; surface `/flow recover --reset-baseline`
-     hint.
+   - Exit 1 → no baseline.
+     Abort; surface `/flow recover --reset-baseline` hint.
    - Exit 2 → git error. Abort.
 
-3. Compose the commit skeleton. Read `commit_type` + `commit_summary` from
-   the ticket frontmatter (or ask the user if missing):
+3. Compose the commit skeleton.
+   Read `commit_type` + `commit_summary` from the ticket frontmatter (or ask the user if missing):
    ```bash
    ${CLAUDE_SKILL_DIR}/scripts/compose_commit.py \
      --ticket <KEY> \
@@ -63,10 +61,10 @@ from `git add .` — so unrelated edits in the working tree are NOT included.
    - Exit 2 → invalid `--type` (not in the allowed set) or a missing
      required flag (argparse usage error). Abort and fix the invocation.
 
-4. Fill in the body. Read the skeleton, append a body section describing
-   *why* (not what — the diff shows what). Reference any failing-tests-now-
-   green progress from implement stage. Write the completed message back to
-   the same path.
+4. Fill in the body.
+   Read the skeleton, append a body section describing *why* (not what — the diff shows what).
+   Reference any failing-tests-now-green progress from implement stage.
+   Write the completed message back to the same path.
 
 5. Apply the recorded patch:
    ```bash
@@ -87,32 +85,29 @@ from `git add .` — so unrelated edits in the working tree are NOT included.
      --workspace-root . \
      transition --key <KEY> --to-state in_review
    ```
-   The commit already landed in git before this step, so a *transient* tracker
-   failure must not fail the stage. A *hard* failure (permission / validator /
-   wrong-state) must, because it means the transition will never succeed
-   without intervention. Read the printed JSON for `failure_kind` +
-   `failure_detail`. Exit-code handling:
+   The commit already landed in git before this step, so a *transient* tracker failure must not fail the stage.
+   A *hard* failure (permission / validator / wrong-state) must, because it means the transition will never succeed without intervention.
+   Read the printed JSON for `failure_kind` + `failure_detail`.
+   Exit-code handling:
    - Exit 0 → continue. Stage completes.
    - Exit 1 → transient/unknown tracker error (network / auth / retryable, or
-     an unmapped `failure_kind`). Commit is already made; log a warning
-     surfacing `failure_kind` + `failure_detail` from the printed JSON if
-     present, else the stderr message (a raised `TrackerError` prints to
-     stderr with no stdout JSON). Continue; stage completes (not
-     status=failed — the diff is in git, the ticket transition is best-effort
-     under transient faults).
-   - Exit 2 → workspace config invalid. Surface stderr; do not retry. Mark the
-     stage status=failed (workspace is misconfigured, not a tracker hiccup).
+     an unmapped `failure_kind`).
+     Commit is already made; log a warning surfacing `failure_kind` + `failure_detail` from the printed JSON if present, else the stderr message (a raised `TrackerError` prints to stderr with no stdout JSON).
+     Continue; stage completes (not status=failed — the diff is in git, the ticket transition is best-effort under transient faults).
+   - Exit 2 → workspace config invalid.
+     Surface stderr; do not retry.
+     Mark the stage status=failed (workspace is misconfigured, not a tracker hiccup).
    - Exit 3 → no transition to `in_review` available (workflow lacks it).
-     Try `--to-state done` as fallback. If the fallback also returns exit 3,
-     surface and continue with a warning (commit is in git). Any other exit
-     code from the fallback is handled by its own rule below.
+     Try `--to-state done` as fallback.
+     If the fallback also returns exit 3, surface and continue with a warning (commit is in git).
+     Any other exit code from the fallback is handled by its own rule below.
    - Exit 4 → hard failure (`permission_denied` / `validator_failed` /
-     `missing_required_field`). Do NOT swallow and do NOT try the `done`
-     fallback. Surface `failure_kind` + `failure_detail` and mark the stage
-     status=failed.
+     `missing_required_field`).
+     Do NOT swallow and do NOT try the `done` fallback.
+     Surface `failure_kind` + `failure_detail` and mark the stage status=failed.
    - Exit 5 → not applicable (`wrong_source_state` / `ambiguous_transition`).
-     Do NOT swallow. Surface `failure_kind` + `failure_detail` and mark the
-     stage status=failed.
+     Do NOT swallow.
+     Surface `failure_kind` + `failure_detail` and mark the stage status=failed.
 
 ## Outputs
 

@@ -2,11 +2,10 @@
 
 ## Purpose
 
-Resolve the ticket key, fetch ticket context from the tracker, write a local
-cache, and stamp the ticket's frontmatter `status` to `in_progress`.
+Resolve the ticket key, fetch ticket context from the tracker, write a local cache, and stamp the ticket's frontmatter `status` to `in_progress`.
 
-This is the first stage of `/flow do`. Subsequent stages depend on
-`<ticket-dir>/ticket.json` being present.
+This is the first stage of `/flow do`.
+Subsequent stages depend on `<ticket-dir>/ticket.json` being present.
 
 ## Inputs
 
@@ -17,13 +16,14 @@ This is the first stage of `/flow do`. Subsequent stages depend on
 
 ## Steps
 
-1. Confirm the ticket key. The dispatcher already passed it in its descriptor,
-   but verify it is non-empty. If empty:
+1. Confirm the ticket key.
+   The dispatcher already passed it in its descriptor, but verify it is non-empty.
+   If empty:
    ```bash
    ${CLAUDE_SKILL_DIR}/scripts/branch_ticket.py --workspace-root .
    ```
-   Exit 3 (no match) → abort stage with status=failed; the user must rerun
-   with an explicit `--ticket` arg.
+   Exit 3 (no match) → abort stage with status=failed;
+   the user must rerun with an explicit `--ticket` arg.
 
 2. Fetch ticket details from the tracker:
    ```bash
@@ -34,10 +34,11 @@ This is the first stage of `/flow do`. Subsequent stages depend on
    - Exit 0: ticket.json contains the full Ticket payload (key, summary,
      status, description, type, assignee, comments, parent, attachments,
      links).
-   - Exit 1: tracker error (network / auth / unknown key). Surface stderr +
-     `/flow recover --ticket <KEY>` hint. Abort stage with status=failed.
-   - Exit 2: workspace config invalid. Should not happen at this point —
-     surface stderr + abort.
+   - Exit 1: tracker error (network / auth / unknown key).
+     Surface stderr + `/flow recover --ticket <KEY>` hint.
+     Abort stage with status=failed.
+   - Exit 2: workspace config invalid.
+     Should not happen at this point — surface stderr + abort.
 
 3. Stamp ticket frontmatter `status` + `started_at`:
    ```bash
@@ -48,10 +49,13 @@ This is the first stage of `/flow do`. Subsequent stages depend on
      --set started_at=NOW
    ```
    - Exit 0: continue.
-   - Exit 1: lock contention. Retry once after 1s. If retry also fails,
-     abort.
-   - Exit 2: schema invalid in existing frontmatter. Abort with status=failed.
-   - Exit 3: I/O error. Abort + recover hint.
+   - Exit 1: lock contention.
+     Retry once after 1s.
+     If retry also fails, abort.
+   - Exit 2: schema invalid in existing frontmatter.
+     Abort with status=failed.
+   - Exit 3: I/O error.
+     Abort + recover hint.
 
 ## Outputs
 
@@ -68,14 +72,12 @@ This is the first stage of `/flow do`. Subsequent stages depend on
 
 ## Skip conditions
 
-None. This stage always runs in the bare workspace pipeline.
+None.
+This stage always runs in the bare workspace pipeline.
 
 ## Note: no `lint_ticket` HARD GATE
 
-Other stages call `${CLAUDE_SKILL_DIR}/scripts/lint_ticket.py --stage <name>
---ticket-path .flow/tickets/<KEY>.md` as a HARD GATE before doing any work.
-The `ticket` stage is the exception: this stage CREATES the ticket
-frontmatter file. Running `lint_ticket` here would always fail (universal
-`ticket` + `status` fields don't exist yet because step 3 is what writes
-them). Future stages can safely lint because step 3 leaves a valid
-frontmatter behind.
+Other stages call `${CLAUDE_SKILL_DIR}/scripts/lint_ticket.py --stage <name> --ticket-path .flow/tickets/<KEY>.md` as a HARD GATE before doing any work.
+The `ticket` stage is the exception: this stage CREATES the ticket frontmatter file.
+Running `lint_ticket` here would always fail (universal `ticket` + `status` fields don't exist yet because step 3 is what writes them).
+Future stages can safely lint because step 3 leaves a valid frontmatter behind.
