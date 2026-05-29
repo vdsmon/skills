@@ -175,6 +175,7 @@ The dispatcher emits handler-descriptor JSON; this prose acts on each descriptor
 
 **`--notify` (set by the bg handoff).** When `$ARGUMENTS` carries `--notify`, the tail pings you via the PushNotification tool at two points: (1) after the `create_pr` stage finishes `completed`, with the PR URL (`"flow <KEY>: PR ready for review — <url>"`); (2) before any `AskUserQuestion` this run would raise, naming the blocker (`"flow <KEY> blocked: <reason> — attach via claude agents"`), then it asks (which pauses the bg session).
 PushNotification is harness-local (your terminal, plus your phone if Remote Control is on), so it fires even when tracker / MCP auth has died in the bg session — that is how you learn the tail stalled.
+If the PushNotification tool is NOT available in the current harness (some surfaces do not expose it — a `ToolSearch` for it returns nothing), do not abort and do not treat its absence as a blocker. Fall back to BOTH: (a) surface the message in-thread, and (b) a DURABLE channel a detached console can see later — post it as a `bkt` PR comment (`bkt` is already in hand on the create_pr / review_loop path): `bkt api "2.0/repositories/<ws>/<repo>/pullrequests/<id>/comments" -X POST -d "$(jq -n --arg b "flow <KEY>: <message>" '{content:{raw:$b}}')" --json`. The in-thread echo alone is invisible to a truly detached run; the PR comment is what makes the fallback real. The notification is best-effort; the pipeline state in `state.json` is the source of truth.
 `--notify` is a flag, not the ticket key; ignore it when reading the positional in step 1.
 Foreground `/flow do` without `--notify` stays silent.
 
@@ -211,13 +212,21 @@ Foreground `/flow do` without `--notify` stays silent.
 
 4. **Orchestration loop** — repeat until done:
 
-   a. Ask the dispatcher for the next stage:
+   **Friction logging (in-flight).** Whenever a step below hits a snag the run has to work around, append one friction entry before you act on it. This is the high-fidelity evidence the `reflect` stage synthesizes into machinery findings (a backgrounded reflect agent cannot reconstruct it from `state.json` alone). Trigger → `--type`: `next`/`advance` drift exit 1 → `DRIFT`; lost-lease exit 7 → `LEASE_LOSS`; the records_diff_baseline post-implement reconcile → `RECONCILE`; a skill handler not installed → `MISSING_TOOL`; an `AskUserQuestion` blocker → `BLOCKER`; a stage finished `failed` → `STAGE_FAILED`; a retried stage → `RETRY`. The call (best-effort — never let a logging failure abort the run):
+   ```bash
+   python3 ${CLAUDE_SKILL_DIR}/scripts/flow_friction.py append \
+     --ticket "$KEY" --run-id "$RUN_ID" --stage "$STAGE" \
+     --type <TYPE> --body "<one line: what snagged>" [--detail "<context>"] \
+     --workspace-root . || true
+   ```
+
+   a. Obtain the next `DESCRIPTOR`. On the FIRST iteration (right after `init`), call `next`; on every later iteration, reuse the payload that `advance` already returned in step (e) and skip this standalone `next` call:
       ```bash
       DESCRIPTOR=$(python3 ${CLAUDE_SKILL_DIR}/scripts/dispatch_stage.py next \
         --workspace-root . --ticket "$KEY")
       ```
       `next` refreshes the lease and verifies the snapshot before returning a descriptor.
-      Handle the exits before parsing:
+      Handle the exits before parsing (these same exit codes apply to `advance` in step (e)):
       - Exit 0 → continue to (b).
       - Exit 1 → distinguish by the stdout JSON payload, then break the loop:
         - `detail` present → config/version drift (the workspace.toml, the stage-registry, or a handler plugin changed mid-run).
@@ -252,12 +261,15 @@ Foreground `/flow do` without `--notify` stays silent.
       If absent, ask the user (under `--notify`, push first — see the `--notify` note).
       Exit non-zero aborts the stage with status=failed.
 
+      **Post-implement reconcile (records_diff_baseline stages only).** After the implement stage returns, if its report flags files it created/modified OUTSIDE the recorded `planned_files` (a package `__init__.py`, a `.gitignore` negation, etc.) that genuinely must ship, expand the set BEFORE `finish`. The commit stage reads `planned_files` from `baseline.json`, so a needed file missing there is silently dropped from the commit. To widen it: edit `planned_files` in `.flow/tickets/<KEY>.md` frontmatter to include them, then re-run the `record-baseline` command above with the full comma-separated `--files` list. HEAD is unchanged (no commit has landed), so this only widens ownership and re-captures any modified tracked file's original blob. Confirm with `diff_extract.py capture-implement-diff` + `git apply --cached --check --binary <ticket-dir>/implement.diff` that the patch carries every file and applies cleanly.
+
    d. Dispatch by `handler_type`:
 
       - **`inline`** — Read `${CLAUDE_SKILL_DIR}/${descriptor.reference_doc}` via the Read tool.
         Follow its prose.
         The reference doc contains explicit script invocations and exit-code handling.
         When done, determine `status = completed` or `failed` based on whether the stage succeeded.
+        An inline stage MAY write a captured report to `$TICKET_DIR/stages/<STAGE>.out` (same Write pattern as the subagent branch); if it does, pass `--output-path` on `advance` so reflect can mine it. If it writes nothing, omit `--output-path` — an absent inline `.out` is normal and reflect_inputs treats it as no report (no warning).
 
       - **`subagent:<type>`** — If `descriptor.reference_doc` is present, Read `${CLAUDE_SKILL_DIR}/${descriptor.reference_doc}` first (e.g. `references/stage-plan.md`, `references/stage-implement.md`); it carries the per-stage protocol the subagent must follow.
         Then spawn an Agent, embedding that protocol (or a pointer to its path) in the prompt:
@@ -320,21 +332,20 @@ Foreground `/flow do` without `--notify` stays silent.
       - **`unknown`** — Should never reach here (validate_workspace catches it).
         If it does, surface and abort.
 
-   e. Finish the stage:
+   e. Advance the stage — finish it AND fetch the next descriptor in one call:
       ```bash
-      python3 ${CLAUDE_SKILL_DIR}/scripts/dispatch_stage.py finish \
+      DESCRIPTOR=$(python3 ${CLAUDE_SKILL_DIR}/scripts/dispatch_stage.py advance \
         --workspace-root . --ticket "$KEY" \
         --stage "$STAGE" --status "$STATUS" \
-        [--output-path "$OUTPUT_PATH"]
+        [--output-path "$OUTPUT_PATH"])
       ```
-      `finish` records the current HEAD sha itself (via `git rev-parse` in the workspace root); you do not pass it.
-      The `--output-path` flag is included for subagent/skill stages where you captured the response.
-      For inline stages, omit unless the inline prose explicitly produced a captured output.
+      `advance` is `finish` + `next` in one round-trip: it records the current HEAD sha itself (do not pass it), finishes `$STAGE` with `$STATUS`, then returns the NEXT stage's descriptor. Its payload spreads that descriptor at the top level — so it parses EXACTLY like `next` in step (b) (`{done: true}` / handler descriptor / `{blocked_by}`) — plus a `finished` object confirming the prior stage closed. The `--output-path` flag is for subagent/skill stages where you captured the response (and any inline stage that produced a captured output); omit otherwise.
+      Handle `advance`'s exit codes exactly as `next` in step (a): exit 0 → its payload is the next `DESCRIPTOR`; exit 7 → lost lease (`/flow recover`); exit 1 → drift/violations/corrupt state (surface + `/flow recover`). A `--status failed` advance returns `{blocked_by}`, which step (b) treats as the block-and-break case.
 
-      If `--notify` is set and `$STAGE` is `create_pr` with `$STATUS` completed, send the PR-ready PushNotification now (read the PR URL from the captured `create_pr.out`).
+      If `--notify` is set and `$STAGE` is `create_pr` with `$STATUS` completed, send the PR-ready notification now (read the PR URL from the captured `create_pr.out`).
       See the `--notify` note above.
 
-   f. Loop back to (a).
+   f. Loop back to (b) with the `DESCRIPTOR` that `advance` just returned (it already did step (a)'s work for the next stage). The standalone `next` in step (a) runs only once, for the first stage.
 
 5. After the loop exits — on **every** path (clean done, blocked, drift, or
    lost lease) — release the lease:

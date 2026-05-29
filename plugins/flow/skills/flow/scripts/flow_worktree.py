@@ -77,6 +77,22 @@ def _git(args: list[str], cwd: Path, runner: Runner) -> str:
     return result.stdout.strip()
 
 
+def _gitignored(files: list[str], cwd: Path, runner: Runner) -> list[str]:
+    """Return the subset of `files` that git ignores in `cwd`.
+
+    `git check-ignore` exits 0 when at least one path is ignored, 1 when none
+    are, 128 on real error, so it cannot go through `_git` (which raises on any
+    non-zero). check-ignore evaluates rules against the path string, so the
+    files need not exist yet (planned files are usually about to be created).
+    """
+    if not files:
+        return []
+    result = runner(["git", "check-ignore", "--", *files], cwd)
+    if result.returncode not in (0, 1):
+        raise _GitError(f"git check-ignore failed: {result.stderr.strip()}")
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
+
 def _table_name(line: str) -> str | None:
     """Return the table name for a `[table]` header line, else None. Tolerates a
     trailing inline comment (`[memory] # note`) and ignores `[[array]]` headers —
@@ -242,6 +258,34 @@ def bootstrap(
     plan_text = plan_from.read_text(encoding="utf-8")
     worktree = _worktree_path(main_root, branch, worktree_override)
     warnings: list[str] = []
+
+    # A gitignored planned file is silently dropped from the commit and hard-fails
+    # capture-implement-diff's `git add --intent-to-add` four stages later in the
+    # unattended tail. Catch it here, at the spec gate, while the user is present.
+    # Checked in main_root (the worktree shares its committed .gitignore); the
+    # worktree does not exist yet, so refusing here leaves no orphan.
+    if planned_files:
+        ignored = _gitignored(planned_files, main_root, run)
+        if ignored:
+            ignore_file_planned = any(
+                f == ".gitignore" or f.endswith("/.gitignore") for f in planned_files
+            )
+            if ignore_file_planned:
+                # The plan touches .gitignore, but that change is not in effect at
+                # bootstrap, so check-ignore still flags these. Warn, do not refuse:
+                # the planned negation may legitimately un-ignore them.
+                warnings.append(
+                    "planned files are currently gitignored: "
+                    + ", ".join(ignored)
+                    + " (plan also touches .gitignore; ensure your negation un-ignores them)"
+                )
+            else:
+                raise _ConfigError(
+                    "planned files are gitignored and would be silently dropped from "
+                    "the commit: "
+                    + ", ".join(ignored)
+                    + " (add a .gitignore negation to the plan's files, or fix the planned paths)"
+                )
 
     _git(["worktree", "add", "-b", branch, str(worktree), base], main_root, run)
 

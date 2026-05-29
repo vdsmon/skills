@@ -67,6 +67,14 @@ class _BaselineMissing(Exception):
     """Raised when baseline.json or state.json absent. Exit code 1."""
 
 
+class _IgnoredPlannedFile(_BaselineMissing):
+    """A planned file is gitignored, so it cannot be committed. Exit code 1.
+
+    Subclasses _BaselineMissing so the existing CLI handler maps it to exit 1; a
+    gitignored planned file is a fix-your-inputs problem, not a git failure.
+    """
+
+
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
 
@@ -117,6 +125,17 @@ def _untracked_files(files: list[str], cwd: Path, runner: Runner) -> list[str]:
     raw = _git(["ls-files", "--", *files], cwd, runner)
     tracked = {line for line in raw.splitlines() if line}
     return [f for f in files if f not in tracked]
+
+
+def _gitignored(files: list[str], cwd: Path, runner: Runner) -> list[str]:
+    """Return the subset of `files` git ignores. check-ignore exits 0 when a path
+    is ignored, 1 when none are, so it bypasses `_git` (which raises on non-zero)."""
+    if not files:
+        return []
+    result = runner(["git", "check-ignore", "--", *files], cwd)
+    if result.returncode not in (0, 1):
+        raise _GitError(f"git check-ignore failed: {result.stderr.strip()}")
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
 # ─── since / since-stage ─────────────────────────────────────────────────────
@@ -241,7 +260,16 @@ def capture_implement_diff(
     # newly created files show up in the diff against head_sha; without this
     # `git diff` emits nothing for them and they vanish from the patch.
     untracked = _untracked_files(existing, cwd, r) if existing else []
+    # `git add --intent-to-add` hard-fails on a gitignored path, which would abort
+    # the commit stage with an opaque git error. Surface it as a diagnosable one
+    # instead (the bootstrap gate normally catches this earlier; this is the
+    # defense for a file gitignored after bootstrap).
     if untracked:
+        ignored = _gitignored(untracked, cwd, r)
+        if ignored:
+            raise _IgnoredPlannedFile(
+                "planned file(s) gitignored, cannot be committed: " + ", ".join(ignored)
+            )
         _git(["add", "--intent-to-add", "--", *untracked], cwd, r)
     try:
         # --no-ext-diff so a configured diff.external (e.g. difftastic) cannot
@@ -282,7 +310,10 @@ def check_ownership(
         raise _BaselineMissing(f"baseline.json malformed: {exc}") from exc
     planned = baseline.get("planned_files", [])
     owned = {str(p) for p in planned} if isinstance(planned, list) else set()
-    raw = _git(["status", "--porcelain"], cwd, r)
+    # --untracked-files=all lists each untracked file individually; without it
+    # git collapses a fully-untracked directory to "foo/", which never matches a
+    # per-file planned_files entry and false-positives the whole dir as unowned.
+    raw = _git(["status", "--porcelain", "--untracked-files=all"], cwd, r)
     changed: list[str] = []
     for line in raw.splitlines():
         if not line.strip():

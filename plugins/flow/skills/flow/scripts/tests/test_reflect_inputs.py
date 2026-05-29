@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+import flow_friction
 import reflect_inputs
 import state
 import ticket_frontmatter
@@ -109,9 +110,11 @@ def test_bundle_includes_subagent_reports_when_output_path_set(
     assert any(r["body"] == "subagent report body\n" for r in reports)
 
 
-def test_bundle_missing_report_file_gives_null_body(
+def test_bundle_missing_report_file_gives_null_body_no_warning(
     tmp_repo: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    # An inline stage may record an output_path without ever writing the file;
+    # an absent report is normal -> null body, and NOT a warning.
     head = _git(["rev-parse", "HEAD"], tmp_repo).strip()
     ticket_dir = tmp_path / "runs" / "FT-1"
     _seed_state(ticket_dir, head)
@@ -120,6 +123,23 @@ def test_bundle_missing_report_file_gives_null_body(
     payload = reflect_inputs.bundle("FT-1", ticket_dir, tmp_repo)
     reports = payload["subagent_reports"]
     assert any(r["body"] is None for r in reports)
+    captured = capsys.readouterr()
+    assert "unreadable" not in captured.err
+
+
+def test_bundle_real_read_error_still_warns(
+    tmp_repo: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A genuine read failure (here: output_path points at a directory) is not a
+    # normal absent report and must still warn.
+    head = _git(["rev-parse", "HEAD"], tmp_repo).strip()
+    ticket_dir = tmp_path / "runs" / "FT-1"
+    _seed_state(ticket_dir, head)
+    as_dir = ticket_dir / "stages" / "implement.out"
+    as_dir.mkdir(parents=True, exist_ok=True)
+    state.finish_stage(ticket_dir, "ticket", "completed", head, output_path=str(as_dir))
+    payload = reflect_inputs.bundle("FT-1", ticket_dir, tmp_repo)
+    assert any(r["body"] is None for r in payload["subagent_reports"])
     captured = capsys.readouterr()
     assert "unreadable" in captured.err
 
@@ -201,3 +221,22 @@ def test_cli_includes_frontmatter_when_flagged(
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["ticket_frontmatter"]["status"] == "x"
+
+
+def test_bundle_includes_friction_for_this_run_only(tmp_repo: Path, tmp_path: Path) -> None:
+    (tmp_repo / ".flow").mkdir(exist_ok=True)
+    (tmp_repo / ".flow" / "workspace.toml").write_text(
+        '[tracker]\nbackend = "jira"\n[memory]\nnamespace = "demo"\n', encoding="utf-8"
+    )
+    head = _git(["rev-parse", "HEAD"], tmp_repo).strip()
+    ticket_dir = tmp_path / "runs" / "FT-1"
+    _seed_state(ticket_dir, head)
+    run_id = state.read(ticket_dir)[0].run_id
+    flow_friction.append(
+        tmp_repo, "FT-1", run_id, "implement", "RECONCILE", "expanded planned_files"
+    )
+    flow_friction.append(tmp_repo, "FT-1", "other-run", "ticket", "RETRY", "noise from another run")
+    payload = reflect_inputs.bundle("FT-1", ticket_dir, tmp_repo)
+    types = [f["type"] for f in payload["friction"]]
+    assert "RECONCILE" in types
+    assert "RETRY" not in types  # different run_id is excluded

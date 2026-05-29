@@ -88,6 +88,35 @@ def test_check_ownership_refuses_unowned_change(tmp_repo: Path, tmp_path: Path) 
     assert "b.py" in payload["unowned_changes"]
 
 
+def test_check_ownership_planned_file_in_new_untracked_dir(tmp_repo: Path, tmp_path: Path) -> None:
+    # Regression: bare `git status --porcelain` collapses a fully-untracked dir to
+    # "pkg/", which never matches the per-file planned entry and false-positives the
+    # whole dir as unowned. --untracked-files=all must list the files individually.
+    ticket_dir = tmp_repo / ".flow" / "runs" / "FT-1"
+    diff_extract.record_baseline("implement", ticket_dir, tmp_repo, files=["pkg/mod.py"])
+    (tmp_repo / "pkg").mkdir()
+    (tmp_repo / "pkg" / "mod.py").write_text("print('planned')\n", encoding="utf-8")
+    payload = diff_extract.check_ownership(ticket_dir, tmp_repo)
+    assert payload["ok"] is True
+    assert payload["unowned_changes"] == []
+    assert "pkg/mod.py" in payload["changed"]
+    assert "pkg/" not in payload["changed"]
+
+
+def test_check_ownership_unplanned_sibling_in_new_dir_is_unowned(
+    tmp_repo: Path, tmp_path: Path
+) -> None:
+    ticket_dir = tmp_repo / ".flow" / "runs" / "FT-1"
+    diff_extract.record_baseline("implement", ticket_dir, tmp_repo, files=["pkg/mod.py"])
+    (tmp_repo / "pkg").mkdir()
+    (tmp_repo / "pkg" / "mod.py").write_text("print('planned')\n", encoding="utf-8")
+    (tmp_repo / "pkg" / "other.py").write_text("print('unplanned')\n", encoding="utf-8")
+    payload = diff_extract.check_ownership(ticket_dir, tmp_repo)
+    assert payload["ok"] is False
+    assert "pkg/other.py" in payload["unowned_changes"]
+    assert "pkg/mod.py" not in payload["unowned_changes"]
+
+
 def test_check_ownership_cli_exit_3(tmp_repo: Path, tmp_path: Path) -> None:
     ticket_dir = tmp_repo / ".flow" / "runs" / "FT-1"
     diff_extract.record_baseline("implement", ticket_dir, tmp_repo, files=["a.py"])
@@ -306,6 +335,21 @@ def test_capture_implement_diff_includes_untracked_new_file(tmp_repo: Path, tmp_
     content = out.read_text(encoding="utf-8")
     assert content.strip() != ""
     assert "fresh.py" in content
+
+
+def test_capture_implement_diff_rejects_gitignored_planned_file(
+    tmp_repo: Path, tmp_path: Path
+) -> None:
+    # A gitignored planned file would hard-fail `git add --intent-to-add` with an
+    # opaque git error; surface it as a diagnosable one instead.
+    (tmp_repo / ".gitignore").write_text("*.csv\n", encoding="utf-8")
+    _git(["add", ".gitignore"], tmp_repo)
+    _git(["commit", "-m", "ignore csv"], tmp_repo)
+    ticket_dir = tmp_path / "runs" / "FT-1"
+    diff_extract.record_baseline("implement", ticket_dir, tmp_repo, files=["data.csv"])
+    (tmp_repo / "data.csv").write_text("a,b\n1,2\n", encoding="utf-8")
+    with pytest.raises(diff_extract._IgnoredPlannedFile):
+        diff_extract.capture_implement_diff(ticket_dir, tmp_repo)
 
 
 def test_capture_implement_diff_untracked_patch_applies_to_index(

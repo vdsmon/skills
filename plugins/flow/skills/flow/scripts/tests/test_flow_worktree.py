@@ -10,6 +10,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import pytest
+
 import flow_worktree as fw
 import state
 
@@ -47,6 +49,7 @@ def _fake_runner(
     mise_rc: int = 0,
     calls: list | None = None,
     main: Path | None = None,
+    ignored: set[str] | None = None,
 ) -> fw.Runner:
     def run(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
         if calls is not None:
@@ -68,6 +71,11 @@ def _fake_runner(
                     encoding="utf-8",
                 )
             return subprocess.CompletedProcess(args, 0, "", "")
+        if args[:2] == ["git", "check-ignore"]:
+            req = [a for a in args[3:] if a != "--"]
+            hit = [f for f in req if ignored and f in ignored]
+            out = "".join(f + "\n" for f in hit)
+            return subprocess.CompletedProcess(args, 0 if hit else 1, out, "")
         if args[:2] == ["git", "rev-parse"]:
             return subprocess.CompletedProcess(args, 0, "wtsha0001\n", "")
         if args[:2] == ["mise", "trust"]:
@@ -311,3 +319,47 @@ def test_e2e_none_does_not_require_recipe(tmp_path: Path) -> None:
     # no recipe passed, but e2e=none → no gate, bootstrap succeeds
     res = _run(tmp_path, main, runner=_fake_runner(main=main))
     assert res["ticket"] == "FT-1"
+
+
+# ─── planned_files gitignore gate ─────────────────────────────────────────────
+
+
+def test_bootstrap_rejects_gitignored_planned_file(tmp_path: Path) -> None:
+    # A gitignored planned file with no .gitignore in the plan is the genuine
+    # landmine: refuse at the gate, before the worktree is even materialized.
+    main = _main_checkout(tmp_path)
+    calls: list = []
+    with pytest.raises(fw._ConfigError):
+        _run(
+            tmp_path,
+            main,
+            planned_files=["data/x.csv"],
+            runner=_fake_runner(ignored={"data/x.csv"}, calls=calls, main=main),
+        )
+    assert not any(c[:3] == ["git", "worktree", "add"] for c in calls)
+
+
+def test_bootstrap_warns_when_gitignore_also_planned(tmp_path: Path) -> None:
+    # The plan touches .gitignore, so a currently-ignored planned file may be
+    # un-ignored by the planned negation: warn, do not refuse.
+    main = _main_checkout(tmp_path)
+    res = _run(
+        tmp_path,
+        main,
+        planned_files=[".gitignore", "data/x.csv"],
+        runner=_fake_runner(ignored={"data/x.csv"}, main=main),
+    )
+    assert res["ticket"] == "FT-1"
+    assert any("data/x.csv" in w and "gitignored" in w for w in res["warnings"])
+
+
+def test_bootstrap_accepts_non_ignored_planned_files(tmp_path: Path) -> None:
+    main = _main_checkout(tmp_path)
+    res = _run(
+        tmp_path,
+        main,
+        planned_files=["a.py"],
+        runner=_fake_runner(ignored=set(), main=main),
+    )
+    assert res["ticket"] == "FT-1"
+    assert not any("gitignored" in w for w in res["warnings"])

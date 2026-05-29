@@ -1,6 +1,6 @@
 {
   "name": "flow",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "description": "Fire-and-forget ticket pipeline. /flow <ticket> plans in plan mode (ExitPlanMode = the one gate), then hands the autonomous implement→PR tail to claude --bg; you spec and review the draft PR. Multi-tracker engine (Jira | beads), pluggable per-stage handlers, compounding memory layer (reflect-stage extraction + SessionStart recall).",
   "author": {
     "name": "Victor De Simone",

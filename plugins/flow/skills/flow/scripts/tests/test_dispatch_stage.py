@@ -435,6 +435,49 @@ def test_finish_records_completed_and_next_pending(
     assert payload["next_pending"] == "plan"
 
 
+def test_advance_finishes_and_returns_next_descriptor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_workspace(tmp_path, stages=["ticket", "plan"], compounding=False)
+    _stub_git_head(monkeypatch)
+    ds.cmd_init(tmp_path, "FT-1")
+    ds.cmd_next(tmp_path, "FT-1")
+    rc, payload = ds.cmd_advance(tmp_path, "FT-1", "ticket", "completed")
+    assert rc == 0
+    # finish confirmation nested; next descriptor spread at top level.
+    assert payload["finished"] == {"stage": "ticket", "status": "completed"}
+    assert payload["stage"] == "plan"
+    assert payload["done"] is False
+
+
+def test_advance_returns_done_on_last_stage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_workspace(tmp_path, stages=["ticket"], compounding=False)
+    _stub_git_head(monkeypatch)
+    ds.cmd_init(tmp_path, "FT-1")
+    ds.cmd_next(tmp_path, "FT-1")
+    rc, payload = ds.cmd_advance(tmp_path, "FT-1", "ticket", "completed")
+    assert rc == 0
+    assert payload["done"] is True
+    assert payload["finished"] == {"stage": "ticket", "status": "completed"}
+
+
+def test_advance_surfaces_finish_error_without_advancing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_workspace(tmp_path, stages=["ticket", "plan"], compounding=False)
+    _stub_git_head(monkeypatch)
+    ds.cmd_init(tmp_path, "FT-1")
+    ds.cmd_next(tmp_path, "FT-1")
+    rc, payload = ds.cmd_advance(tmp_path, "FT-1", "ticket", "weirdo")
+    assert rc == 1
+    assert "completed|failed" in payload["error"]
+    # finish errored -> never advanced, so no next descriptor merged in.
+    assert "finished" not in payload
+    assert "done" not in payload
+
+
 def test_finish_records_failed_with_detail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _write_workspace(tmp_path, stages=["ticket"], compounding=False)
     _stub_git_head(monkeypatch)

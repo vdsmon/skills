@@ -6,6 +6,7 @@ Extract durable knowledge from this ticket's run, append entries to the compound
 
 Reflect is the closing stage.
 The discipline here is what makes `/flow` compounding: every ticket's run produces 0..N knowledge entries that future tickets in the same workspace can recall via BM25.
+Reflection runs on two lenses. DOWN at the ticket's domain (what the work taught you about the code, the libraries, the environment — steps 2 through 4) and UP at the harness itself (did `/flow`'s scripts, stages, and loop serve the run — step 2b). The second lens is where you, the agent that just ran the pipeline, are EXPECTED to fix the harness while your context is freshest — and to feed what you cannot safely fix yet to `/skill-polish`. The friction a run surfaces is the raw material that makes the next run smoother, so a run that merged cleanly but cost manual intervention is a reflect MISS if that friction goes neither fixed nor recorded.
 
 The taxonomy is closed:
 - **LEARNED** — technical insight that future-you should know about.
@@ -51,6 +52,28 @@ The taxonomy is closed:
    **REJECT** narrative summaries.
    "We added a feature" is not novel.
    "The X system's caching layer breaks when Y conditions hold" IS novel.
+
+   **Surface missing REPO-artifact gaps, do NOT act on them.** Reflect runs AFTER `create_pr` and the review loop. If you notice the change shipped without something it should carry (a fixture with no provenance note, an absent doc stub, an un-added file IN THE TICKET REPO), record it as a one-line note to the user and, where it generalizes, a knowledge entry — but do NOT add the file here. Adding a repo file at reflect-time forces a new commit that re-triggers the entire CI + review loop, the exact churn the implement stage's definition-of-done exists to prevent. Reflect names the gap so it lands earlier next time; it does not close it. (This restraint is about repo / PR artifacts ONLY. For the HARNESS itself — the skill's own files — step 2b is the opposite: there you are empowered to fix on the spot, because skill files are not PR artifacts and carry no re-review cost.)
+
+2b. **Machinery reflection (mandatory when the run hit any friction).** The steps above point the lens DOWN at the ticket's domain (the code, the tax rules, the library). This step points it UP at the harness that produced the work: did `/flow`'s own scripts, stages, exit codes, handler dispatch, and orchestration loop serve the run, or fight it? This is the feedstock `/skill-polish` consumes — produce it whether or not a human asked, at the depth of an engineering review, not a vibe check.
+
+   Reconstruct friction from evidence, not memory (a backgrounded reflect agent has no live recall): the PRIMARY source is the in-flight friction log — the bundle's `friction` array (entries the do-loop appended via `flow_friction.py` as the run hit retries, missing tools, drift, lost leases, planned-file reconciles, failed stages). Corroborate and extend it with the stage `.out` reports in `<ticket-dir>/stages/` (subagents flag things like "created a file outside planned_files"), the `state.json` stage history (retries, `failed`->`retry` transitions, stages that needed a `recover`), and anything else the run had to work around. For EACH friction point:
+   - **Re-read the script or reference file behind it** (`scripts/<x>.py`, `references/stage-<y>.md`) — do NOT guess at the cause. Cite `file:line`.
+   - State the defect concretely + a one-line fix (e.g. "`diff_extract.check_ownership` runs bare `git status --porcelain`, which collapses a fully-untracked dir to `foo/` and false-positives against per-file `planned_files`; add `--untracked-files=all`").
+   - Severity-tag: **blocker** (would fail an unattended run) / **major** (needed manual intervention or a confusing recovery) / **minor** (papercut).
+   - Name the owning skill file.
+
+   Emit each as a `DEVIATION` knowledge entry (step 3) with the text prefixed `MACHINERY:` so `/skill-polish` can grep them, AND list them in the human-facing reflect output.
+
+   **You are empowered to FIX the process you just ran, right now.** You are the highest-fidelity judge of this harness that will ever exist for this run: you lived every stage, and no later reviewer (`/skill-polish`, a human, a future session) will have the context you have at this moment. Recording friction for someone else to maybe act on later is the lossy path — it decays, it gets deprioritized, the fix arrives with half the understanding. Default to fixing it yourself, here. The only gate is blast radius:
+
+   - **APPLY NOW (the default).** Surgical, high-confidence fixes to the PROCESS files: a `references/*.md` clarification, a localized script bug with an obvious correct fix. These are NOT repo/PR artifacts — they live in the skill's own tree, outside the ticket repo, so they carry zero re-review churn — and they are version-controlled, so a bad edit is revertible. Re-Read the file before editing (a sibling fleet agent may have shifted the anchor; "anchor not found" usually means it is already fixed — treat that as done). If you touch a script, run its test suite and add a regression test for the bug you fixed. Do not ask permission to improve the tool you are running; that is the whole point of reflecting from inside the run.
+   - **PROPOSE + RECORD, do not self-apply unattended.** Structural changes (the orchestration driver, the dispatch loop, a script rewrite), anything touching a file the fleet is actively mid-stage on, or anything you are not high-confidence is strictly correct. The blast radius across concurrent runs is too large to self-apply. Here the `MACHINERY:` entry + the human note ARE the deliverable; `/skill-polish` and a human gate carry it the rest of the way.
+   - **NEVER at reflect-time:** the repo/PR artifacts (fixtures, docs, code in the ticket's tree). That is the post-PR-churn boundary, and it is the ONLY category reflect must not touch.
+
+   The dividing question, asked once per finding: "Am I confident this edit is strictly correct AND cannot break a sibling agent running right now?" Yes -> apply it, and say so in the reflect output. No -> propose + record. When you apply, the `MACHINERY:` entry doubles as the changelog (name the file + the fix) so the change is findable and revertible.
+
+   "The harness ran clean, no friction" is a valid outcome — do not manufacture findings. But do not skip the step just because the ticket merged: a smooth merge can still hide a stage that cost three manual round-trips, and that is exactly the friction worth fixing while you still remember it.
 
 3. For EACH extracted entry (0 or more), append to knowledge.jsonl:
    ```bash

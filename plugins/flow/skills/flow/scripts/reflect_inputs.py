@@ -28,6 +28,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import _memory_paths
 import diff_extract
 import state
 import ticket_frontmatter
@@ -71,6 +72,10 @@ def bundle(
         body: str | None = None
         try:
             body = report_path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            # an inline stage may record an output_path without ever writing the
+            # file; an absent report is normal, not an error worth a warning.
+            body = None
         except OSError as exc:
             sys.stderr.write(f"reflect-inputs: report file unreadable at {report_path}: {exc}\n")
         subagent_reports.append(
@@ -81,6 +86,25 @@ def bundle(
             }
         )
 
+    # In-flight friction entries for THIS run — the primary evidence for reflect's
+    # machinery lens. Tolerant of an absent log / unconfigured memory (best-effort).
+    friction: list[dict[str, Any]] = []
+    try:
+        namespace = _memory_paths.resolve_namespace(cwd)
+        fpath = _memory_paths.friction_path(cwd, namespace)
+        if fpath.exists():
+            for line in fpath.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    fe = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if fe.get("run_id") == ts.run_id:
+                    friction.append(fe)
+    except (_memory_paths._MemoryConfigError, OSError):
+        pass
+
     return {
         "ticket": ticket,
         "run_id": ts.run_id,
@@ -88,6 +112,7 @@ def bundle(
         "ticket_frontmatter": fm,
         "final_diff": diff_payload,
         "subagent_reports": subagent_reports,
+        "friction": friction,
     }
 
 

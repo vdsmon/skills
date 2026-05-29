@@ -69,6 +69,14 @@ def knowledge_lock_path(workspace_root: Path, namespace: str) -> Path:
     return namespace_root(workspace_root, namespace) / "knowledge.jsonl.lock"
 
 
+def friction_path(workspace_root: Path, namespace: str) -> Path:
+    return namespace_root(workspace_root, namespace) / "friction.jsonl"
+
+
+def friction_lock_path(workspace_root: Path, namespace: str) -> Path:
+    return namespace_root(workspace_root, namespace) / "friction.jsonl.lock"
+
+
 def ship_events_dir(workspace_root: Path, namespace: str) -> Path:
     return namespace_root(workspace_root, namespace) / "ship-events"
 

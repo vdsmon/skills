@@ -371,6 +371,38 @@ def cmd_finish(
     }
 
 
+def cmd_advance(
+    workspace_root: Path,
+    ticket: str,
+    stage_name: str,
+    status_value: str,
+    output_path: str | None = None,
+    skill_output: dict[str, Any] | None = None,
+    failure_detail: str | None = None,
+) -> tuple[int, dict[str, Any]]:
+    """Finish the current stage and return the next descriptor in one call.
+
+    Composes cmd_finish + cmd_next so the do-loop spends one script round-trip per
+    stage instead of two. The returned payload spreads cmd_next's output at the top
+    level (so it parses identically to `next`: {done} / descriptor / {blocked_by})
+    and adds a `finished` object confirming the prior stage closed. On a finish
+    error it returns immediately without advancing.
+    """
+    finish_rc, finish_payload = cmd_finish(
+        workspace_root,
+        ticket,
+        stage_name,
+        status_value,
+        output_path=output_path,
+        skill_output=skill_output,
+        failure_detail=failure_detail,
+    )
+    if finish_rc != 0:
+        return finish_rc, finish_payload
+    next_rc, next_payload = cmd_next(workspace_root, ticket)
+    return next_rc, {"finished": {"stage": stage_name, "status": status_value}, **next_payload}
+
+
 def cmd_status(workspace_root: Path, ticket: str) -> tuple[int, dict[str, Any]]:
     td = _ticket_dir(workspace_root, ticket)
     ts, exit_code = state.read(td)
@@ -420,7 +452,31 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     p_finish.add_argument("--skill-output", default=None)
     p_finish.add_argument("--failure-detail", default=None)
 
+    p_advance = sub.add_parser(
+        "advance", parents=[common], help="Finish current stage AND return next descriptor."
+    )
+    p_advance.add_argument("--stage", required=True)
+    p_advance.add_argument(
+        "--status", dest="status_value", choices=("completed", "failed"), required=True
+    )
+    p_advance.add_argument("--output-path", default=None)
+    p_advance.add_argument("--skill-output", default=None)
+    p_advance.add_argument("--failure-detail", default=None)
+
     return parser.parse_args(argv)
+
+
+def _parse_skill_output_arg(raw: str | None) -> tuple[dict[str, Any] | None, str | None]:
+    """Parse the --skill-output JSON arg. Returns (parsed_or_None, error_or_None)."""
+    if not raw:
+        return None, None
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        return None, f"--skill-output not JSON: {exc}"
+    if not isinstance(parsed, dict):
+        return None, "--skill-output must be a JSON object"
+    return parsed, None
 
 
 def cli_main(argv: list[str]) -> int:
@@ -432,18 +488,25 @@ def cli_main(argv: list[str]) -> int:
     elif args.cmd == "next":
         rc, payload = cmd_next(workspace_root, args.ticket)
     elif args.cmd == "finish":
-        skill_output: dict[str, Any] | None = None
-        if args.skill_output:
-            try:
-                parsed = json.loads(args.skill_output)
-            except json.JSONDecodeError as exc:
-                sys.stderr.write(f"dispatch finish: --skill-output not JSON: {exc}\n")
-                return 1
-            if not isinstance(parsed, dict):
-                sys.stderr.write("dispatch finish: --skill-output must be a JSON object\n")
-                return 1
-            skill_output = parsed
+        skill_output, err = _parse_skill_output_arg(args.skill_output)
+        if err:
+            sys.stderr.write(f"dispatch finish: {err}\n")
+            return 1
         rc, payload = cmd_finish(
+            workspace_root,
+            args.ticket,
+            args.stage,
+            args.status_value,
+            output_path=args.output_path,
+            skill_output=skill_output,
+            failure_detail=args.failure_detail,
+        )
+    elif args.cmd == "advance":
+        skill_output, err = _parse_skill_output_arg(args.skill_output)
+        if err:
+            sys.stderr.write(f"dispatch advance: {err}\n")
+            return 1
+        rc, payload = cmd_advance(
             workspace_root,
             args.ticket,
             args.stage,
@@ -476,6 +539,7 @@ if __name__ == "__main__":
 
 __all__ = [
     "cli_main",
+    "cmd_advance",
     "cmd_finish",
     "cmd_init",
     "cmd_next",
