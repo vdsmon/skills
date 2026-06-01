@@ -29,9 +29,28 @@ from pathlib import Path
 from typing import Any
 
 import _memory_paths
+import _workspace
 import diff_extract
 import state
 import ticket_frontmatter
+
+# Reflect-stage gates, read from workspace.toml [reflect]. Defaults differ by
+# blast radius: machinery (the harness self-edit lens) is OFF unless a skill
+# developer opts in; claude_memory (writing the global ~/.claude memory) is ON
+# because cross-session compounding is the safe-ship default.
+_REFLECT_DEFAULTS = {"machinery": False, "claude_memory": True}
+
+
+def _reflect_config(cwd: Path) -> dict[str, bool]:
+    cfg = dict(_REFLECT_DEFAULTS)
+    try:
+        block = _workspace.load_workspace_toml(cwd).get("reflect", {})
+    except _workspace.WorkspaceConfigError:
+        return cfg
+    for key in cfg:
+        if isinstance(block.get(key), bool):
+            cfg[key] = block[key]
+    return cfg
 
 
 def bundle(
@@ -113,6 +132,7 @@ def bundle(
         "final_diff": diff_payload,
         "subagent_reports": subagent_reports,
         "friction": friction,
+        "reflect_config": _reflect_config(cwd),
     }
 
 

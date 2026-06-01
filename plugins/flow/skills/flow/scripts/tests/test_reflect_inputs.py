@@ -240,3 +240,60 @@ def test_bundle_includes_friction_for_this_run_only(tmp_repo: Path, tmp_path: Pa
     types = [f["type"] for f in payload["friction"]]
     assert "RECONCILE" in types
     assert "RETRY" not in types  # different run_id is excluded
+
+
+# ─── reflect_config ──────────────────────────────────────────────────────────
+
+
+def _write_workspace(tmp_repo: Path, reflect_block: str = "") -> None:
+    (tmp_repo / ".flow").mkdir(exist_ok=True)
+    (tmp_repo / ".flow" / "workspace.toml").write_text(
+        '[tracker]\nbackend = "jira"\n[memory]\nnamespace = "demo"\n' + reflect_block,
+        encoding="utf-8",
+    )
+
+
+def test_reflect_config_defaults_when_no_block(tmp_repo: Path, tmp_path: Path) -> None:
+    _write_workspace(tmp_repo)
+    head = _git(["rev-parse", "HEAD"], tmp_repo).strip()
+    ticket_dir = tmp_path / "runs" / "FT-1"
+    _seed_state(ticket_dir, head)
+    payload = reflect_inputs.bundle("FT-1", ticket_dir, tmp_repo)
+    assert payload["reflect_config"] == {"machinery": False, "claude_memory": True}
+
+
+def test_reflect_config_defaults_when_no_workspace_toml(tmp_repo: Path, tmp_path: Path) -> None:
+    head = _git(["rev-parse", "HEAD"], tmp_repo).strip()
+    ticket_dir = tmp_path / "runs" / "FT-1"
+    _seed_state(ticket_dir, head)
+    payload = reflect_inputs.bundle("FT-1", ticket_dir, tmp_repo)
+    assert payload["reflect_config"] == {"machinery": False, "claude_memory": True}
+
+
+def test_reflect_config_block_overrides(tmp_repo: Path, tmp_path: Path) -> None:
+    _write_workspace(tmp_repo, "[reflect]\nmachinery = true\nclaude_memory = false\n")
+    head = _git(["rev-parse", "HEAD"], tmp_repo).strip()
+    ticket_dir = tmp_path / "runs" / "FT-1"
+    _seed_state(ticket_dir, head)
+    payload = reflect_inputs.bundle("FT-1", ticket_dir, tmp_repo)
+    assert payload["reflect_config"] == {"machinery": True, "claude_memory": False}
+
+
+def test_reflect_config_partial_block_keeps_other_default(tmp_repo: Path, tmp_path: Path) -> None:
+    # only machinery set -> claude_memory stays at its default true.
+    _write_workspace(tmp_repo, "[reflect]\nmachinery = true\n")
+    head = _git(["rev-parse", "HEAD"], tmp_repo).strip()
+    ticket_dir = tmp_path / "runs" / "FT-1"
+    _seed_state(ticket_dir, head)
+    payload = reflect_inputs.bundle("FT-1", ticket_dir, tmp_repo)
+    assert payload["reflect_config"] == {"machinery": True, "claude_memory": True}
+
+
+def test_reflect_config_non_bool_value_ignored(tmp_repo: Path, tmp_path: Path) -> None:
+    # a non-bool override is ignored, the default holds (guards against TOML typos).
+    _write_workspace(tmp_repo, '[reflect]\nmachinery = "yes"\n')
+    head = _git(["rev-parse", "HEAD"], tmp_repo).strip()
+    ticket_dir = tmp_path / "runs" / "FT-1"
+    _seed_state(ticket_dir, head)
+    payload = reflect_inputs.bundle("FT-1", ticket_dir, tmp_repo)
+    assert payload["reflect_config"]["machinery"] is False

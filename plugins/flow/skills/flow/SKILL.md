@@ -39,11 +39,12 @@ If `$ARGUMENTS` is empty, print the verb listing.
 Otherwise — a first token that is not any verb (a bare ticket key like `FT-123`, or a beads key like `sync-42`) — route to **spec**, taking that positional token as the ticket key (same key-resolution as spec step 2).
 Spec is the default because fire-and-forget is the primary path.
 (Exact-token match is what keeps this unambiguous: `sync-42` ≠ the verb `sync`, so a ticket key never collides with a verb.)
+`spec` also accepts the optional flags `--auto` (aliases `--aa`, `--yolo`) and `--e2e-recipe "<recipe>"` anywhere after the verb; they are ignored when reading the positional ticket key (same rule `do` uses for `--notify`). A bare ticket key carries these flags through to spec too: `/flow --auto FT-123` routes to spec with `--auto` set.
 
 | First token | Verb |
 |------|------|
 | `init` (optionally `--reconfigure`, `--resume`) | init |
-| `spec` (optionally `<ticket>`) | spec (read-only front half → bootstrap → bg handoff) |
+| `spec` (optionally `<ticket>`, `--auto`, `--e2e-recipe "..."`) | spec (read-only front half → bootstrap → bg handoff) |
 | `do` (optionally `<ticket>`, `--notify`) | do (executor primitive / tail) |
 | `recall <query> [--branch X --top-n N]` | recall |
 | `recall --metric tickets-per-week [...]` | metric (recall passthrough) |
@@ -100,6 +101,10 @@ Spec is the default because fire-and-forget is the primary path.
 
 The read-only front half of the fire-and-forget model: fetch the ticket, design the plan WITH the user, then seed a worktree and hand the autonomous tail to a backgrounded `/flow do`.
 This is the human/machine boundary — you own the spec and the eventual PR review; the machine owns everything between.
+
+If `$ARGUMENTS` carries `--auto` (alias `--aa` / `--yolo`), follow the **Auto-approve path (`--auto`)** below instead of steps 1-7.
+That path swaps the interactive plan + `ExitPlanMode` gate for a headless `Plan` subagent that self-approves ONLY when it has no clarifying questions, and otherwise falls back to the interactive steps.
+Everything from the bootstrap onward is shared.
 
 1. **Be in plan mode.** The front half must perform no writes.
    If you are not already in plan mode, call `EnterPlanMode` before doing anything else.
@@ -160,11 +165,69 @@ This is the human/machine boundary — you own the spec and the eventual PR revi
    ```
    - **`PRINT` (marker absent, default)** → print the appended line above; the user fires it.
      This is the v1 path, and it is how bg auth gets proven on the first ticket: a `--bg` session inherits cached MCP / keychain creds, but a claude.ai OAuth refresh can 401 silently (see `references/background-pipeline.md`).
-   - **`AUTOFIRE` (marker present)** → run the appended line above yourself via Bash (zero-touch).
+   - **`AUTOFIRE` (marker present)** → run the appended line above yourself via Bash, as a **foreground** call (zero-touch).
+     `claude --bg` self-detaches — it spawns the detached session and returns in a second or two — so the Bash call is short-lived; do **NOT** wrap it with `run_in_background`. Double-backgrounding makes the launcher itself a tracked bg task that fires a spurious completion notification, while the real pipeline runs in a nested session you then have to chase via `claude agents`. Fire it foreground, read the printed session id, done.
      Tell the user to create the marker (`touch .flow/.bg-autofire-enabled`) only after one ticket has gone end-to-end and bg auth is confirmed.
 
    Either way: manage in-flight tickets with `claude agents` (attach to peek, answer a blocker, detach); the deliverable is a draft PR you review.
    See `references/background-pipeline.md`.
+
+### Auto-approve path (`--auto`)
+
+For tickets you already know are simple and whose body is descriptive: auto-approve the plan WITHOUT your intervention, but ONLY when the planner has no clarifying questions.
+This is a conditional gate, not a blanket skip — a three-way branch on the headless planner's output.
+It replaces interactive steps 1-5; steps 6-7 (bootstrap + hand off) are shared, run them exactly as above.
+
+1. **Do NOT `EnterPlanMode`.**
+   The headless path performs only reads until the intended bootstrap write — there is no interactive plan to gate, so the plan-mode lock is unnecessary.
+   Keep the reads read-only by discipline; the first write is the bootstrap in shared step 6.
+
+2. Resolve the ticket key (positional `$ARGUMENTS` minus the flags, else `branch_ticket.py --workspace-root .`) — same as step 2.
+
+3. Fetch ticket context into the conversation via `tracker_cli.py --workspace-root . get --key "$KEY"` (read the stdout); explore the codebase read-only; weave in the SessionStart `recall` — same as step 3.
+
+4. **Headless plan.**
+   Read `${CLAUDE_SKILL_DIR}/references/stage-plan.md`, then spawn the `Plan` subagent embedding that protocol PLUS the output contract below:
+   ```
+   Agent(
+     subagent_type="Plan",
+     description="plan (auto) for <KEY>",
+     prompt="""
+     Ticket: <KEY>
+     You are the Plan subagent for the plan stage of /flow, running in --auto mode.
+     Read .flow/runs/<KEY>/ticket.json and .flow/tickets/<KEY>.md for ticket context.
+
+     Per-stage protocol (from references/stage-plan.md):
+     <contents of stage-plan.md>
+
+     Produce the plan with its normal sections, THEN end your report with a
+     machine-readable block, exactly one of:
+       - the literal line `NONE` under a `## CLARIFYING QUESTIONS` heading when
+         the ticket is unambiguous and you are confident the plan is approvable
+         as-is;
+       - a `## CLARIFYING QUESTIONS` heading followed by one `- <question>`
+         bullet per genuinely open decision a human must settle before code is
+         written (competing interpretations, an unconfirmed assumption, a missing
+         input). Only raise a question if its answer would change the plan.
+     If you cannot produce a plan at all (ticket.json missing/empty, or zero
+     usable intent), return a single line `BAIL: <reason>` instead of a plan.
+     """
+   )
+   ```
+   Capture the full response.
+
+5. **Branch on the returned block:**
+   - **`NONE` (clean plan)** → auto-approve, no human gate.
+     Derive `--planned-files` from the plan's "Files to change" list, and `--commit-type` + `--commit-summary` from the Goal.
+     For `--e2e-recipe`, honor step 6's contract: when e2e is enabled (`workspace.toml [pipeline.handlers] e2e` is not `none`), pass the `--e2e-recipe "..."` value the user gave, else default it to `test-ci-only`; when the e2e handler is `none`, omit it.
+     Go straight to shared step 6 — there is no `ExitPlanMode` to call, because you never entered plan mode.
+   - **Clarifying questions present, OR a `BAIL` line** → the human is needed; `--auto` degrades to interactive exactly when intervention has value.
+     `EnterPlanMode`, present the captured plan text AND the clarifying questions (or the bail reason) to the user, then run the normal interactive flow — steps 4-5 above: iterate the plan with the user, settle the e2e recipe, `ExitPlanMode` = the gate.
+     Then continue into shared step 6.
+
+   Either branch ends at the same bootstrap + hand off (steps 6-7).
+   `--auto` does NOT change the `.bg-autofire-enabled` marker behavior: the bg launch is still PRINT-by-default and only fires itself when the marker is present.
+   So full zero-touch (no plan gate AND the bg launch firing itself) requires BOTH `--auto` and the marker; `--auto` alone auto-approves the plan but still prints the launch command when the marker is absent — that is how first-ticket bg auth stays proven (see step 7).
 
 ## do verb
 
@@ -173,7 +236,7 @@ The **executor primitive**: the full ticket→PR pipeline, driven off the dispat
 It also runs foreground for one interactive pass.
 The dispatcher emits handler-descriptor JSON; this prose acts on each descriptor and calls back to `finish`.
 
-**`--notify` (set by the bg handoff).** When `$ARGUMENTS` carries `--notify`, the tail pings you via the PushNotification tool at two points: (1) after the `create_pr` stage finishes `completed`, with the PR URL (`"flow <KEY>: PR ready for review — <url>"`); (2) before any `AskUserQuestion` this run would raise, naming the blocker (`"flow <KEY> blocked: <reason> — attach via claude agents"`), then it asks (which pauses the bg session).
+**`--notify` (set by the bg handoff).** When `$ARGUMENTS` carries `--notify`, the tail pings you via the PushNotification tool at two points: (1) after the `review_loop` stage finishes `completed` (CI green AND every actionable reviewer thread resolved — the true ready-to-review point, NOT at `create_pr`, which only opens the draft; when `review_loop`'s handler is `none` so no CI/review loop is wired, fall back to after `create_pr` completes), with the PR URL (`"flow <KEY>: PR ready for review — <url>"`); (2) before any `AskUserQuestion` this run would raise, naming the blocker (`"flow <KEY> blocked: <reason> — attach via claude agents"`), then it asks (which pauses the bg session).
 PushNotification is harness-local (your terminal, plus your phone if Remote Control is on), so it fires even when tracker / MCP auth has died in the bg session — that is how you learn the tail stalled.
 If the PushNotification tool is NOT available in the current harness (some surfaces do not expose it — a `ToolSearch` for it returns nothing), do not abort and do not treat its absence as a blocker. Fall back to BOTH: (a) surface the message in-thread, and (b) a DURABLE channel a detached console can see later — post it as a `bkt` PR comment (`bkt` is already in hand on the create_pr / review_loop path): `bkt api "2.0/repositories/<ws>/<repo>/pullrequests/<id>/comments" -X POST -d "$(jq -n --arg b "flow <KEY>: <message>" '{content:{raw:$b}}')" --json`. The in-thread echo alone is invisible to a truly detached run; the PR comment is what makes the fallback real. The notification is best-effort; the pipeline state in `state.json` is the source of truth.
 `--notify` is a flag, not the ticket key; ignore it when reading the positional in step 1.
@@ -214,7 +277,7 @@ Foreground `/flow do` without `--notify` stays silent.
 
    **Friction logging (in-flight).** Whenever a step below hits a snag the run has to work around, append one friction entry before you act on it. This is the high-fidelity evidence the `reflect` stage synthesizes into machinery findings (a backgrounded reflect agent cannot reconstruct it from `state.json` alone). Trigger → `--type`: `next`/`advance` drift exit 1 → `DRIFT`; lost-lease exit 7 → `LEASE_LOSS`; the records_diff_baseline post-implement reconcile → `RECONCILE`; a skill handler not installed → `MISSING_TOOL`; an `AskUserQuestion` blocker → `BLOCKER`; a stage finished `failed` → `STAGE_FAILED`; a retried stage → `RETRY`. The call (best-effort — never let a logging failure abort the run):
    ```bash
-   python3 ${CLAUDE_SKILL_DIR}/scripts/flow_friction.py append \
+   python3 ${CLAUDE_SKILL_DIR}/scripts/flow_friction.py \
      --ticket "$KEY" --run-id "$RUN_ID" --stage "$STAGE" \
      --type <TYPE> --body "<one line: what snagged>" [--detail "<context>"] \
      --workspace-root . || true
@@ -342,7 +405,7 @@ Foreground `/flow do` without `--notify` stays silent.
       `advance` is `finish` + `next` in one round-trip: it records the current HEAD sha itself (do not pass it), finishes `$STAGE` with `$STATUS`, then returns the NEXT stage's descriptor. Its payload spreads that descriptor at the top level — so it parses EXACTLY like `next` in step (b) (`{done: true}` / handler descriptor / `{blocked_by}`) — plus a `finished` object confirming the prior stage closed. The `--output-path` flag is for subagent/skill stages where you captured the response (and any inline stage that produced a captured output); omit otherwise.
       Handle `advance`'s exit codes exactly as `next` in step (a): exit 0 → its payload is the next `DESCRIPTOR`; exit 7 → lost lease (`/flow recover`); exit 1 → drift/violations/corrupt state (surface + `/flow recover`). A `--status failed` advance returns `{blocked_by}`, which step (b) treats as the block-and-break case.
 
-      If `--notify` is set and `$STAGE` is `create_pr` with `$STATUS` completed, send the PR-ready notification now (read the PR URL from the captured `create_pr.out`).
+      If `--notify` is set, send the PR-ready notification only when the PR is genuinely review-ready, NOT at `create_pr`: fire it when `$STAGE` is `review_loop` with `$STATUS` completed (CI green and every actionable reviewer thread resolved), reading the PR URL from the captured `create_pr.out`. Only when `review_loop`'s handler is `none` (no CI/review loop wired) do you fall back to firing at `create_pr` completed.
       See the `--notify` note above.
 
    f. Loop back to (b) with the `DESCRIPTOR` that `advance` just returned (it already did step (a)'s work for the next stage). The standalone `next` in step (a) runs only once, for the first stage.

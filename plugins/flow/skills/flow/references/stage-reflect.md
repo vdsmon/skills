@@ -6,7 +6,13 @@ Extract durable knowledge from this ticket's run, append entries to the compound
 
 Reflect is the closing stage.
 The discipline here is what makes `/flow` compounding: every ticket's run produces 0..N knowledge entries that future tickets in the same workspace can recall via BM25.
-Reflection runs on two lenses. DOWN at the ticket's domain (what the work taught you about the code, the libraries, the environment — steps 2 through 4) and UP at the harness itself (did `/flow`'s scripts, stages, and loop serve the run — step 2b). The second lens is where you, the agent that just ran the pipeline, are EXPECTED to fix the harness while your context is freshest — and to feed what you cannot safely fix yet to `/skill-polish`. The friction a run surfaces is the raw material that makes the next run smoother, so a run that merged cleanly but cost manual intervention is a reflect MISS if that friction goes neither fixed nor recorded.
+Reflection runs on three lenses, two of them gated by `workspace.toml [reflect]` flags that `reflect_inputs.py` surfaces in the bundle as `reflect_config` (step 1):
+
+- **A. Domain (always on).** DOWN at the ticket's domain — what the work taught you about the code, the libraries, the environment. Appends to the flow knowledge layer (steps 2 + 3 + 4).
+- **B. Machinery (`reflect_config.machinery`, default false).** UP at the harness itself — did `/flow`'s scripts, stages, and loop serve the run, or fight it. This is where you, the agent that just ran the pipeline, are EXPECTED to fix the harness while your context is freshest, and to feed what you cannot safely fix yet to `/skill-polish`. Only a skill DEVELOPER wants this, and it edits flow's own source, so it is OFF unless the workspace opts in (step 2b).
+- **C. Project knowledge (`reflect_config.claude_memory`, default true).** OUTWARD at the project's own durable knowledge stores — the on-disk project auto-memory and the checked-in project `CLAUDE.md` / `AGENTS.md`. Auto-writes broadly-useful facts to the project memory and PROPOSES (does not apply) any `AGENTS.md` rule change (step 2c).
+
+The friction a run surfaces is the raw material that makes the next run smoother, so a run that merged cleanly but cost manual intervention is a reflect MISS if that friction goes neither fixed nor recorded (when lens B is on) and the durable project facts it taught go unrecorded (lens C).
 
 The taxonomy is closed:
 - **LEARNED** — technical insight that future-you should know about.
@@ -34,7 +40,11 @@ The taxonomy is closed:
      --cwd .
    ```
    - Exit 0 → JSON payload to stdout: `{ticket, run_id, state,
-     ticket_frontmatter, final_diff, subagent_reports[]}`.
+     ticket_frontmatter, final_diff, subagent_reports[], friction[],
+     reflect_config}`.
+     `reflect_config` is `{machinery: bool, claude_memory: bool}` (machinery
+     defaults false, claude_memory defaults true; a `[reflect]` block in
+     `workspace.toml` overrides). It gates step 2b and step 2c below.
    - Exit 1 → state.json missing/corrupt, or the diff environment is broken (git not on PATH, bad `--cwd`).
      Abort with status=failed.
    - Exit 2 → git ran but returned an error (bad ref). Abort.
@@ -55,7 +65,7 @@ The taxonomy is closed:
 
    **Surface missing REPO-artifact gaps, do NOT act on them.** Reflect runs AFTER `create_pr` and the review loop. If you notice the change shipped without something it should carry (a fixture with no provenance note, an absent doc stub, an un-added file IN THE TICKET REPO), record it as a one-line note to the user and, where it generalizes, a knowledge entry — but do NOT add the file here. Adding a repo file at reflect-time forces a new commit that re-triggers the entire CI + review loop, the exact churn the implement stage's definition-of-done exists to prevent. Reflect names the gap so it lands earlier next time; it does not close it. (This restraint is about repo / PR artifacts ONLY. For the HARNESS itself — the skill's own files — step 2b is the opposite: there you are empowered to fix on the spot, because skill files are not PR artifacts and carry no re-review cost.)
 
-2b. **Machinery reflection (mandatory when the run hit any friction).** The steps above point the lens DOWN at the ticket's domain (the code, the tax rules, the library). This step points it UP at the harness that produced the work: did `/flow`'s own scripts, stages, exit codes, handler dispatch, and orchestration loop serve the run, or fight it? This is the feedstock `/skill-polish` consumes — produce it whether or not a human asked, at the depth of an engineering review, not a vibe check.
+2b. **Machinery reflection (lens B — gated; mandatory when ON and the run hit any friction).** SKIP this entire step unless `reflect_config.machinery` is true. It is false by default: a stranger running flow neither wants flow editing its own source nor cares about flow-internal findings. When the flag is off, do not record `MACHINERY:` entries and do not apply harness fixes; go straight to step 2c. When it is on (the skill developer's workspace), run it in full. The steps above point the lens DOWN at the ticket's domain (the code, the tax rules, the library). This step points it UP at the harness that produced the work: did `/flow`'s own scripts, stages, exit codes, handler dispatch, and orchestration loop serve the run, or fight it? This is the feedstock `/skill-polish` consumes — produce it whether or not a human asked, at the depth of an engineering review, not a vibe check.
 
    Reconstruct friction from evidence, not memory (a backgrounded reflect agent has no live recall): the PRIMARY source is the in-flight friction log — the bundle's `friction` array (entries the do-loop appended via `flow_friction.py` as the run hit retries, missing tools, drift, lost leases, planned-file reconciles, failed stages). Corroborate and extend it with the stage `.out` reports in `<ticket-dir>/stages/` (subagents flag things like "created a file outside planned_files"), the `state.json` stage history (retries, `failed`->`retry` transitions, stages that needed a `recover`), and anything else the run had to work around. For EACH friction point:
    - **Re-read the script or reference file behind it** (`scripts/<x>.py`, `references/stage-<y>.md`) — do NOT guess at the cause. Cite `file:line`.
@@ -75,6 +85,14 @@ The taxonomy is closed:
    The dividing question, asked once per finding: "Am I confident this edit is strictly correct AND cannot break a sibling agent running right now?" Yes -> apply it, and say so in the reflect output. No -> propose + record. When you apply, the `MACHINERY:` entry doubles as the changelog (name the file + the fix) so the change is findable and revertible.
 
    "The harness ran clean, no friction" is a valid outcome — do not manufacture findings. But do not skip the step just because the ticket merged: a smooth merge can still hide a stage that cost three manual round-trips, and that is exactly the friction worth fixing while you still remember it.
+
+2c. **Project knowledge reflection (lens C — gated, default ON).** SKIP this step only when `reflect_config.claude_memory` is false. It points OUTWARD at the project's own durable knowledge, the stores that compound across EVERY session in this project, not just flow runs (flow's `knowledge.jsonl` is flow-namespaced and only recalled at flow SessionStart; these are broader). Two targets, deliberately different blast radii:
+
+   - **Project auto-memory (AUTO-WRITE).** For each durable, broadly-useful fact this run taught — the same novelty bar as lens A, but the subset that helps ANY session, not just a flow run (an environment gotcha, a naming surprise, a workflow constraint) — write it into THIS PROJECT's on-disk auto-memory, the memory directory your harness names in its memory instructions (system context). Resolve it to the project, not the worktree (the project memory is shared across worktrees). Follow that memory system's own discipline exactly: one fact per file with the required frontmatter, a one-line pointer added to its `MEMORY.md` index, `[[links]]` to related entries, and a dedup check against existing files (update the covering file instead of creating a duplicate; delete one that this run proved wrong). Do NOT copy flow-internal machinery findings (lens B) here — those belong in `knowledge.jsonl`, not the project memory. A fact can legitimately land in BOTH lens A (flow knowledge) and here (project memory) when it generalizes; that is expected, not duplication to avoid.
+
+   - **Project `CLAUDE.md` / `AGENTS.md` (PROPOSE, do NOT apply).** If the run taught a durable PROJECT RULE worth codifying in the repo's checked-in `AGENTS.md` (a convention, a recurring gotcha, a workflow rule future contributors should follow), SURFACE it as a one-block proposal in the reflect output: `Proposed AGENTS.md addition:` followed by the exact text and the one-line reason. Do NOT edit `AGENTS.md`. It is a repo artifact, and editing it at reflect-time forces a commit that re-triggers the CI + review loop (the same post-PR-churn boundary step 2 enforces). The user applies the proposal on their own schedule. Emit nothing here if the run taught no repo-rule-worthy fact.
+
+   "No broadly-useful project fact this run" is a valid outcome; do not manufacture project-memory entries or AGENTS.md proposals to fill the section.
 
 3. For EACH extracted entry (0 or more), append to knowledge.jsonl:
    ```bash

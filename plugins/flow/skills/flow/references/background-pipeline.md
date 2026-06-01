@@ -66,7 +66,7 @@ Present → spec runs the launch line itself (zero-touch).
 Create the marker (`touch .flow/.bg-autofire-enabled`) only after one ticket has confirmed bg auth survives.
 The marker lives in the main checkout and is read only by the spec session; it is not propagated into the worktree.
 
-**`--notify`** is a flag spec appends to the launch line (`claude --bg "/flow do <KEY> --notify"`), so the tail pings you via the PushNotification tool: once when `create_pr` lands (with the PR URL — the heart of "forget", the signal to come review), and best-effort right before a blocker (it pushes, then raises `AskUserQuestion`, which pauses the bg session).
+**`--notify`** is a flag spec appends to the launch line (`claude --bg "/flow do <KEY> --notify"`), so the tail pings you via the PushNotification tool: once when the PR is genuinely review-ready — after `review_loop` goes green (CI passed and every actionable reviewer thread resolved), not when the draft first opens at `create_pr` — carrying the PR URL (the heart of "forget", the signal to come review); and best-effort right before a blocker (it pushes, then raises `AskUserQuestion`, which pauses the bg session).
 PushNotification is harness-local (terminal + phone via Remote Control), so it does **not** ride MCP/claude.ai auth — it fires even if the tail's tracker calls 401, which is exactly how you learn an unattended run stalled on auth.
 That is why notify is not gated with auto-fire: it is the safety signal for the very risk auto-fire is gated on.
 
@@ -78,9 +78,12 @@ That is why notify is not gated with auto-fire: it is the safety signal for the 
 - **mise/toolchain.** The bootstrap only `mise trust`s; the first `mise run` in the tail installs the toolchain.
   If your repo's setup races a lock (e.g. `uv venv --seed` on the uv cache), validate the first run.
 - **skill-launched `claude --bg` (the auto-fire path).** When the marker is set, spec fires the launch line from its **own** Bash tool (claude-in-claude), not from your shell.
+  Fire it as a **foreground** Bash call — `claude --bg` already self-detaches and returns immediately, so wrapping it in `run_in_background` double-backgrounds it: the launcher becomes its own tracked bg task (spurious completion ping) and the pipeline ends up in a nested session you have to chase.
   Confirm that path spawns a working detached session you can see in `claude agents` — it is a different path than you firing it manually, and it is the one the marker enables.
   Until confirmed, leave the marker off and fire manually.
 - **PushNotification from a detached session.** The `--notify` pings come from a `--bg` session with no attached terminal, so the desktop path has nothing to render to; the phone push needs Remote Control connected.
   Confirm a ping actually reaches you from one real bg run before trusting `--notify` as your only signal that the tail landed or stalled.
+- **git push permission.** The unattended tail pushes at `create_pr` (ship-it). If `git push` is gated — an `ask` permission rule, or a global "never push without explicit permission" instruction — the auto-mode classifier denies it in a `--bg` session and the tail stalls at create_pr with no way to grant it unattended.
+  Pre-authorize a feature-branch push before relying on the tail: a `Bash(git push:*)` allow-rule (force-push still denied via a `deny` guard), and make any global push instruction recognize that an explicitly-invoked pipeline push is fine. Confirm a real bg push lands before flipping `.bg-autofire-enabled`.
 
-"Confirmed on ticket #1" (the bar for flipping `.bg-autofire-enabled` on) means all four: handoff composes, bg MCP auth survives, skill-launched `--bg` works, and a notify ping arrives.
+"Confirmed on ticket #1" (the bar for flipping `.bg-autofire-enabled` on) means all five: handoff composes, bg MCP auth survives, skill-launched `--bg` works, git push is pre-authorized, and a notify ping arrives.
