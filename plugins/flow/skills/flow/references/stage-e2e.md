@@ -76,8 +76,9 @@ Your job is to run it exactly, not to reinterpret it.
   recipe; the bootstrap gate normally prevents this). Report it as failed so the
   user supplies a recipe or sets the handler back to `none`.
 - Env-prep needs a genuinely interactive step that cannot run unattended → stop
-  and report the blocker (under `--notify` the tail pushes it to the user);
-  recipes should specify a non-interactive refresh path to avoid this.
+  and report the blocker (it surfaces as needs-input in `claude agents` when the
+  session is backgrounded); recipes should specify a non-interactive refresh path
+  to avoid this.
 
 ## Skip conditions
 

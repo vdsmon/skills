@@ -1,7 +1,6 @@
-# Fire-and-forget background pipeline
+# The pipeline, and running it unattended
 
-The `/flow spec` + `claude --bg "/flow do"` flow splits the pipeline at the PLANNING│IMPLEMENTING seam — the human/machine boundary.
-You spec the work and review the PR; the machine owns everything between, unattended.
+`/flow` is one continuous pipeline that runs in a single session: spec splits the work at the PLANNING│IMPLEMENTING seam (the human/machine boundary), then enters a seeded worktree and runs the autonomous tail in the same conversation.
 
 ```
 dev session, PLAN MODE
@@ -9,31 +8,33 @@ dev session, PLAN MODE
   ExitPlanMode                                           ← THE one gate
        │ approved plan
        ▼
-dev session, normal mode (post-approval)
+same session, normal mode (post-approval)
   flow_worktree.py create …    worktree + config + mise trust + seed state + plan
-  claude --bg "/flow do FT-X"  (cwd = worktree)          ← autonomous tail
-       │
-       ▼   implement → code_review → e2e → commit → create_pr → review_loop → reflect
+  EnterWorktree(path=…)        switch this session into the seeded worktree
+       │   implement → code_review → e2e → commit → create_pr → review_loop → reflect
   draft PR                                               ← you review
-cockpit:  claude agents        manage 3–5 in flight (attach / peek / answer / detach)
 ```
 
-Two human touchpoints: plan approval and PR review.
-No mid-flight gate.
+Two human touchpoints: plan approval and PR review. No mid-flight gate.
 
-## Why a session, not a Workflow subagent
+## The pipeline is background-agnostic
 
-The per-ticket recipe is session-shaped (it IS `/flow do`, a slash skill).
-A Workflow `agent()` is a subagent, and **subagents cannot invoke slash-command skills** — they would have to re-encode the recipe and drift.
-`claude --bg` launches a full, detached session that runs the skill verbatim with its own context window.
-Workflows still fit *under* a stage as a fan-out step; they do not replace the pipeline.
+The pipeline never asks whether it is attached to a terminal. It runs the same stages, calls the same tools, reads the same `state.json` whether you are watching or have walked away. "Run this unattended" is a *runtime* decision you make on the session, not something the pipeline orchestrates:
+
+- **`/bg`** (or `←` on an empty prompt) backgrounds the current session at any point — before approving the plan, right after, or mid-implement. It "starts a fresh process that resumes from the saved conversation," so the full planning context carries through. The pipeline keeps running and the session shows up in `claude agents`.
+- **Dispatch from the agents panel** (or `claude --bg "<prompt>"`) starts a session already in the background; it runs the same `/flow` from the first prompt.
+
+Either way, `claude agents` is the cockpit: attach to peek, answer a blocker, detach. Background several tickets to run them in parallel.
+
+The bridge from the read-only front half to the autonomous tail is the worktree switch, not a second process: after the bootstrap builds the worktree, `EnterWorktree(path=…)` moves the same conversation into it. That also pre-empts the harness's auto-worktree-on-first-edit (skipped once the session is inside a linked worktree), so the pipeline runs in the base-controlled, config-copied worktree the bootstrap built rather than a fresh one.
 
 ## What the bootstrap seeds (so the tail resumes at implement)
 
 `flow_worktree.py create` marks the `plan` stage completed with the approved plan as its `plan.out`, and leaves `ticket` pending.
-The backgrounded `/flow do`'s `init` resumes (idempotent, same `run_id`), `pick_next_pending` returns `ticket` (self-fetches ticket.json + stamps frontmatter), then skips the completed `plan` and lands on `implement`, which reads `plan.out`.
+After `EnterWorktree`, continuing into `/flow do`'s `init` resumes (idempotent, same `run_id`), `pick_next_pending` returns `ticket` (self-fetches ticket.json + stamps frontmatter), then skips the completed `plan` and lands on `implement`, which reads `plan.out`.
+The resume is driven entirely by `state.json` on disk and never consults in-context history, so it is identical whether spec flowed in or `do` was invoked standalone.
 
-The bootstrap holds **no lease** — the bg session's `init` acquires it under the seeded `run_id`, so there is no foreign-lease conflict.
+The bootstrap holds **no lease** — the run's `init` acquires it under the seeded `run_id`, so there is no foreign-lease conflict.
 
 ## Memory is shared, not per-worktree
 
@@ -49,41 +50,22 @@ With `ship-it` installed, `/flow init --bundle recommended` auto-wires `create_p
 ship-it's stack is Bitbucket + bkt + CodeRabbit; a GitHub-stack project supplies a different `create_pr` bundle.
 A bare workspace ends at `commit` (committed branch, no PR).
 
-## Blockers under `--bg`
+When the PR is genuinely review-ready (after `review_loop` goes green — CI passed and every actionable reviewer thread resolved, not when the draft first opens at `create_pr`), the pipeline fires an unconditional best-effort `PushNotification` carrying the PR URL.
+PushNotification is harness-local (terminal + phone via Remote Control): it renders in-terminal when you are attached and reaches your phone when you have backgrounded the session, and it does not ride MCP/claude.ai auth — so it fires even if the tail's tracker calls 401, which is how you learn an unattended run stalled on auth.
 
-A backgrounded session cannot answer `AskUserQuestion` live, so it **pauses** and surfaces as needs-input in `claude agents`.
-Attach, answer, detach — the run resumes.
-To minimize pauses, the bootstrap pre-populates the two frontmatter keys the tail's prose would otherwise ask for: `planned_files` (read by the implement pre-handler hook that records the diff baseline, and reused by the commit stage) and `commit_type` + `commit_summary` (read by the commit stage).
+## Blockers
+
+A stage that needs a decision raises `AskUserQuestion`.
+Attached, you answer inline. Backgrounded, the harness surfaces it as needs-input in `claude agents` — attach, answer, detach, and the run resumes.
+To minimize pauses, the bootstrap pre-populates the frontmatter keys the tail would otherwise ask for: `planned_files` (read by the implement pre-handler hook that records the diff baseline, and reused by the commit stage), `commit_type` + `commit_summary` (read by the commit stage), and `e2e_recipe` when e2e is opted in.
 Other tail stages avoid prompts; any genuine ambiguity pauses rather than guessing.
 
-## Closing the forget loop: auto-fire + `--notify`
+## Verify on ticket #1 (before relying on unattended runs)
 
-Two independent pieces, gated independently.
+Backgrounding via `/bg` starts a fresh process that resumes the conversation, so the unattended-run risks are real and worth confirming once before you trust them at scale:
 
-**Auto-fire** is gated on a single marker in the **main checkout**, `.flow/.bg-autofire-enabled`.
-Absent (default) → `/flow spec` prints the launch line and you fire it; this is how bg auth gets proven on ticket #1.
-Present → spec runs the launch line itself (zero-touch).
-Create the marker (`touch .flow/.bg-autofire-enabled`) only after one ticket has confirmed bg auth survives.
-The marker lives in the main checkout and is read only by the spec session; it is not propagated into the worktree.
-
-**`--notify`** is a flag spec appends to the launch line (`claude --bg "/flow do <KEY> --notify"`), so the tail pings you via the PushNotification tool: once when the PR is genuinely review-ready — after `review_loop` goes green (CI passed and every actionable reviewer thread resolved), not when the draft first opens at `create_pr` — carrying the PR URL (the heart of "forget", the signal to come review); and best-effort right before a blocker (it pushes, then raises `AskUserQuestion`, which pauses the bg session).
-PushNotification is harness-local (terminal + phone via Remote Control), so it does **not** ride MCP/claude.ai auth — it fires even if the tail's tracker calls 401, which is exactly how you learn an unattended run stalled on auth.
-That is why notify is not gated with auto-fire: it is the safety signal for the very risk auto-fire is gated on.
-
-## Validate before scaling (open risks)
-
-- **bg MCP auth.** `--bg` inherits cached keychain creds, but a claude.ai OAuth token refresh can require a browser and 401 silently.
-  Run ONE ticket end-to-end and confirm the tracker calls (ticket fetch, transition, is-shipped) succeed before firing 3–5.
-  Fallback: an interactive tmux session has live auth.
-- **mise/toolchain.** The bootstrap only `mise trust`s; the first `mise run` in the tail installs the toolchain.
-  If your repo's setup races a lock (e.g. `uv venv --seed` on the uv cache), validate the first run.
-- **skill-launched `claude --bg` (the auto-fire path).** When the marker is set, spec fires the launch line from its **own** Bash tool (claude-in-claude), not from your shell.
-  Fire it as a **foreground** Bash call — `claude --bg` already self-detaches and returns immediately, so wrapping it in `run_in_background` double-backgrounds it: the launcher becomes its own tracked bg task (spurious completion ping) and the pipeline ends up in a nested session you have to chase.
-  Confirm that path spawns a working detached session you can see in `claude agents` — it is a different path than you firing it manually, and it is the one the marker enables.
-  Until confirmed, leave the marker off and fire manually.
-- **PushNotification from a detached session.** The `--notify` pings come from a `--bg` session with no attached terminal, so the desktop path has nothing to render to; the phone push needs Remote Control connected.
-  Confirm a ping actually reaches you from one real bg run before trusting `--notify` as your only signal that the tail landed or stalled.
-- **git push permission.** The unattended tail pushes at `create_pr` (ship-it). If `git push` is gated — an `ask` permission rule, or a global "never push without explicit permission" instruction — the auto-mode classifier denies it in a `--bg` session and the tail stalls at create_pr with no way to grant it unattended.
-  Pre-authorize a feature-branch push before relying on the tail: a `Bash(git push:*)` allow-rule (force-push still denied via a `deny` guard), and make any global push instruction recognize that an explicitly-invoked pipeline push is fine. Confirm a real bg push lands before flipping `.bg-autofire-enabled`.
-
-"Confirmed on ticket #1" (the bar for flipping `.bg-autofire-enabled` on) means all five: handoff composes, bg MCP auth survives, skill-launched `--bg` works, git push is pre-authorized, and a notify ping arrives.
+- **cwd survives the resume.** After `/bg` post-`EnterWorktree`, confirm the resumed process is still in the seeded worktree (`pwd`), that implement edits land there (not the main checkout), and that no second auto-worktree was created (`git worktree list`).
+- **auth survives the resume.** Confirm tracker / MCP / claude.ai calls (ticket fetch, transition, create_pr push) succeed in the backgrounded run — a refresh can require a browser and 401 silently. Fallback: an attached session has live auth.
+- **git push permission.** The tail pushes at `create_pr` (ship-it). If `git push` is gated by an `ask` rule or a global "never push without permission" instruction, an unattended session stalls there with no way to grant it. Pre-authorize a feature-branch push (a `Bash(git push:*)` allow-rule, force-push still denied) and make any global push instruction recognize that an explicitly-invoked pipeline push is fine.
+- **mise/toolchain.** The bootstrap only `mise trust`s; the first `mise run` in the tail installs the toolchain. If your repo's setup races a lock, validate the first run.
+- **PushNotification delivery.** The desktop path needs a surface to render to; the phone push needs Remote Control connected. Confirm a ping actually reaches you from one backgrounded run.

@@ -180,7 +180,7 @@ def test_seeds_plan_completed_with_output_path(tmp_path: Path) -> None:
     plan_out = td / "stages" / "plan.out"
     assert ts.stages["plan"].output_path == str(plan_out)
     assert "Goal: do the thing." in plan_out.read_text(encoding="utf-8")
-    # ticket left pending so the bg tail self-fetches ticket.json + frontmatter
+    # ticket left pending so the tail self-fetches ticket.json + frontmatter
     assert ts.stages["ticket"].status == "pending"
 
 
@@ -209,7 +209,7 @@ def test_prepopulates_commit_frontmatter(tmp_path: Path) -> None:
 
 
 def test_seeds_planned_files_as_list(tmp_path: Path) -> None:
-    # the implement pre-hook reads frontmatter planned_files; without it the bg tail
+    # the implement pre-hook reads frontmatter planned_files; without it the tail
     # would pause to ask. Confirm it lands as a TOML array (a list when parsed back).
     import ticket_frontmatter
 
@@ -246,10 +246,13 @@ def test_works_when_worktree_already_has_committed_flow(tmp_path: Path) -> None:
     assert "root =" in wt_ws
 
 
-def test_launch_cmd_targets_worktree(tmp_path: Path) -> None:
+def test_no_launch_cmd_emitted(tmp_path: Path) -> None:
+    # in-session model: the spec session enters the worktree itself, so the
+    # bootstrap no longer emits a `claude --bg` launch line.
     main = _main_checkout(tmp_path)
     res = _run(tmp_path, main)
-    assert res["launch_cmd"] == f'cd {res["worktree"]} && claude --bg "/flow do FT-1"'
+    assert "launch_cmd" not in res
+    assert res["worktree"]
 
 
 def test_cli_missing_main_workspace_exits_2(tmp_path: Path, monkeypatch, capsys) -> None:

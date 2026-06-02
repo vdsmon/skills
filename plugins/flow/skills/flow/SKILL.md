@@ -1,30 +1,29 @@
 ---
 name: flow
-description: Fire-and-forget ticket pipeline. /flow <ticket> plans in plan mode (ExitPlanMode = the one gate), then hands the autonomous implement→PR tail to claude --bg; you spec and review the draft PR. Multi-tracker engine (Jira | beads), pluggable handlers, compounding memory.
-when_to_use: User runs /flow <ticket> or /flow spec <ticket> to spec-and-background a ticket, /flow do <ticket> to run the pipeline (foreground or the bg tail), or /flow init, recall, status, recover, sync, baseline. A bare ticket key with no verb defaults to spec. Also use proactively when opening a worktree under a project with .flow/.initialized.
-allowed-tools: Bash(python3:*), Bash(git:*), Bash(bd:*), Bash(jq:*), Bash(cat:*), Bash(mkdir:*), Bash(mktemp:*), Bash(rm:*), Read, Write, Edit, Agent, AskUserQuestion, PushNotification
+description: Ticket pipeline. /flow <ticket> plans in plan mode (ExitPlanMode = the one gate), then enters a worktree and runs the autonomous implement→PR tail in the same session; background it (/bg) anytime to run unattended. You spec and review the draft PR. Multi-tracker engine (Jira | beads), pluggable handlers, compounding memory.
+when_to_use: User runs /flow <ticket> or /flow spec <ticket> to spec a ticket and run it to a draft PR, /flow do <ticket> to run/resume the pipeline standalone, or /flow init, recall, status, recover, sync, baseline. A bare ticket key with no verb defaults to spec. Also use proactively when opening a worktree under a project with .flow/.initialized.
+allowed-tools: Bash(python3:*), Bash(git:*), Bash(bd:*), Bash(jq:*), Bash(cat:*), Bash(mkdir:*), Bash(mktemp:*), Bash(rm:*), Read, Write, Edit, Agent, AskUserQuestion, PushNotification, EnterWorktree
 ---
 
 # /flow
 
-Fire-and-forget ticket pipeline.
-You spec the work and review the PR; the machine owns everything in between, unattended.
+One continuous ticket pipeline.
+You spec the work and review the PR; the machine owns everything in between.
 
 ```
-ME                 MACHINE (unattended)                ME
-spec  ─────────→  implement → … → draft PR  ─────────→  PR review
-plan mode         claude --bg, in a worktree           the deliverable
-ExitPlanMode = the one gate                            claude agents = cockpit
+ME                       MACHINE                          ME
+spec ──→ ExitPlanMode ──→ worktree → implement → … → draft PR ──→ PR review
+plan mode    the one gate    one session, background anytime (/bg)   the deliverable
 ```
 
 `/flow <ticket>` (or `/flow spec <ticket>`) runs the read-only front half — fetch the ticket, design the plan WITH you, in plan mode.
 `ExitPlanMode` is the single human gate.
-On approval it seeds a git worktree and hands the autonomous tail (implement → code_review → e2e → commit → draft PR) to a backgrounded `claude --bg "/flow do <ticket>"`.
-You run 3–5 at once, manage them with `claude agents`, and the deliverable is a draft PR you review.
+On approval it seeds a git worktree, enters it (`EnterWorktree`), and runs the autonomous tail (implement → code_review → e2e → commit → draft PR) in this same conversation — the planning context carries straight through, no handoff.
+The pipeline is background-agnostic: it never asks whether it is attached. Running it unattended is your separate call — `/bg` (or `←`) backgrounds the session at any point, and `claude agents` is the cockpit (attach to peek, answer a needs-input blocker, detach). Background several tickets that way to run them in parallel. The deliverable is a draft PR you review.
 See `references/background-pipeline.md`.
 
 `/flow do` is the **executor primitive** — the full pipeline, resuming at the next pending stage.
-`spec` normally backgrounds it in a seeded worktree, but it also runs foreground for one interactive pass.
+`spec` enters the seeded worktree and flows into it in the same session; `do` also runs standalone to resume a run.
 Everything else (`recall`, `status`, `recover`, `sync`, `baseline`) is a work-state verb around the same pipeline.
 
 Built on a multi-tracker engine: the tracker is pluggable (Jira | beads); stages, handlers, and the memory namespace come from `.flow/workspace.toml` + `stage-registry.toml`.
@@ -38,15 +37,15 @@ If it equals a verb, route there.
 If `$ARGUMENTS` is empty, print the verb listing.
 Otherwise — a first token that is not any verb (a bare ticket key like `FT-123`, or a beads key like `sync-42`) — route to **spec**, taking that positional token as the ticket key (same key-resolution as spec step 2).
 Spec is the default because fire-and-forget is the primary path.
-**Multiple positional ticket keys** (e.g. `/flow FT-1 FT-2 FT-3`) — spec handles ONE ticket per run. Do not silently consume only the first: surface all the keys you were given and ask (via `AskUserQuestion`) whether to spec them sequentially (one plan + bg tail each) or fold related ones into a single piece of work, then proceed on that answer.
+**Multiple positional ticket keys** (e.g. `/flow FT-1 FT-2 FT-3`) — spec handles ONE ticket per run. Do not silently consume only the first: surface all the keys you were given and ask (via `AskUserQuestion`) whether to spec them sequentially (one plan + tail each) or fold related ones into a single piece of work, then proceed on that answer.
 (Exact-token match is what keeps this unambiguous: `sync-42` ≠ the verb `sync`, so a ticket key never collides with a verb.)
-`spec` also accepts the optional flags `--auto` (aliases `--aa`, `--yolo`) and `--e2e-recipe "<recipe>"` anywhere after the verb; they are ignored when reading the positional ticket key (same rule `do` uses for `--notify`). A bare ticket key carries these flags through to spec too: `/flow --auto FT-123` routes to spec with `--auto` set.
+`spec` also accepts the optional flags `--auto` (aliases `--aa`, `--yolo`) and `--e2e-recipe "<recipe>"` anywhere after the verb; they are ignored when reading the positional ticket key. A bare ticket key carries these flags through to spec too: `/flow --auto FT-123` routes to spec with `--auto` set.
 
 | First token | Verb |
 |------|------|
 | `init` (optionally `--reconfigure`, `--resume`) | init |
-| `spec` (optionally `<ticket>`, `--auto`, `--e2e-recipe "..."`) | spec (read-only front half → bootstrap → bg handoff) |
-| `do` (optionally `<ticket>`, `--notify`) | do (executor primitive / tail) |
+| `spec` (optionally `<ticket>`, `--auto`, `--e2e-recipe "..."`) | spec (read-only front half → bootstrap → enter worktree → tail) |
+| `do` (optionally `<ticket>`) | do (executor primitive / tail) |
 | `recall <query> [--branch X --top-n N]` | recall |
 | `recall --metric tickets-per-week [...]` | metric (recall passthrough) |
 | `status` (optionally `<ticket>`) | status |
@@ -100,8 +99,8 @@ Spec is the default because fire-and-forget is the primary path.
 
 ## spec verb
 
-The read-only front half of the fire-and-forget model: fetch the ticket, design the plan WITH the user, then seed a worktree and hand the autonomous tail to a backgrounded `/flow do`.
-This is the human/machine boundary — you own the spec and the eventual PR review; the machine owns everything between.
+The read-only front half: fetch the ticket, design the plan WITH the user, then seed a worktree, enter it, and run the autonomous tail (`do` pipeline) in this same session.
+This is the human/machine boundary — you own the spec and the eventual PR review; the machine owns everything between. Backgrounding that tail to run unattended (`/bg`) is your call at any point, not something spec does for you.
 
 If `$ARGUMENTS` carries `--auto` (alias `--aa` / `--yolo`), follow the **Auto-approve path (`--auto`)** below instead of steps 1-7.
 That path swaps the interactive plan + `ExitPlanMode` gate for a headless `Plan` subagent that self-approves ONLY when it has no clarifying questions, and otherwise falls back to the interactive steps.
@@ -153,35 +152,26 @@ Everything from the bootstrap onward is shared.
    ```
    Derive `<slug>` from the ticket summary, and `--planned-files` from the plan's "files to change" list.
    `--e2e-recipe` carries the recipe settled in step 4 (runner + command + env-prep + fixture + expected, or `skip: <reason>` / `test-ci-only`); pass it whenever e2e is enabled and omit it only when the handler is `none`.
-   The bootstrap seeds state (plan pre-completed, ticket left pending), injects the plan, stamps `planned_files` + `commit_type` + `commit_summary` (+ `e2e_recipe` when given) into frontmatter (so the implement pre-hook, the commit stage, and the e2e stage never pause to ask the user — the whole point of an unattended tail), points the worktree's memory store at this checkout's `.flow` (shared, so memory compounds across worktrees), copies gitignored config, and `mise trust`s the worktree.
+   The bootstrap seeds state (plan pre-completed, ticket left pending), injects the plan, stamps `planned_files` + `commit_type` + `commit_summary` (+ `e2e_recipe` when given) into frontmatter (so the implement pre-hook, the commit stage, and the e2e stage never pause to ask the user — which is what lets the tail run unattended if you background it), points the worktree's memory store at this checkout's `.flow` (shared, so memory compounds across worktrees), copies gitignored config, and `mise trust`s the worktree.
    If e2e is enabled and you omit `--e2e-recipe`, create exits 2 (`_ConfigError`) — go back to step 4 and settle the recipe.
    Surface any `WARN` lines (e.g. mise trust failures — the tail would die on the first `mise run`).
 
-7. **Hand off the tail.** The bootstrap prints a `launch_cmd` of the form `cd <worktree> && claude --bg "/flow do $KEY"` — **without** `--notify`.
-   Append `--notify` to its inner command yourself; this appended line is what you surface or run in **both** branches below, so the tail pings you when it lands the PR or hits a blocker (see the do-verb `--notify` note):
-   ```bash
-   cd <worktree> && claude --bg "/flow do $KEY --notify"
+7. **Enter the worktree and continue the pipeline in this same session.**
+   The bootstrap printed the worktree path (`result.worktree` in its stdout JSON). Switch this session into it:
    ```
-   Whether you fire that line or the skill fires it for you is gated on one marker that lives ONLY in the **main checkout's** `.flow` — never in the worktree's.
-   **Probe the main checkout explicitly.** The seeded worktree has its own `.flow/` dir that never carries this marker, so a relative `test -f .flow/...` run after a `cd <worktree>` always reads PRINT and you will wrongly skip AUTOFIRE. Use the main-root path (the `.` you passed as `--main-root` in step 6), not the cwd:
-   ```bash
-   MAIN_ROOT="$(pwd)"   # capture BEFORE any cd into the worktree (the spec-invocation dir)
-   test -f "$MAIN_ROOT/.flow/.bg-autofire-enabled" && echo AUTOFIRE || echo PRINT
+   EnterWorktree(path="<worktree>")
    ```
-   - **`PRINT` (marker absent, default)** → print the appended line above; the user fires it.
-     This is the v1 path, and it is how bg auth gets proven on the first ticket: a `--bg` session inherits cached MCP / keychain creds, but a claude.ai OAuth refresh can 401 silently (see `references/background-pipeline.md`).
-   - **`AUTOFIRE` (marker present)** → run the appended line above yourself via Bash, as a **foreground** call (zero-touch).
-     `claude --bg` self-detaches — it spawns the detached session and returns in a second or two — so the Bash call is short-lived; do **NOT** wrap it with `run_in_background`. Double-backgrounding makes the launcher itself a tracked bg task that fires a spurious completion notification, while the real pipeline runs in a nested session you then have to chase via `claude agents`. Fire it foreground, read the printed session id, done.
-     Tell the user to create the marker (`touch .flow/.bg-autofire-enabled`) only after one ticket has gone end-to-end and bg auth is confirmed.
+   This moves the conversation's cwd into the seeded worktree, carrying the full planning context with it. It also pre-empts the harness's auto-worktree-on-first-edit (which is skipped once the session is already inside a linked worktree), so the pipeline runs in *this* base-controlled, config-copied worktree rather than a fresh one.
+   Then **continue straight into the `do` verb's orchestration loop** for `$KEY` (the do verb below, from its step 1). `do`'s `init` resumes idempotently under the `run_id` the bootstrap seeded (plan already `completed`, `ticket` pending), so it skips the done plan and lands on `implement`, which reads `plan.out`. The resume is driven entirely by `state.json` on disk, so it behaves identically whether spec flowed in or `do` was invoked standalone.
 
-   Either way: manage in-flight tickets with `claude agents` (attach to peek, answer a blocker, detach); the deliverable is a draft PR you review.
+   **Running unattended is your call, not the pipeline's.** The pipeline is background-agnostic: it runs the same whether this session is attached or detached. At any point — before approving the plan, right after, or mid-implement — you (the user) can `/bg` (or press `←` on an empty prompt) to background this session; it continues the pipeline unattended and shows up in `claude agents` (attach to peek, answer a blocker that surfaces as needs-input, detach). The deliverable is a draft PR you review.
    See `references/background-pipeline.md`.
 
 ### Auto-approve path (`--auto`)
 
 For tickets you already know are simple and whose body is descriptive: auto-approve the plan WITHOUT your intervention, but ONLY when the planner has no clarifying questions.
 This is a conditional gate, not a blanket skip — a three-way branch on the headless planner's output.
-It replaces interactive steps 1-5; steps 6-7 (bootstrap + hand off) are shared, run them exactly as above.
+It replaces interactive steps 1-5; steps 6-7 (bootstrap + enter worktree) are shared, run them exactly as above.
 
 1. **Do NOT `EnterPlanMode`.**
    The headless path performs only reads until the intended bootstrap write — there is no interactive plan to gate, so the plan-mode lock is unnecessary.
@@ -231,22 +221,20 @@ It replaces interactive steps 1-5; steps 6-7 (bootstrap + hand off) are shared, 
      `EnterPlanMode`, present the captured plan text AND the clarifying questions (or the bail reason) to the user, then run the normal interactive flow — steps 4-5 above: iterate the plan with the user, settle the e2e recipe, `ExitPlanMode` = the gate.
      Then continue into shared step 6.
 
-   Either branch ends at the same bootstrap + hand off (steps 6-7).
-   `--auto` does NOT change the `.bg-autofire-enabled` marker behavior: the bg launch is still PRINT-by-default and only fires itself when the marker is present.
-   So full zero-touch (no plan gate AND the bg launch firing itself) requires BOTH `--auto` and the marker; `--auto` alone auto-approves the plan but still prints the launch command when the marker is absent — that is how first-ticket bg auth stays proven (see step 7).
+   Either branch ends at the same bootstrap + enter-worktree (steps 6-7).
+   `--auto`'s only effect is skipping the interactive plan gate; it does not change how the tail runs. As always, whether the tail runs unattended is the user's separate `/bg` choice (see step 7), independent of `--auto`.
 
 ## do verb
 
 The **executor primitive**: the full ticket→PR pipeline, driven off the dispatcher state machine.
-`spec` normally backgrounds it in a seeded worktree (`claude --bg "/flow do <ticket> --notify"`), where `init` resumes at the next pending stage — a spec-seeded worktree picks up at `implement`.
-It also runs foreground for one interactive pass.
+`spec` enters the seeded worktree and continues into this pipeline in the same session, where `init` resumes at the next pending stage — a spec-seeded worktree picks up at `implement`.
+It also runs standalone (e.g. `/flow do <ticket>` to resume a run).
 The dispatcher emits handler-descriptor JSON; this prose acts on each descriptor and calls back to `finish`.
 
-**`--notify` (set by the bg handoff).** When `$ARGUMENTS` carries `--notify`, the tail pings you via the PushNotification tool at two points: (1) after the `review_loop` stage finishes `completed` (CI green AND every actionable reviewer thread resolved — the true ready-to-review point, NOT at `create_pr`, which only opens the draft; when `review_loop`'s handler is `none` so no CI/review loop is wired, fall back to after `create_pr` completes), with the PR URL (`"flow <KEY>: PR ready for review — <url>"`); (2) before any `AskUserQuestion` this run would raise, naming the blocker (`"flow <KEY> blocked: <reason> — attach via claude agents"`), then it asks (which pauses the bg session).
-PushNotification is harness-local (your terminal, plus your phone if Remote Control is on), so it fires even when tracker / MCP auth has died in the bg session — that is how you learn the tail stalled.
+**PR-ready notification (unconditional, best-effort).** When the PR becomes genuinely review-ready, ping the user via the PushNotification tool: fire after the `review_loop` stage finishes `completed` (CI green AND every actionable reviewer thread resolved — the true ready-to-review point, NOT at `create_pr`, which only opens the draft; when `review_loop`'s handler is `none` so no CI/review loop is wired, fall back to after `create_pr` completes), with the PR URL (`"flow <KEY>: PR ready for review — <url>"`).
+This is unconditional — fire it on every run. PushNotification is harness-local (your terminal, plus your phone if Remote Control is on), so it renders harmlessly in-terminal when you are attached and reaches your phone when you have backgrounded the session; either way it does not ride MCP/claude.ai auth, so it fires even if the tail's tracker calls have 401'd — which is how you learn an unattended run stalled.
 If the PushNotification tool is NOT available in the current harness (some surfaces do not expose it — a `ToolSearch` for it returns nothing), do not abort and do not treat its absence as a blocker. Fall back to BOTH: (a) surface the message in-thread, and (b) a DURABLE channel a detached console can see later — post it as a `bkt` PR comment (`bkt` is already in hand on the create_pr / review_loop path): `bkt api "2.0/repositories/<ws>/<repo>/pullrequests/<id>/comments" -X POST -d "$(jq -n --arg b "flow <KEY>: <message>" '{content:{raw:$b}}')" --json`. The in-thread echo alone is invisible to a truly detached run; the PR comment is what makes the fallback real. The notification is best-effort; the pipeline state in `state.json` is the source of truth.
-`--notify` is a flag, not the ticket key; ignore it when reading the positional in step 1.
-Foreground `/flow do` without `--notify` stays silent.
+A blocker needs no special ping: an `AskUserQuestion` surfaces natively as "needs input" in `claude agents` when the session is backgrounded, and inline when it is attached.
 
 1. Resolve the ticket key. If `$ARGUMENTS` had a positional, use it. Else:
    ```bash
@@ -327,7 +315,7 @@ Foreground `/flow do` without `--notify` stays silent.
         --capture-blobs --cwd .
       ```
       `PLANNED_FILES` comes from `.flow/tickets/<KEY>.md` frontmatter (`planned_files = [...]`).
-      If absent, ask the user (under `--notify`, push first — see the `--notify` note).
+      If absent, ask the user via `AskUserQuestion` (which surfaces as needs-input in `claude agents` when the session is backgrounded).
       Exit non-zero aborts the stage with status=failed.
 
       **Post-implement reconcile (records_diff_baseline stages only).** After the implement stage returns, if its report flags files it created/modified OUTSIDE the recorded `planned_files` (a package `__init__.py`, a `.gitignore` negation, etc.) that genuinely must ship, expand the set BEFORE `finish`. The commit stage reads `planned_files` from `baseline.json`, so a needed file missing there is silently dropped from the commit. To widen it: edit `planned_files` in `.flow/tickets/<KEY>.md` frontmatter to include them, then re-run the `record-baseline` command above with the full comma-separated `--files` list. HEAD is unchanged (no commit has landed), so this only widens ownership and re-captures any modified tracked file's original blob. Confirm with `diff_extract.py capture-implement-diff --ticket <KEY> --ticket-dir <ticket-dir> --cwd .` + `git apply --cached --check --binary <ticket-dir>/implement.diff` that the patch carries every file and applies cleanly. (`capture-implement-diff` takes ONLY `--ticket`/`--ticket-dir`/`--cwd` — NOT `--stage`; passing `--stage` errors with `unrecognized arguments`.)
@@ -412,8 +400,8 @@ Foreground `/flow do` without `--notify` stays silent.
       `advance` is `finish` + `next` in one round-trip: it records the current HEAD sha itself (do not pass it), finishes `$STAGE` with `$STATUS`, then returns the NEXT stage's descriptor. Its payload spreads that descriptor at the top level — so it parses EXACTLY like `next` in step (b) (`{done: true}` / handler descriptor / `{blocked_by}`) — plus a `finished` object confirming the prior stage closed. The `--output-path` flag is for subagent/skill stages where you captured the response (and any inline stage that produced a captured output); omit otherwise.
       Handle `advance`'s exit codes exactly as `next` in step (a): exit 0 → its payload is the next `DESCRIPTOR`; exit 7 → lost lease (`/flow recover`); exit 1 → drift/violations/corrupt state (surface + `/flow recover`). A `--status failed` advance returns `{blocked_by}`, which step (b) treats as the block-and-break case.
 
-      If `--notify` is set, send the PR-ready notification only when the PR is genuinely review-ready, NOT at `create_pr`: fire it when `$STAGE` is `review_loop` with `$STATUS` completed (CI green and every actionable reviewer thread resolved), reading the PR URL from the captured `create_pr.out`. Only when `review_loop`'s handler is `none` (no CI/review loop wired) do you fall back to firing at `create_pr` completed.
-      See the `--notify` note above.
+      Send the PR-ready notification (unconditional, best-effort) only when the PR is genuinely review-ready, NOT at `create_pr`: fire it when `$STAGE` is `review_loop` with `$STATUS` completed (CI green and every actionable reviewer thread resolved), reading the PR URL from the captured `create_pr.out`. Only when `review_loop`'s handler is `none` (no CI/review loop wired) do you fall back to firing at `create_pr` completed.
+      See the PR-ready notification note above.
 
    f. Loop back to (b) with the `DESCRIPTOR` that `advance` just returned (it already did step (a)'s work for the next stage). The standalone `next` in step (a) runs only once, for the first stage.
 
@@ -606,6 +594,7 @@ Phase 8c added `/flow status` (read-only run/stage/lease report) and `/flow reco
 Hung detection is post-hoc: there is no live poller, so `/flow recover` reads the lease state after a stage returns or on demand.
 Phase 8d added the work-mode quality gate: `recall.py --metric tickets-per-week` (+ `--checkpoint --mode`), `/flow sync` (drain + reconcile pending tracker mutations), `/flow baseline` (time-to-PR baseline file + stats), `validate_postmortem.py` (postmortem schema + week-over-week trend), the commit content-ownership gate (`diff_extract.py check-ownership`), and the init checkpoint-mode + backend alignment matrix.
 The skill is now **feature-complete** for end-to-end `/flow do <ticket>` against bare and skill-bundled workspaces.
+The head/tail split was later collapsed into a single background-agnostic session: spec enters the seeded worktree (`EnterWorktree`) and flows into the `do` pipeline in the same conversation instead of handing off to a fresh `claude --bg`; backgrounding (`/bg`) is now a harness-level choice, so the `.bg-autofire-enabled` marker and the `--notify` flag are gone.
 
 Still pending (deliberately deferred, not blocking):
 - Deep ship-event reconciliation (duplicate / corrupt ship-event files;

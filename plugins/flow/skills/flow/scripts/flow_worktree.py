@@ -1,7 +1,10 @@
-"""flow_worktree.py — post-approval bootstrap for the fire-and-forget pipeline.
+"""flow_worktree.py — post-approval bootstrap for the ticket pipeline.
 
-After `/flow spec` approves a plan (ExitPlanMode), this seeds a git worktree so a
-fresh `claude --bg "/flow do <KEY>"` resumes directly at the implement stage:
+After `/flow spec` approves a plan (ExitPlanMode), this seeds a git worktree so the
+pipeline resumes directly at the implement stage. The spec session then enters this
+worktree (EnterWorktree) and continues the `do` pipeline in the SAME conversation;
+running it unattended is a separate, harness-level choice (`/bg`), not this script's
+concern.
 
   1. git worktree add -b <branch> <worktree> <base>
   2. copy gitignored dev config main->worktree; ensure .flow/.initialized +
@@ -10,13 +13,13 @@ fresh `claude --bg "/flow do <KEY>"` resumes directly at the implement stage:
   4. point the worktree's [memory].root at the main checkout's .flow (shared store,
      so per-ticket worktrees don't fragment the compounding-knowledge layer)
   5. seed state.json: plan marked completed with its output_path; plan.out written
-     from --plan-from; ticket left pending so the bg tail self-fetches ticket.json
-     and stamps frontmatter (keeps the bootstrap offline; tracker auth stays in bg)
+     from --plan-from; ticket left pending so the pipeline self-fetches ticket.json
+     and stamps frontmatter (keeps the bootstrap offline; tracker auth stays live)
   6. stamp commit_type/commit_summary (and e2e_recipe when e2e is opted in) into
-     the worktree frontmatter so the commit + e2e stages do not block under --bg
-  7. print the worktree path + the `claude --bg` launch line
+     the worktree frontmatter so the commit + e2e stages do not block on a prompt
+  7. print the worktree path (the spec session enters it via EnterWorktree)
 
-The bootstrap holds NO lease; the bg session's cmd_init acquires it under the
+The bootstrap holds NO lease; the pipeline's cmd_init acquires it under the
 run_id seeded here (it sees that run_id as the owner, so resume is clean).
 
 Exit codes:
@@ -183,7 +186,7 @@ def _ensure_flow_config(main_root: Path, worktree: Path, shared_flow: Path) -> N
 
 def _seed_state(worktree: Path, ticket: str, plan_text: str, head_sha: str) -> str:
     """Seed state.json: plan completed (with plan.out as its output_path); ticket
-    left pending so the bg tail self-fetches it. Returns the run_id."""
+    left pending so the tail self-fetches it. Returns the run_id."""
     data = _workspace.load_workspace_toml(worktree)
     tracker = data.get("tracker")
     backend = tracker.get("backend") if isinstance(tracker, dict) else None
@@ -300,7 +303,7 @@ def bootstrap(
         result = run(["mise", "trust"], worktree)
         if result.returncode != 0:
             warnings.append(
-                f"mise trust failed: {result.stderr.strip()} (the bg tail may die on first `mise run`)"
+                f"mise trust failed: {result.stderr.strip()} (the tail may die on first `mise run`)"
             )
 
     head_sha = _git(["rev-parse", "HEAD"], worktree, run)
@@ -309,7 +312,7 @@ def bootstrap(
     fm_updates: dict[str, str] = {}
     if planned_files:
         # the implement pre-handler hook (records_diff_baseline) reads frontmatter
-        # `planned_files`; seeding it here keeps the bg tail from pausing to ask.
+        # `planned_files`; seeding it here keeps the tail from pausing to ask.
         # Pass a TOML-array literal so ticket_frontmatter coerces it to a list.
         fm_updates["planned_files"] = "[" + ", ".join(f'"{f}"' for f in planned_files) + "]"
     if commit_type:
@@ -331,7 +334,6 @@ def bootstrap(
         "run_id": run_id,
         "copied": copied,
         "warnings": warnings,
-        "launch_cmd": f'cd {worktree} && claude --bg "/flow do {ticket}"',
     }
 
 
@@ -340,7 +342,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         description="/flow worktree bootstrap for the background tail."
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
-    p = sub.add_parser("create", help="Create a worktree + seed state for the bg tail.")
+    p = sub.add_parser("create", help="Create a worktree + seed state for the tail.")
     p.add_argument("--ticket", required=True)
     p.add_argument("--plan-from", required=True, help="path to the approved plan file")
     p.add_argument("--base", required=True, help="base branch/ref for the new worktree")
@@ -405,9 +407,7 @@ def cli_main(argv: list[str]) -> int:
     for w in result["warnings"]:
         sys.stderr.write(f"flow-worktree: WARN {w}\n")
     sys.stdout.write(json.dumps(result, indent=2, sort_keys=True) + "\n")
-    sys.stderr.write(
-        f"\nworktree ready at {result['worktree']}\nfire the tail:\n  {result['launch_cmd']}\n"
-    )
+    sys.stderr.write(f"\nworktree ready at {result['worktree']}\n")
     return 0
 
 
