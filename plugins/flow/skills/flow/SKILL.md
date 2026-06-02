@@ -330,7 +330,7 @@ Foreground `/flow do` without `--notify` stays silent.
       If absent, ask the user (under `--notify`, push first — see the `--notify` note).
       Exit non-zero aborts the stage with status=failed.
 
-      **Post-implement reconcile (records_diff_baseline stages only).** After the implement stage returns, if its report flags files it created/modified OUTSIDE the recorded `planned_files` (a package `__init__.py`, a `.gitignore` negation, etc.) that genuinely must ship, expand the set BEFORE `finish`. The commit stage reads `planned_files` from `baseline.json`, so a needed file missing there is silently dropped from the commit. To widen it: edit `planned_files` in `.flow/tickets/<KEY>.md` frontmatter to include them, then re-run the `record-baseline` command above with the full comma-separated `--files` list. HEAD is unchanged (no commit has landed), so this only widens ownership and re-captures any modified tracked file's original blob. Confirm with `diff_extract.py capture-implement-diff` + `git apply --cached --check --binary <ticket-dir>/implement.diff` that the patch carries every file and applies cleanly.
+      **Post-implement reconcile (records_diff_baseline stages only).** After the implement stage returns, if its report flags files it created/modified OUTSIDE the recorded `planned_files` (a package `__init__.py`, a `.gitignore` negation, etc.) that genuinely must ship, expand the set BEFORE `finish`. The commit stage reads `planned_files` from `baseline.json`, so a needed file missing there is silently dropped from the commit. To widen it: edit `planned_files` in `.flow/tickets/<KEY>.md` frontmatter to include them, then re-run the `record-baseline` command above with the full comma-separated `--files` list. HEAD is unchanged (no commit has landed), so this only widens ownership and re-captures any modified tracked file's original blob. Confirm with `diff_extract.py capture-implement-diff --ticket <KEY> --ticket-dir <ticket-dir> --cwd .` + `git apply --cached --check --binary <ticket-dir>/implement.diff` that the patch carries every file and applies cleanly. (`capture-implement-diff` takes ONLY `--ticket`/`--ticket-dir`/`--cwd` — NOT `--stage`; passing `--stage` errors with `unrecognized arguments`.)
 
    d. Dispatch by `handler_type`:
 
@@ -372,6 +372,7 @@ Foreground `/flow do` without `--notify` stays silent.
         Remember `$TICKET_DIR/stages/<STAGE>.out` for the `--output-path` flag on the `finish` call below.
 
       - **`skill:<name>[:<args>]`** — The descriptor carries `skill_name` and `skill_args` (no raw handler string).
+        It may ALSO carry a `reference_doc` by stage-name convention, but for a skill stage that file usually does NOT exist (skill stages like `create_pr` / `review_loop` have no flow-side protocol doc — the handler skill IS the protocol). Do NOT read `reference_doc` for a skill stage, and never treat a missing one as an error; the skill's own SKILL.md and references are authoritative.
         Reconstruct it: `skill:<skill_name>` when `skill_args` is null/empty, else `skill:<skill_name>:<skill_args>`.
         Then:
 
