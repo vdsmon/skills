@@ -550,6 +550,19 @@ Deterministic header; body is a template the LLM fills in.
 
 Exit 0=ok, 1=invalid type or missing required arg.
 
+### `machinery_edit.py`
+
+Concurrency-safe applier for reflect lens-B machinery fixes to flow's OWN source.
+A fleet runs many `/flow` jobs at once; several can hit reflect together. The raw Edit tool has no cross-process serialization, so two concurrent machinery edits to the same file race (lost update, or a torn read that crashes a third run importing the half-written module). This tool holds a single blocking flock on `<skill-root>/.machinery.lock` across the whole read → replace → `atomic_write_text`, so writers serialize and any concurrent reader sees old-or-new. The flock auto-releases on process exit (no lease to clear). It also refuses `stage-registry.toml` (canonical-snapshot-pinned) and any path outside the skill tree.
+
+| Flag | Description |
+|------|-------------|
+| `apply` | Subcommand (required). |
+| `--skill-root <p>` | Flow skill root (dir containing `scripts/` and `references/`). |
+| `--payload <file>` | Path to JSON `{file, old, new}`; reads stdin if omitted. `file` is rel-to-skill-root or absolute; `old` must be a unique anchor. |
+
+Exit 0=applied or already_applied (idempotent), 1=usage/IO error, 2=refused (out-of-tree or snapshot-pinned), 3=anchor_not_found, 4=ambiguous (non-unique anchor).
+
 ## Known phase 8-mvp holes (deferred to 8b/8c/8d)
 
 1. **TOML frontmatter scope** — flat scalars + string lists only. Nested tables
