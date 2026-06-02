@@ -328,8 +328,10 @@ def test_e2e_none_does_not_require_recipe(tmp_path: Path) -> None:
 
 
 def test_bootstrap_rejects_gitignored_planned_file(tmp_path: Path) -> None:
-    # A gitignored planned file with no .gitignore in the plan is the genuine
-    # landmine: refuse at the gate, before the worktree is even materialized.
+    # A gitignored planned file (no .gitignore in the plan) would be silently
+    # dropped from the commit: refuse at the gate. The ignore check runs INSIDE the
+    # worktree (base may carry .gitignore negations main lacks), so the worktree is
+    # created first, then removed on rejection — refusing leaves no orphan.
     main = _main_checkout(tmp_path)
     calls: list = []
     with pytest.raises(fw._ConfigError):
@@ -339,7 +341,8 @@ def test_bootstrap_rejects_gitignored_planned_file(tmp_path: Path) -> None:
             planned_files=["data/x.csv"],
             runner=_fake_runner(ignored={"data/x.csv"}, calls=calls, main=main),
         )
-    assert not any(c[:3] == ["git", "worktree", "add"] for c in calls)
+    assert any(c[:3] == ["git", "worktree", "add"] for c in calls)
+    assert any(c[:4] == ["git", "worktree", "remove", "--force"] for c in calls)
 
 
 def test_bootstrap_warns_when_gitignore_also_planned(tmp_path: Path) -> None:
