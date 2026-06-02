@@ -10,7 +10,9 @@ A PR may already exist from a prior run, an auto-create on push, or a manual `bk
 
 ```bash
 BRANCH=$(git branch --show-current)
+# strip unescaped control chars from the list payload BEFORE jq — see the bkt quirk note below
 PR_ID=$(bkt pr list --json 2>/dev/null \
+  | python3 -c "import sys,re; sys.stdout.write(re.sub(r'[\x00-\x1f]',' ',sys.stdin.read()))" \
   | jq -r --arg b "$BRANCH" '(.values // .pull_requests // []) | map(select(.source.branch.name==$b)) | .[0].id // empty')
 ```
 
@@ -24,6 +26,7 @@ Do NOT pass `--mine` here: on some `bkt` versions it returns `pull_requests: nul
 - `bkt pr list --source <BRANCH>` errors with `unknown flag: --source`. Use the unfiltered `bkt pr list --json` form above and match by source branch in jq.
 - `bkt pr list --mine` can return `pull_requests: null` even when you have an open PR (including one just created), so it is unreliable for detection. Use the unfiltered list.
 - The list payload keys the PR array under `pull_requests` on current `bkt` (older builds used `values`), and the key is `null` when empty. Pipe through `(.values // .pull_requests // [])` so both shapes and the empty case survive `jq`.
+- `bkt pr list --json` can carry UNESCAPED control characters (literal newlines) inside ANY PR's `description`, not just the one you opened. Raw `jq` then dies with `Invalid string: control characters from U+0000 through U+001F must be escaped` and the detection yields empty even though your branch's PR is in the list, so the skill wrongly creates a duplicate. Strip control chars before `jq` (the `python3 -c "...re.sub(r'[\x00-\x1f]',' ',...)"` filter shown in Step 2.1), or parse the plain `bkt pr list` text and match the branch line. This applies to EVERY `bkt pr list --json | jq` in this skill, including the Step 2.5 re-detect.
 - `bkt pr update` does not exist. The right subcommand is `bkt pr edit <id>`.
 - `bkt pr create` has no `--draft` flag. Step 2.4 routes creation through `bkt api` to set `draft:true`.
 - `bkt api -d @file` does not work, it returns `invalid character '@' looking for beginning of value`. Use `-d "$(cat file)"`.
@@ -126,7 +129,8 @@ PR_URL=$(echo "$PR_RESPONSE" | jq -r '.links.html.href // empty')
 Empty `PR_ID` here does NOT reliably mean the POST failed. Bitbucket echoes your multi-line `description` back into the response with literal newlines, which is invalid JSON, so the `jq` extraction above raises `Invalid string: control characters ... must be escaped` and yields empty `PR_ID`/`PR_URL` even though the PR was created. Do not retry the POST on empty id (that creates a duplicate). Instead re-detect the PR you just created via the Step 2.1 list and read its id/url from there:
 
 ```bash
-LIST=$(bkt pr list --json 2>/dev/null)
+# sanitize control chars first (sibling PRs' multi-line descriptions break raw jq — see 2.1 quirk note)
+LIST=$(bkt pr list --json 2>/dev/null | python3 -c "import sys,re; sys.stdout.write(re.sub(r'[\x00-\x1f]',' ',sys.stdin.read()))")
 PR_ID=$(echo "$LIST" | jq -r --arg b "$BRANCH" '(.values // .pull_requests // []) | map(select(.source.branch.name==$b)) | .[0].id // empty')
 PR_URL="https://bitbucket.org/$WORKSPACE/$REPO_SLUG/pull-requests/$PR_ID"
 ```
