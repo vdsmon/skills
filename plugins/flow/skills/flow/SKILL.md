@@ -38,6 +38,7 @@ If it equals a verb, route there.
 If `$ARGUMENTS` is empty, print the verb listing.
 Otherwise — a first token that is not any verb (a bare ticket key like `FT-123`, or a beads key like `sync-42`) — route to **spec**, taking that positional token as the ticket key (same key-resolution as spec step 2).
 Spec is the default because fire-and-forget is the primary path.
+**Multiple positional ticket keys** (e.g. `/flow FT-1 FT-2 FT-3`) — spec handles ONE ticket per run. Do not silently consume only the first: surface all the keys you were given and ask (via `AskUserQuestion`) whether to spec them sequentially (one plan + bg tail each) or fold related ones into a single piece of work, then proceed on that answer.
 (Exact-token match is what keeps this unambiguous: `sync-42` ≠ the verb `sync`, so a ticket key never collides with a verb.)
 `spec` also accepts the optional flags `--auto` (aliases `--aa`, `--yolo`) and `--e2e-recipe "<recipe>"` anywhere after the verb; they are ignored when reading the positional ticket key (same rule `do` uses for `--notify`). A bare ticket key carries these flags through to spec too: `/flow --auto FT-123` routes to spec with `--auto` set.
 
@@ -129,7 +130,10 @@ Everything from the bootstrap onward is shared.
    If this ticket has no meaningful e2e, settle that too — the recipe value becomes `skip: <reason>` or `test-ci-only`. The point is a conscious decision per ticket, never a silent omission.
    The bootstrap in step 6 **refuses** when e2e is enabled and no recipe is passed, so do not skip this.
 
+   **Confidence rating (MUST, before step 5's gate) — assessed independently, not self-scored.** A plan's author is the worst judge of its confidence; optimism bias makes a self-reported score self-justifying. Hand it to a second mind. Preferred: the `advisor` tool — it auto-forwards the full transcript (the ticket, your exploration, the drafted plan), so in the SAME turn state what you want back — **Score (0-100%)**, **Proven** (bullets directly verified: code read, spec quoted, real data/DB inspected), **Inferred** (from convention / naming / a 1:1-chain argument), **What would raise it** (concrete reachable artefacts) — then call `advisor()`. If `advisor` is not in this harness (a `ToolSearch` for it returns nothing), spawn a `general-purpose` `Agent` instead, handing it the ticket context + the drafted plan text + that same rubric. Record the result as the plan's `## Confidence` section, attributed to the assessor. Library-API claims (a Polars/Pandas idiom, a framework hook, an SDK call) must be Context7-verified, never left under "Inferred".
+
 5. **`ExitPlanMode`** with the plan = Gate 1, the one human gate.
+   **Gate on the rating: < 90% → do NOT `ExitPlanMode` yet.** First exhaust every reachable read-only artefact (Read/Grep/Glob, an `Explore` agent, WebSearch/WebFetch, read-only MCPs, `aws s3 ls/cp`), then re-run the assessor. For a gap that needs user action (an SSO refresh, a bucket name, an owner's confirmation, an internal doc), ask via `AskUserQuestion` with specifics — never wave at it. Present only at >=90%, or when every reachable source is exhausted and the residual is documented as a risk the user can weigh. Anti-pattern this directly fixes: producing the confidence number only after the user asks for it — the rating is part of the plan, surfaced unprompted, every time.
    On approval you return to normal mode.
 
 6. (Normal mode) Persist the approved plan and bootstrap the worktree.
@@ -158,10 +162,11 @@ Everything from the bootstrap onward is shared.
    ```bash
    cd <worktree> && claude --bg "/flow do $KEY --notify"
    ```
-   Whether you fire that line or the skill fires it for you is gated on one marker in the main checkout.
-   Probe it first:
+   Whether you fire that line or the skill fires it for you is gated on one marker that lives ONLY in the **main checkout's** `.flow` — never in the worktree's.
+   **Probe the main checkout explicitly.** The seeded worktree has its own `.flow/` dir that never carries this marker, so a relative `test -f .flow/...` run after a `cd <worktree>` always reads PRINT and you will wrongly skip AUTOFIRE. Use the main-root path (the `.` you passed as `--main-root` in step 6), not the cwd:
    ```bash
-   test -f .flow/.bg-autofire-enabled && echo AUTOFIRE || echo PRINT
+   MAIN_ROOT="$(pwd)"   # capture BEFORE any cd into the worktree (the spec-invocation dir)
+   test -f "$MAIN_ROOT/.flow/.bg-autofire-enabled" && echo AUTOFIRE || echo PRINT
    ```
    - **`PRINT` (marker absent, default)** → print the appended line above; the user fires it.
      This is the v1 path, and it is how bg auth gets proven on the first ticket: a `--bg` session inherits cached MCP / keychain creds, but a claude.ai OAuth refresh can 401 silently (see `references/background-pipeline.md`).
@@ -215,13 +220,14 @@ It replaces interactive steps 1-5; steps 6-7 (bootstrap + hand off) are shared, 
    )
    ```
    Capture the full response.
+   Then get the same INDEPENDENT confidence rating as interactive step 4 — call `advisor()` (or a `general-purpose` `Agent` if advisor is absent) over the captured plan. Its score feeds the branch below.
 
 5. **Branch on the returned block:**
-   - **`NONE` (clean plan)** → auto-approve, no human gate.
+   - **`NONE` (clean plan) AND the assessor rated >=90%** → auto-approve, no human gate.
      Derive `--planned-files` from the plan's "Files to change" list, and `--commit-type` + `--commit-summary` from the Goal.
      For `--e2e-recipe`, honor step 6's contract: when e2e is enabled (`workspace.toml [pipeline.handlers] e2e` is not `none`), pass the `--e2e-recipe "..."` value the user gave, else default it to `test-ci-only`; when the e2e handler is `none`, omit it.
      Go straight to shared step 6 — there is no `ExitPlanMode` to call, because you never entered plan mode.
-   - **Clarifying questions present, OR a `BAIL` line** → the human is needed; `--auto` degrades to interactive exactly when intervention has value.
+   - **Clarifying questions present, a sub-90% rating with any user-reachable gap, OR a `BAIL` line** → the human is needed; `--auto` degrades to interactive exactly when intervention has value.
      `EnterPlanMode`, present the captured plan text AND the clarifying questions (or the bail reason) to the user, then run the normal interactive flow — steps 4-5 above: iterate the plan with the user, settle the e2e recipe, `ExitPlanMode` = the gate.
      Then continue into shared step 6.
 

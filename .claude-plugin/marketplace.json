@@ -55,7 +55,7 @@
       "name": "flow",
       "source": "./plugins/flow",
       "description": "Fire-and-forget ticket pipeline: /flow <ticket> plans in plan mode (ExitPlanMode = the one gate), then hands the autonomous implement→PR tail to claude --bg; you spec and review the draft PR, managing 3-5 in flight via claude agents. Multi-tracker engine (Jira | beads) with pluggable per-stage handlers, immutable ship-event evidence, and a compounding memory layer (reflect-stage extraction + SessionStart recall). Claude-Code-only.",
-      "version": "0.18.0"
+      "version": "0.19.0"
     }
   ]
 }

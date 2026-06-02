@@ -45,6 +45,14 @@ You cannot wait for or solicit that approval yourself — just return a plan goo
      The implement stage is TDD-mandatory, so name the cases the implementer should write.
    - **Risks** — what could go wrong, edge cases, migration concerns, anything
      the approver should weigh.
+   - **Confidence** — a first-pass self-rating: a **Score (0-100%)**, then
+     **Proven** (bullets you directly verified) vs **Inferred** (from convention /
+     naming / a 1:1-chain argument), and **What would raise it** (reachable
+     artefacts). Library-API claims must be Context7-verified, not left under
+     Inferred. This is only a first pass: the main loop re-rates your plan
+     INDEPENDENTLY (via the `advisor` tool, or a `general-purpose` agent) before
+     the human gate, because a plan's author is the worst judge of its own
+     confidence.
 
 4. Return the plan as your response.
    Keep it concrete and reviewable; an approver reading only your output should be able to say yes or no.

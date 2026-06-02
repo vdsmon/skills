@@ -259,35 +259,39 @@ def bootstrap(
     worktree = _worktree_path(main_root, branch, worktree_override)
     warnings: list[str] = []
 
+    _git(["worktree", "add", "-b", branch, str(worktree), base], main_root, run)
+
     # A gitignored planned file is silently dropped from the commit and hard-fails
     # capture-implement-diff's `git add --intent-to-add` four stages later in the
     # unattended tail. Catch it here, at the spec gate, while the user is present.
-    # Checked in main_root (the worktree shares its committed .gitignore); the
-    # worktree does not exist yet, so refusing here leaves no orphan.
+    # Checked in the WORKTREE, not main_root: the worktree is checked out from
+    # `base`, which may carry .gitignore negations (e.g. a stacked PR off a feature
+    # branch) that main_root's current branch lacks; checking main_root would
+    # false-refuse a file `base` legitimately un-ignores. On a real ignore we remove
+    # the just-created worktree so refusing leaves no orphan.
     if planned_files:
-        ignored = _gitignored(planned_files, main_root, run)
+        ignored = _gitignored(planned_files, worktree, run)
         if ignored:
             ignore_file_planned = any(
                 f == ".gitignore" or f.endswith("/.gitignore") for f in planned_files
             )
             if ignore_file_planned:
-                # The plan touches .gitignore, but that change is not in effect at
-                # bootstrap, so check-ignore still flags these. Warn, do not refuse:
-                # the planned negation may legitimately un-ignore them.
+                # The plan touches .gitignore, but that change is not committed yet,
+                # so check-ignore still flags these. Warn, do not refuse: the planned
+                # negation may legitimately un-ignore them.
                 warnings.append(
                     "planned files are currently gitignored: "
                     + ", ".join(ignored)
                     + " (plan also touches .gitignore; ensure your negation un-ignores them)"
                 )
             else:
+                run(["git", "worktree", "remove", "--force", str(worktree)], main_root)
                 raise _ConfigError(
                     "planned files are gitignored and would be silently dropped from "
                     "the commit: "
                     + ", ".join(ignored)
                     + " (add a .gitignore negation to the plan's files, or fix the planned paths)"
                 )
-
-    _git(["worktree", "add", "-b", branch, str(worktree), base], main_root, run)
 
     copied = _copy_config(main_root, worktree, extra_copy or [])
     _ensure_flow_config(main_root, worktree, main_root / ".flow")
