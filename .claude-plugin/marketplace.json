@@ -43,13 +43,43 @@
       "name": "ship-it",
       "source": "./plugins/ship-it",
       "description": "Push branch, open draft PR, attach reviewers, then wait on CI and the AI code reviewer in a fix loop until green. Ticket-agnostic. Supported stack today: Bitbucket Cloud + bkt CLI + CodeRabbit. Adapter slots reserved for gh + other reviewer bots.",
-      "version": "0.3.1"
+      "version": "0.3.4"
     },
     {
       "name": "loop-finder",
       "source": "./plugins/loop-finder",
       "description": "Loop discovery + race + feature-driven iteration. Two skills: loop-finder (engineers a self-verifiable gate for a task class, races parallel variants, converges on the best loop config; HITL concentrated at permission boundaries) and feature-cycle (outer queued-fix chain that ships features against the converged gate, retros pain, queues one harness fix per cycle — Karpathy autoresearch discipline applied to dev experience).",
       "version": "0.2.0"
+    },
+    {
+      "name": "brainstorming",
+      "source": "./plugins/brainstorming",
+      "description": "Design-before-code gate. Explores intent, proposes 2-3 approaches, presents a design, and gets approval before any implementation. Use before creating features, building components, adding functionality, or changing behavior. Portable across SKILL.md-native hosts.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "systematic-debugging",
+      "source": "./plugins/systematic-debugging",
+      "description": "Four-phase debugging discipline (root-cause investigation, pattern analysis, hypothesis, single-fix implementation). No fixes before investigation; 3+ failed fixes means stop and question the architecture. Use on any bug, test failure, or unexpected behavior before proposing fixes. Portable across SKILL.md-native hosts.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "skill-smith",
+      "source": "./plugins/skill-smith",
+      "description": "Forge for Agent Skills: create, test, evaluate, optimize triggering, and package skills. Merges an empirical eval loop (run with-skill vs baseline, benchmark, iterate) with TDD-for-skills discipline (baseline-test first, close rationalization loopholes). Bundles the eval harness, benchmark viewer, and description-triggering optimizer. Claude-Code-leaning (subagents + scripts).",
+      "version": "0.1.0"
+    },
+    {
+      "name": "git-cleanup",
+      "source": "./plugins/git-cleanup",
+      "description": "Clean up stale git branches and worktrees. Finds branches merged into dev/develop/master/main, checks worktrees for uncommitted changes, removes what's safe while skipping dirty worktrees. Use for 'clean up branches', 'git housekeeping', 'remove merged branches', 'clean worktrees'. Portable across SKILL.md-native hosts.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "strip-migration-cruft",
+      "source": "./plugins/strip-migration-cruft",
+      "description": "Scan a repo for transitional / migration / phase / wave / story / legacy-alias cruft comments, bucket into safe-to-strip vs keep-semantic, propose surgical edits and execute after confirmation. Use for 'scan for migration comments', 'remove phase/wave/story refs', 'strip transitional cruft'. Portable across SKILL.md-native hosts.",
+      "version": "0.1.0"
     }
   ]
 }

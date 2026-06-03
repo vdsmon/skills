@@ -1,0 +1,26 @@
+{
+  "skill_name": "strip-migration-cruft",
+  "evals": [
+    {
+      "id": 0,
+      "name": "mixed-homelab",
+      "prompt": "scan this repo for migration / wave / phase / story / 'old box' / 'legacy alias' comments. I don't want them. categorize what's safe to nuke vs what to keep, propose a strip, then stop and wait for me to confirm before editing.",
+      "expected_output": "Skill triggers; emits 5 categorized buckets (A: Lenovo preamble + archive pointer + read-only legacy; B: '(Wave 2)' in infra/CLAUDE.md + 'Story 28' + EXECUTED-on date in RUNBOOK; C: docs/migration-matrix.md whole file; D: RUNBOOK.md Phase 1-3 step labels marked KEEP; E: lib.py 'legacy /tracks schema' + 'legacy alias' + 'legacy fields' marked KEEP with reword offer). Does NOT edit any file. Ends with selector phrases.",
+      "fixture": "fixture-1-mixed"
+    },
+    {
+      "id": 1,
+      "name": "runbook-only-no-strip",
+      "prompt": "scan this repo for migration/phase/wave comments. nuke the ones that are noise. but only if they're actually noise — don't break runbooks.",
+      "expected_output": "Skill triggers; recognizes the Phase 1-4 headers in RUNBOOK.md as bucket D (procedural step labels, not migration history) and the 'Phase 1' cross-ref in config.conf as a pointer to the runbook. Default action is keep. Optionally offers Phase->Step rename. Does NOT propose stripping the procedural steps as bucket B. Proposes very few (ideally zero) bucket-A/B/C strips.",
+      "fixture": "fixture-2-runbook-only"
+    },
+    {
+      "id": 2,
+      "name": "code-judgment-legacy-vs-rot",
+      "prompt": "the codebase has a bunch of 'legacy' / 'migrated' / 'previously' / 'backfill' comments. some still describe live code, some are rot. scan, categorize, and tell me which to strip.",
+      "expected_output": "Skill triggers; classifies the 4 candidate comments in lib.py: (1) `# legacy alias kept because callers still use the old import path` -> bucket E (live, offer reword); (2) `# Migrated from v1 schema in Q2 2024 ...` -> bucket A (rot, v1 support was removed, strip the entire 3-line comment block); (3) `# Backfill path: even if cached=True, refresh metadata when stale.` -> bucket E (describes live branch, offer reword); (4) `# Previously this used regex; switched to simple split in 2023 ...` -> bucket A (rot, plus mentions dead code). Does NOT edit before confirmation.",
+      "fixture": "fixture-3-code-judgment"
+    }
+  ]
+}
