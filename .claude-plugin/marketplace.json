@@ -52,12 +52,6 @@
       "version": "0.2.0"
     },
     {
-      "name": "flow",
-      "source": "./plugins/flow",
-      "description": "Ticket pipeline: /flow <ticket> plans in plan mode (ExitPlanMode = the one gate), then enters a worktree and runs the autonomous implement→PR tail in the same session; background it (/bg) anytime to run unattended, managing several in flight via claude agents. Multi-tracker engine (Jira | beads) with pluggable per-stage handlers, immutable ship-event evidence, and a compounding memory layer (reflect-stage extraction + SessionStart recall). Claude-Code-only.",
-      "version": "0.21.0"
-    },
-    {
       "name": "brainstorming",
       "source": "./plugins/brainstorming",
       "description": "Design-before-code gate. Explores intent, proposes 2-3 approaches, presents a design, and gets approval before any implementation. Use before creating features, building components, adding functionality, or changing behavior. Portable across SKILL.md-native hosts.",
