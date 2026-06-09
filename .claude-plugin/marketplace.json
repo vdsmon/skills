@@ -10,6 +10,12 @@
   },
   "plugins": [
     {
+      "name": "slack-draft",
+      "source": "./plugins/slack-draft",
+      "description": "Draft a Slack message for the user to send: Slack mrkdwn, lead-with-conclusion, backticked identifiers, ASCII punctuation, language and register mirrored from the thread (casual PT-BR or natural English). Draft only, never posts. Portable across SKILL.md-native hosts.",
+      "version": "0.1.0"
+    },
+    {
       "name": "skill-polish",
       "source": "./plugins/skill-polish",
       "description": "Post-mortem for any skill — scans a session for friction and applies concrete edits to the responsible skill file. Portable across SKILL.md-native hosts.",
@@ -25,7 +31,7 @@
       "name": "cc-cache-keepalive",
       "source": "./plugins/cc-cache-keepalive",
       "description": "Keeps Claude Code's prompt cache warm on Max plans via a SessionStart-scheduled silent cron. Opt-in via ~/.cc-cache-keepalive flag file. Cron prompt is sentinel 'cc-cache-keepalive' — gate Stop hooks on it to silence turn-end sounds. Claude Code only (hook + cron).",
-      "version": "1.2.2"
+      "version": "1.2.3"
     },
     {
       "name": "pre-compact",

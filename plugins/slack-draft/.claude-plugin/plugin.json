@@ -1,0 +1,14 @@
+{
+  "name": "slack-draft",
+  "version": "0.1.0",
+  "description": "Draft a Slack message for the user to send: Slack mrkdwn, lead-with-conclusion, backticked identifiers, ASCII punctuation, language and register mirrored from the thread (casual PT-BR or natural English). Draft only, never posts.",
+  "author": {
+    "name": "Victor De Simone",
+    "email": "victorsmoliveira@gmail.com",
+    "url": "https://github.com/vdsmon"
+  },
+  "homepage": "https://github.com/vdsmon/claude-skills",
+  "repository": "https://github.com/vdsmon/claude-skills",
+  "license": "MIT",
+  "skills": "./skills"
+}

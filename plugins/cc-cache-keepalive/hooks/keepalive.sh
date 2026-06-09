@@ -19,6 +19,19 @@ set -eu
 FLAG="${HOME}/.cc-cache-keepalive"
 [ -f "$FLAG" ] || exit 0
 
+# Skip transient `/flow <key> --auto` background runs. They finish their pipeline
+# and go idle, but the keepalive cron is a session-scoped recurring task that fires
+# forever — so it pins the session at state=working and the daemon never drops it,
+# leaving a zombie in the agents panel (a whole drain's worth piled up before this
+# gate). An attended session has an empty intent and is unaffected; only a self-
+# completing --auto run is gated. (state.json carries the launch intent; absent /
+# unreadable → not gated, fail toward keeping the cache warm.)
+if [ -n "${CLAUDE_JOB_DIR:-}" ] && \
+   grep -qE '"intent"[[:space:]]*:[[:space:]]*"/flow[^"]*--auto"' \
+     "${CLAUDE_JOB_DIR}/state.json" 2>/dev/null; then
+  exit 0
+fi
+
 DEFAULT_INTERVAL="30m"
 INTERVAL="$(head -n1 "$FLAG" 2>/dev/null | tr -d '[:space:]')"
 if [[ ! "$INTERVAL" =~ ^[0-9]+[smhd]$ ]]; then
