@@ -19,6 +19,13 @@ set -eu
 FLAG="${HOME}/.cc-cache-keepalive"
 [ -f "$FLAG" ] || exit 0
 
+# Per-invocation kill switch. The --auto intent gate below only matches sessions
+# launched as their own bg job; a child spawned with an inherited CLAUDE_JOB_DIR
+# (e.g. an orchestrator nudging a stalled run via `claude -p --resume`) reads the
+# parent's intent and slips through. Exporting CC_KEEPALIVE_OFF=1 suppresses the
+# keepalive for exactly that invocation, nothing else.
+[ -n "${CC_KEEPALIVE_OFF:-}" ] && exit 0
+
 # Skip transient `/flow <key> --auto` background runs. They finish their pipeline
 # and go idle, but the keepalive cron is a session-scoped recurring task that fires
 # forever — so it pins the session at state=working and the daemon never drops it,

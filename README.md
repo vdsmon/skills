@@ -114,6 +114,7 @@ Keeps the prompt cache warm on Max plans (1h TTL). At every SessionStart, emits 
 - Format: `<digits><s|m|h|d>` (e.g. `90s`, `4m`, `2h`). Invalid values fall back to `30m`.
 - Why 30 min: Max plan's 1h cache TTL + scheduler jitter means 60-min intervals consistently miss (verified empirically).
 - Why anchored cron instead of `/loop`: `/loop`'s `Nm` → `*/N * * * *` rewrite lands every user on fleet-peak minutes (:00/:30). The hook computes its own cron anchored to session-start minute.
+- Headless kill switch: export `CC_KEEPALIVE_OFF=1` to skip the keepalive for a single invocation — e.g. an orchestrator resuming a stalled background run with `CC_KEEPALIVE_OFF=1 claude -p --resume <id> "..."`. Useful for any transient automated session that would otherwise zombie at `state=working` because a recurring cron keeps it alive forever.
 - No skill, no UI — pure infrastructure plugin.
 
 ### `pre-compact` (portable)
