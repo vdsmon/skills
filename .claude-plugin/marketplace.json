@@ -10,6 +10,12 @@
   },
   "plugins": [
     {
+      "name": "investigate",
+      "source": "./plugins/investigate",
+      "description": "Investigate a reported error or incident end to end across every reachable system, never inferring past a missing source — stop and raise to the human for access or clarity instead. Builds an access ledger, batch-raises blockers up front, digs wide through logs/state/code/history (any repo), and delivers a root-cause report plus a proposed (unapplied) fix. Claude-Code-leaning (AskUserQuestion + read-only subagents + MCP access ledger); ships a swappable environment access-map reference.",
+      "version": "0.1.0"
+    },
+    {
       "name": "slack-draft",
       "source": "./plugins/slack-draft",
       "description": "Draft a Slack message for the user to send: Slack mrkdwn, lead-with-conclusion, backticked identifiers, ASCII punctuation, language and register mirrored from the thread (casual PT-BR or natural English). Draft only, never posts. Portable across SKILL.md-native hosts.",
@@ -66,8 +72,8 @@
     {
       "name": "systematic-debugging",
       "source": "./plugins/systematic-debugging",
-      "description": "Four-phase debugging discipline (root-cause investigation, pattern analysis, hypothesis, single-fix implementation). No fixes before investigation; 3+ failed fixes means stop and question the architecture. Use on any bug, test failure, or unexpected behavior before proposing fixes. Portable across SKILL.md-native hosts.",
-      "version": "0.1.0"
+      "description": "Four-phase debugging discipline (root-cause investigation, pattern analysis, hypothesis, single-fix implementation). No fixes before investigation; 3+ failed fixes means stop and question the architecture. Use on a reproducible bug, test failure, or unexpected behavior in code you can run and inspect directly, before proposing fixes; for an incident reported across runtime systems with possibly-unreachable evidence, use the investigate skill instead. Portable across SKILL.md-native hosts.",
+      "version": "0.1.1"
     },
     {
       "name": "skill-smith",
