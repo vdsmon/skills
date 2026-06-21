@@ -1,0 +1,14 @@
+{
+  "name": "codebase-design",
+  "version": "0.1.0",
+  "description": "Shared vocabulary for designing deep modules: a lot of behaviour behind a small interface, placed at a clean seam, testable through that interface. Precise glossary (module, interface, implementation, depth, seam, adapter, leverage, locality), the deletion test, the one-adapter-vs-two seam rule, and testability checks. Bundles DEEPENING.md and DESIGN-IT-TWICE.md. Portable across SKILL.md-native hosts.",
+  "author": {
+    "name": "Victor De Simone",
+    "email": "victorsmoliveira@gmail.com",
+    "url": "https://github.com/vdsmon"
+  },
+  "homepage": "https://github.com/vdsmon/claude-skills",
+  "repository": "https://github.com/vdsmon/claude-skills",
+  "license": "MIT",
+  "skills": "./skills"
+}

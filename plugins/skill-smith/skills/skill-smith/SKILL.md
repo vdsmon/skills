@@ -91,6 +91,8 @@ Write the description in third person. Keep frontmatter (name + description) und
 
 Imperative voice. Explain the **why** behind each instruction — today's models have good theory of mind and a reason generalizes where a rigid MUST does not. If you're writing ALL-CAPS MUST/NEVER or fill-in-the-blank templates, that's a yellow flag: reframe and explain instead. One excellent, runnable, well-commented example beats five mediocre multi-language ones. No narrative ("in session 2025-10-03 we...") — skills are reusable references, not war stories.
 
+For the design vocabulary behind these patterns — **predictability** as the root virtue, **context load** vs **cognitive load** when deciding model- vs user-invocation, the **information hierarchy** ladder (step → in-file reference → disclosed reference), **leading words**, and the failure modes to diagnose against in Step 4 (premature completion, duplication, sediment, sprawl, no-op) — see `references/skill-design-principles.md` (terms defined in `references/skill-design-glossary.md`).
+
 ## 3. Test and evaluate (the empirical harness)
 
 This is one continuous sequence — don't stop partway. Put results in `<skill-name>-workspace/` beside the skill, organized `iteration-N/eval-<id>/`. Create directories as you go.
@@ -199,6 +201,8 @@ Discipline skills (rules the agent must hold under time pressure, sunk cost, exh
 - `references/testing-skills-with-subagents.md` — pressure-scenario testing methodology.
 - `references/persuasion-principles.md` — why anti-rationalization techniques work.
 - `references/anthropic-best-practices.md` — official skill authoring patterns.
+- `references/skill-design-principles.md` — design vocabulary: predictability, the two loads, information hierarchy, leading words, failure modes.
+- `references/skill-design-glossary.md` — full definitions for the terms above.
 - `agents/grader.md`, `agents/comparator.md`, `agents/analyzer.md` — subagent instructions.
 - `examples/CLAUDE_MD_TESTING.md` — worked test campaign.
 

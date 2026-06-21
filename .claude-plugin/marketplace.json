@@ -78,8 +78,8 @@
     {
       "name": "skill-smith",
       "source": "./plugins/skill-smith",
-      "description": "Forge for Agent Skills: create, test, evaluate, optimize triggering, and package skills. Merges an empirical eval loop (run with-skill vs baseline, benchmark, iterate) with TDD-for-skills discipline (baseline-test first, close rationalization loopholes). Bundles the eval harness, benchmark viewer, and description-triggering optimizer. Claude-Code-leaning (subagents + scripts).",
-      "version": "0.1.0"
+      "description": "Forge for Agent Skills: create, test, evaluate, optimize triggering, and package skills. Merges an empirical eval loop (run with-skill vs baseline, benchmark, iterate) with TDD-for-skills discipline (baseline-test first, close rationalization loopholes). Bundles the eval harness, benchmark viewer, description-triggering optimizer, and a design-vocabulary reference (predictability, context vs cognitive load, information hierarchy, leading words, failure modes). Claude-Code-leaning (subagents + scripts).",
+      "version": "0.2.0"
     },
     {
       "name": "git-cleanup",
@@ -91,6 +91,24 @@
       "name": "strip-migration-cruft",
       "source": "./plugins/strip-migration-cruft",
       "description": "Scan a repo for transitional / migration / phase / wave / story / legacy-alias cruft comments, bucket into safe-to-strip vs keep-semantic, propose surgical edits and execute after confirmation. Use for 'scan for migration comments', 'remove phase/wave/story refs', 'strip transitional cruft'. Portable across SKILL.md-native hosts.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "grilling",
+      "source": "./plugins/grilling",
+      "description": "Relentless one-question-at-a-time interview that stress-tests a plan or design to convergence, exploring the codebase to answer its own questions where it can. Bundles grilling (the engine), grill-with-docs (grill + write ADRs and a glossary as you go), and domain-modeling (sharpen a ubiquitous language, CONTEXT.md glossary, sparing ADRs). Portable across SKILL.md-native hosts.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "teach",
+      "source": "./plugins/teach",
+      "description": "Stateful, multi-session teaching workspace: grounds every lesson in a MISSION.md, gathers trusted RESOURCES.md, produces short self-contained HTML lessons in the learner's zone of proximal development, tracks progress via learning-records, and builds storage strength through retrieval, spacing, and interleaving. Portable across SKILL.md-native hosts.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "codebase-design",
+      "source": "./plugins/codebase-design",
+      "description": "Shared vocabulary for designing deep modules: a lot of behaviour behind a small interface, placed at a clean seam, testable through that interface. Precise glossary (module, interface, implementation, depth, seam, adapter, leverage, locality), the deletion test, the one-adapter-vs-two seam rule, and testability checks. Bundles DEEPENING.md and DESIGN-IT-TWICE.md. Portable across SKILL.md-native hosts.",
       "version": "0.1.0"
     }
   ]
