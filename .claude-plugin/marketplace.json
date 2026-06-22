@@ -109,7 +109,7 @@
       "name": "teach",
       "source": "./plugins/teach",
       "description": "Stateful, multi-session teaching workspace: grounds every lesson in a MISSION.md, gathers trusted RESOURCES.md, produces short self-contained HTML lessons in the learner's zone of proximal development, tracks progress via learning-records, and builds storage strength through retrieval, spacing, and interleaving. Portable across SKILL.md-native hosts.",
-      "version": "0.1.0"
+      "version": "0.2.0"
     },
     {
       "name": "codebase-design",

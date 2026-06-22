@@ -125,6 +125,18 @@ Each of these should be based on a **feedback loop**, where the user receives fe
 
 For quizzes, each answer should be exactly the same number of words (and characters, if possible). Don't give the user any clues about the answer through formatting.
 
+### Make the practice genuinely hard
+
+The exercise is where understanding is forged — not the prose. The default failure is the easy recognition quiz ("which category is this?"): the learner pattern-matches the right button, *feels* mastery (fluency), and retains nothing (no storage strength). A lesson whose questions can be answered without understanding the theme has taught nothing it can prove. Make the practice demand the understanding:
+
+- **Test application, not recognition.** Give a *novel* scenario and make the learner do something with the principle — diagnose what's wrong with it, predict the outcome, pick the best fix, or spot the missing piece. Labelling a textbook example is the weakest question type; don't let it be the default.
+- **Make the wrong answers tempting.** Distractors should be what a shallow read would pick: a common misconception, a half-truth, the "almost right." If a distractor is obviously wrong, the question tests nothing. The learning happens in discriminating between close options.
+- **Difficulty from reasoning, never trickery.** The effort must come from the thinking the question demands — not obscure trivia, ambiguous wording, or trap phrasing. Hard is not the same as confusing.
+- **Force a commitment before the reveal.** The learner picks an answer before seeing feedback; the act of effortful retrieval builds memory even when they're wrong. Let them be wrong, then explain why.
+- **Interleave within the exercise.** Mix scenario types so the learner must first work out *which* principle applies before applying it, instead of drilling one move in a row.
+
+Calibrate to the zone of proximal development: hard enough that the learner has to *think*, not so hard it becomes guessing. The feeling to aim for is "I had to work that out," not "I had no idea." Difficulty belongs in the practice, never the exposition.
+
 ## Acquiring Wisdom
 
 Wisdom comes from true real-world interaction - testing your skills outside the learning environment.
