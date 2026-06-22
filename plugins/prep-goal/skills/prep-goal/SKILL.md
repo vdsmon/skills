@@ -78,6 +78,6 @@ That's two goals — the evaluator checks one condition and would stall on which
 ## Notes
 
 - This skill **outputs** a `/goal` line; it doesn't run `/goal` (native, user-driven). User pastes it.
-- Scope: one run. For a *recurring task class* where the gate doesn't exist yet or needs tuning, engineer and cache it with `loop-finder`; prep-goal is the single-run sharpener that targets native `/goal` as the runner. They compose — loop-finder finds the gate, prep-goal wraps one run of it.
+- A good `/goal` line is reusable — save the ones that work and rerun them; a folder of them is your loop library, no machinery needed. Reach for `loop-finder` only when the gate itself is unknown or flaky *and* the task recurs enough that racing variants to pick one beats authoring it by judgment here.
 - Every gate is a command, never prose — `exits 0` is unambiguous, "works" is not. No runnable gate means no real loop, just churn; if none exists yet, the first goal is to build one.
 - Short goal beats complete goal. The fewer words the loop can game, the better.
