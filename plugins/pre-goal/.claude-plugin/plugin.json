@@ -1,0 +1,14 @@
+{
+  "name": "pre-goal",
+  "version": "0.1.0",
+  "description": "Interrogate a rough objective into a tight, verifiable /goal completion condition before handing it to an autonomous goal loop. Grills one question at a time to pin the real end-state, the proof the evaluator can see, a scope fence, the forbidden cheat, and a turn cap, then emits a short paste-ready /goal line. Built for Claude Code's native /goal; the sharpening technique ports to any autonomous-loop host.",
+  "author": {
+    "name": "Victor De Simone",
+    "email": "victorsmoliveira@gmail.com",
+    "url": "https://github.com/vdsmon"
+  },
+  "homepage": "https://github.com/vdsmon/claude-skills",
+  "repository": "https://github.com/vdsmon/claude-skills",
+  "license": "MIT",
+  "skills": "./skills"
+}
