@@ -38,7 +38,7 @@ The five things to pin:
 2. **The gate.** What runnable check decides pass/fail — and what raw output proves it? The evaluator only sees what the loop *pastes*, so the gate must be a command whose real output lands in the transcript (`exits 0`, a test count, an empty grep), never a prose claim like "it works." Name the exact command. For high-stakes work, that command *is* the real gate; the evaluator just confirms a green result was surfaced.
 3. **The fence.** What may change, and what must *not*. Autonomous turns wander into adjacent code; bound them.
 4. **The forbidden cheat.** Given the gate, what's the cheapest way to satisfy the words without doing the work (delete the test, stub the function, hardcode or regenerate the output it's graded against)? Forbid it explicitly — the gate is worthless if the loop can edit what it's graded against.
-5. **The cap.** A turn ceiling so a stuck loop stops burning. Default: suggest one (`stop after N turns`).
+5. **Guardrails: cap + liveness.** A turn ceiling so a stuck loop stops burning (`stop after N turns`). And: does the gate or the work need access that must stay alive for the *whole* run (cloud SSO, VPN, a DB, a paid API)? `/goal` is a hard loop — it won't notice its credentials expired and stop politely; it'll stall and burn the rest of the cap. If access expires before the run could finish, scope the goal to fit the window or refresh first.
 
 If the objective is genuinely compound ("migrate, add OAuth, write docs"), **don't fuse it** — the evaluator checks one condition and stalls on the slowest sub-part. Recommend splitting into sequential `/goal` runs and sharpen the first.
 
@@ -78,5 +78,6 @@ That's two goals — the evaluator checks one condition and would stall on which
 ## Notes
 
 - This skill **outputs** a `/goal` line; it doesn't run `/goal` (native, user-driven). User pastes it.
+- Scope: one run. For a *recurring task class* where the gate doesn't exist yet or needs tuning, engineer and cache it with `loop-finder`; prep-goal is the single-run sharpener that targets native `/goal` as the runner. They compose — loop-finder finds the gate, prep-goal wraps one run of it.
 - Every gate is a command, never prose — `exits 0` is unambiguous, "works" is not. No runnable gate means no real loop, just churn; if none exists yet, the first goal is to build one.
 - Short goal beats complete goal. The fewer words the loop can game, the better.
