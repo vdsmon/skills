@@ -1,5 +1,5 @@
 ---
-name: pre-compact
+name: prep-compact
 description: >-
   Audits in-flight session state before a context-compacting step truncates
   history. Flags uncommitted git changes, scratch files, unfinished plans,
@@ -23,7 +23,7 @@ allowed-tools:
   - Bash(git checkout *)
 ---
 
-# Pre-Compact
+# Prep-Compact
 
 the compact step drop conversation history, keep only short summary you provide. Anything not persisted outside chat — half-written plan, unsaved inline snippet, background task name — gone. Skill audit so that no bite next session.
 

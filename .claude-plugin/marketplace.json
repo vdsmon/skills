@@ -40,14 +40,14 @@
       "version": "1.2.4"
     },
     {
-      "name": "pre-compact",
-      "source": "./plugins/pre-compact",
+      "name": "prep-compact",
+      "source": "./plugins/prep-compact",
       "description": "Audit in-flight state before any context-compacting step; produce a copy-paste /compact message plus a queue-able follow-up that chains the next action when compact finishes. Portable across Agent Skills hosts — compacting is a general concept, not Claude-specific.",
       "version": "1.5.0"
     },
     {
-      "name": "pre-goal",
-      "source": "./plugins/pre-goal",
+      "name": "prep-goal",
+      "source": "./plugins/prep-goal",
       "description": "Interrogate a rough objective into a tight, verifiable /goal completion condition before handing it to an autonomous goal loop. Grills one question at a time to pin the real end-state, the proof the evaluator can see, a scope fence, the forbidden cheat, and a turn cap, then emits a short paste-ready /goal line. Built for Claude Code's native /goal; the sharpening technique ports to any autonomous-loop host.",
       "version": "0.1.0"
     },

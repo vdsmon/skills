@@ -14,8 +14,8 @@ Plugins **without** the `cc-` prefix are portable. They follow the open Agent Sk
 |---|---|---|
 | `cc-tokenomics` | cc- | Claude Code only |
 | `cc-cache-keepalive` | cc- | Claude Code only |
-| `pre-compact` | — | Any host |
-| `pre-goal` | — | Any host |
+| `prep-compact` | — | Any host |
+| `prep-goal` | — | Any host |
 | `humanize` | — | Any host |
 | `skill-polish` | — | Any host |
 | `ship-it` | — | Any host |
@@ -35,8 +35,8 @@ Install whichever plugins you want:
 # Portable
 /plugin install skill-polish@vdsmon-skills
 /plugin install humanize@vdsmon-skills
-/plugin install pre-compact@vdsmon-skills
-/plugin install pre-goal@vdsmon-skills
+/plugin install prep-compact@vdsmon-skills
+/plugin install prep-goal@vdsmon-skills
 /plugin install ship-it@vdsmon-skills
 /plugin install loop-finder@vdsmon-skills
 
@@ -59,7 +59,7 @@ cd claude-skills
 ```bash
 mkdir -p ~/.codex/skills
 cp -r plugins/humanize/skills/humanize          ~/.codex/skills/
-cp -r plugins/pre-compact/skills/pre-compact    ~/.codex/skills/
+cp -r plugins/prep-compact/skills/prep-compact    ~/.codex/skills/
 cp -r plugins/skill-polish/skills/skill-polish  ~/.codex/skills/
 ```
 
@@ -119,7 +119,7 @@ Keeps the prompt cache warm on Max plans (1h TTL). At every SessionStart, emits 
 - Headless kill switch: export `CC_KEEPALIVE_OFF=1` to skip the keepalive for a single invocation — e.g. an orchestrator resuming a stalled background run with `CC_KEEPALIVE_OFF=1 claude -p --resume <id> "..."`. Useful for any transient automated session that would otherwise zombie at `state=working` because a recurring cron keeps it alive forever.
 - No skill, no UI — pure infrastructure plugin.
 
-### `pre-compact` (portable)
+### `prep-compact` (portable)
 
 Audits in-flight session state before any context-compacting step truncates history. Flags uncommitted git changes, scratch files, unfinished plans, running background tasks. Produces a copy-paste focus message for the next session. Compacting is a general agent concept — Claude Code's `/compact`, Codex's summarise-and-continue, Cursor's context prune, etc. — so this skill works across hosts.
 
@@ -127,11 +127,11 @@ Trigger: `compact`, `let's compact`, `ready to compact?`, `prep for compact`, `s
 
 `--message-only` flag skips the audit and outputs just the focus message.
 
-### `pre-goal` (portable)
+### `prep-goal` (portable)
 
 Sharpens a rough objective into a tight, verifiable completion condition before you hand it to an autonomous goal loop (Claude Code's native `/goal`, or any host's run-until-done mode). These loops run for hours and burn a lot of tokens, so the goal is the whole ballgame — a vague one chases the wrong target before anyone notices. The skill grills one question at a time to pin the real end-state, the proof the evaluator can actually see (the loop's evaluator only judges what the agent surfaces in chat, not files it reads), a scope fence, the cheapest way to game the condition (so it can forbid it), and a turn cap. Then it emits a short paste-ready `/goal` line.
 
-Trigger: `pre-goal`, `sharpen this goal`, `turn this into a goal`, `write a /goal for X`, `what should my goal be`, `help me set a goal`.
+Trigger: `prep-goal`, `sharpen this goal`, `turn this into a goal`, `write a /goal for X`, `what should my goal be`, `help me set a goal`.
 
 ### `humanize` (portable)
 
@@ -167,9 +167,9 @@ plugins/
     .claude-plugin/plugin.json           # Declares SessionStart hook
     hooks/keepalive.sh                   # Opt-in, flag-gated
     scripts/keepalive-noop.sh
-  pre-compact/
+  prep-compact/
     .claude-plugin/plugin.json
-    skills/pre-compact/SKILL.md
+    skills/prep-compact/SKILL.md
   humanize/
     .claude-plugin/plugin.json
     skills/humanize/SKILL.md

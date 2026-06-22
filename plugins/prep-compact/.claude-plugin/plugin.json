@@ -1,5 +1,5 @@
 {
-  "name": "pre-compact",
+  "name": "prep-compact",
   "version": "1.5.0",
   "description": "Audit in-flight session state before a context-compacting step truncates history. Flags uncommitted changes, scratch files, unfinished plans, and running background tasks, then produces a copy-paste /compact message plus a queue-able follow-up that chains the next action when compact finishes. Portable across Agent Skills hosts — compacting is a general concept, not Claude-specific.",
   "author": {
