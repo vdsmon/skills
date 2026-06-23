@@ -22,7 +22,7 @@ Two invariants preserve when add/rename plugins:
 1. **Every plugin listed in `.claude-plugin/marketplace.json`** with `name`, `source: ./plugins/<name>`, `description`, `version`. Forget = plugin invisible to `/plugin install`.
 2. **`plugin.json` `name` must match marketplace `name` and directory name.** Skill dir name under `skills/` independent but conventionally matches.
 
-Current plugins (18): `brainstorming`, `cc-cache-keepalive`, `cc-tokenomics`, `codebase-design`, `git-cleanup`, `grilling`, `humanize`, `investigate`, `loop-finder`, `prep-compact`, `prep-goal`, `ship-it`, `skill-polish`, `skill-smith`, `slack-draft`, `strip-migration-cruft`, `systematic-debugging`, `teach`. Plugins prefixed with `cc-` are Claude-Code-specific (hooks, `` !`cmd` `` dynamic injection, `${CLAUDE_SKILL_DIR}`); unprefixed plugins port cleanly to other Agent Skills hosts (Codex CLI, Gemini CLI, Cursor, Goose, etc.). `cc-tokenomics` is analysis + education only; cache warmup lives in `cc-cache-keepalive`. Multi-skill plugins: `loop-finder` ships `loop-finder` + `feature-cycle`; `grilling` ships `grilling` + `domain-modeling` + `grill-with-docs`.
+Current plugins (17): `brainstorming`, `cc-cache-keepalive`, `cc-tokenomics`, `codebase-design`, `git-cleanup`, `grilling`, `humanize`, `investigate`, `loop-finder`, `prep-compact`, `prep-goal`, `skill-polish`, `skill-smith`, `slack-draft`, `strip-migration-cruft`, `systematic-debugging`, `teach`. Plugins prefixed with `cc-` are Claude-Code-specific (hooks, `` !`cmd` `` dynamic injection, `${CLAUDE_SKILL_DIR}`); unprefixed plugins port cleanly to other Agent Skills hosts (Codex CLI, Gemini CLI, Cursor, Goose, etc.). `cc-tokenomics` is analysis + education only; cache warmup lives in `cc-cache-keepalive`. Multi-skill plugins: `loop-finder` ships `loop-finder` + `feature-cycle`; `grilling` ships `grilling` + `domain-modeling` + `grill-with-docs`.
 
 ## Anatomy of a skill
 
@@ -72,7 +72,7 @@ Called from `SKILL.md` via dynamic-context injection: the `` ```! `` block runs 
 
 Some plugins ship more than `SKILL.md` + hooks. Two conventions:
 
-- **`plugins/<plugin>/skills/<skill>/scripts/`** — helper scripts the skill invokes (e.g. `plugins/ship-it/skills/ship-it/scripts/fetch_coderabbit_comments.py`). Keeps deterministic logic out of the skill prose, which the model would otherwise re-interpret each invocation.
+- **`plugins/<plugin>/skills/<skill>/scripts/`** — helper scripts the skill invokes (e.g. `plugins/cc-tokenomics/skills/cc-tokenomics/scripts/token-report.py`). Keeps deterministic logic out of the skill prose, which the model would otherwise re-interpret each invocation.
 - **`plugins/<plugin>/templates/`** — files copied into a project the first time the skill runs there (bootstrap pattern). Skill's `Bootstrap` block detects the template root via `${CLAUDE_SKILL_DIR}/../../templates` and `cp`s missing files. Example: `plugins/loop-finder/templates/iterate.sh.tmpl`.
 
 ## Conventions

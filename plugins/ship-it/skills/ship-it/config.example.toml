@@ -1,6 +1,0 @@
-# User-level ship-it config. Copy to SKILL_DIR/config.toml and fill in.
-# Values here are personal identity, same across all projects.
-
-[reviewers]
-# Your Bitbucket account ID. Find via: bkt api /user --json | jq -r .account_id
-user_account_id = ""
