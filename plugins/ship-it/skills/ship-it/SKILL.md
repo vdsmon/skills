@@ -1,5 +1,6 @@
 ---
 name: ship-it
+argument-hint: "[push|create|feedback] [--target <branch>] [--ready] [--body <path>]"
 description: Push the current branch, open a draft PR, attach default reviewers, then wait on CI and the AI code reviewer in a fix loop until both are green. Ticket-agnostic. Use whenever you have a feature branch ready to ship and want the push, PR creation, CI wait, and code-review feedback loop handled end to end. Supported stack today, Bitbucket Cloud plus bkt CLI plus CodeRabbit.
 ---
 

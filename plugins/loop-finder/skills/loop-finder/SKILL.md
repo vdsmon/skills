@@ -1,5 +1,6 @@
 ---
 name: loop-finder
+disable-model-invocation: true
 description: >-
   Engineers a self-verifiable end-to-end feedback loop for a task class
   (no HITL at run time), measures it against a strict metric tuple, races

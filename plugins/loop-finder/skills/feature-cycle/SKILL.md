@@ -1,5 +1,6 @@
 ---
 name: feature-cycle
+disable-model-invocation: true
 description: >-
   Feature-driven outer cycle for a converged loop-finder gate. One
   invocation = one cycle: flush the queued harness fix from the prior

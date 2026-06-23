@@ -1,5 +1,6 @@
 ---
 name: systematic-debugging
+argument-hint: "[bug or failure to debug]"
 description: Use when encountering a reproducible bug, test failure, or unexpected behavior in code you can run and inspect directly, before proposing fixes. For an error someone else reported that spans runtime systems (prod, Airflow, cloud logs, Slack/Jira) where the evidence may be unreachable, use the investigate skill instead.
 ---
 

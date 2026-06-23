@@ -1,5 +1,6 @@
 ---
 name: prep-compact
+disable-model-invocation: true
 description: >-
   Audits in-flight session state before a context-compacting step truncates
   history. Flags uncommitted git changes, scratch files, unfinished plans,
@@ -12,8 +13,7 @@ when_to_use: >-
   "prep for compact", "suggest a compact message", "what should I put in
   /compact?", "shrink the context", "summarise and continue", or any
   variant signalling they're about to hit a context-truncating step.
-  Run proactively even when the user just asks whether compacting is OK.
-  Natural break + "context feels full" or "can we compact?" also triggers.
+  Also covers a natural break plus "context feels full" or "can we compact?".
 argument-hint: "[--message-only]"
 allowed-tools:
   - Bash(git status *)

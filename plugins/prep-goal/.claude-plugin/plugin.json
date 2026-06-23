@@ -1,6 +1,6 @@
 {
   "name": "prep-goal",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Interrogate a rough objective into a tight, verifiable /goal completion condition before handing it to an autonomous goal loop. Grills one question at a time to pin the real end-state, the proof the evaluator can see, a scope fence, the forbidden cheat, and a turn cap, then emits a short paste-ready /goal line. Built for Claude Code's native /goal; the sharpening technique ports to any autonomous-loop host.",
   "author": {
     "name": "Victor De Simone",

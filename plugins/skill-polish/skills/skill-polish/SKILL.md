@@ -12,7 +12,6 @@ when_to_use: >-
   the gaps", "why did you not use the skill here", or signals that a
   skill's flow felt rough this session. Invoked proactively after a
   noticeably clumsy run of any skill to lock in a fix.
-disable-model-invocation: true
 argument-hint: "[--auto-approve|-a]"
 allowed-tools:
   - Read

@@ -1,6 +1,6 @@
 {
   "name": "loop-finder",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Loop discovery + race + feature-driven iteration. Two skills: loop-finder (engineers a self-verifiable gate for a task class, races parallel variants, converges on the best loop config; HITL concentrated at permission boundaries) and feature-cycle (outer queued-fix chain that ships features against the converged gate, retros pain, queues one harness fix per cycle — Karpathy autoresearch discipline applied to dev experience).",
   "author": {
     "name": "Victor De Simone",

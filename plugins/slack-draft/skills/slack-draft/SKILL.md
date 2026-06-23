@@ -1,5 +1,7 @@
 ---
 name: slack-draft
+argument-hint: "[what to say or thread context]"
+disable-model-invocation: true
 description: >-
   Drafts a Slack message for the user to send, in Slack mrkdwn, ready to
   copy-paste. Leads with the conclusion, backticks technical identifiers,
