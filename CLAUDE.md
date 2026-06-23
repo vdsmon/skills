@@ -22,7 +22,7 @@ Two invariants preserve when add/rename plugins:
 1. **Every plugin listed in `.claude-plugin/marketplace.json`** with `name`, `source: ./plugins/<name>`, `description`, `version`. Forget = plugin invisible to `/plugin install`.
 2. **`plugin.json` `name` must match marketplace `name` and directory name.** Skill dir name under `skills/` independent but conventionally matches.
 
-Current plugins: `skill-polish`, `cc-tokenomics`, `cc-cache-keepalive`, `prep-compact`, `humanize`, `ship-it`, `loop-finder`. Plugins prefixed with `cc-` are Claude-Code-specific (hooks, `` !`cmd` `` dynamic injection, `${CLAUDE_SKILL_DIR}`); unprefixed plugins port cleanly to other Agent Skills hosts (Codex CLI, Gemini CLI, Cursor, Goose, etc.). `cc-tokenomics` is analysis + education only; cache warmup lives in `cc-cache-keepalive`. `loop-finder` ships two skills: `loop-finder` (gate discovery + race + converge) and `loop-finder:feature-cycle` (outer queued-fix chain for shipping features against the converged gate; absorbed the adx-loop discipline).
+Current plugins (18): `brainstorming`, `cc-cache-keepalive`, `cc-tokenomics`, `codebase-design`, `git-cleanup`, `grilling`, `humanize`, `investigate`, `loop-finder`, `prep-compact`, `prep-goal`, `ship-it`, `skill-polish`, `skill-smith`, `slack-draft`, `strip-migration-cruft`, `systematic-debugging`, `teach`. Plugins prefixed with `cc-` are Claude-Code-specific (hooks, `` !`cmd` `` dynamic injection, `${CLAUDE_SKILL_DIR}`); unprefixed plugins port cleanly to other Agent Skills hosts (Codex CLI, Gemini CLI, Cursor, Goose, etc.). `cc-tokenomics` is analysis + education only; cache warmup lives in `cc-cache-keepalive`. Multi-skill plugins: `loop-finder` ships `loop-finder` + `feature-cycle`; `grilling` ships `grilling` + `domain-modeling` + `grill-with-docs`.
 
 ## Anatomy of a skill
 
@@ -37,6 +37,8 @@ Current plugins: `skill-polish`, `cc-tokenomics`, `cc-cache-keepalive`, `prep-co
 - `context: fork` + `agent` — run skill in an isolated subagent.
 - `disable-model-invocation` — user-only (manual `/slash` trigger).
 - `user-invocable: false` — hide from `/` menu (background knowledge only).
+
+Invocation policy: gate misfire-prone or token-heavy skills user-only (`disable-model-invocation: true`) so they fire only on explicit `/slash`; keep proactive guardrails (e.g. `brainstorming`) and friction-catchers (e.g. `skill-polish`) model-invocable. An edit/confirm gate inside the skill flow is not a reason to also block auto-fire.
 
 Body = prompt, not docs. Second-person imperative. Keep CLAUDE.md concision: every token re-cached on prefix invalidation.
 
