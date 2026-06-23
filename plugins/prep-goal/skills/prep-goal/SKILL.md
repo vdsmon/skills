@@ -1,7 +1,7 @@
 ---
 name: prep-goal
-description: Interrogates a rough objective into a tight, verifiable `/goal` completion condition before the user hands it to the native /goal autonomous loop. Grills to pin down what the goal actually is, then emits a short paste-ready `/goal` line. Use when the user says "prep-goal", "sharpen this goal", "turn this into a goal", "write a /goal for X", "what should my goal be", "help me set a goal", or hands you a loose objective destined for the /goal loop. Run it whenever a goal is vague, compound, or has no obvious done-signal — a bad goal sends an hours-long, token-heavy loop down the wrong path.
-argument-hint: "<the rough goal / objective>"
+description: Interrogates a rough objective into a tight, verifiable `/goal` completion condition before the user hands it to the native /goal autonomous loop. Grills to pin down what the goal actually is, then emits a short paste-ready `/goal` line. Use when the user says "prep-goal", "sharpen this goal", "turn this into a goal", "write a /goal for X", "what should my goal be", "help me set a goal", or hands you a loose objective destined for the /goal loop. Run it whenever a goal is vague, compound, or has no obvious done-signal — a bad goal sends an hours-long, token-heavy loop down the wrong path. Pass `--delegate` to emit a goal that runs each iteration in a fresh implement subagent, so a long run's context grows slowly.
+argument-hint: "[--delegate] <the rough goal / objective>"
 allowed-tools:
   - Bash(git status *)
   - Bash(git log *)
@@ -55,12 +55,30 @@ One tight block. The condition is one to three sentences: end-state, then gate, 
 
 No rubric recap, no "why this is better" essay. If grilling is unresolved, ask the next single question instead of emitting.
 
+## `--delegate` mode (long / heavy goals)
+
+If `$ARGUMENTS` contains `--delegate` (or "delegate" / "subagent"), append a delegation clause to the goal. It tells the loop to do each iteration's work in a *fresh implement subagent* and surface only its raw gate output — so the main `/goal` context (the persistent orchestrator) grows by distilled returns, not the full work transcript, while keeping continuity across turns.
+
+Delegation is a context-economy optimization, not a correctness one: the gate still guards correctness no matter who does the work, so if the loop inlines a turn you lose efficiency, never safety. Keep the two clauses distinct — the gate says *what done is*, the delegate clause says *how to work*:
+
+```text
+Each turn, spawn an implement subagent to make the change and return its raw gate output; don't edit files in your own context.
+```
+
+Skip the flag for short goals — a worker per turn isn't worth its re-orientation cost when the work fits in a few inline turns.
+
 ## Examples
 
 Raw: *"fix the parser, it breaks on nested quotes"* → after pinning gate + cheat:
 
 ```text
 /goal The tokenizer parses nested quotes correctly. Gate: run `pytest tests/test_tokenizer.py` each turn and paste its output; done when it shows 0 failures and includes a new test for input `"a \"b\" c"`. Don't weaken or delete existing assertions; touch only src/tokenizer.py and its test. Stop after 15 turns.
+```
+
+Same goal with `--delegate` (heavy work → keep main context lean):
+
+```text
+/goal The tokenizer parses nested quotes correctly. Gate: `pytest tests/test_tokenizer.py` shows 0 failures plus a new test for `"a \"b\" c"`. Each turn, spawn an implement subagent to make the change and return its raw pytest output; don't edit files in your own context. Don't weaken existing assertions; touch only src/tokenizer.py and its test. Stop after 15 turns.
 ```
 
 Raw: *"clean up the forms module"* → too vague, grill the WHAT first (one question):
