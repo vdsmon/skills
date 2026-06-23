@@ -18,7 +18,6 @@ Plugins **without** the `cc-` prefix are portable. They follow the open Agent Sk
 | `prep-goal` | — | Any host |
 | `humanize` | — | Any host |
 | `skill-polish` | — | Any host |
-| `ship-it` | — | Any host |
 | `loop-finder` | — | Any host |
 
 ## Install — Claude Code
@@ -37,7 +36,6 @@ Install whichever plugins you want:
 /plugin install humanize@vdsmon-skills
 /plugin install prep-compact@vdsmon-skills
 /plugin install prep-goal@vdsmon-skills
-/plugin install ship-it@vdsmon-skills
 /plugin install loop-finder@vdsmon-skills
 
 # Claude-Code-specific
