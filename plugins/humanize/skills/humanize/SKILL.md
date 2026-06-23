@@ -1,5 +1,6 @@
 ---
 name: humanize
+argument-hint: "[text or file to humanize]"
 description: >-
   Rewrites text to strip AI-writing tells and inject human voice. Detects
   em-dash overuse, AI vocabulary, inflated significance, rule-of-three,

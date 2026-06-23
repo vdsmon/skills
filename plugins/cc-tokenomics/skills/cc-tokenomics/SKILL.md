@@ -1,5 +1,6 @@
 ---
 name: cc-tokenomics
+disable-model-invocation: true
 description: >-
   Analyzes Claude Code token usage, cache hit rates, and Max plan consumption.
   Presents a compact dashboard with plan-usage bars, session token breakdown,
