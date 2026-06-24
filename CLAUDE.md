@@ -78,7 +78,7 @@ Some plugins ship more than `SKILL.md` + hooks. Two conventions:
 ## Conventions
 
 - **No README/docs bloat inside plugins.** SKILL.md = prompt; separate docs rot and burn cache.
-- **Version bumps**: bump both `plugin.json` version and marketplace.json entry for plugin. Keep sync.
+- **Version bump + publish, whenever a plugin's files change.** This is a MUST that closes the change, not an optional follow-up. Run `scripts/bump-plugin.sh <plugin> [patch|minor|major]` (patch = fix/wording, minor = new behavior or arg, major = breaking) to bump `plugin.json` and the marketplace.json entry in lockstep (surgical, no other entry touched). If behavior changed, update the `description` in BOTH files (they differ: marketplace adds a portability suffix). Then commit the plugin's files plus the marketplace.json hunk and push (or open a PR per the recent worktree-branch history). A plugin edit that lands without the version bump + marketplace sync is incomplete; an edit that lands uncommitted is not shipped.
 
 ## Installing locally for testing
 
