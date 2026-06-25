@@ -154,8 +154,8 @@ Not on the 7 because it's repo-specific, not a skill-level concern. Note for fut
 
 ## Files this retro affects
 
-- `~/repos/personal/claude-skills/plugins/loop-finder/skills/loop-finder/SKILL.md` — adoption rules split, agent-type guidance, smoke-test oracle-direction check
-- `~/repos/personal/claude-skills/plugins/loop-finder/skills/loop-finder/menu.yaml` — `target_conformance_oracle` caveats, tooling_signature notes, `headless_probe_sidecar` ROOT derivation requirement
+- `~/repos/personal/skills/plugins/loop-finder/skills/loop-finder/SKILL.md` — adoption rules split, agent-type guidance, smoke-test oracle-direction check
+- `~/repos/personal/skills/plugins/loop-finder/skills/loop-finder/menu.yaml` — `target_conformance_oracle` caveats, tooling_signature notes, `headless_probe_sidecar` ROOT derivation requirement
 - `~/.claude/loop-finder/blindness-rules.yaml` — `binary-artifact-in-failure-path` rule
 - iterate.sh template recommendation — per-PID OUT dir
 

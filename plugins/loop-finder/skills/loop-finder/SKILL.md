@@ -184,7 +184,7 @@ Halt conditions:
 
 On halt, write `<class-id>/summary.md`: baseline progression (table of cycle # → `cycle_wall_s`, `blindness_count`, `cycle_tokens`), final winning config, unresolved gaps, list of approved permissions granted across the run.
 
-**Then generate the deliverable: a project-scoped `loops` skill in the target repo.** When at least one class has been converged for a repo, write a project skill at `<repo>/.claude/skills/loops/` (NOT into the global `~/repos/personal/claude-skills/plugins/` marketplace — repo-specific content belongs with the code it documents). The skill should:
+**Then generate the deliverable: a project-scoped `loops` skill in the target repo.** When at least one class has been converged for a repo, write a project skill at `<repo>/.claude/skills/loops/` (NOT into the global `~/repos/personal/skills/plugins/` marketplace — repo-specific content belongs with the code it documents). The skill should:
 - List each registered class (id, gate command, oracle, threshold, current baseline)
 - Bake in repo-specific caveats as files under `references/`
 - Ship thin wrapper scripts in `scripts/` that resolve repo root from `${BASH_SOURCE[0]}` so they work from any cwd

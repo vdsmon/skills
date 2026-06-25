@@ -30,7 +30,7 @@ Why a no-op script warms the cache: each cron firing is a fresh Bash tool call, 
 ## Installing + opting in
 
 ```
-/plugin marketplace add /Users/victordsm/repos/personal/claude-skills
+/plugin marketplace add /Users/victordsm/repos/personal/skills
 /plugin install cc-cache-keepalive@vdsmon-skills
 touch ~/.cc-cache-keepalive
 ```
