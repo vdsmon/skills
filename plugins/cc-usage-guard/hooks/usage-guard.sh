@@ -19,13 +19,18 @@ input=$(cat)
 evt=$(printf '%s' "$input" | jq -r '.hook_event_name // "PostToolUse"' 2>/dev/null)
 if [ -z "$evt" ] || [ "$evt" = "null" ]; then evt="PostToolUse"; fi
 
-# per-session debounce marker. a single shared marker muted every concurrent
-# session except the first to cross the threshold (it wrote the marker; the rest
-# matched it and exited silent), so parallel jobs never saw the STOP. key the
-# marker by session_id so each session warns once per window-reset. fall back to
-# the shared name when session_id is absent.
+# debounce marker, keyed by session_id + agent_id. a parent, its subagents (any of
+# the up-to-5 nesting depths), and its team teammates ALL share one session_id; a
+# single shared marker muted every concurrent context except the first to cross the
+# threshold. agent_id is the reliable "spawned agent" discriminator, verified
+# empirically: non-empty + unique for every subagent and teammate, empty on a
+# root/main session. agent_type is NOT used - a root can report agent_type "claude"
+# with an empty agent_id, so it would misclassify a main session. keying the marker
+# by session_id AND agent_id lets the main session and each spawned agent debounce
+# independently (once per window-reset each).
 sid=$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null)
-marker="$STATE_DIR/usage-park-marker${sid:+-$sid}"
+aid=$(printf '%s' "$input" | jq -r '.agent_id // empty' 2>/dev/null)
+marker="$STATE_DIR/usage-park-marker${sid:+-$sid}${aid:+-$aid}"
 
 [ -f "$state" ] || exit 0
 vals=$(jq -r '[(.five // -1),(.seven // -1),(.five_reset // 0),(.seven_reset // 0)] | @tsv' "$state" 2>/dev/null)
@@ -65,19 +70,27 @@ if [ "$reset_int" -gt 0 ] 2>/dev/null; then
 fi
 [ -n "$hhmm" ] || hhmm="soon (check /usage)"
 
-if [ "$level" = "2" ]; then
+if [ -n "$aid" ]; then
+  # a spawned agent (subagent at any of the up-to-5 nesting depths, or a team
+  # teammate): it can't pause the session or schedule a resume, and its parent is
+  # blocked while it runs. brake only at the hard PARK (keep the warn runway);
+  # finish + hand back so the parent parks on its next cycle. the wind-down
+  # cascades up the stack until the main session parks.
+  [ "$level" = "2" ] || exit 0
+  msg="WIND DOWN - you are a spawned agent (subagent or teammate) and account usage is AT the ${window} limit (${pct_int}%); it resets ~${hhmm} local. Stop now and return to your parent. Your final message IS the handoff, so make it a concise status report: (1) what you COMPLETED, (2) what is still UNFINISHED, (3) the exact NEXT STEP needed to finish. Do NOT start new work, expand scope, or spawn further subagents, and do NOT schedule any pause or cron - the main session parks once you return and will resume your unfinished work from your handoff after the limit resets."
+elif [ "$level" = "2" ]; then
   if [ -n "$cron" ]; then
     resume_step="3. Schedule auto-resume: use the CronCreate tool (load it via ToolSearch if needed) with cron \`$cron\` and prompt: \"RESUME: the usage limit has reset, continue the work we paused. Once resumed, delete this cron via CronDelete.\""
   else
     resume_step="3. Could not compute the reset time, so do not schedule a cron; tell the user to resume manually after the limit resets."
   fi
   msg="STOP - usage at ${pct_int}% of the ${window} limit; it resets ~${hhmm} local. This session and its context stay alive across the limit, so you do NOT need to dump state to a file - just pause cleanly and wake yourself when it resets:
-1. Stop starting new work now (only finish an atomic step already in flight).
+1. Stop starting new work now (only finish an atomic step already in flight; do not spawn new subagents).
 2. In one short message, note where you are and the immediate next step (stays in context for the resume).
 ${resume_step}
 4. Then stop. Tell the user in chat you paused and will auto-resume ~${hhmm}, AND send the same as a push: use the PushNotification tool (load it via ToolSearch if needed) with a short message like \"cc-usage-guard: paused at ${pct_int}% of the ${window} limit, auto-resume ~${hhmm}\"."
 else
-  msg="HEADS UP - usage at ${pct_int}% of the ${window} limit (warn threshold); it resets ~${hhmm} local. You're approaching the cap, not at it yet. Start landing the current thread: prefer finishing or closing over starting big new work, and reach a clean stopping point soon. No need to pause yet - cc-usage-guard will STOP you and schedule auto-resume if you hit the hard limit."
+  msg="HEADS UP - usage at ${pct_int}% of the ${window} limit (warn threshold); it resets ~${hhmm} local. You're approaching the cap, not at it yet. Start landing the current thread: prefer finishing or closing over starting big new work, and reach a clean stopping point soon. Also hold off on launching new subagents or parallel fleets now - they burn the same account-global budget unattended and run past this guard's reach. No need to pause yet - cc-usage-guard will STOP you and schedule auto-resume if you hit the hard limit."
 fi
 
 printf '%s' "$key" > "$marker"

@@ -45,6 +45,15 @@ Keep each `WARN` below its `THRESHOLD` (warn fires on the approach; park fires a
 
 The sensor defaults to [`ccstatusline`](https://github.com/sirmalloc/ccstatusline) as the renderer. If that command isn't on PATH (or you point `CLAUDE_USAGE_RENDER_CMD` at something missing), it falls back to a minimal built-in line (`5h NN% | wk NN%`) instead of dumping raw JSON.
 
+## Subagents, teammates, and nesting
+
+The hooks fire inside spawned agents too, so the guard stays correct when work fans out:
+
+- It detects a spawned context by the hook payload's `agent_id` (empirically non-empty + unique for every subagent — across all of Claude Code's up-to-5 nesting levels — and for every team teammate; empty only on a root/main session). `agent_type` is deliberately *not* used: a root can report `agent_type: "claude"` with an empty `agent_id`, which would misclassify it.
+- **Main/root session:** full WARN → PARK (STOP + auto-resume cron + push).
+- **Subagent or teammate (at any depth):** silent at WARN (keeps the runway; its parent is blocked and can't re-check meanwhile), and at PARK it gets a **wind-down** — finish the step and return, don't start new work or spawn further agents, and *don't* schedule a pause/cron (it can't pause the session). The wind-down cascades up the stack until the main session runs the real park. The main session's WARN also tells it not to *launch* new subagent fleets while near the cap.
+- Markers key on `session_id` + `agent_id`, so the main session and every spawned agent debounce independently — no cross-muting.
+
 ## Notes
 
 - macOS/BSD: the guard uses `date -r <epoch>` for reset-time math. On Linux that would need `date -d @<epoch>`.
