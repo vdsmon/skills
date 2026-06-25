@@ -1,0 +1,188 @@
+{
+  "name": "vdsmon-skills",
+  "interface": {
+    "displayName": "vdsmon-skills"
+  },
+  "plugins": [
+    {
+      "name": "investigate",
+      "source": {
+        "source": "local",
+        "path": "./plugins/investigate"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Engineering"
+    },
+    {
+      "name": "slack-draft",
+      "source": {
+        "source": "local",
+        "path": "./plugins/slack-draft"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Engineering"
+    },
+    {
+      "name": "skill-polish",
+      "source": {
+        "source": "local",
+        "path": "./plugins/skill-polish"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Engineering"
+    },
+    {
+      "name": "prep-compact",
+      "source": {
+        "source": "local",
+        "path": "./plugins/prep-compact"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Engineering"
+    },
+    {
+      "name": "prep-goal",
+      "source": {
+        "source": "local",
+        "path": "./plugins/prep-goal"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Engineering"
+    },
+    {
+      "name": "humanize",
+      "source": {
+        "source": "local",
+        "path": "./plugins/humanize"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Engineering"
+    },
+    {
+      "name": "loop-finder",
+      "source": {
+        "source": "local",
+        "path": "./plugins/loop-finder"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Engineering"
+    },
+    {
+      "name": "brainstorming",
+      "source": {
+        "source": "local",
+        "path": "./plugins/brainstorming"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Engineering"
+    },
+    {
+      "name": "systematic-debugging",
+      "source": {
+        "source": "local",
+        "path": "./plugins/systematic-debugging"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Engineering"
+    },
+    {
+      "name": "skill-smith",
+      "source": {
+        "source": "local",
+        "path": "./plugins/skill-smith"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Engineering"
+    },
+    {
+      "name": "git-cleanup",
+      "source": {
+        "source": "local",
+        "path": "./plugins/git-cleanup"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Engineering"
+    },
+    {
+      "name": "strip-migration-cruft",
+      "source": {
+        "source": "local",
+        "path": "./plugins/strip-migration-cruft"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Engineering"
+    },
+    {
+      "name": "grilling",
+      "source": {
+        "source": "local",
+        "path": "./plugins/grilling"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Engineering"
+    },
+    {
+      "name": "teach",
+      "source": {
+        "source": "local",
+        "path": "./plugins/teach"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Engineering"
+    },
+    {
+      "name": "codebase-design",
+      "source": {
+        "source": "local",
+        "path": "./plugins/codebase-design"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Engineering"
+    }
+  ]
+}
