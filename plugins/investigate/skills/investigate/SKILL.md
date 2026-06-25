@@ -34,6 +34,8 @@ Inferring past a wall is the single failure this skill exists to prevent. A gues
 | "Most of the evidence points one way, the missing piece won't change it." | Then it's cheap to confirm. If it could change the answer, you must. |
 | "The identifiers don't quite match the code, but they're close enough." | Close-enough mappings send people to the wrong code path. Confirm the real identity. |
 | "My credentials are expired / SSO is dead, so I'll hand the fetch back to the human." | Giving up on a source you can authenticate into is its own failure. If you can auth (e.g. `mise sso`), auth and pull it yourself. Only raise for access you genuinely cannot get. |
+| "My local checkout *is* the code that ran." | The deployed image/DAG/job builds from the merged branch (`origin/<branch>`), not your working copy. A checkout even a few commits behind makes `git log`, `git blame`, and local repro reflect different code than what failed. `git fetch` and confirm `HEAD..origin/<branch>` is empty before trusting any of them. |
+| "The fix commit is an ancestor of `origin/<branch>`, so my checkout is synced." | Ancestry of one commit ≠ your checkout being current. The commits between your HEAD and `origin/<branch>` may touch the very files you're about to read. Run `git rev-list --count HEAD..origin/<branch>` and confirm `0`; a `merge-base --is-ancestor` check does not. |
 
 If you catch yourself writing a cause sentence not backed by something you actually read — STOP. That's the directive firing.
 
@@ -55,7 +57,7 @@ When you raise, be **specific**: name the exact log / run / table you need and *
 ## Step 3 — Dig wide across reachable sources
 
 Pursue several angles at once; an incident usually leaves evidence in more than one place:
-- **Code**: `git log` / `git blame` around the failing code, recent changes/PRs that could regress it, the actual function in the stack trace — across whatever repo owns it, not just the current one.
+- **Code** (sync first — the deployed system runs the *merged* branch, not your checkout): `git fetch`, then **run exactly `git rev-list --count HEAD..origin/<branch>` and confirm it prints `0`.** That checks *your checkout is current* — it is NOT the same as confirming the fix merged (`git merge-base --is-ancestor <fix> origin/<branch>` can say yes while your HEAD is still commits behind; that substitution has produced wrong root causes). If the count is not `0` you are behind: `git pull` (or dig from a detached worktree at `origin/<branch>`) **before reading any source file** — `Read`/`Grep`/`sed` read your working tree, not `origin/<branch>`, so until the count is `0` every file you open may be code that never ran. If you won't sync the tree, read deployed code with `git show origin/<branch>:<path>` instead. Then `git log` / `git blame` around the failing code, recent changes/PRs that could regress it, the actual function in the stack trace — across whatever repo owns it, not just the current one.
 - **Runtime logs**: cloud/job logs for the real exception and surrounding context.
 - **State**: query the databases for what the job actually saw — row counts, nulls, schema drift, the specific records.
 - **History**: tickets for prior occurrences/linked issues; chat threads for what people already noticed.
@@ -70,6 +72,8 @@ Keep an **evidence trail**: for each system, what you checked and what you found
 ### When it reproduces locally
 
 If the failure can be reproduced outside prod, build a fast pass/fail loop (failing test, CLI fixture, replay) and bisect — that beats log-reading. Reproduce → hypothesise → instrument → fix. The access-gating discipline still applies the moment you need a source you can't reach.
+
+**Reproduce the code that actually ran, not the code you happen to have checked out.** A repro on a stale checkout proves nothing about the deployed failure — `git fetch` and reproduce on the exact ref the failing system built from (e.g. a detached worktree at `origin/<branch>`). A repro of commits-behind code once yielded a wrong "stale image" root cause that the user had to overturn; the merged branch already contained the regression.
 
 ## Step 4 — Raise new blockers just-in-time
 

@@ -13,7 +13,7 @@
       "name": "investigate",
       "source": "./plugins/investigate",
       "description": "Investigate a reported error or incident end to end across every reachable system, never inferring past a missing source — stop and raise to the human for access or clarity instead. Builds an access ledger, batch-raises blockers up front, digs wide through logs/state/code/history (any repo), and delivers a root-cause report plus a proposed (unapplied) fix. Claude-Code-leaning (AskUserQuestion + read-only subagents + MCP access ledger); ships a swappable environment access-map reference.",
-      "version": "0.1.1"
+      "version": "0.1.2"
     },
     {
       "name": "slack-draft",
@@ -85,7 +85,7 @@
       "name": "git-cleanup",
       "source": "./plugins/git-cleanup",
       "description": "Clean up stale git branches and worktrees. Finds branches merged into dev/develop/master/main, checks worktrees for uncommitted changes, removes what's safe while skipping dirty worktrees. Use for 'clean up branches', 'git housekeeping', 'remove merged branches', 'clean worktrees'. Portable across SKILL.md-native hosts.",
-      "version": "0.2.0"
+      "version": "0.2.1"
     },
     {
       "name": "strip-migration-cruft",
