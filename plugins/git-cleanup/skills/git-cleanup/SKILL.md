@@ -19,10 +19,10 @@ Removes local branches that have been merged into target branches (dev/develop/m
 
 ### 1. Show the plan
 
-Run the script in dry-run mode:
+Run the script in dry-run mode. The script lives at `scripts/git_cleanup.sh` under this skill's base directory (shown in the skill header as "Base directory for this skill"). Use that absolute path — the `~/.claude/commands/...` location does not exist for plugin installs:
 
 ```bash
-bash ~/.claude/commands/git-cleanup/scripts/git_cleanup.sh --dry-run
+bash "<skill-base-dir>/scripts/git_cleanup.sh" --dry-run
 ```
 
 Present the output to the user. The script categorizes branches into:
@@ -40,7 +40,20 @@ Ask the user to confirm before proceeding. If they want to exclude specific bran
 Once confirmed, run without `--dry-run`:
 
 ```bash
-bash ~/.claude/commands/git-cleanup/scripts/git_cleanup.sh
+bash "<skill-base-dir>/scripts/git_cleanup.sh"
 ```
 
-If the user asked to exclude specific branches, don't use the script — instead manually run `git worktree remove` and `git branch -d` for only the approved branches.
+The execute loop force-removes each clean worktree (`--force` gets past macOS `.DS_Store` that otherwise makes the dir "not empty"), `rm -rf`s any leftover dir, deletes the branch only after its worktree is gone, runs `git worktree prune`, and prints a `FAILED` list (exiting non-zero) if anything could not be removed. Surface that `FAILED` list to the user.
+
+**Excluding branches:** if the user wants to keep specific branches out of the REMOVE set, pass them with `--exclude` (comma-separated) rather than hand-rolling git commands:
+
+```bash
+bash "<skill-base-dir>/scripts/git_cleanup.sh" --exclude=feature/keep-me,fix/also-keep
+```
+
+**Removing dirty worktrees the script SKIPPED (only when the user explicitly approves):** the script never touches dirty worktrees. If the user names dirty/skipped worktrees they want gone anyway, remove each manually in this exact order:
+
+1. `git worktree remove --force <path>` — `--force` is mandatory; uncommitted/untracked changes in that worktree are permanently discarded, so confirm the user means it.
+2. If the dir survives (git de-registers but leaves untracked files behind), `rm -rf <path>`.
+3. Only then `git branch -d <branch>` — git refuses to delete a branch still checked out in a registered worktree, so the worktree must go first.
+4. Finish with `git worktree prune`.

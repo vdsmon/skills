@@ -10,7 +10,24 @@
 set -euo pipefail
 
 DRY_RUN=false
-[[ "${1:-}" == "--dry-run" ]] && DRY_RUN=true
+EXCLUDE_CSV=""
+for arg in "$@"; do
+  case "$arg" in
+    --dry-run) DRY_RUN=true ;;
+    --exclude=*) EXCLUDE_CSV="${arg#--exclude=}" ;;
+    *) echo "Unknown arg: $arg" >&2; exit 2 ;;
+  esac
+done
+
+# Branches the user wants kept out of REMOVE regardless of merge/clean status.
+declare -A EXCLUDE_SET
+if [[ -n "$EXCLUDE_CSV" ]]; then
+  IFS=',' read -ra _ex <<< "$EXCLUDE_CSV"
+  for e in "${_ex[@]}"; do
+    e="$(echo "$e" | xargs)"
+    [[ -n "$e" ]] && EXCLUDE_SET[$e]=1
+  done
+fi
 
 # --- Helpers ---
 
@@ -92,6 +109,7 @@ SKIP_DIRTY=()         # merged but dirty worktree
 SKIP_DIRTY_PATHS=()
 SKIP_CURRENT=""
 KEEP_UNMERGED=()      # not merged
+EXCLUDED=()           # merged but kept out by --exclude
 
 for branch in "${ALL_BRANCHES[@]}"; do
   wt_path=$(worktree_for_branch "$branch")
@@ -100,6 +118,11 @@ for branch in "${ALL_BRANCHES[@]}"; do
     # Branch is merged
     if [[ "$branch" == "$CURRENT_BRANCH" ]]; then
       SKIP_CURRENT="$branch"
+      continue
+    fi
+
+    if [[ -n "${EXCLUDE_SET[$branch]+_}" ]]; then
+      EXCLUDED+=("$branch")
       continue
     fi
 
@@ -152,6 +175,12 @@ if [[ -n "$SKIP_CURRENT" ]]; then
   echo ""
 fi
 
+if [[ ${#EXCLUDED[@]} -gt 0 ]]; then
+  echo "EXCLUDED (kept by request):"
+  printf '  - %s\n' "${EXCLUDED[@]}"
+  echo ""
+fi
+
 if [[ ${#KEEP_UNMERGED[@]} -gt 0 ]]; then
   echo "KEEP (not merged):"
   for branch in "${KEEP_UNMERGED[@]}"; do
@@ -178,19 +207,59 @@ else
   echo "=== EXECUTING ==="
   echo ""
 
+  removed_wt=0
+  deleted_br=0
+  FAILED=()
+
+  # A single removal failure must not abort the whole batch, so drop -e/pipefail
+  # for the loop and isolate each item explicitly.
+  set +e
+  set +o pipefail
+
   for i in "${!REMOVE_BRANCHES[@]}"; do
     branch="${REMOVE_BRANCHES[$i]}"
     wt="${REMOVE_WORKTREES[$i]}"
 
     if [[ -n "$wt" ]]; then
       echo "Removing worktree: $wt"
-      git worktree remove "$wt"
+      # --force is required on macOS: Finder drops .DS_Store into worktree dirs,
+      # so plain `git worktree remove` fails with "Directory not empty". These
+      # worktrees are already verified clean, so --force discards nothing of value.
+      git worktree remove --force "$wt" 2>/dev/null
+      # git de-registers the worktree even when the dir survives (leftover
+      # untracked files). Nuke the leftover dir; retry once for nested copies.
+      if [[ -d "$wt" ]]; then
+        rm -rf "$wt" 2>/dev/null
+        rm -rf "$wt" 2>/dev/null
+      fi
+      if [[ -d "$wt" ]]; then
+        FAILED+=("worktree: $wt")
+      else
+        removed_wt=$((removed_wt + 1))
+      fi
     fi
 
-    echo "Deleting branch: $branch"
-    git branch -d "$branch"
+    # The branch can only be deleted after its worktree is gone — git refuses to
+    # delete a branch still checked out in a registered worktree.
+    if git show-ref --verify --quiet "refs/heads/$branch"; then
+      echo "Deleting branch: $branch"
+      if git branch -d "$branch" >/dev/null 2>&1; then
+        deleted_br=$((deleted_br + 1))
+      else
+        FAILED+=("branch: $branch")
+      fi
+    fi
     echo ""
   done
 
-  echo "Done! Removed ${#REMOVE_BRANCHES[@]} branch(es)."
+  set -euo pipefail
+
+  git worktree prune
+  echo "Done! Deleted $deleted_br branch(es), removed $removed_wt worktree(s)."
+  if [[ ${#FAILED[@]} -gt 0 ]]; then
+    echo ""
+    echo "FAILED (needs manual cleanup):"
+    printf '  - %s\n' "${FAILED[@]}"
+    exit 1
+  fi
 fi
