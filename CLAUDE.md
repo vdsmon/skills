@@ -29,7 +29,9 @@ Three invariants preserve when add/rename plugins:
 
 1. **Every plugin listed in `.claude-plugin/marketplace.json`** with `name`, `source: ./plugins/<name>`, `description`, `version`. Forget = plugin invisible to `/plugin install`.
 2. **`plugin.json` `name` must match marketplace `name` and directory name.** Skill dir name under `skills/` independent but conventionally matches.
-3. **Run `scripts/sync-codex.sh`** after adding/removing/renaming a plugin (or flipping its cc- prefix) to regenerate the symlink + Codex marketplace. Idempotent; commit whatever it changes.
+3. **Run `mise run sync`** (= `scripts/sync-codex.sh`) after adding/removing/renaming a plugin (or flipping its cc- prefix) to regenerate the symlink + Codex marketplace. Idempotent; commit whatever it changes. `mise run verify` fails if the Codex artifacts are stale.
+
+Maintainer tasks live in `mise.toml` (task runner only, no tool pinning): `mise run sync` | `bump <plugin> [level]` | `verify`. The scripts under `scripts/` stay runnable standalone for anyone without mise.
 
 Current plugins (17): `brainstorming`, `cc-cache-keepalive`, `cc-tokenomics`, `codebase-design`, `git-cleanup`, `grilling`, `humanize`, `investigate`, `loop-finder`, `prep-compact`, `prep-goal`, `skill-polish`, `skill-smith`, `slack-draft`, `strip-migration-cruft`, `systematic-debugging`, `teach`. Plugins prefixed with `cc-` are Claude-Code-specific (hooks, `` !`cmd` `` dynamic injection, `${CLAUDE_SKILL_DIR}`); unprefixed plugins port cleanly to other Agent Skills hosts (Codex CLI, Gemini CLI, Cursor, Goose, etc.). `cc-tokenomics` is analysis + education only; cache warmup lives in `cc-cache-keepalive`. Multi-skill plugins: `loop-finder` ships `loop-finder` + `feature-cycle`; `grilling` ships `grilling` + `domain-modeling` + `grill-with-docs`.
 

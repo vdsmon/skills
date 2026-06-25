@@ -160,6 +160,7 @@ Trigger: `/loop-finder`, `engineer a feedback loop`, `race loop variants`, `set 
   marketplace.json                       # Claude Code marketplace (source of truth)
 .agents/plugins/
   marketplace.json                       # Codex CLI marketplace (generated, non-cc- only)
+mise.toml                                 # Maintainer task runner: mise run sync | bump | verify
 scripts/
   bump-plugin.sh                          # Version bump + marketplace sync
   sync-codex.sh                           # Rebuild Codex symlinks + marketplace from the Claude side
