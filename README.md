@@ -43,6 +43,22 @@ Install whichever plugins you want:
 /plugin install cc-cache-keepalive@vdsmon-skills
 ```
 
+## Install — OpenAI Codex CLI
+
+This repo ships a native [Codex plugin marketplace](https://developers.openai.com/codex/plugins) (`.agents/plugins/marketplace.json`), so you install the same way Claude Code does — register once, then pick plugins. Only the portable (non-`cc-`) plugins are listed; the `cc-` plugins rely on Claude-Code-only features and won't run on Codex.
+
+```bash
+codex plugin marketplace add vdsmon/claude-skills
+```
+
+Then browse and install from the interactive picker:
+
+```
+/plugins
+```
+
+Select a plugin and choose **Install plugin** (Space toggles enabled state).
+
 ## Install — other hosts (portable plugins only)
 
 Each host discovers skills in its own directory. Clone this repo, then drop the skill folder into the target path.
@@ -50,15 +66,6 @@ Each host discovers skills in its own directory. Clone this repo, then drop the 
 ```bash
 git clone https://github.com/vdsmon/claude-skills
 cd claude-skills
-```
-
-### OpenAI Codex CLI
-
-```bash
-mkdir -p ~/.codex/skills
-cp -r plugins/humanize/skills/humanize          ~/.codex/skills/
-cp -r plugins/prep-compact/skills/prep-compact    ~/.codex/skills/
-cp -r plugins/skill-polish/skills/skill-polish  ~/.codex/skills/
 ```
 
 ### Gemini CLI
@@ -150,28 +157,35 @@ Trigger: `/loop-finder`, `engineer a feedback loop`, `race loop variants`, `set 
 
 ```
 .claude-plugin/
-  marketplace.json                       # Lists all plugins shipped here
+  marketplace.json                       # Claude Code marketplace (source of truth)
+.agents/plugins/
+  marketplace.json                       # Codex CLI marketplace (generated, non-cc- only)
+mise.toml                                 # Maintainer task runner: mise run sync | bump | verify
+scripts/
+  bump-plugin.sh                          # Version bump + marketplace sync
+  sync-codex.sh                           # Rebuild Codex symlinks + marketplace from the Claude side
 plugins/
-  skill-polish/
+  skill-polish/                           # portable
     .claude-plugin/plugin.json
+    .codex-plugin -> .claude-plugin       # symlink; Codex reads .codex-plugin/plugin.json
     skills/skill-polish/SKILL.md
-  cc-tokenomics/
+  cc-tokenomics/                          # cc- = Claude Code only, NO .codex-plugin symlink
     .claude-plugin/plugin.json
     skills/cc-tokenomics/
       SKILL.md
       scripts/token-report.py
       reference/{economics,experiments,keepalive}.md
-  cc-cache-keepalive/
+  cc-cache-keepalive/                     # cc- = Claude Code only, NO .codex-plugin symlink
     .claude-plugin/plugin.json           # Declares SessionStart hook
     hooks/keepalive.sh                   # Opt-in, flag-gated
     scripts/keepalive-noop.sh
-  prep-compact/
+  humanize/                               # portable
     .claude-plugin/plugin.json
-    skills/prep-compact/SKILL.md
-  humanize/
-    .claude-plugin/plugin.json
+    .codex-plugin -> .claude-plugin
     skills/humanize/SKILL.md
 ```
+
+Both marketplaces share one source of truth: you author `.claude-plugin/*`, then run `scripts/sync-codex.sh` to regenerate the `.codex-plugin` symlinks and the Codex marketplace. The symlink means each plugin has exactly one `plugin.json`, so versions never drift between hosts.
 
 ## License
 

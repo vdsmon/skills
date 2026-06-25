@@ -9,18 +9,29 @@ Personal Claude Code plugin marketplace published as `vdsmon/claude-skills`. Eac
 ## Layout and the marketplace contract
 
 ```
-.claude-plugin/marketplace.json     # Lists every plugin shipped here
+.claude-plugin/marketplace.json     # Claude Code marketplace — lists every plugin (source of truth)
+.agents/plugins/marketplace.json    # Codex CLI marketplace — GENERATED, non-cc- plugins only
 plugins/<plugin-name>/
-  .claude-plugin/plugin.json        # Plugin manifest (name, version, hooks, skills path)
+  .claude-plugin/plugin.json        # Plugin manifest (name, version, hooks, skills path) — source of truth
+  .codex-plugin -> .claude-plugin   # Symlink (non-cc- only); Codex reads .codex-plugin/plugin.json
   skills/<skill-name>/SKILL.md      # Skill prompt with YAML frontmatter
   skills/<skill-name>/scripts/*     # Optional scripts the skill calls
   hooks/*.sh                        # Optional event hooks declared in plugin.json
 ```
 
-Two invariants preserve when add/rename plugins:
+Dual marketplace, one source of truth. `.claude-plugin/*` is authored; the Codex artifacts are **derived** by `scripts/sync-codex.sh` (run it after adding/removing/renaming a plugin). Never hand-edit the Codex side:
+
+- `.codex-plugin` is a **symlink to `.claude-plugin`** (git mode 120000). Codex requires the manifest at `.codex-plugin/plugin.json`; the symlink means there is exactly one `plugin.json` per plugin, so version and description can never drift between hosts. `bump-plugin.sh` only touches `.claude-plugin/plugin.json` — the Codex side follows for free.
+- `.agents/plugins/marketplace.json` is regenerated from `.claude-plugin/marketplace.json` (cc- plugins dropped, schema remapped to Codex's `source`/`policy`/`category` shape).
+- **cc- plugins are not Codex-installable** (hooks, `` !`cmd` `` injection, `${CLAUDE_SKILL_DIR}`, session-JSONL parsing don't run on Codex). They get no `.codex-plugin` symlink and are excluded from the Codex marketplace. A `.codex-plugin` symlink means "Codex-installable".
+
+Three invariants preserve when add/rename plugins:
 
 1. **Every plugin listed in `.claude-plugin/marketplace.json`** with `name`, `source: ./plugins/<name>`, `description`, `version`. Forget = plugin invisible to `/plugin install`.
 2. **`plugin.json` `name` must match marketplace `name` and directory name.** Skill dir name under `skills/` independent but conventionally matches.
+3. **Run `mise run sync`** (= `scripts/sync-codex.sh`) after adding/removing/renaming a plugin (or flipping its cc- prefix) to regenerate the symlink + Codex marketplace. Idempotent; commit whatever it changes. `mise run verify` fails if the Codex artifacts are stale.
+
+Maintainer tasks live in `mise.toml` (task runner only, no tool pinning): `mise run sync` | `bump <plugin> [level]` | `verify`. The scripts under `scripts/` stay runnable standalone for anyone without mise.
 
 Current plugins (17): `brainstorming`, `cc-cache-keepalive`, `cc-tokenomics`, `codebase-design`, `git-cleanup`, `grilling`, `humanize`, `investigate`, `loop-finder`, `prep-compact`, `prep-goal`, `skill-polish`, `skill-smith`, `slack-draft`, `strip-migration-cruft`, `systematic-debugging`, `teach`. Plugins prefixed with `cc-` are Claude-Code-specific (hooks, `` !`cmd` `` dynamic injection, `${CLAUDE_SKILL_DIR}`); unprefixed plugins port cleanly to other Agent Skills hosts (Codex CLI, Gemini CLI, Cursor, Goose, etc.). `cc-tokenomics` is analysis + education only; cache warmup lives in `cc-cache-keepalive`. Multi-skill plugins: `loop-finder` ships `loop-finder` + `feature-cycle`; `grilling` ships `grilling` + `domain-modeling` + `grill-with-docs`.
 
@@ -78,7 +89,7 @@ Some plugins ship more than `SKILL.md` + hooks. Two conventions:
 ## Conventions
 
 - **No README/docs bloat inside plugins.** SKILL.md = prompt; separate docs rot and burn cache.
-- **Version bump + publish, whenever a plugin's files change.** This is a MUST that closes the change, not an optional follow-up. Run `scripts/bump-plugin.sh <plugin> [patch|minor|major]` (patch = fix/wording, minor = new behavior or arg, major = breaking) to bump `plugin.json` and the marketplace.json entry in lockstep (surgical, no other entry touched). If behavior changed, update the `description` in BOTH files (they differ: marketplace adds a portability suffix). Then commit the plugin's files plus the marketplace.json hunk and push (or open a PR per the recent worktree-branch history). A plugin edit that lands without the version bump + marketplace sync is incomplete; an edit that lands uncommitted is not shipped.
+- **Version bump + publish, whenever a plugin's files change.** This is a MUST that closes the change, not an optional follow-up. Run `scripts/bump-plugin.sh <plugin> [patch|minor|major]` (patch = fix/wording, minor = new behavior or arg, major = breaking) to bump `plugin.json` and the marketplace.json entry in lockstep (surgical, no other entry touched). If behavior changed, update the `description` in BOTH files (they differ: marketplace adds a portability suffix). Then commit the plugin's files plus the marketplace.json hunk and push (or open a PR per the recent worktree-branch history). A plugin edit that lands without the version bump + marketplace sync is incomplete; an edit that lands uncommitted is not shipped. The symlink keeps the Codex manifest version in lockstep automatically — `bump-plugin.sh` needs no Codex awareness. When you ADD or REMOVE a plugin (not just edit one), also run `scripts/sync-codex.sh` to rebuild the symlink + `.agents/plugins/marketplace.json`.
 
 ## Installing locally for testing
 
