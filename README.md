@@ -1,4 +1,4 @@
-# claude-skills
+# skills
 
 Personal Claude Code plugins by [@vdsmon](https://github.com/vdsmon).
 
@@ -25,7 +25,7 @@ Plugins **without** the `cc-` prefix are portable. They follow the open Agent Sk
 Register the marketplace once:
 
 ```bash
-/plugin marketplace add vdsmon/claude-skills
+/plugin marketplace add vdsmon/skills
 ```
 
 Install whichever plugins you want:
@@ -48,7 +48,7 @@ Install whichever plugins you want:
 This repo ships a native [Codex plugin marketplace](https://developers.openai.com/codex/plugins) (`.agents/plugins/marketplace.json`), so you install the same way Claude Code does — register once, then pick plugins. Only the portable (non-`cc-`) plugins are listed; the `cc-` plugins rely on Claude-Code-only features and won't run on Codex.
 
 ```bash
-codex plugin marketplace add vdsmon/claude-skills
+codex plugin marketplace add vdsmon/skills
 ```
 
 Then browse and install from the interactive picker:
@@ -64,8 +64,8 @@ Select a plugin and choose **Install plugin** (Space toggles enabled state).
 Each host discovers skills in its own directory. Clone this repo, then drop the skill folder into the target path.
 
 ```bash
-git clone https://github.com/vdsmon/claude-skills
-cd claude-skills
+git clone https://github.com/vdsmon/skills
+cd skills
 ```
 
 ### Gemini CLI
