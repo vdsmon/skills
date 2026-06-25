@@ -40,6 +40,12 @@
       "version": "1.2.4"
     },
     {
+      "name": "cc-usage-guard",
+      "source": "./plugins/cc-usage-guard",
+      "description": "Pause-at-limit guard for Claude Code. A statusLine sensor records 5h + weekly rate-limit usage; PostToolUse/UserPromptSubmit hooks watch it and, when a window crosses its threshold, inject a STOP that pauses cleanly and schedules a one-shot CronCreate auto-resume at reset. Per-session debounced. Claude Code only (statusLine + hooks).",
+      "version": "0.1.0"
+    },
+    {
       "name": "prep-compact",
       "source": "./plugins/prep-compact",
       "description": "Audit in-flight state before any context-compacting step; produce a copy-paste /compact message plus a queue-able follow-up that chains the next action when compact finishes. Portable across Agent Skills hosts — compacting is a general concept, not Claude-specific.",

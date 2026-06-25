@@ -1,0 +1,35 @@
+{
+  "name": "cc-usage-guard",
+  "version": "0.1.0",
+  "description": "Pause-at-limit guard for Claude Code. A statusLine sensor records 5h + weekly rate-limit usage; PostToolUse/UserPromptSubmit hooks watch it and, when a window crosses its threshold, inject a STOP that pauses cleanly and schedules a one-shot CronCreate auto-resume at reset. Per-session debounced. Claude Code only (statusLine + hooks).",
+  "author": {
+    "name": "Victor De Simone",
+    "email": "victorsmoliveira@gmail.com",
+    "url": "https://github.com/vdsmon"
+  },
+  "homepage": "https://github.com/vdsmon/skills",
+  "repository": "https://github.com/vdsmon/skills",
+  "license": "MIT",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/usage-guard.sh\""
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/usage-guard.sh\""
+          }
+        ]
+      }
+    ]
+  }
+}
