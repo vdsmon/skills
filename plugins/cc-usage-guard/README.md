@@ -5,7 +5,11 @@ Pause Claude Code cleanly when you're about to hit a usage limit, then auto-resu
 Two parts:
 
 - **`hooks/usage-sensor.sh`** — a `statusLine` wrapper. Claude Code only exposes `rate_limits` on statusLine stdin (Pro/Max), so this is the one place the data can be read. It records 5-hour + weekly usage to `~/.claude/.usage-guard/usage.json`, then renders your normal status line.
-- **`hooks/usage-guard.sh`** — a `PostToolUse` + `UserPromptSubmit` hook. It reads that state and, when a window crosses its threshold, injects a STOP: the model pauses cleanly and schedules a one-shot `CronCreate` to auto-resume just after the limit resets. The session and its context stay alive across the limit, so the resume is in-context — no state dump needed. Debounced once per session per window-reset.
+- **`hooks/usage-guard.sh`** — a `PostToolUse` + `UserPromptSubmit` hook. It reads that state and acts in two tiers, per window:
+  - **WARN** (soft, lower threshold): a one-time heads-up nudging the model to land the current thread and reach a clean stopping point. No pause, no cron.
+  - **PARK** (hard, higher threshold): injects a STOP — the model pauses cleanly, schedules a one-shot `CronCreate` to auto-resume just after the limit resets, and fires a `PushNotification` so you learn about the park + resume time even when away. The session and its context stay alive across the limit, so the resume is in-context — no state dump needed.
+
+  Each tier fires once per session per window-reset; a WARN that graduates to a PARK re-fires.
 
 ## Install
 
@@ -30,10 +34,14 @@ That wires the guard hooks automatically. **The sensor is a `statusLine`, which 
 
 | Var | Default | Effect |
 | --- | --- | --- |
-| `CLAUDE_USAGE_THRESHOLD_5H` (or `CLAUDE_USAGE_THRESHOLD`) | `97` | 5-hour window % that trips the STOP |
-| `CLAUDE_USAGE_THRESHOLD_WEEKLY` | `99` | weekly window % that trips the STOP |
+| `CLAUDE_USAGE_THRESHOLD_5H` (or `CLAUDE_USAGE_THRESHOLD`) | `97` | 5-hour window % that trips the hard PARK (STOP) |
+| `CLAUDE_USAGE_THRESHOLD_WEEKLY` | `99` | weekly window % that trips the hard PARK (STOP) |
+| `CLAUDE_USAGE_WARN_5H` | `90` | 5-hour window % that trips the soft WARN nudge |
+| `CLAUDE_USAGE_WARN_WEEKLY` | `96` | weekly window % that trips the soft WARN nudge |
 | `CLAUDE_USAGE_RESUME_BUFFER_MIN` | `2` | minutes after reset to schedule the auto-resume cron |
 | `CLAUDE_USAGE_RENDER_CMD` | `ccstatusline` | downstream status-line renderer the sensor pipes to |
+
+Keep each `WARN` below its `THRESHOLD` (warn fires on the approach; park fires at the cap).
 
 The sensor defaults to [`ccstatusline`](https://github.com/sirmalloc/ccstatusline) as the renderer. If that command isn't on PATH (or you point `CLAUDE_USAGE_RENDER_CMD` at something missing), it falls back to a minimal built-in line (`5h NN% | wk NN%`) instead of dumping raw JSON.
 
