@@ -87,24 +87,24 @@ Generated from `.claude-plugin/marketplace.json` (the source of truth) by `scrip
 <!-- BEGIN PLUGINS (generated) -->
 | Plugin | Host | What it does |
 |---|---|---|
-| `investigate` | any | Investigate a reported error or incident end to end across every reachable system, neve… |
-| `slack-draft` | any | Draft a Slack message for the user to send: Slack mrkdwn, lead-with-conclusion, backtic… |
-| `skill-polish` | any | Post-mortem for any skill — scans a session for friction and applies concrete edits to… |
+| `investigate` | any | Investigate a reported error or incident end to end across every reachable system, never inferring past a missing source — stop and raise to the human for access or clarity instead |
+| `slack-draft` | any | Draft a Slack message for the user to send: Slack mrkdwn, lead-with-conclusion, backticked identifiers and domain values, ASCII punctuation |
+| `skill-polish` | any | Post-mortem for any skill — scans a session for friction and applies concrete edits to the responsible skill file |
 | `cc-tokenomics` | CC only | Token usage, cache hit rates, and Max plan consumption analyzer |
-| `cc-cache-keepalive` | CC only | Keeps Claude Code's prompt cache warm on Max plans via a SessionStart-scheduled silent… |
+| `cc-cache-keepalive` | CC only | Keeps Claude Code's prompt cache warm on Max plans via a SessionStart-scheduled silent cron |
 | `cc-usage-guard` | CC only | Pause-at-limit guard for Claude Code |
-| `prep-compact` | any | Audit in-flight state before any context-compacting step; produce a copy-paste /compact… |
-| `prep-goal` | any | Interrogate a rough objective into a tight, verifiable /goal completion condition befor… |
+| `prep-compact` | any | Audit in-flight state before any context-compacting step; produce a copy-paste /compact message plus a queue-able follow-up that chains the next action when compact finishes |
+| `prep-goal` | any | Interrogate a rough objective into a tight, verifiable /goal completion condition before handing it to an autonomous goal loop |
 | `humanize` | any | Strip AI-writing tells from text |
 | `loop-finder` | any | Loop discovery + race + feature-driven iteration |
 | `brainstorming` | any | Design-before-code gate |
-| `systematic-debugging` | any | Four-phase debugging discipline (root-cause investigation, pattern analysis, hypothesis… |
+| `systematic-debugging` | any | Four-phase debugging discipline (root-cause investigation, pattern analysis, hypothesis, single-fix implementation) |
 | `skill-smith` | any | Forge for Agent Skills: create, test, evaluate, optimize triggering, and package skills |
 | `git-cleanup` | any | Clean up stale git branches and worktrees |
-| `strip-migration-cruft` | any | Scan a repo for transitional / migration / phase / wave / story / legacy-alias cruft co… |
-| `grilling` | any | Relentless one-question-at-a-time interview that stress-tests a plan or design to conve… |
-| `teach` | any | Stateful, multi-session teaching workspace: grounds every lesson in a MISSION.md, gathe… |
-| `codebase-design` | any | Shared vocabulary for designing deep modules: a lot of behaviour behind a small interfa… |
+| `strip-migration-cruft` | any | Scan a repo for transitional / migration / phase / wave / story / legacy-alias cruft comments, bucket into safe-to-strip vs keep-semantic, propose surgical edits and execute after confirmation |
+| `grilling` | any | Relentless one-question-at-a-time interview that stress-tests a plan or design to convergence, exploring the codebase to answer its own questions where it can |
+| `teach` | any | Stateful, multi-session teaching workspace: grounds every lesson in a MISSION.md, gathers trusted RESOURCES.md, produces short self-contained HTML lessons in the learner's zone of proximal development, tracks progress via learning-records, and builds storage strength through retrieval, spacing, and interleaving |
+| `codebase-design` | any | Shared vocabulary for designing deep modules: a lot of behaviour behind a small interface, placed at a clean seam, testable through that interface |
 <!-- END PLUGINS -->
 
 ## Layout
