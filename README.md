@@ -6,13 +6,13 @@ Each skill ships as its own plugin so you can install only what you want.
 
 ## Naming convention
 
-Plugins prefixed with **`cc-`** are Claude-Code-specific — they use features (SessionStart hooks, `` !`cmd` `` dynamic context injection, `${CLAUDE_SKILL_DIR}`, `context: fork`) that don't exist on other [Agent Skills](https://agentskills.io) hosts.
+Plugins prefixed with **`cc-`** are Claude-Code-specific: they use features (SessionStart hooks, `` !`cmd` `` dynamic context injection, `${CLAUDE_SKILL_DIR}`, `context: fork`) that don't exist on other [Agent Skills](https://agentskills.io) hosts.
 
 Plugins **without** the `cc-` prefix are portable. They follow the open Agent Skills format and work on any SKILL.md-native host: Claude Code, OpenAI Codex CLI, Gemini CLI, Cursor, Goose, OpenCode, Copilot, Amp, Roo Code, and [many more](https://agentskills.io/clients).
 
-The [Plugins](#plugins) table below lists every plugin and its host — `Host: CC only` is a `cc-` plugin, `Host: any` is portable.
+The [Plugins](#plugins) table below lists every plugin and its host: `Host: CC only` is a `cc-` plugin, `Host: any` is portable.
 
-## Install — Claude Code
+## Install on Claude Code
 
 Register the marketplace once:
 
@@ -28,9 +28,9 @@ Install any plugin by name (see the [Plugins](#plugins) table for the full list)
 
 Or run `/plugins` and pick from the interactive browser.
 
-## Install — OpenAI Codex CLI
+## Install on OpenAI Codex CLI
 
-This repo ships a native [Codex plugin marketplace](https://developers.openai.com/codex/plugins) (`.agents/plugins/marketplace.json`), so you install the same way Claude Code does — register once, then pick plugins. Only the portable (non-`cc-`) plugins are listed; the `cc-` plugins rely on Claude-Code-only features and won't run on Codex.
+This repo ships a native [Codex plugin marketplace](https://developers.openai.com/codex/plugins) (`.agents/plugins/marketplace.json`), so you install the same way Claude Code does: register once, then pick plugins. Only the portable (non-`cc-`) plugins are listed, since the `cc-` plugins rely on Claude-Code-only features and won't run on Codex.
 
 ```bash
 codex plugin marketplace add vdsmon/skills
@@ -44,7 +44,7 @@ Then browse and install from the interactive picker:
 
 Select a plugin and choose **Install plugin** (Space toggles enabled state).
 
-## Install — other hosts (portable plugins only)
+## Install on other hosts (portable plugins only)
 
 Each host discovers skills in its own directory. Clone this repo, then drop the skill folder into the target path.
 
@@ -70,30 +70,30 @@ cp -r plugins/humanize/skills/humanize <cursor-skills-dir>/
 
 ### Goose, OpenCode, Roo Code, Copilot, Amp, etc.
 
-Same pattern — `cp -r plugins/<name>/skills/<name>` into the host's skills directory. Per-host paths: [agentskills.io/clients](https://agentskills.io/clients).
+Same pattern: `cp -r plugins/<name>/skills/<name>` into the host's skills directory. Per-host paths: [agentskills.io/clients](https://agentskills.io/clients).
 
 ### Universal installers
 
 For one-command multi-host install:
 
-- [`skillport`](https://github.com/gotalab/skillport) — `pip install skillport`, targets many hosts via CLI or MCP.
-- [`openskills`](https://github.com/numman-ali/openskills) — `npm i -g openskills`.
-- [`agent-skill-creator`](https://github.com/FrancyJGLisboa/agent-skill-creator) — auto-converts SKILL.md to host-specific formats (`.mdc`, `.md rules`, etc.) for Cursor/Windsurf/Cline.
+- [`skillport`](https://github.com/gotalab/skillport): `pip install skillport`, targets many hosts via CLI or MCP.
+- [`openskills`](https://github.com/numman-ali/openskills): `npm i -g openskills`.
+- [`agent-skill-creator`](https://github.com/FrancyJGLisboa/agent-skill-creator): auto-converts SKILL.md to host-specific formats (`.mdc`, `.md rules`, etc.) for Cursor/Windsurf/Cline.
 
 ## Plugins
 
-Generated from `.claude-plugin/marketplace.json` (the source of truth) by `scripts/sync-codex.sh` — do not hand-edit between the markers. `Host: any` is portable; `Host: CC only` needs Claude Code. Run `/plugins` for the full descriptions and triggers.
+Generated from `.claude-plugin/marketplace.json` (the source of truth) by `scripts/sync-codex.sh`, so do not hand-edit between the markers. `Host: any` is portable, `Host: CC only` needs Claude Code. Run `/plugins` for the full descriptions and triggers.
 
 <!-- BEGIN PLUGINS (generated) -->
 | Plugin | Host | What it does |
 |---|---|---|
-| `investigate` | any | Investigate a reported error or incident end to end across every reachable system, never inferring past a missing source — stop and raise to the human for access or clarity instead. |
+| `investigate` | any | Investigate a reported error or incident end to end across every reachable system, never inferring past a missing source and instead stopping to raise to the human for access or clarity. |
 | `slack-draft` | any | Draft a Slack message for the user to send: Slack mrkdwn, lead-with-conclusion, backticked identifiers and domain values, ASCII punctuation. |
-| `skill-polish` | any | Post-mortem for any skill — scans a session for friction and applies concrete edits to the responsible skill file. Portable across SKILL.md-native hosts. |
+| `skill-polish` | any | Post-mortem for any skill: scans a session for friction and applies concrete edits to the responsible skill file. Portable across SKILL.md-native hosts. |
 | `cc-tokenomics` | CC only | Token usage, cache hit rates, and Max plan consumption analyzer. |
 | `cc-cache-keepalive` | CC only | Keeps Claude Code's prompt cache warm on Max plans via a SessionStart-scheduled silent cron. Opt-in via ~/.cc-cache-keepalive flag file. |
 | `cc-usage-guard` | CC only | Pause-at-limit guard for Claude Code. |
-| `prep-compact` | any | Audit in-flight state before any context-compacting step; produce a copy-paste /compact message plus a queue-able follow-up that chains the next action when compact finishes. |
+| `prep-compact` | any | Audit in-flight state before any context-compacting step, and produce a copy-paste /compact message plus a queue-able follow-up that chains the next action when compact finishes. |
 | `prep-goal` | any | Interrogate a rough objective into a tight, verifiable /goal completion condition before handing it to an autonomous goal loop. |
 | `humanize` | any | Strip AI-writing tells from text. Detects em-dash overuse, AI vocabulary, inflated significance, rule-of-three, sycophancy, and 20+ more patterns. |
 | `loop-finder` | any | Loop discovery + race + feature-driven iteration. |
@@ -143,4 +143,4 @@ Both marketplaces share one source of truth: you author `.claude-plugin/*`, then
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).

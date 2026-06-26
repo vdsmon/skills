@@ -1,6 +1,6 @@
 {
   "name": "slack-draft",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Draft a Slack message for the user to send: Slack mrkdwn, lead-with-conclusion, backticked identifiers and domain values, ASCII punctuation. Defaults to English and a plain high-level register; pass --tech for a code-reading peer. Draft only, never posts.",
   "author": {
     "name": "Victor De Simone",
