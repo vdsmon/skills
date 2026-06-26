@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Regenerate the Codex marketplace artifacts from the Claude source of truth.
-# Source of truth is .claude-plugin/* — Codex artifacts are derived, never hand-edited:
+# Source of truth is .claude-plugin/* — derived artifacts are generated, never hand-edited:
 #   1. plugins/<p>/.codex-plugin  -> symlink to .claude-plugin (manifest dedup, no version/description drift)
 #   2. .agents/plugins/marketplace.json -> generated from .claude-plugin/marketplace.json
+#   3. README.md plugin table -> generated between the BEGIN/END PLUGINS markers
 #
 # cc-* plugins are Claude-Code-only (hooks, dynamic ` !cmd ` injection, ${CLAUDE_SKILL_DIR},
 # session-JSONL parsing) and won't function on Codex, so they get NO .codex-plugin symlink and
@@ -54,6 +55,42 @@ with open(dst, "w") as f:
     json.dump(out, f, indent=2)
     f.write("\n")
 print(f"{dst}: {len(plugins)} plugins (cc-* excluded)")
+PY
+
+# 3. README plugin table: regenerate between the markers from the Claude marketplace.
+python3 - "$CLAUDE_MARKET" README.md <<'PY'
+import json, re, sys
+src, readme = sys.argv[1:3]
+m = json.load(open(src))
+
+def short(desc):
+    desc = desc.strip()
+    cut = desc.split(". ")[0].rstrip(".")
+    if len(cut) > 90:
+        cut = cut[:87].rstrip() + "…"
+    return cut.replace("|", "\\|")
+
+rows = [
+    f"| `{p['name']}` | {'CC only' if p['name'].startswith('cc-') else 'any'} | {short(p['description'])} |"
+    for p in m["plugins"]
+]
+table = "\n".join(["| Plugin | Host | What it does |", "|---|---|---|", *rows])
+block = f"<!-- BEGIN PLUGINS (generated) -->\n{table}\n<!-- END PLUGINS -->"
+
+text = open(readme).read()
+new = re.sub(
+    r"<!-- BEGIN PLUGINS \(generated\) -->.*?<!-- END PLUGINS -->",
+    lambda _: block,
+    text,
+    flags=re.DOTALL,
+)
+if "<!-- BEGIN PLUGINS (generated) -->" not in text:
+    print("README: BEGIN/END PLUGINS markers not found, skipping", file=sys.stderr)
+elif new != text:
+    open(readme, "w").write(new)
+    print(f"README.md: {len(rows)} plugins")
+else:
+    print(f"README.md: up to date ({len(rows)} plugins)")
 PY
 
 echo "Codex artifacts synced. Review the diff, then commit."

@@ -10,15 +10,7 @@ Plugins prefixed with **`cc-`** are Claude-Code-specific — they use features (
 
 Plugins **without** the `cc-` prefix are portable. They follow the open Agent Skills format and work on any SKILL.md-native host: Claude Code, OpenAI Codex CLI, Gemini CLI, Cursor, Goose, OpenCode, Copilot, Amp, Roo Code, and [many more](https://agentskills.io/clients).
 
-| Plugin | Prefix | Portable |
-|---|---|---|
-| `cc-tokenomics` | cc- | Claude Code only |
-| `cc-cache-keepalive` | cc- | Claude Code only |
-| `prep-compact` | — | Any host |
-| `prep-goal` | — | Any host |
-| `humanize` | — | Any host |
-| `skill-polish` | — | Any host |
-| `loop-finder` | — | Any host |
+The [Plugins](#plugins) table below lists every plugin and its host — `Host: CC only` is a `cc-` plugin, `Host: any` is portable.
 
 ## Install — Claude Code
 
@@ -28,20 +20,13 @@ Register the marketplace once:
 /plugin marketplace add vdsmon/skills
 ```
 
-Install whichever plugins you want:
+Install any plugin by name (see the [Plugins](#plugins) table for the full list):
 
 ```bash
-# Portable
-/plugin install skill-polish@vdsmon-skills
-/plugin install humanize@vdsmon-skills
-/plugin install prep-compact@vdsmon-skills
-/plugin install prep-goal@vdsmon-skills
-/plugin install loop-finder@vdsmon-skills
-
-# Claude-Code-specific
-/plugin install cc-tokenomics@vdsmon-skills
-/plugin install cc-cache-keepalive@vdsmon-skills
+/plugin install <name>@vdsmon-skills
 ```
+
+Or run `/plugins` and pick from the interactive browser.
 
 ## Install — OpenAI Codex CLI
 
@@ -97,61 +82,30 @@ For one-command multi-host install:
 
 ## Plugins
 
-### `skill-polish` (portable)
+Generated from `.claude-plugin/marketplace.json` (the source of truth) by `scripts/sync-codex.sh` — do not hand-edit between the markers. `Host: any` is portable; `Host: CC only` needs Claude Code. Run `/plugins` for the full descriptions and triggers.
 
-Post-mortem for any skill. Scans the conversation for friction (corrections, skipped steps, rejected tool calls), traces each to the responsible skill file, and applies concrete edits.
-
-Trigger: `skill-polish`, `polish the skill`, `improve the skill`, `that should have been automatic`, `you skipped X`, `close the gaps`.
-
-### `cc-tokenomics` (Claude Code only)
-
-Analyzes Claude Code token usage, cache hit rates, and Max plan consumption. `/cc-tokenomics` renders a compact dashboard; reference library covers rate limits, cache lifecycle, and empirical billing experiments. Uses dynamic context injection so the report script runs pre-model.
-
-Trigger: `/cc-tokenomics`, `tokens`, `cache stats`, `am I going to hit the limit`, `show my usage`.
-
-For cache warmup, install `cc-cache-keepalive`.
-
-### `cc-cache-keepalive` (Claude Code only)
-
-Keeps the prompt cache warm on Max plans (1h TTL). At every SessionStart, emits an instruction telling Claude to schedule an anchored `CronCreate` firing a no-op shell script every 30 minutes. Each firing is an API turn against the cached prefix, which resets the TTL.
-
-**Opt in:** `touch ~/.cc-cache-keepalive`. Without the flag file, the hook exits silently.
-
-- Default interval: `30m`. Override by writing it on the first line of the flag file, e.g. `echo 15m > ~/.cc-cache-keepalive`.
-- Format: `<digits><s|m|h|d>` (e.g. `90s`, `4m`, `2h`). Invalid values fall back to `30m`.
-- Why 30 min: Max plan's 1h cache TTL + scheduler jitter means 60-min intervals consistently miss (verified empirically).
-- Why anchored cron instead of `/loop`: `/loop`'s `Nm` → `*/N * * * *` rewrite lands every user on fleet-peak minutes (:00/:30). The hook computes its own cron anchored to session-start minute.
-- Headless kill switch: export `CC_KEEPALIVE_OFF=1` to skip the keepalive for a single invocation — e.g. an orchestrator resuming a stalled background run with `CC_KEEPALIVE_OFF=1 claude -p --resume <id> "..."`. Useful for any transient automated session that would otherwise zombie at `state=working` because a recurring cron keeps it alive forever.
-- No skill, no UI — pure infrastructure plugin.
-
-### `prep-compact` (portable)
-
-Audits in-flight session state before any context-compacting step truncates history. Flags uncommitted git changes, scratch files, unfinished plans, running background tasks. Produces a copy-paste focus message for the next session. Compacting is a general agent concept — Claude Code's `/compact`, Codex's summarise-and-continue, Cursor's context prune, etc. — so this skill works across hosts.
-
-Trigger: `compact`, `let's compact`, `ready to compact?`, `prep for compact`, `suggest a compact message`, `shrink the context`, `summarise and continue`.
-
-`--message-only` flag skips the audit and outputs just the focus message.
-
-### `prep-goal` (portable)
-
-Sharpens a rough objective into a tight, verifiable completion condition before you hand it to an autonomous goal loop (Claude Code's native `/goal`, or any host's run-until-done mode). These loops run for hours and burn a lot of tokens, so the goal is the whole ballgame — a vague one chases the wrong target before anyone notices. The skill grills one question at a time to pin the real end-state, the proof the evaluator can actually see (the loop's evaluator only judges what the agent surfaces in chat, not files it reads), a scope fence, the cheapest way to game the condition (so it can forbid it), and a turn cap. Then it emits a short paste-ready `/goal` line.
-
-Trigger: `prep-goal`, `sharpen this goal`, `turn this into a goal`, `write a /goal for X`, `what should my goal be`, `help me set a goal`.
-
-### `humanize` (portable)
-
-Rewrites text to strip AI-writing tells and inject human voice. Detects em-dash overuse, AI vocabulary, inflated significance, rule-of-three, negative parallelisms, sycophancy, and 20+ more patterns.
-
-Trigger: `humanize this`, `remove AI tells`, `edit for voice`, `sounds too AI`, `make this more human`.
-
-### `loop-finder` (portable)
-
-Ships two skills in one plugin.
-
-- **`/loop-finder`** — engineers a self-verifiable end-to-end feedback loop for a task class, baselines it, races parallel variants against the baseline, and converges on the best loop config. HITL is concentrated at permission gates (install CLI, register MCP, touch shared files), never mid-iteration. Caches per task class so future runs reuse.
-- **`/loop-finder:feature-cycle`** — outer queued-fix chain wrapping the converged gate. One cycle = ship the prior cycle's queued harness fix, ship the next feature against the gate, retro Pain / Workaround / Fix queued, log to per-class `feature-log.jsonl`. Karpathy autoresearch discipline applied to dev experience. Absorbed the standalone `adx-loop` plugin in v0.2.0.
-
-Trigger: `/loop-finder`, `engineer a feedback loop`, `race loop variants`, `set up a self-verifiable harness for X` (gate discovery); `/loop-finder:feature-cycle`, `self-improvement loop`, `harness pressure-test`, `dogfood tooling against feature backlog`, `ADX loop` (outer cycle).
+<!-- BEGIN PLUGINS (generated) -->
+| Plugin | Host | What it does |
+|---|---|---|
+| `investigate` | any | Investigate a reported error or incident end to end across every reachable system, neve… |
+| `slack-draft` | any | Draft a Slack message for the user to send: Slack mrkdwn, lead-with-conclusion, backtic… |
+| `skill-polish` | any | Post-mortem for any skill — scans a session for friction and applies concrete edits to… |
+| `cc-tokenomics` | CC only | Token usage, cache hit rates, and Max plan consumption analyzer |
+| `cc-cache-keepalive` | CC only | Keeps Claude Code's prompt cache warm on Max plans via a SessionStart-scheduled silent… |
+| `cc-usage-guard` | CC only | Pause-at-limit guard for Claude Code |
+| `prep-compact` | any | Audit in-flight state before any context-compacting step; produce a copy-paste /compact… |
+| `prep-goal` | any | Interrogate a rough objective into a tight, verifiable /goal completion condition befor… |
+| `humanize` | any | Strip AI-writing tells from text |
+| `loop-finder` | any | Loop discovery + race + feature-driven iteration |
+| `brainstorming` | any | Design-before-code gate |
+| `systematic-debugging` | any | Four-phase debugging discipline (root-cause investigation, pattern analysis, hypothesis… |
+| `skill-smith` | any | Forge for Agent Skills: create, test, evaluate, optimize triggering, and package skills |
+| `git-cleanup` | any | Clean up stale git branches and worktrees |
+| `strip-migration-cruft` | any | Scan a repo for transitional / migration / phase / wave / story / legacy-alias cruft co… |
+| `grilling` | any | Relentless one-question-at-a-time interview that stress-tests a plan or design to conve… |
+| `teach` | any | Stateful, multi-session teaching workspace: grounds every lesson in a MISSION.md, gathe… |
+| `codebase-design` | any | Shared vocabulary for designing deep modules: a lot of behaviour behind a small interfa… |
+<!-- END PLUGINS -->
 
 ## Layout
 
@@ -163,7 +117,7 @@ Trigger: `/loop-finder`, `engineer a feedback loop`, `race loop variants`, `set 
 mise.toml                                 # Maintainer task runner: mise run sync | bump | verify
 scripts/
   bump-plugin.sh                          # Version bump + marketplace sync
-  sync-codex.sh                           # Rebuild Codex symlinks + marketplace from the Claude side
+  sync-codex.sh                           # Rebuild Codex symlinks + marketplace + README table from the Claude side
 plugins/
   skill-polish/                           # portable
     .claude-plugin/plugin.json
@@ -185,7 +139,7 @@ plugins/
     skills/humanize/SKILL.md
 ```
 
-Both marketplaces share one source of truth: you author `.claude-plugin/*`, then run `scripts/sync-codex.sh` to regenerate the `.codex-plugin` symlinks and the Codex marketplace. The symlink means each plugin has exactly one `plugin.json`, so versions never drift between hosts.
+Both marketplaces share one source of truth: you author `.claude-plugin/*`, then run `scripts/sync-codex.sh` to regenerate the `.codex-plugin` symlinks, the Codex marketplace, and the [Plugins](#plugins) table above. The symlink means each plugin has exactly one `plugin.json`, so versions never drift between hosts.
 
 ## License
 

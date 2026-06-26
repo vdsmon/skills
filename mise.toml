@@ -5,7 +5,7 @@
 # of this ships into a plugin. Scripts stay runnable standalone (bash scripts/*).
 
 [tasks.sync]
-description = "Rebuild Codex symlinks + .agents marketplace from the Claude side"
+description = "Rebuild Codex symlinks + .agents marketplace + README plugin table from the Claude side"
 run = "scripts/sync-codex.sh"
 
 [tasks.bump]
@@ -13,12 +13,12 @@ description = "Bump a plugin version + marketplace entry (level: patch|minor|maj
 run = "scripts/bump-plugin.sh {{arg(name='plugin')}} {{arg(name='level', default='patch')}}"
 
 [tasks.verify]
-description = "Fail if Codex artifacts are stale (sync not run after a plugin change)"
+description = "Fail if generated artifacts are stale (sync not run after a plugin change)"
 run = """
 scripts/sync-codex.sh >/dev/null
-[ -z "$(git status --porcelain -- .agents plugins/*/.codex-plugin)" ] || {
-  echo 'Codex artifacts stale — run `mise run sync` and commit.' >&2
-  git --no-pager status --short -- .agents plugins/*/.codex-plugin
+[ -z "$(git status --porcelain -- .agents plugins/*/.codex-plugin README.md)" ] || {
+  echo 'Generated artifacts stale — run `mise run sync` and commit.' >&2
+  git --no-pager status --short -- .agents plugins/*/.codex-plugin README.md
   exit 1
 }
 """
