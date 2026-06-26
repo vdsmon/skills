@@ -10,7 +10,7 @@ The full ripgrep pattern set, grouped by bucket. Use these when running `scripts
 
 ## Per-bucket pattern hints
 
-### Bucket A — Transitional preamble
+### Bucket A: Transitional preamble
 
 Single-line or short-paragraph preambles in `CLAUDE.md`, `README.md`, top-of-file headers, or compose comments:
 
@@ -23,7 +23,7 @@ read-only legacy
 historical reference only
 ```
 
-### Bucket B — Wave / Story / Phase narrative
+### Bucket B: Wave / Story / Phase narrative
 
 `(Wave N)` / `Story N` / `Track N` annotations on commits, file headers, runbook intros, gotcha bullets:
 
@@ -39,7 +39,7 @@ wave [0-9] sweep
 closed roadmap
 ```
 
-### Bucket C — Migration / roadmap docs
+### Bucket C: Migration / roadmap docs
 
 Files whose entire purpose is migration tracking:
 
@@ -61,7 +61,7 @@ status as of 20[0-9]{2}
 🟢|🔵.*shipped
 ```
 
-### Bucket D — Procedural step labels (KEEP)
+### Bucket D: Procedural step labels (KEEP)
 
 Doc patterns where Phase N is a step label, not migration history. Heuristic: the file is named `RUNBOOK.md` / `PLAYBOOK.md` / `GUIDE.md` / `HOWTO.md` AND contains ≥3 sequential `## Phase N — <title>` headers.
 
@@ -70,9 +70,9 @@ Doc patterns where Phase N is a step label, not migration history. Heuristic: th
 ^### [0-9]\.[0-9] — .+ (sub-steps under a Phase header)
 ```
 
-Treat as bucket D. Strip would corrupt navigability. Offer rename `Phase` → `Step` instead.
+Treat as bucket D. Strip would corrupt navigability. Offer rename `Phase` -> `Step` instead.
 
-### Bucket E — Code-semantic refs (KEEP)
+### Bucket E: Code-semantic refs (KEEP)
 
 Inside source files where the comment refers to current code behavior:
 
@@ -100,6 +100,6 @@ These look like cruft but are real technical terms. Never strip by regex alone:
 | `data migration` | Live ETL / backfill code |
 | `migration trap` (in init comments) | Real DB init issue when restoring a populated data dir |
 | `previously` in commit body referencing the diff being made | Describes the current change, not project history |
-| `formerly` inside a deprecation notice in a public API | Tells callers what the old name was — keep until removed |
+| `formerly` inside a deprecation notice in a public API | Tells callers what the old name was, so keep until removed |
 
 If a hit matches one of these, classify as bucket E and keep by default.

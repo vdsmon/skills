@@ -6,7 +6,7 @@ description: >-
   (no HITL at run time), measures it against a strict metric tuple, races
   parallel variants against the baseline, and converges on the best loop
   config. HITL is concentrated at permission boundaries (install CLI,
-  register MCP, touch shared files) — never mid-iteration. Caches per
+  register MCP, touch shared files), never mid-iteration. Caches per
   task class so future runs reuse. Sibling to loop-finder:feature-cycle
   which runs the outer queued-fix chain against the converged gate.
 when_to_use: >-
@@ -15,7 +15,7 @@ when_to_use: >-
   verifiable harness for X", or invokes /loop-finder. Also use when the
   sibling feature-cycle skill needs an acceptance gate and none exists
   for the current task class. Do NOT use for one-shot fixes that don't
-  repeat — the cache and exploration cost only pay off across multiple
+  repeat. The cache and exploration cost only pay off across multiple
   iterations.
 argument-hint: "[task description | --status | --halt | --max-cycles N]"
 allowed-tools:
@@ -28,11 +28,11 @@ allowed-tools:
 
 # loop-finder
 
-Generalized procedure for engineering a self-verifiable feedback loop for any task class, then racing variants against it. Foundation underneath the sibling `loop-finder:feature-cycle` skill — feature-cycle iterates against a gate; this skill produces the gate and pushes it toward the best loop config the available tooling can build.
+Generalized procedure for engineering a self-verifiable feedback loop for any task class, then racing variants against it. Foundation underneath the sibling `loop-finder:feature-cycle` skill: feature-cycle iterates against a gate; this skill produces the gate and pushes it toward the best loop config the available tooling can build.
 
 ## Core promise
 
-Run-time loops never need HITL. All approval gates are concentrated at permission boundaries — installing a CLI, registering an MCP, writing to a file outside the working dir. Many small mid-iteration interrupts are traded for few large up-front approvals.
+Run-time loops never need HITL. All approval gates are concentrated at permission boundaries: installing a CLI, registering an MCP, writing to a file outside the working dir. Many small mid-iteration interrupts are traded for few large up-front approvals.
 
 ## Invocation
 
@@ -45,14 +45,14 @@ Run-time loops never need HITL. All approval gates are concentrated at permissio
 
 ## Vocabulary
 
-- **Loop / gate** — a single command (script, CLI, or MCP-mediated call) that takes the current state of the repo + a representative input and returns a machine-checkable verdict (exit code 0 = accept, non-zero = reject; or a JSON object with a pinned `verdict` field).
-- **Task class** — a stable signature for "this kind of work": `(repo, task domain, oracle type)`. Hashed → `class-id`.
-- **Baseline** — the current best loop config for a class, with its metric tuple pinned.
-- **Variant** — a candidate loop config explored in a cycle.
-- **Menu** — `menu.yaml`, the catalog of loop patterns this skill picks variants from. Each entry has the fields needed for the decision matrix.
-- **Cycle** — one iteration of the explore phase. Spawns `N` parallel agents, each implementing one variant.
-- **HITL touchpoint** — a moment where the user is asked to approve a permission gate. Exactly two kinds: (1) Step-1 gap report, (2) Step-3 batched permission requests.
-- **`blindness_count`** (this skill) — mechanical rule matches against gate output, summed across the 10-run sample. Driven by `~/.claude/loop-finder/blindness-rules.yaml`. Distinct from **`blindness_subjective`** in the sibling feature-cycle skill, which is the agent's self-tallied count of groping moments during a feature cycle. The two metrics are not interchangeable.
+- **Loop / gate:** a single command (script, CLI, or MCP-mediated call) that takes the current state of the repo + a representative input and returns a machine-checkable verdict (exit code 0 = accept, non-zero = reject; or a JSON object with a pinned `verdict` field).
+- **Task class:** a stable signature for "this kind of work": `(repo, task domain, oracle type)`. Hashed -> `class-id`.
+- **Baseline:** the current best loop config for a class, with its metric tuple pinned.
+- **Variant:** a candidate loop config explored in a cycle.
+- **Menu:** `menu.yaml`, the catalog of loop patterns this skill picks variants from. Each entry has the fields needed for the decision matrix.
+- **Cycle:** one iteration of the explore phase. Spawns `N` parallel agents, each implementing one variant.
+- **HITL touchpoint:** a moment where the user is asked to approve a permission gate. Exactly two kinds: (1) Step-1 gap report, (2) Step-3 batched permission requests.
+- **`blindness_count`** (this skill): mechanical rule matches against gate output, summed across the 10-run sample. Driven by `~/.claude/loop-finder/blindness-rules.yaml`. Distinct from **`blindness_subjective`** in the sibling feature-cycle skill, which is the agent's self-tallied count of groping moments during a feature cycle. The two metrics are not interchangeable.
 
 ## Files
 
@@ -74,8 +74,8 @@ retro.md                written by sibling feature-cycle skill (outer cycle)
 Per-repo pin (optional, committed): `.loop-finder.yaml` at repo root pinning which `class-id` this repo uses and any repo-specific overrides.
 
 Skill-level files (versioned with the plugin):
-- `menu.yaml` — catalog of loop patterns. The Step-3 candidate menu.
-- `~/.claude/loop-finder/blindness-rules.yaml` — checked-in regex/heuristic checklist for `blindness_count`. Adding a rule is itself an HITL approval moment.
+- `menu.yaml`: catalog of loop patterns. The Step-3 candidate menu.
+- `~/.claude/loop-finder/blindness-rules.yaml`: checked-in regex/heuristic checklist for `blindness_count`. Adding a rule is itself an HITL approval moment.
 
 ## Metric
 
@@ -83,16 +83,16 @@ A loop is scored as a tuple, computed from 10 runs against a representative inpu
 
 ### Hard gates (must hold to adopt)
 
-- `flake_rate` — over 10 runs on the same input, fraction where verdict differs. **Must equal 0.**
-- `canary_pass_count` — of the frozen known-bad fixture set, how many the gate correctly rejects. **Must equal full set size.**
+- `flake_rate`: over 10 runs on the same input, fraction where verdict differs. **Must equal 0.**
+- `canary_pass_count`: of the frozen known-bad fixture set, how many the gate correctly rejects. **Must equal full set size.**
 
-If either hard gate fails, the variant is rejected outright — no comparison, no adoption.
+If either hard gate fails, the variant is rejected outright: no comparison, no adoption.
 
 ### Performance dims (lexicographic ranking)
 
-1. `cycle_wall_s` — median wall-clock seconds, invocation → verdict.
-2. `blindness_count` — sum of blindness-rule matches across the 10-run sample.
-3. `cycle_tokens` — tokens an agent spends invoking + reading the gate.
+1. `cycle_wall_s`: median wall-clock seconds, invocation -> verdict.
+2. `blindness_count`: sum of blindness-rule matches across the 10-run sample.
+3. `cycle_tokens`: tokens an agent spends invoking + reading the gate.
 
 Walk top-down. First differing dim by ≥5% favoring the variant decides. If no perf dim improves by ≥5%, the variant is **no improvement**.
 
@@ -102,22 +102,22 @@ Walk top-down. First differing dim by ≥5% favoring the variant decides. If no 
 
 A cycle's variants come in two flavors. Apply different ranking rules.
 
-**Gate variants** — modify the gate pipeline (the loop-as-artifact). Examples: G1 resize-flip, G2 per-quadrant, G3 LPIPS swap. Rank by **lex perf dims** above. Hard gates (`flake_rate=0` + canary) apply. First differing perf dim ≥5% in winner's favor decides.
+**Gate variants:** modify the gate pipeline (the loop-as-artifact). Examples: G1 resize-flip, G2 per-quadrant, G3 LPIPS swap. Rank by **lex perf dims** above. Hard gates (`flake_rate=0` + canary) apply. First differing perf dim ≥5% in winner's favor decides.
 
-**Product variants** — modify the system under test, gate unchanged. Examples: V1 about-window redesign, V5 spacing tune. Rank by **oracle output** (the gate's verdict value or score — dissim, ssim, test-count, latency, etc.). Hard gates same. Perf dims are surfaced but not decisive — they measure loop cost, not product progress. A product variant that improves oracle output by ≥5% adopts even if wall_s regresses.
+**Product variants:** modify the system under test, gate unchanged. Examples: V1 about-window redesign, V5 spacing tune. Rank by **oracle output** (the gate's verdict value or score: dissim, ssim, test-count, latency, etc.). Hard gates same. Perf dims are surfaced but not decisive, since they measure loop cost, not product progress. A product variant that improves oracle output by ≥5% adopts even if wall_s regresses.
 
 The orchestrator declares variant type at Step 3 spawn time. Confusing them led to a real adoption-rule violation in the cycle-4 retro: V5 won on oracle (-10.8% dissim) but failed strict lex (wall regressed).
 
 ### Stop rule
 
-Two consecutive cycles with no ≥5% improvement on any perf dim → halt.
+Two consecutive cycles with no ≥5% improvement on any perf dim -> halt.
 
 ## The 4 steps
 
-### Step 1 — FIND
+### Step 1: FIND
 
 1. Compute `class-id` from task description: `sha256(repo_path + task_domain + oracle_type)[:12]`.
-2. Cache hit → load `<class-id>/config.yaml`. Run Step 2 to confirm the cached gate still passes hard gates. If it does, skip to Step 3 (continue exploration). If not, log the regression and fall through to fresh find.
+2. Cache hit -> load `<class-id>/config.yaml`. Run Step 2 to confirm the cached gate still passes hard gates. If it does, skip to Step 3 (continue exploration). If not, log the regression and fall through to fresh find.
 3. Cache miss:
    1. Classify task on TWO orthogonal axes:
       - **Domain**: code | UI | audio | RL env | text | multi-modal | distributed-system.
@@ -125,23 +125,23 @@ Two consecutive cycles with no ≥5% improvement on any perf dim → halt.
    2. Walk `menu.yaml`. For each candidate pattern, evaluate `applies_when` against the task. Discard non-fits.
    3. For each viable candidate, check `tooling_signature` AND `tooling_preconditions` against what's installed locally (`which`, `ls`, MCP server registry). Emit a **gap report**.
    4. Surface gap report to user. **HITL touchpoint #1.** User picks which gaps to close (install CLI X, register MCP Y, write fixture Z). Skip patterns whose gaps the user denied.
-   5. Compose the selected pattern(s) into a runnable gate. Start from `templates/iterate.sh.tmpl` in this plugin — do NOT hand-roll harness scripts; the template encodes ROOT-derivation, per-PID OUT dir, and verdict-tag conventions that were learned through repeated cycle-1-through-4 friction. Write the customized gate to `<class-id>/gate.sh`.
+   5. Compose the selected pattern(s) into a runnable gate. Start from `templates/iterate.sh.tmpl` in this plugin, and do NOT hand-roll harness scripts; the template encodes ROOT-derivation, per-PID OUT dir, and verdict-tag conventions that were learned through repeated cycle-1-through-4 friction. Write the customized gate to `<class-id>/gate.sh`.
    6. **Verify oracle direction.** For any similarity / distance / score oracle: run self-vs-self AND a known-different input through the raw oracle (before the predicate). Confirm verdict semantics match the predicate direction. magick 7's `compare -metric SSIM` emits structural DISSIMILARITY (0=identical, 0.5=max), so the predicate must be `<= threshold` for ACCEPT, NOT `>= threshold`. Refuse to pin a threshold without this empirical check.
-   7. **Floor probe (similarity / metric oracles only).** Render the gate 5 times against the SAME input. Compute pairwise oracle-output variance. The maximum pairwise delta is the noise floor. Threshold must be set above `floor + small margin`. If the user-requested threshold is below the floor, that threshold is physically unreachable — surface to user and renegotiate.
+   7. **Floor probe (similarity / metric oracles only).** Render the gate 5 times against the SAME input. Compute pairwise oracle-output variance. The maximum pairwise delta is the noise floor. Threshold must be set above `floor + small margin`. If the user-requested threshold is below the floor, that threshold is physically unreachable, so surface to user and renegotiate.
    8. **Smoke test.** Trivially-passing input must give the accept verdict. Trivially-failing input must give reject. If either fails, surface and stop.
 
-### Step 2 — MEASURE / BASELINE
+### Step 2: MEASURE / BASELINE
 
-1. Run gate 10× on representative input. Time each run.
+1. Run gate 10x on representative input. Time each run.
 2. Compute `flake_rate`. If non-zero, surface and refuse to baseline.
 3. Run canary regression test (all fixtures under `known-bad/`). If any pass, surface and refuse to baseline.
 4. Compute the perf tuple:
-   - `cycle_wall_s` — median of the 10-run wall-clock times.
-   - `blindness_count` — for each run, apply the rules in `~/.claude/loop-finder/blindness-rules.yaml` to the captured gate output (stdout + stderr + presence of named-binary artifacts). Sum matches across the 10-run sample. Each rule is regex / heuristic-checkable.
-   - `cycle_tokens` — estimate from output line count × tokens-per-line average, OR use a pre-measured count if the gate emits a structured single-line JSON verdict.
+   - `cycle_wall_s`: median of the 10-run wall-clock times.
+   - `blindness_count`: for each run, apply the rules in `~/.claude/loop-finder/blindness-rules.yaml` to the captured gate output (stdout + stderr + presence of named-binary artifacts). Sum matches across the 10-run sample. Each rule is regex / heuristic-checkable.
+   - `cycle_tokens`: estimate from output line count x tokens-per-line average, OR use a pre-measured count if the gate emits a structured single-line JSON verdict.
    Write `baseline.json`. Append to `baseline-history.jsonl`.
 
-### Step 3 — EXPLORE
+### Step 3: EXPLORE
 
 Per cycle:
 
@@ -149,17 +149,17 @@ Per cycle:
 2. Generate `N` variation candidates:
    - **Menu phase** (until exhausted): pick patterns from `menu.yaml` that differ from current baseline on at least one of `oracle_type`, `tooling_signature`, `environment_isolation`.
    - **Bottleneck phase** (after menu exhausted): profile baseline (time each gate step), generate variants targeting the slowest step.
-3. Spawn `N` Agent subagents in parallel, each in `isolation: "worktree"`. Per-agent brief: implement variant, run 10× measurement protocol, run canary, return tuple + any permission gaps it hit. Time-box `T`.
+3. Spawn `N` Agent subagents in parallel, each in `isolation: "worktree"`. Per-agent brief: implement variant, run 10x measurement protocol, run canary, return tuple + any permission gaps it hit. Time-box `T`.
 
    **Agent-type decision matrix:**
 
    | Variant work | Use |
    |---|---|
-   | Edit-only (single file, no measurement) | `caveman:cavecrew-builder` — cheap, lacks Bash so cannot run gates |
-   | Standard variant (edit + measure, text-only or non-rendering) | `general-purpose` — default, full toolkit |
-   | Substantial Rust / algorithm work, **no GUI rendering** | `codex:codex-rescue` — deeper coding, but sandbox lacks NSScreen |
+   | Edit-only (single file, no measurement) | `caveman:cavecrew-builder`, cheap, lacks Bash so cannot run gates |
+   | Standard variant (edit + measure, text-only or non-rendering) | `general-purpose`, default, full toolkit |
+   | Substantial Rust / algorithm work, **no GUI rendering** | `codex:codex-rescue`, deeper coding, but sandbox lacks NSScreen |
    | **Vision-required task** (UI domain, target-conformance, visual-diff) | **`general-purpose` only.** Never codex (sandbox panics on tao window construction); never caveman builder (lacks Bash for measurement). |
-   | Edit-only diff-emitter | `caveman:cavecrew-builder` — caveman-compressed diff, ~60% smaller back-context |
+   | Edit-only diff-emitter | `caveman:cavecrew-builder`, caveman-compressed diff, ~60% smaller back-context |
 
    Rule of thumb: any variant that runs the gate to measure needs Bash. Caveman builders measure-blind. Codex variant agents are a no-go for any task whose gate touches the GUI surface.
 
@@ -167,13 +167,13 @@ Per cycle:
 
    The orchestrator should ALSO commit any WIP main state that defines the baseline before spawning. The bootstrap script falls back to `origin/main` if local `main` is stale.
 
-   **Gate's artifact dir** must be per-run isolated. Templates default to `OUT="/tmp/loopfinder-snap-$$"`. Never use a shared `/tmp/<class>-snap/` path — cycle 3's V5+V6 race on it cost a flake_rate=0.20 false-fail.
-4. Agents that hit permission gates halt and report the gap. Collect all gaps from all agents at end of cycle → surface as a batch. **HITL touchpoint #2.** User approves which to grant. Approved agents restart; others stay halted.
+   **Gate's artifact dir** must be per-run isolated. Templates default to `OUT="/tmp/loopfinder-snap-$$"`. Never use a shared `/tmp/<class>-snap/` path, because cycle 3's V5+V6 race on it cost a flake_rate=0.20 false-fail.
+4. Agents that hit permission gates halt and report the gap. Collect all gaps from all agents at end of cycle -> surface as a batch. **HITL touchpoint #2.** User approves which to grant. Approved agents restart; others stay halted.
 5. For each completed variant: reject outright on hard-gate fail; otherwise rank vs baseline by lex perf-dim rule.
 6. Adopt the highest-ranked surviving variant. If none improves baseline, mark cycle "no improvement".
 7. If adopted: append old baseline to `baseline-history.jsonl`, write new `baseline.json`, update `config.yaml` + `gate.sh`.
 
-### Step 4 — REPEAT or HALT
+### Step 4: REPEAT or HALT
 
 Halt conditions:
 
@@ -182,9 +182,9 @@ Halt conditions:
 - **Cycle budget**: optional user cap.
 - **User interrupt**: always wins.
 
-On halt, write `<class-id>/summary.md`: baseline progression (table of cycle # → `cycle_wall_s`, `blindness_count`, `cycle_tokens`), final winning config, unresolved gaps, list of approved permissions granted across the run.
+On halt, write `<class-id>/summary.md`: baseline progression (table of cycle # -> `cycle_wall_s`, `blindness_count`, `cycle_tokens`), final winning config, unresolved gaps, list of approved permissions granted across the run.
 
-**Then generate the deliverable: a project-scoped `loops` skill in the target repo.** When at least one class has been converged for a repo, write a project skill at `<repo>/.claude/skills/loops/` (NOT into the global `~/repos/personal/skills/plugins/` marketplace — repo-specific content belongs with the code it documents). The skill should:
+**Then generate the deliverable: a project-scoped `loops` skill in the target repo.** When at least one class has been converged for a repo, write a project skill at `<repo>/.claude/skills/loops/` (NOT into the global `~/repos/personal/skills/plugins/` marketplace, since repo-specific content belongs with the code it documents). The skill should:
 - List each registered class (id, gate command, oracle, threshold, current baseline)
 - Bake in repo-specific caveats as files under `references/`
 - Ship thin wrapper scripts in `scripts/` that resolve repo root from `${BASH_SOURCE[0]}` so they work from any cwd
@@ -200,28 +200,28 @@ Only two run-time prompts are allowed, period:
 1. **Step 1, gap report**: "to use pattern X, I need <gap>. Approve / deny / pick alternative." Batch one prompt for the whole report.
 2. **Step 3, batched permission requests**: at the end of each cycle, all agents' gaps are batched into one prompt. User approves a subset.
 
-Anything else surfaces only on halt or hard regression. No mid-iteration "should I…" prompts. If you find yourself wanting one, the loop is wrong — fix the gate or the menu entry, don't ask.
+Anything else surfaces only on halt or hard regression. No mid-iteration "should I..." prompts. If you find yourself wanting one, the loop is wrong, so fix the gate or the menu entry, don't ask.
 
 ## Relationship to other skills
 
-- **`loop-finder:feature-cycle`** (sibling skill in this plugin) — runs the outer queued-fix chain against the gate this skill converges. loop-finder finds and races the gate (the loop-as-artifact, parallel variants per cycle); feature-cycle ships features against a fixed gate (the system-under-test, sequential queued-fix chain across cycles). They compose: loop-finder picks the gate, feature-cycle uses it to ship features and accumulate harness fixes.
+- **`loop-finder:feature-cycle`** (sibling skill in this plugin): runs the outer queued-fix chain against the gate this skill converges. loop-finder finds and races the gate (the loop-as-artifact, parallel variants per cycle); feature-cycle ships features against a fixed gate (the system-under-test, sequential queued-fix chain across cycles). They compose: loop-finder picks the gate, feature-cycle uses it to ship features and accumulate harness fixes.
 
 Loop-finder is the foundation. If it has converged for a class, the downstream feature-cycle runs smoother.
 
 ## Anti-patterns
 
-- **Mid-iteration HITL prompts** — break the core promise. If a variant cannot self-verify, drop it from the cycle; do not ask the user to judge each iteration.
-- **Skipping hard gates to make the metric look better** — variant that ships with `flake_rate > 0` is broken, not faster.
-- **Letting `blindness_count` go un-counted** — agents will silently produce opaque output and the loop will "feel slow" without the metric showing why. Run the blindness checklist every cycle.
-- **Auto-installing tools without HITL** — defeats the entire concentrate-HITL-at-permission-gates design. Every install crosses Step 1 or Step 3 batch approval.
-- **Visual oracle without canary fixtures** — extends the gameability rule. magick SSIM is non-monotone under extreme corruption (full-white, full-noise can read as MORE similar than a real-but-wrong render). Insist on `known-bad/` fixtures for ANY of: `llm_judge`, `reward_model_preference_judge`, `target_conformance_oracle`, `visual_diff_oracle`. Fixtures must test MID-RANGE corruption (1-3 element edits, color shifts <30%) — not extremes.
-- **Mixing gate + product variants in one cycle** — confuses adoption rule (lex for gates vs oracle-output for products) and contaminates measurement (gate changes shift the baseline). If a cycle's gate is unverified, run gate variants FIRST; only after the gate is canonical do product variants race.
-- **Hardcoded ROOT path in iterate.sh** — any harness script with `ROOT="/abs/repo/path"` will race parallel worktree variants through main's binary. Always derive ROOT from `${BASH_SOURCE[0]}`. Use `templates/iterate.sh.tmpl` as the starting point — it encodes the correct pattern.
-- **Shared artifact OUT dir across concurrent variants** — gates writing to `/tmp/shared-snap/` race when N>1 variants run in parallel. Always per-PID (`/tmp/foo-snap-$$`).
-- **Codex variant agent for vision-required gates** — codex runtime is sandboxed without NSScreen; tao window construction panics on launch. Use codex for substantial Rust / algorithm work where rendering is NOT required; `general-purpose` for any vision-required task.
-- **Caveman builder for measurement-required variants** — caveman:cavecrew-builder lacks the Bash tool; it can edit files but cannot run gates. Reserve for edit-only diff emitters.
-- **Skipping the worktree bootstrap step** — every variant agent must run `helpers/bootstrap-worktree.sh` first. Without it, the agent measures stale state (older HEAD, missing tools/) and the result is meaningless.
-- **Dispatching the entire skill to a subagent** — the cache and HITL touchpoints are stateful. Inner cycles can dispatch variants to subagents; the orchestration stays inline. Same constraint as the sibling `loop-finder:feature-cycle`.
+- **Mid-iteration HITL prompts:** break the core promise. If a variant cannot self-verify, drop it from the cycle; do not ask the user to judge each iteration.
+- **Skipping hard gates to make the metric look better:** variant that ships with `flake_rate > 0` is broken, not faster.
+- **Letting `blindness_count` go un-counted:** agents will silently produce opaque output and the loop will "feel slow" without the metric showing why. Run the blindness checklist every cycle.
+- **Auto-installing tools without HITL:** defeats the entire concentrate-HITL-at-permission-gates design. Every install crosses Step 1 or Step 3 batch approval.
+- **Visual oracle without canary fixtures:** extends the gameability rule. magick SSIM is non-monotone under extreme corruption (full-white, full-noise can read as MORE similar than a real-but-wrong render). Insist on `known-bad/` fixtures for ANY of: `llm_judge`, `reward_model_preference_judge`, `target_conformance_oracle`, `visual_diff_oracle`. Fixtures must test MID-RANGE corruption (1-3 element edits, color shifts <30%), not extremes.
+- **Mixing gate + product variants in one cycle:** confuses adoption rule (lex for gates vs oracle-output for products) and contaminates measurement (gate changes shift the baseline). If a cycle's gate is unverified, run gate variants FIRST; only after the gate is canonical do product variants race.
+- **Hardcoded ROOT path in iterate.sh:** any harness script with `ROOT="/abs/repo/path"` will race parallel worktree variants through main's binary. Always derive ROOT from `${BASH_SOURCE[0]}`. Use `templates/iterate.sh.tmpl` as the starting point, which encodes the correct pattern.
+- **Shared artifact OUT dir across concurrent variants:** gates writing to `/tmp/shared-snap/` race when N>1 variants run in parallel. Always per-PID (`/tmp/foo-snap-$$`).
+- **Codex variant agent for vision-required gates:** codex runtime is sandboxed without NSScreen; tao window construction panics on launch. Use codex for substantial Rust / algorithm work where rendering is NOT required; `general-purpose` for any vision-required task.
+- **Caveman builder for measurement-required variants:** caveman:cavecrew-builder lacks the Bash tool; it can edit files but cannot run gates. Reserve for edit-only diff emitters.
+- **Skipping the worktree bootstrap step:** every variant agent must run `helpers/bootstrap-worktree.sh` first. Without it, the agent measures stale state (older HEAD, missing tools/) and the result is meaningless.
+- **Dispatching the entire skill to a subagent:** the cache and HITL touchpoints are stateful. Inner cycles can dispatch variants to subagents; the orchestration stays inline. Same constraint as the sibling `loop-finder:feature-cycle`.
 
 ## Bootstrap
 
@@ -265,7 +265,7 @@ Adding a rule later is an HITL approval moment in itself.
 ## Origin
 
 Derived from:
-- Karpathy autoresearch (one change per iteration, mechanical metric, git as memory, binary keep/discard). Loop-finder is the prerequisite for the queued-fix-chain pattern that lives in the sibling feature-cycle skill — feature-cycle assumes the loop already exists.
+- Karpathy autoresearch (one change per iteration, mechanical metric, git as memory, binary keep/discard). Loop-finder is the prerequisite for the queued-fix-chain pattern that lives in the sibling feature-cycle skill, since feature-cycle assumes the loop already exists.
 - mic-mute `tools/settings-preview/` (reference instance: headless probe sidecar + visual diff + odiff baseline + exit-code gate).
 - Voyager / Self-Refine / AlphaEvolve (LLM-driven exploration with executable verifier).
 - SWE-bench / Inspect harness (sandboxed agent harness as one menu pattern, not the whole story).

@@ -1,6 +1,6 @@
 {
   "name": "systematic-debugging",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Four-phase debugging discipline (root-cause investigation, pattern analysis, hypothesis, single-fix implementation). No fixes before investigation; 3+ failed fixes means stop and question the architecture. Use on a reproducible bug, test failure, or unexpected behavior in code you can run and inspect directly, before proposing fixes; for an incident reported across runtime systems with possibly-unreachable evidence, use the investigate skill instead.",
   "author": {
     "name": "Victor De Simone",
