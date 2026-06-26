@@ -63,10 +63,11 @@ import json, re, sys
 src, readme = sys.argv[1:3]
 m = json.load(open(src))
 
-def short(desc):
+def short(desc, cap=170):
     desc = desc.strip()
-    cut = desc.split(". ")[0].rstrip(".")
-    return cut.replace("|", "\\|")
+    if len(desc) > cap:
+        desc = desc[:cap].rsplit(" ", 1)[0].rstrip(" ,;:—-") + "…"
+    return desc.replace("|", "\\|")
 
 rows = [
     f"| `{p['name']}` | {'CC only' if p['name'].startswith('cc-') else 'any'} | {short(p['description'])} |"
