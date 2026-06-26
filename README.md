@@ -87,24 +87,24 @@ Generated from `.claude-plugin/marketplace.json` (the source of truth) by `scrip
 <!-- BEGIN PLUGINS (generated) -->
 | Plugin | Host | What it does |
 |---|---|---|
-| `investigate` | any | Investigate a reported error or incident end to end across every reachable system, never inferring past a missing source — stop and raise to the human for access or… |
-| `slack-draft` | any | Draft a Slack message for the user to send: Slack mrkdwn, lead-with-conclusion, backticked identifiers and domain values, ASCII punctuation. Defaults to English and a… |
+| `investigate` | any | Investigate a reported error or incident end to end across every reachable system, never inferring past a missing source — stop and raise to the human for access or clarity instead. |
+| `slack-draft` | any | Draft a Slack message for the user to send: Slack mrkdwn, lead-with-conclusion, backticked identifiers and domain values, ASCII punctuation. |
 | `skill-polish` | any | Post-mortem for any skill — scans a session for friction and applies concrete edits to the responsible skill file. Portable across SKILL.md-native hosts. |
-| `cc-tokenomics` | CC only | Token usage, cache hit rates, and Max plan consumption analyzer. /cc-tokenomics dashboard + reference docs on rate limits, cache lifecycle, and empirical billing… |
-| `cc-cache-keepalive` | CC only | Keeps Claude Code's prompt cache warm on Max plans via a SessionStart-scheduled silent cron. Opt-in via ~/.cc-cache-keepalive flag file. Cron prompt is sentinel… |
-| `cc-usage-guard` | CC only | Pause-at-limit guard for Claude Code. A statusLine sensor records 5h + weekly rate-limit usage; PostToolUse/UserPromptSubmit hooks watch it in two tiers — a soft WARN… |
-| `prep-compact` | any | Audit in-flight state before any context-compacting step; produce a copy-paste /compact message plus a queue-able follow-up that chains the next action when compact… |
-| `prep-goal` | any | Interrogate a rough objective into a tight, verifiable /goal completion condition before handing it to an autonomous goal loop. Grills one question at a time to pin the… |
-| `humanize` | any | Strip AI-writing tells from text. Detects em-dash overuse, AI vocabulary, inflated significance, rule-of-three, sycophancy, and 20+ more patterns. Portable across… |
-| `loop-finder` | any | Loop discovery + race + feature-driven iteration. Two skills: loop-finder (engineers a self-verifiable gate for a task class, races parallel variants, converges on the… |
-| `brainstorming` | any | Design-before-code gate. Explores intent, proposes 2-3 approaches, presents a design, and gets approval before any implementation. Use before creating features, building… |
-| `systematic-debugging` | any | Four-phase debugging discipline (root-cause investigation, pattern analysis, hypothesis, single-fix implementation). No fixes before investigation; 3+ failed fixes means… |
-| `skill-smith` | any | Forge for Agent Skills: create, test, evaluate, optimize triggering, and package skills. Merges an empirical eval loop (run with-skill vs baseline, benchmark, iterate)… |
-| `git-cleanup` | any | Clean up stale git branches and worktrees. Finds branches merged into dev/develop/master/main, checks worktrees for uncommitted changes, removes what's safe while… |
-| `strip-migration-cruft` | any | Scan a repo for transitional / migration / phase / wave / story / legacy-alias cruft comments, bucket into safe-to-strip vs keep-semantic, propose surgical edits and… |
-| `grilling` | any | Relentless one-question-at-a-time interview that stress-tests a plan or design to convergence, exploring the codebase to answer its own questions where it can. Bundles… |
-| `teach` | any | Stateful, multi-session teaching workspace: grounds every lesson in a MISSION.md, gathers trusted RESOURCES.md, produces short self-contained HTML lessons in the… |
-| `codebase-design` | any | Shared vocabulary for designing deep modules: a lot of behaviour behind a small interface, placed at a clean seam, testable through that interface. Precise glossary… |
+| `cc-tokenomics` | CC only | Token usage, cache hit rates, and Max plan consumption analyzer. |
+| `cc-cache-keepalive` | CC only | Keeps Claude Code's prompt cache warm on Max plans via a SessionStart-scheduled silent cron. Opt-in via ~/.cc-cache-keepalive flag file. |
+| `cc-usage-guard` | CC only | Pause-at-limit guard for Claude Code. |
+| `prep-compact` | any | Audit in-flight state before any context-compacting step; produce a copy-paste /compact message plus a queue-able follow-up that chains the next action when compact finishes. |
+| `prep-goal` | any | Interrogate a rough objective into a tight, verifiable /goal completion condition before handing it to an autonomous goal loop. |
+| `humanize` | any | Strip AI-writing tells from text. Detects em-dash overuse, AI vocabulary, inflated significance, rule-of-three, sycophancy, and 20+ more patterns. |
+| `loop-finder` | any | Loop discovery + race + feature-driven iteration. |
+| `brainstorming` | any | Design-before-code gate. Explores intent, proposes 2-3 approaches, presents a design, and gets approval before any implementation. |
+| `systematic-debugging` | any | Four-phase debugging discipline (root-cause investigation, pattern analysis, hypothesis, single-fix implementation). |
+| `skill-smith` | any | Forge for Agent Skills: create, test, evaluate, optimize triggering, and package skills. |
+| `git-cleanup` | any | Clean up stale git branches and worktrees. |
+| `strip-migration-cruft` | any | Scan a repo for transitional / migration / phase / wave / story / legacy-alias cruft comments, bucket into safe-to-strip vs keep-semantic, propose surgical edits and execute after confirmation. |
+| `grilling` | any | Relentless one-question-at-a-time interview that stress-tests a plan or design to convergence, exploring the codebase to answer its own questions where it can. |
+| `teach` | any | Stateful, multi-session teaching workspace: grounds every lesson in a MISSION.md, gathers trusted RESOURCES.md, produces short self-contained HTML lessons in the learner's zone of proximal development, tracks progress via learning-records, and builds storage strength through retrieval, spacing, and interleaving. |
+| `codebase-design` | any | Shared vocabulary for designing deep modules: a lot of behaviour behind a small interface, placed at a clean seam, testable through that interface. |
 <!-- END PLUGINS -->
 
 ## Layout

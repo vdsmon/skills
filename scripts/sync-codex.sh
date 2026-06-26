@@ -64,10 +64,17 @@ src, readme = sys.argv[1:3]
 m = json.load(open(src))
 
 def short(desc, cap=170):
-    desc = desc.strip()
-    if len(desc) > cap:
-        desc = desc[:cap].rsplit(" ", 1)[0].rstrip(" ,;:—-") + "…"
-    return desc.replace("|", "\\|")
+    # whole sentences only, up to the cap; drop any sentence that would
+    # overflow rather than truncating it. Never adds an ellipsis. The first
+    # sentence is always kept even if it alone exceeds the cap.
+    parts = desc.strip().split(". ")
+    out = parts[0]
+    for p in parts[1:]:
+        cand = f"{out}. {p}"
+        if len(cand.rstrip(".")) + 1 > cap:
+            break
+        out = cand
+    return (out.rstrip(".") + ".").replace("|", "\\|")
 
 rows = [
     f"| `{p['name']}` | {'CC only' if p['name'].startswith('cc-') else 'any'} | {short(p['description'])} |"
