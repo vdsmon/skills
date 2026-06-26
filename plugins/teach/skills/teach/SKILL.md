@@ -46,15 +46,15 @@ Fluency can give the user an illusory sense of mastery, but storage strength is 
 
 ## Lessons
 
-A lesson is the main thing you produce — the unit in which knowledge and skills reach the user. Each lesson is one self-contained HTML file, saved to `./lessons/` and titled `0001-<dash-case-name>.html` where the number increments each time.
+A lesson is the main thing you produce, the unit in which knowledge and skills reach the user. Each lesson is one self-contained HTML file, saved to `./lessons/` and titled `0001-<dash-case-name>.html` where the number increments each time.
 
-A lesson should be **beautiful** — clean, readable typography and layout — since the user will return to these later to review. Think Tufte.
+A lesson should be **beautiful** (clean, readable typography and layout) since the user will return to these later to review. Think Tufte.
 
 The lesson should be short, and completable very quickly. Learners' working memory is very small, and we need to stay within it. But each lesson should give the user a single tangible win that they can build on. It should be directly tied to the mission, and should be in the user's zone of proximal development.
 
 If possible, open the lesson file for the user by running a CLI command.
 
-Each lesson should link to its neighbours and to reference documents. A footer prev/next link is the minimum; once the course has more than one lesson, give it a single shared **navigation component** (see [Assets](#assets)) injected into every lesson and reference page — so the learner can jump anywhere in the course from anywhere, not just step forward and back.
+Each lesson should link to its neighbours and to reference documents. A footer prev/next link is the minimum; once the course has more than one lesson, give it a single shared **navigation component** (see [Assets](#assets)) injected into every lesson and reference page, so the learner can jump anywhere in the course from anywhere, not just step forward and back.
 
 Each lesson should recommend a primary source for the user to read or watch. This should be the most high-quality, high-trust resource you found on the topic.
 
@@ -62,7 +62,7 @@ Each lesson should contain a reminder to ask followup questions to the agent. Th
 
 ### Verify it renders before you call it done
 
-A lesson is HTML + CSS + JS, and "beautiful" (above) is a claim about the *rendered* page, not the source. Layout bugs (overlap, clipping, a broken breakpoint), dead interactivity, and 404'd assets are all invisible when you only read the file. **You MUST render every lesson you create or change in a real browser and look at it before declaring the work done.** This includes edits to shared `./assets/` components — one component change touches every lesson.
+A lesson is HTML + CSS + JS, and "beautiful" (above) is a claim about the *rendered* page, not the source. Layout bugs (overlap, clipping, a broken breakpoint), dead interactivity, and 404'd assets are all invisible when you only read the file. **You MUST render every lesson you create or change in a real browser and look at it before declaring the work done.** This includes edits to shared `./assets/` components: one component change touches every lesson.
 
 Use a browser MCP (Playwright or chrome-devtools). They block the `file://` protocol, so first serve the workspace over a local static server and open the `http://` URL:
 
@@ -72,15 +72,15 @@ python3 -m http.server 8000   # from the workspace root, in the background
 ```
 
 Check, at minimum:
-- **Console is clean** — no errors (a missing `favicon.ico` 404 is the only acceptable noise).
-- **Interactivity works** — click through every quiz/widget and confirm feedback fires.
-- **Layout holds** — screenshot a wide and a narrow viewport. For any CSS you wrote, don't trust your eye: read the elements' bounding boxes (`getBoundingClientRect`) and confirm nothing overlaps the reading column at the breakpoint edges. Reload after editing CSS/JS — the page caches the old asset.
+- **Console is clean:** no errors (a missing `favicon.ico` 404 is the only acceptable noise).
+- **Interactivity works:** click through every quiz/widget and confirm feedback fires.
+- **Layout holds:** screenshot a wide and a narrow viewport. For any CSS you wrote, don't trust your eye: read the elements' bounding boxes (`getBoundingClientRect`) and confirm nothing overlaps the reading column at the breakpoint edges. Reload after editing CSS/JS because the page caches the old asset.
 
 ## Assets
 
-Lessons are built from reusable **components**, stored in `./assets/`: stylesheets, quiz widgets, simulators, diagram helpers — anything a second lesson could reuse.
+Lessons are built from reusable **components**, stored in `./assets/`: stylesheets, quiz widgets, simulators, diagram helpers, anything a second lesson could reuse.
 
-Reuse is the default, not the exception. Before authoring a lesson, read `./assets/` and build from the components already there. When a lesson needs something new and reusable, write it as a component in `./assets/` and link to it — never inline code a future lesson would duplicate.
+Reuse is the default, not the exception. Before authoring a lesson, read `./assets/` and build from the components already there. When a lesson needs something new and reusable, write it as a component in `./assets/` and link to it, never inline code a future lesson would duplicate.
 
 A shared stylesheet is the first component every workspace earns: every lesson links it, so the lessons look like one consistent course rather than a pile of one-offs. The second is a shared **navigation component**, earned the moment a second lesson exists: one source of truth (a single manifest of lessons + references) injected into every page, so adding a lesson is one line rather than an edit to every existing file. As the workspace grows, so should the component library.
 
@@ -127,11 +127,11 @@ For quizzes, each answer should be exactly the same number of words (and charact
 
 ### Make the practice genuinely hard
 
-The exercise is where understanding is forged — not the prose. The default failure is the easy recognition quiz ("which category is this?"): the learner pattern-matches the right button, *feels* mastery (fluency), and retains nothing (no storage strength). A lesson whose questions can be answered without understanding the theme has taught nothing it can prove. Make the practice demand the understanding:
+The exercise is where understanding is forged, not the prose. The default failure is the easy recognition quiz ("which category is this?"): the learner pattern-matches the right button, *feels* mastery (fluency), and retains nothing (no storage strength). A lesson whose questions can be answered without understanding the theme has taught nothing it can prove. Make the practice demand the understanding:
 
-- **Test application, not recognition.** Give a *novel* scenario and make the learner do something with the principle — diagnose what's wrong with it, predict the outcome, pick the best fix, or spot the missing piece. Labelling a textbook example is the weakest question type; don't let it be the default.
+- **Test application, not recognition.** Give a *novel* scenario and make the learner do something with the principle: diagnose what's wrong with it, predict the outcome, pick the best fix, or spot the missing piece. Labelling a textbook example is the weakest question type; don't let it be the default.
 - **Make the wrong answers tempting.** Distractors should be what a shallow read would pick: a common misconception, a half-truth, the "almost right." If a distractor is obviously wrong, the question tests nothing. The learning happens in discriminating between close options.
-- **Difficulty from reasoning, never trickery.** The effort must come from the thinking the question demands — not obscure trivia, ambiguous wording, or trap phrasing. Hard is not the same as confusing.
+- **Difficulty from reasoning, never trickery.** The effort must come from the thinking the question demands, not obscure trivia, ambiguous wording, or trap phrasing. Hard is not the same as confusing.
 - **Force a commitment before the reveal.** The learner picks an answer before seeing feedback; the act of effortful retrieval builds memory even when they're wrong. Let them be wrong, then explain why.
 - **Interleave within the exercise.** Mix scenario types so the learner must first work out *which* principle applies before applying it, instead of drilling one move in a row.
 

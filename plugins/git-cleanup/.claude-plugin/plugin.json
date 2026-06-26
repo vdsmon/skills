@@ -1,6 +1,6 @@
 {
   "name": "git-cleanup",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Clean up stale git branches and worktrees. Finds branches merged into dev/develop/master/main, checks worktrees for uncommitted changes, and removes what's safe while skipping dirty worktrees. Use for 'clean up branches', 'git housekeeping', 'remove merged branches', 'clean worktrees'. Portable across SKILL.md-native hosts.",
   "author": {
     "name": "Victor De Simone",

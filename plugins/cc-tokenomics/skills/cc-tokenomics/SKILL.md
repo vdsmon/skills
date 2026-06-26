@@ -21,15 +21,15 @@ allowed-tools:
   - Bash(security find-generic-password *)
 ---
 
-# Tokenomics — Token & Plan Usage Analysis
+# Tokenomics: Token & Plan Usage Analysis
 
 Analyze token use, cache efficiency, and plan consumption for Claude Code sessions.
 
 ## Invocation
 
-- `/cc-tokenomics` — current session
-- `/cc-tokenomics --all` — aggregate across every session on disk
-- `/cc-tokenomics <path-to-session.jsonl>` — specific transcript
+- `/cc-tokenomics`: current session
+- `/cc-tokenomics --all`: aggregate across every session on disk
+- `/cc-tokenomics <path-to-session.jsonl>`: specific transcript
 
 ## Live data
 
@@ -65,29 +65,29 @@ EXTRA USAGE
   █░░░░░░░░░░░░░░░░░░░
 ```
 
-Progress bars are 20 chars wide, `█` and `░`. Plan usage goes first — it's what the user cares about most.
+Progress bars are 20 chars wide, `█` and `░`. Plan usage goes first, because it's what the user cares about most.
 
 ## Insights
 
-After the dashboard, add 2-3 short insights drawn from the actual numbers. Pick only ones that are interesting given this session — don't list all four categories if only one is notable. One line each. ultrathink about which 2-3 matter most given the numbers above.
+After the dashboard, add 2-3 short insights drawn from the actual numbers. Pick only ones that are interesting given this session, and don't list all four categories if only one is notable. One line each. ultrathink about which 2-3 matter most given the numbers above.
 
 **Cache behavior examples:**
-- "Cache hit rate is 98.8% — essentially optimal. System prompt and context are fully cached between turns."
-- "Cache hit dropped to 72% — likely a gap longer than TTL, which evicted the cache. The next few turns will re-cache."
-- "Cache write tokens (916k) are high relative to reads — many cache invalidations, likely from editing CLAUDE.md or switching contexts."
+- "Cache hit rate is 98.8%, essentially optimal. System prompt and context are fully cached between turns."
+- "Cache hit dropped to 72%, likely a gap longer than TTL, which evicted the cache. The next few turns will re-cache."
+- "Cache write tokens (916k) are high relative to reads, many cache invalidations, likely from editing CLAUDE.md or switching contexts."
 
 **Burn rate examples:**
 - "At current pace (28% in ~2h), you'll use the 5h window in ~3.5 more hours of active work."
-- "7d window is at 49% with 61h until reset — plenty of headroom."
+- "7d window is at 49% with 61h until reset, plenty of headroom."
 - "You've used 28% of your 5h window. If you're done for now, it resets in 3h10m."
 
 **Context growth examples:**
-- "Context is at 43% of 1M — conversation is still compact."
-- "Context is at 75% — approaching auto-compaction. Consider /clear if switching tasks."
+- "Context is at 43% of 1M, conversation is still compact."
+- "Context is at 75%, approaching auto-compaction. Consider /clear if switching tasks."
 
 **Cost efficiency examples:**
-- "98.8% cache hit means almost every token is served from cache — both cheap and quota-friendly."
-- "Extra usage is at $34.79 — at this rate you'll use ~$120 this month."
+- "98.8% cache hit means almost every token is served from cache, both cheap and quota-friendly."
+- "Extra usage is at $34.79, at this rate you'll use ~$120 this month."
 
 ## Trend (when --all or multiple data points)
 

@@ -7,21 +7,21 @@ Date: 2026-05-27. First substantive deployment of `loop-finder` skill against tw
 | Class id | Task | Outcome |
 |---|---|---|
 | `4aa9e37f9396` | mic-mute settings-window snapshot regression (`UI-visual` + `exit-code`) | 1 cycle. V2 adopted (drop magick montage, -24% wall-clock). |
-| `60bc3b8f2621` | mic-mute about-window matches user-provided target image (`about-window-conformance` + `similarity`) | 4 cycles. V1→G2→V5→V7. Threshold not crossed; halted at -36% dissim reduction with diminishing returns. |
+| `60bc3b8f2621` | mic-mute about-window matches user-provided target image (`about-window-conformance` + `similarity`) | 4 cycles. V1->G2->V5->V7. Threshold not crossed; halted at -36% dissim reduction with diminishing returns. |
 
 ## 7 skill-meta findings (queued upgrades)
 
 ### 1. Agent type for variant measurement
 
-**Pain**: `caveman:cavecrew-builder` lacks Bash tool. Variant agents need to run `cargo build` + 10× measurement loops. Without Bash they edit-only and report "halted, need Bash for measurement".
+**Pain**: `caveman:cavecrew-builder` lacks Bash tool. Variant agents need to run `cargo build` + 10x measurement loops. Without Bash they edit-only and report "halted, need Bash for measurement".
 
 **Workaround this run**: switched to `general-purpose` (full toolkit) or `codex:codex-rescue` (substantial Rust). Both have Bash.
 
-**Fix for SKILL.md**: explicit guidance in Step 3 — variant agents MUST be `general-purpose` or `codex:codex-rescue`. Never `caveman:cavecrew-builder` for variants that measure. Caveman builders only for tasks that emit a diff and return without measurement.
+**Fix for SKILL.md**: explicit guidance in Step 3: variant agents MUST be `general-purpose` or `codex:codex-rescue`. Never `caveman:cavecrew-builder` for variants that measure. Caveman builders only for tasks that emit a diff and return without measurement.
 
 ### 2. ROOT derivation in iterate.sh templates
 
-**Pain**: `tools/settings-preview/iterate.sh` hardcoded `ROOT="/Users/victordsm/repos/mic-mute"`. Worktree-isolated variants built and ran in the main repo. Concurrent variants raced on the same binary + about.rs. Surfaced TWICE — first in settings cycle 1, again in about cycle 1.
+**Pain**: `tools/settings-preview/iterate.sh` hardcoded `ROOT="/Users/victordsm/repos/mic-mute"`. Worktree-isolated variants built and ran in the main repo. Concurrent variants raced on the same binary + about.rs. Surfaced TWICE: first in settings cycle 1, again in about cycle 1.
 
 **Workaround**: each variant agent independently figured out the problem and either cloned `tools/` into their worktree + added `[workspace]` manually OR built a custom iterate.sh pointing at their worktree's target/. The agents diagnose themselves.
 
@@ -56,7 +56,7 @@ Better: cycle 4 onward expects WIP committed. Document as orchestrator contract.
 
 ### 4. magick SSIM is dissimilarity, not similarity
 
-**Pain**: ImageMagick 7's `compare -metric SSIM` emits structural DISSIMILARITY (0=identical, 0.5=max different) in the parenthesised normalized value, despite the metric name. The initial iterate.sh wrote `s >= 0.92` as ACCEPT — backwards. V1's agent caught it during cycle 1 ("self-compare = 0", "black-vs-white = 0.5"). Verified directly.
+**Pain**: ImageMagick 7's `compare -metric SSIM` emits structural DISSIMILARITY (0=identical, 0.5=max different) in the parenthesised normalized value, despite the metric name. The initial iterate.sh wrote `s >= 0.92` as ACCEPT, backwards. V1's agent caught it during cycle 1 ("self-compare = 0", "black-vs-white = 0.5"). Verified directly.
 
 **Fix for menu.yaml** `target_conformance_oracle` entry:
 
@@ -109,11 +109,11 @@ Or: parameterize OUT and have the orchestrator pass per-variant paths.
 
 ### 7. Lex rule for product variants vs gate variants
 
-**Pain**: cycle 3 V5 won on oracle dissim (-10.8%) but had blindness unchanged (0), wall regressed (5.86 → 7.40s in isolation), tokens unchanged. Under loop-finder's lex rule (`blindness → wall → tokens`), no perf dim improved ≥5%. Strict rule: REJECT. But V5 is the clear product winner — the oracle output (dissim) is the actual success target for product iteration.
+**Pain**: cycle 3 V5 won on oracle dissim (-10.8%) but had blindness unchanged (0), wall regressed (5.86 -> 7.40s in isolation), tokens unchanged. Under loop-finder's lex rule (`blindness → wall → tokens`), no perf dim improved ≥5%. Strict rule: REJECT. But V5 is the clear product winner, since the oracle output (dissim) is the actual success target for product iteration.
 
 **Root cause**: SKILL.md uses a single lex rule for all variants. But:
-- For GATE variants (cycle 2 G2 etc), lex perf dims ARE the goal — we're measuring loop-as-artifact quality.
-- For PRODUCT variants (cycle 3 V4/V5/V6/V7), oracle output is the goal — perf dims are secondary.
+- For GATE variants (cycle 2 G2 etc), lex perf dims ARE the goal, since we're measuring loop-as-artifact quality.
+- For PRODUCT variants (cycle 3 V4/V5/V6/V7), oracle output is the goal, while perf dims are secondary.
 
 **Fix for SKILL.md**: separate the rule into two cases:
 
@@ -131,7 +131,7 @@ The orchestrator declares which type of variant is running before Step 3 spawns.
 
 - **G3 LPIPS pre-trained on ImageNet has weak priors for UI imagery**. AlexNet judges V1 (sim 0.88 per SSIM) at LPIPS 0.48 (far above its 0.15 "perceptually similar" threshold). Either V1 really is perceptually far, or AlexNet doesn't carry UI-design priors. VGG/Squeeze backbones might be better. Worth a cycle 5 if pursued.
 
-- **Visual-lex blindness-rule undercoverage**: the existing rules in `~/.claude/loop-finder/blindness-rules.yaml` don't catch "binary artifact referenced in failure path requires inspection". Scalar dissim output is technically not blind by those rules — but agents must Read the PNG to understand WHERE the diff lives. New rule needed:
+- **Visual-lex blindness-rule undercoverage**: the existing rules in `~/.claude/loop-finder/blindness-rules.yaml` don't catch "binary artifact referenced in failure path requires inspection". Scalar dissim output is technically not blind by those rules, but agents must Read the PNG to understand WHERE the diff lives. New rule needed:
 
 ```yaml
 - id: binary-artifact-in-failure-path
@@ -146,7 +146,7 @@ This rule would have penalized cycle-0 baseline (blindness 0 currently, should h
 
 ## Sidecar version-source bug
 
-`tools/about-preview/Cargo.toml` declares its own package version (0.0.0). `env!("CARGO_PKG_VERSION")` in about.rs returns 0.0.0 when compiled into the sidecar — so the version displayed in headless renders is wrong. V1 worked around by hardcoding "v0.5.1".
+`tools/about-preview/Cargo.toml` declares its own package version (0.0.0). `env!("CARGO_PKG_VERSION")` in about.rs returns 0.0.0 when compiled into the sidecar, so the version displayed in headless renders is wrong. V1 worked around by hardcoding "v0.5.1".
 
 **Fix**: add `tools/about-preview/build.rs` that reads parent `Cargo.toml` and emits a compile-time constant. Or pass via env var `SAFEMIC_PARENT_VERSION` from iterate.sh.
 
@@ -154,10 +154,10 @@ Not on the 7 because it's repo-specific, not a skill-level concern. Note for fut
 
 ## Files this retro affects
 
-- `~/repos/personal/skills/plugins/loop-finder/skills/loop-finder/SKILL.md` — adoption rules split, agent-type guidance, smoke-test oracle-direction check
-- `~/repos/personal/skills/plugins/loop-finder/skills/loop-finder/menu.yaml` — `target_conformance_oracle` caveats, tooling_signature notes, `headless_probe_sidecar` ROOT derivation requirement
-- `~/.claude/loop-finder/blindness-rules.yaml` — `binary-artifact-in-failure-path` rule
-- iterate.sh template recommendation — per-PID OUT dir
+- `~/repos/personal/skills/plugins/loop-finder/skills/loop-finder/SKILL.md`: adoption rules split, agent-type guidance, smoke-test oracle-direction check
+- `~/repos/personal/skills/plugins/loop-finder/skills/loop-finder/menu.yaml`: `target_conformance_oracle` caveats, tooling_signature notes, `headless_probe_sidecar` ROOT derivation requirement
+- `~/.claude/loop-finder/blindness-rules.yaml`: `binary-artifact-in-failure-path` rule
+- iterate.sh template recommendation: per-PID OUT dir
 
 ## Halt state
 
@@ -165,8 +165,8 @@ Not on the 7 because it's repo-specific, not a skill-level concern. Note for fut
 - Class `60bc3b8f2621` (about target-conformance): cycle 4, V7 adopted, halt on diminishing returns.
 
 Resume conditions:
-- Want G5 fine-patch gate (16×16 grid) → could push V7 further by rewarding octocat.
-- Want LPIPS hybrid (per-quadrant LPIPS) → real perceptual judgment.
-- Tighter target match → font rasterization debugging required (out of loop scope).
+- Want G5 fine-patch gate (16x16 grid) -> could push V7 further by rewarding octocat.
+- Want LPIPS hybrid (per-quadrant LPIPS) -> real perceptual judgment.
+- Tighter target match -> font rasterization debugging required (out of loop scope).
 
 Otherwise: ship the 7 fixes into the skill plugin, then exercise loop-finder against a non-UI class to validate the algorithm generalizes (popup HUD, mic.rs unit-test class, etc).

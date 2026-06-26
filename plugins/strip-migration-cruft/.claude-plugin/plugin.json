@@ -1,6 +1,6 @@
 {
   "name": "strip-migration-cruft",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Scan a repo for transitional / migration / phase / wave / story / legacy-alias cruft comments that document past project history rather than current behavior, bucket hits into safe-to-strip vs keep-semantic, then propose surgical edits and execute after confirmation. Use for 'scan for migration comments', 'remove phase/wave/story refs', 'strip transitional cruft', or fatigue with project-history breadcrumbs in code and docs. Portable across SKILL.md-native hosts.",
   "author": {
     "name": "Victor De Simone",

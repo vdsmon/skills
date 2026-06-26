@@ -502,7 +502,7 @@ Clear steps prevent Claude from skipping critical validation. The checklist help
 
 ### Implement feedback loops
 
-**Common pattern**: Run validator → fix errors → repeat
+**Common pattern**: Run validator -> fix errors -> repeat
 
 This pattern greatly improves output quality.
 
@@ -988,7 +988,7 @@ When Claude performs complex, open-ended tasks, it can make mistakes. The "plan-
 
 **Example**: Imagine asking Claude to update 50 form fields in a PDF based on a spreadsheet. Without validation, Claude might reference non-existent fields, create conflicting values, miss required fields, or apply updates incorrectly.
 
-**Solution**: Use the workflow pattern shown above (PDF form filling), but add an intermediate `changes.json` file that gets validated before applying changes. The workflow becomes: analyze → **create plan file** → **validate plan** → execute → verify.
+**Solution**: Use the workflow pattern shown above (PDF form filling), but add an intermediate `changes.json` file that gets validated before applying changes. The workflow becomes: analyze -> **create plan file** -> **validate plan** -> execute -> verify.
 
 **Why this pattern works:**
 
