@@ -33,7 +33,7 @@ Three invariants preserve when add/rename plugins:
 
 Maintainer tasks live in `mise.toml` (task runner only, no tool pinning): `mise run sync` | `bump <plugin> [level]` | `verify`. The scripts under `scripts/` stay runnable standalone for anyone without mise.
 
-Current plugins (18): `brainstorming`, `cc-cache-keepalive`, `cc-tokenomics`, `cc-usage-guard`, `codebase-design`, `git-cleanup`, `grilling`, `humanize`, `investigate`, `loop-finder`, `prep-compact`, `prep-goal`, `skill-polish`, `skill-smith`, `slack-draft`, `strip-migration-cruft`, `systematic-debugging`, `teach`. Plugins prefixed with `cc-` are Claude-Code-specific (hooks, `` !`cmd` `` dynamic injection, `${CLAUDE_SKILL_DIR}`); unprefixed plugins port cleanly to other Agent Skills hosts (Codex CLI, Gemini CLI, Cursor, Goose, etc.). `cc-tokenomics` is analysis + education only; cache warmup lives in `cc-cache-keepalive`. Multi-skill plugins: `loop-finder` ships `loop-finder` + `feature-cycle`; `grilling` ships `grilling` + `domain-modeling` + `grill-with-docs`.
+The current plugin list lives in `.claude-plugin/marketplace.json` (source of truth) and the generated table in `README.md` — don't re-enumerate it here. Plugins prefixed with `cc-` are Claude-Code-specific (hooks, `` !`cmd` `` dynamic injection, `${CLAUDE_SKILL_DIR}`); unprefixed plugins port cleanly to other Agent Skills hosts (Codex CLI, Gemini CLI, Cursor, Goose, etc.). Knowledge not derivable from the dir names: `cc-tokenomics` is analysis + education only, cache warmup lives in `cc-cache-keepalive`; multi-skill plugins are `loop-finder` (ships `loop-finder` + `feature-cycle`) and `grilling` (ships `grilling` + `domain-modeling` + `grill-with-docs`).
 
 ## Anatomy of a skill
 
