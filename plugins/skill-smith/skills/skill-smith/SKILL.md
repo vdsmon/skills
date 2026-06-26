@@ -2,7 +2,7 @@
 name: skill-smith
 argument-hint: "[skill name or what to build]"
 disable-model-invocation: true
-description: Create, test, evaluate, optimize triggering, and package Agent Skills. Use whenever the user wants to build a skill from scratch, turn a workflow into a skill, improve or debug an existing skill, run evals or benchmarks on a skill, raise a skill's triggering accuracy, or package a skill for install. Carries TDD-for-skills discipline: baseline-test first, close rationalization loopholes, verify empirically before shipping.
+description: Create, test, evaluate, optimize triggering, and package Agent Skills. Use whenever the user wants to build a skill from scratch, turn a workflow into a skill, improve or debug an existing skill, run evals or benchmarks on a skill, raise a skill's triggering accuracy, or package a skill for install. Carries TDD-for-skills discipline, baseline-test first, close rationalization loopholes, verify empirically before shipping.
 ---
 
 # Skill Smith

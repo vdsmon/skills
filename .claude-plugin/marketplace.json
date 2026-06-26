@@ -13,7 +13,7 @@
       "name": "investigate",
       "source": "./plugins/investigate",
       "description": "Investigate a reported error or incident end to end across every reachable system, never inferring past a missing source — stop and raise to the human for access or clarity instead. Builds an access ledger, batch-raises blockers up front, digs wide through logs/state/code/history (any repo), and delivers a root-cause report plus a proposed (unapplied) fix. Claude-Code-leaning (AskUserQuestion + read-only subagents + MCP access ledger); ships a swappable environment access-map reference.",
-      "version": "0.1.3"
+      "version": "0.1.4"
     },
     {
       "name": "slack-draft",
@@ -85,7 +85,7 @@
       "name": "skill-smith",
       "source": "./plugins/skill-smith",
       "description": "Forge for Agent Skills: create, test, evaluate, optimize triggering, and package skills. Merges an empirical eval loop (run with-skill vs baseline, benchmark, iterate) with TDD-for-skills discipline (baseline-test first, close rationalization loopholes). Bundles the eval harness, benchmark viewer, description-triggering optimizer, and a design-vocabulary reference (predictability, context vs cognitive load, information hierarchy, leading words, failure modes). Claude-Code-leaning (subagents + scripts).",
-      "version": "0.3.0"
+      "version": "0.3.1"
     },
     {
       "name": "git-cleanup",
