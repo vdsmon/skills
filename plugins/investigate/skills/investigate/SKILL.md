@@ -33,7 +33,7 @@ Inferring past a wall is the single failure this skill exists to prevent. A gues
 | "The ticket is vague but I'll assume they mean the nightly run." | Assuming the target is inferring. Ask which run/job/date/env. |
 | "Most of the evidence points one way, the missing piece won't change it." | Then it's cheap to confirm. If it could change the answer, you must. |
 | "The identifiers don't quite match the code, but they're close enough." | Close-enough mappings send people to the wrong code path. Confirm the real identity. |
-| "My credentials are expired / SSO is dead, so I'll hand the fetch back to the human." | Giving up on a source you can authenticate into is its own failure. If you can auth (e.g. `mise sso`), auth and pull it yourself. Only raise for access you genuinely cannot get. |
+| "My credentials are expired / SSO is dead, so I'll hand the fetch back to the human." | Giving up on a source you can authenticate into is its own failure. If you can auth (e.g. an SSO login), auth and pull it yourself. Only raise for access you genuinely cannot get. |
 | "My local checkout *is* the code that ran." | The deployed image/DAG/job builds from the merged branch (`origin/<branch>`), not your working copy. A checkout even a few commits behind makes `git log`, `git blame`, and local repro reflect different code than what failed. `git fetch` and confirm `HEAD..origin/<branch>` is empty before trusting any of them. |
 | "The fix commit is an ancestor of `origin/<branch>`, so my checkout is synced." | Ancestry of one commit ≠ your checkout being current. The commits between your HEAD and `origin/<branch>` may touch the very files you're about to read. Run `git rev-list --count HEAD..origin/<branch>` and confirm `0`; a `merge-base --is-ancestor` check does not. |
 
@@ -50,7 +50,7 @@ Read what you were handed (pasted text, Slack link, Jira key, stack trace). Extr
 
 List every system Step 1 says you'll need and mark each **reachable** or **blocked**. Resolve the blocked ones **as one batch** with a single question to the human before you start digging — one interruption, not ten. New blockers found mid-dig get raised just-in-time (Step 4).
 
-For *what's reachable in this environment and how* — and which blockers are chronic (e.g. prod Airflow logs) — read `references/access-map.md`. Authenticate anything you can authenticate yourself (don't raise for an auth you can perform); only raise for access you genuinely cannot obtain.
+For *what's reachable in this environment and how* — and which blockers are chronic (e.g. prod orchestrator logs) — read `references/access-map.md`. Authenticate anything you can authenticate yourself (don't raise for an auth you can perform); only raise for access you genuinely cannot obtain.
 
 When you raise, be **specific**: name the exact log / run / table you need and *why it changes the answer*. Not "I might need more info" — instead "paste the log for `job_x` run `2026-06-15`, task `transform`; it'll tell us whether the OOM was data volume or a config regression." Use `AskUserQuestion` if your host has it; otherwise just ask directly.
 

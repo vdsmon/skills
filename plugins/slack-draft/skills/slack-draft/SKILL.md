@@ -92,15 +92,15 @@ These artifacts go to a human who knows the user's voice, so they must not read 
 - No title-case section headings inside a chat message.
 - No rule-of-three padding ("fast, safe, and scalable"), no "not X, but Y" contrastive scaffolding, no "it's worth noting", "leverage", "seamless", "comprehensive".
 - Full natural sentences with articles. This is an artifact for the user, not your own chat reply, so caveman/telegraph compression does not apply here.
-- Use the system's own verb for system actions (a Bitbucket button "marks as ready"; an API "creates").
+- Use the system's own verb for system actions (a code-review tool's button "marks as ready"; an API "creates").
 
 ## Portuguese register (only when the user asked for PT-BR)
 
-This section applies only after the user explicitly requested Portuguese (see step 1); English is the default. When PT-BR is requested, the Acme work register is casual, not formal corporate:
+This section applies only after the user explicitly requested Portuguese (see step 1); English is the default. When PT-BR is requested, a casual tech-team work register is the norm, not formal corporate:
 
 - `tá` over `está`, contractions over full forms, where it reads natural.
-- Keep the anglicisms the team uses: `mapping`, `match`, `deploy`, `load`, `clean`, `core`, `form`. Do not translate these into stiff Portuguese (`mapeamento`, `limpo`).
-- Prepositions follow the loanword's gender as the team says it (`no DSL`, `no banco de core`).
+- Keep the English loanwords your team actually uses in chat (e.g. `deploy`, `merge`, `review`, `build`). Do not translate them into stiff Portuguese.
+- Prepositions follow the loanword's gender as your team says it (e.g. `no deploy`, `na branch`).
 - Still correct grammar and accents; casual is not sloppy.
 
 Confirm the register if the audience is unknown (a message to leadership or a client reads more formal than one to a squad channel).
