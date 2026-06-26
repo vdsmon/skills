@@ -1,7 +1,7 @@
 {
   "name": "vdsmon-skills",
   "metadata": {
-    "description": "Personal Claude Code plugins by vdsmon. Each skill ships as its own plugin so you can pick and choose. Plugins prefixed with cc- are Claude-Code-specific (hooks, dynamic context injection, or ${CLAUDE_SKILL_DIR}); unprefixed plugins port cleanly to other SKILL.md-native hosts (OpenAI Codex, Gemini CLI, Cursor, Goose, Copilot, etc.)."
+    "description": "Personal Agent Skills by vdsmon, packaged as a plugin marketplace. Each skill ships as its own plugin so you can pick and choose. Plugins prefixed with cc- are Claude-Code-specific (hooks, dynamic context injection, or ${CLAUDE_SKILL_DIR}), and unprefixed plugins port cleanly to other SKILL.md-native hosts (OpenAI Codex, Gemini CLI, Cursor, Goose, Copilot, etc.)."
   },
   "owner": {
     "name": "Victor De Simone",
