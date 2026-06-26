@@ -66,8 +66,6 @@ m = json.load(open(src))
 def short(desc):
     desc = desc.strip()
     cut = desc.split(". ")[0].rstrip(".")
-    if len(cut) > 90:
-        cut = cut[:87].rstrip() + "…"
     return cut.replace("|", "\\|")
 
 rows = [
