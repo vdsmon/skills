@@ -1,6 +1,6 @@
 {
   "name": "investigate",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Investigate a reported error or incident end to end across every reachable system, never inferring past a missing source — stop and raise to the human for access or clarity instead. Builds an access ledger, batch-raises blockers up front, digs wide through logs/state/code/history, and delivers a root-cause report plus a proposed (unapplied) fix. Claude-Code-leaning (AskUserQuestion + read-only subagents + MCP access ledger).",
   "author": {
     "name": "Victor De Simone",
