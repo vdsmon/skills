@@ -12,10 +12,10 @@ input=$(cat)
 mkdir -p "$STATE_DIR"
 
 printf '%s' "$input" | jq -c '{
-  five:        (.rate_limits.five_hour.used_percentage // null),
-  seven:       (.rate_limits.seven_day.used_percentage // null),
-  five_reset:  (.rate_limits.five_hour.resets_at // null),
-  seven_reset: (.rate_limits.seven_day.resets_at // null)
+  five_hour:       (.rate_limits.five_hour.used_percentage // null),
+  weekly:          (.rate_limits.seven_day.used_percentage // null),
+  five_hour_reset: (.rate_limits.five_hour.resets_at // null),
+  weekly_reset:    (.rate_limits.seven_day.resets_at // null)
 }' > "$STATE_DIR/usage.json" 2>/dev/null
 
 # render via the configured status-line tool; if absent, degrade to a minimal built-in
