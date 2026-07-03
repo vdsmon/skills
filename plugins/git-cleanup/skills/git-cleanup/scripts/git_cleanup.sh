@@ -5,6 +5,9 @@
 #   git_cleanup.sh [--dry-run]
 #
 # By default, removes merged branches and clean worktrees (skips dirty ones).
+# Merge detection is ancestry-based (git branch --merged) plus, on GitHub
+# remotes with gh available, squash-aware: a branch whose tip equals the head
+# SHA of a merged PR counts as merged.
 # --dry-run: Only show what would be removed/kept, without changing anything.
 
 set -euo pipefail
@@ -90,6 +93,21 @@ for target in "${TARGETS[@]}"; do
   done < <(git branch --merged "$target" 2>/dev/null)
 done
 
+# Squash and rebase merges never make a branch tip an ancestor of the target,
+# leaving `git branch --merged` permanently blind to them. When origin is a
+# GitHub repo and gh is available, also count a branch as merged if its tip
+# equals the head SHA of a merged PR. A tip that moved past the merged PR head
+# means post-merge work, so that branch stays in KEEP.
+declare -A SQUASH_PR  # branch -> merged PR number
+if command -v gh >/dev/null 2>&1 && git remote get-url origin 2>/dev/null | grep -qi 'github'; then
+  while IFS=$'\t' read -r name oid num; do
+    [[ -z "$name" || -z "$oid" ]] && continue
+    tip=$(git rev-parse --verify --quiet "refs/heads/$name") || continue
+    [[ "$tip" == "$oid" ]] && SQUASH_PR[$name]="$num"
+  done < <(gh pr list --state merged --limit 300 --json headRefName,headRefOid,number \
+    --template '{{range .}}{{.headRefName}}{{"\t"}}{{.headRefOid}}{{"\t"}}{{.number}}{{"\n"}}{{end}}' 2>/dev/null)
+fi
+
 # Collect all local branches
 ALL_BRANCHES=()
 while IFS= read -r raw; do
@@ -114,7 +132,7 @@ EXCLUDED=()           # merged but kept out by --exclude
 for branch in "${ALL_BRANCHES[@]}"; do
   wt_path=$(worktree_for_branch "$branch")
 
-  if [[ -n "${MERGED_INTO[$branch]+_}" ]]; then
+  if [[ -n "${MERGED_INTO[$branch]+_}" || -n "${SQUASH_PR[$branch]+_}" ]]; then
     # Branch is merged
     if [[ "$branch" == "$CURRENT_BRANCH" ]]; then
       SKIP_CURRENT="$branch"
@@ -151,11 +169,14 @@ echo ""
 if [[ ${#REMOVE_BRANCHES[@]} -gt 0 ]]; then
   echo "REMOVE (merged, clean):"
   for i in "${!REMOVE_BRANCHES[@]}"; do
+    branch="${REMOVE_BRANCHES[$i]}"
     wt="${REMOVE_WORKTREES[$i]}"
+    via=""
+    [[ -n "${SQUASH_PR[$branch]+_}" ]] && via="  (squash-merged: PR #${SQUASH_PR[$branch]})"
     if [[ -n "$wt" ]]; then
-      echo "  - ${REMOVE_BRANCHES[$i]}  (worktree: $wt)"
+      echo "  - $branch$via  (worktree: $wt)"
     else
-      echo "  - ${REMOVE_BRANCHES[$i]}"
+      echo "  - $branch$via"
     fi
   done
   echo ""
@@ -243,7 +264,12 @@ else
     # delete a branch still checked out in a registered worktree.
     if git show-ref --verify --quiet "refs/heads/$branch"; then
       echo "Deleting branch: $branch"
-      if git branch -d "$branch" >/dev/null 2>&1; then
+      # A squash-merged branch is never an ancestor of the target and -d refuses
+      # it; the PR-state check already proved its content is merged, making -D
+      # safe. Ancestry-merged branches keep -d as a safety belt.
+      del="-d"
+      [[ -n "${SQUASH_PR[$branch]+_}" ]] && del="-D"
+      if git branch "$del" "$branch" >/dev/null 2>&1; then
         deleted_br=$((deleted_br + 1))
       else
         FAILED+=("branch: $branch")
