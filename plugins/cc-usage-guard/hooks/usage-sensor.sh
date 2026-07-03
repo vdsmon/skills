@@ -11,7 +11,11 @@ RENDER_CMD="${CLAUDE_USAGE_RENDER_CMD:-ccstatusline}"
 input=$(cat)
 mkdir -p "$STATE_DIR"
 
+# schema stamps the state-file shape; the guard refuses any other value, so a sensor and
+# guard from different plugin versions fail loud instead of the guard silently reading
+# nulls off renamed keys (the 0.4.0 five/seven -> five_hour/weekly rename did exactly that).
 printf '%s' "$input" | jq -c '{
+  schema:          2,
   five_hour:       (.rate_limits.five_hour.used_percentage // null),
   weekly:          (.rate_limits.seven_day.used_percentage // null),
   five_hour_reset: (.rate_limits.five_hour.resets_at // null),

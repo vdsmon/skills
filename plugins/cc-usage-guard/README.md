@@ -23,12 +23,12 @@ That wires the guard hooks automatically. **The sensor is a `statusLine`, which 
 ```json
 "statusLine": {
   "type": "command",
-  "command": "bash ~/repos/personal/skills/plugins/cc-usage-guard/hooks/usage-sensor.sh",
+  "command": "bash \"$HOME/.claude/plugins/marketplaces/vdsmon-skills/plugins/cc-usage-guard/hooks/usage-sensor.sh\"",
   "refreshInterval": 5
 }
 ```
 
-(Point the path wherever the plugin lives; the install copy works too. The sensor must be your `statusLine` because that's the only stream carrying `rate_limits`.)
+Point the path at the **marketplace checkout** (`~/.claude/plugins/marketplaces/<marketplace>/...`), not a personal clone of this repo. The marketplace checkout updates together with the installed plugin, so the sensor and the guard always come from the same version. A personal clone drifts: after a plugin update the guard runs new code while the statusLine still runs the old sensor, and if the state-file schema changed between the two versions the guard goes blind (it now detects this and warns instead - see below). The sensor must be your `statusLine` because that's the only stream carrying `rate_limits`. Avoid the versioned install path under `plugins/cache/` too - it breaks on every version bump.
 
 ## Config (env vars)
 
@@ -41,6 +41,7 @@ That wires the guard hooks automatically. **The sensor is a `statusLine`, which 
 | `CLAUDE_USAGE_RESUME_BUFFER_MIN` | `2` | minutes after reset to schedule the auto-resume cron |
 | `CLAUDE_USAGE_REMIND_PARK_MIN` | `1` | minutes between throttled PARK repeat reminders |
 | `CLAUDE_USAGE_REMIND_WARN_MIN` | `5` | minutes between throttled WARN repeat reminders |
+| `CLAUDE_USAGE_SENSOR_MAX_AGE_MIN` | `15` | minutes before the guard treats the sensor state as stale and warns |
 | `CLAUDE_USAGE_RENDER_CMD` | `ccstatusline` | downstream status-line renderer the sensor pipes to |
 
 Keep each `WARN` below its `THRESHOLD` (warn fires on the approach; park fires at the cap).
@@ -55,6 +56,16 @@ The hooks fire inside spawned agents too, so the guard stays correct when work f
 - **Main/root session:** full WARN -> PARK (STOP + auto-resume cron + push).
 - **Subagent or teammate (at any depth):** silent at WARN (keeps the runway; its parent is blocked and can't re-check meanwhile), and at PARK it gets a **wind-down**: finish the step and return, don't start new work or spawn further agents, and *don't* schedule a pause/cron (it can't pause the session). The wind-down cascades up the stack until the main session runs the real park. The main session's WARN also tells it not to *launch* new subagent fleets while near the cap.
 - Markers key on `session_id` + `agent_id`, so the main session and every spawned agent fire (and repeat) independently, no cross-muting.
+
+## Sensor liveness (the guard fails loud, not blind)
+
+The guard only sees what the sensor writes, and the sensor only runs when a statusLine renders. Before acting on the state file, the guard checks that the sensor is actually alive, and if not it injects a **one-time-per-session warning** into the root session (spawned agents stay silent; their parent gets the same warning) instead of silently doing nothing:
+
+- **Missing state file**: the statusLine was never wired to `usage-sensor.sh`.
+- **Stale state file** (older than `CLAUDE_USAGE_SENSOR_MAX_AGE_MIN`): no attended session is rendering a statusLine. Background/headless sessions (`claude --bg`, cron runners, subagent fleets) do **not** render one, so a machine running only unattended work stops refreshing the state even when wired correctly. Keep an attended session open while unattended fleets burn budget, or the guard cannot see usage.
+- **Schema mismatch**: the sensor stamps `schema: 2` into the state file and the guard refuses anything else, so a sensor and guard from different plugin versions (a drifted personal clone, a stale versioned cache path) fail loud instead of the guard reading nulls off renamed keys.
+
+While any of these hold, WARN/PARK cannot fire - the warning says so explicitly and points at the fix. The warning re-arms if the sensor recovers and later goes dark again in the same session.
 
 ## Notes
 
