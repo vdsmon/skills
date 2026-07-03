@@ -4,7 +4,7 @@ Pause Claude Code cleanly when you're about to hit a usage limit, then auto-resu
 
 Two parts:
 
-- **`hooks/usage-sensor.sh`**: a `statusLine` wrapper. Claude Code only exposes `rate_limits` on statusLine stdin (Pro/Max), so this is the one place the data can be read. It records 5-hour + weekly usage to `~/.claude/.usage-guard/usage.json`, then renders your normal status line.
+- **`hooks/usage-sensor.sh`**: a `statusLine` wrapper. Claude Code only exposes `rate_limits` on statusLine stdin (Pro/Max), so this is the one place the data can be read. It records 5-hour + weekly usage to `${CLAUDE_CONFIG_DIR:-~/.claude}/.usage-guard/usage.json`, then renders your normal status line.
 - **`hooks/usage-guard.sh`**: a `PostToolUse` + `UserPromptSubmit` hook. It reads that state and acts in two tiers, per window:
   - **WARN** (soft, lower threshold): a one-time heads-up nudging the model to land the current thread and reach a clean stopping point. No pause, no cron.
   - **PARK** (hard, higher threshold): injects a STOP, and the model pauses cleanly, schedules a one-shot `CronCreate` to auto-resume just after the limit resets, and fires a `PushNotification` so you learn about the park + resume time even when away. The session and its context stay alive across the limit, so the resume is in-context (no state dump needed).
@@ -29,6 +29,8 @@ That wires the guard hooks automatically. **The sensor is a `statusLine`, which 
 ```
 
 Point the path at the **marketplace checkout** (`~/.claude/plugins/marketplaces/<marketplace>/...`), not a personal clone of this repo. The marketplace checkout updates together with the installed plugin, so the sensor and the guard always come from the same version. A personal clone drifts: after a plugin update the guard runs new code while the statusLine still runs the old sensor, and if the state-file schema changed between the two versions the guard goes blind (it now detects this and warns instead - see below). The sensor must be your `statusLine` because that's the only stream carrying `rate_limits`. Avoid the versioned install path under `plugins/cache/` too - it breaks on every version bump.
+
+**Multiple profiles / accounts** (separate `CLAUDE_CONFIG_DIR` dirs, e.g. personal + work subscriptions): wire the sensor into **each** profile's `settings.json`. Both halves derive their state dir from `CLAUDE_CONFIG_DIR` (falling back to `~/.claude`), which hooks and the statusLine command inherit from the CLI process, so every profile tracks its own account's usage in its own `<profile>/.usage-guard/`. A profile with the guard enabled but no sensor wired trips the liveness gate below instead of silently reading another account's numbers. For a directory-sourced marketplace (`/plugin marketplace add <local path>`) the local path *is* the marketplace checkout - point that profile's statusLine there.
 
 ## Config (env vars)
 
@@ -73,5 +75,5 @@ While any of these hold, WARN/PARK cannot fire - the warning says so explicitly 
 
 - macOS/BSD: the guard uses `date -r <epoch>` for reset-time math and `stat -f %m` for the repeat-throttle clock. On Linux that would need `date -d @<epoch>` and `stat -c %Y`.
 - Requires `jq` and `awk` on PATH (missing jq fails loud, see above).
-- State lives at `~/.claude/.usage-guard/` (created on first run), not inside the plugin dir, because the statusLine sensor gets no `${CLAUDE_PLUGIN_ROOT}` and both halves must agree on one path. Stale session markers (>7 days) and orphaned sensor tmp files are garbage-collected on prompt-submit.
+- State lives at `${CLAUDE_CONFIG_DIR:-~/.claude}/.usage-guard/` (created on first run), not inside the plugin dir, because the statusLine sensor gets no `${CLAUDE_PLUGIN_ROOT}` and both halves must derive the same per-profile path. Stale session markers (>7 days) and orphaned sensor tmp files are garbage-collected on prompt-submit.
 - Tests: `bash plugins/cc-usage-guard/tests/test-usage-guard.sh` (or `mise run test:usage-guard`); add `--soak` for a concurrent write/read race check.

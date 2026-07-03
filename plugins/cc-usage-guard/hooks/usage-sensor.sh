@@ -2,10 +2,12 @@
 # statusLine wrapper: dump rate-limit % + reset to a state file, then render the status line.
 # rate_limits is only present in statusLine stdin (Pro/Max), so this is the only place to read it.
 # Pairs with usage-guard.sh, which reads the same STATE_DIR. statusLine commands get no
-# ${CLAUDE_PLUGIN_ROOT}, so state lives at a fixed $HOME path both halves agree on.
+# ${CLAUDE_PLUGIN_ROOT}, so both halves derive the path from the profile dir
+# (CLAUDE_CONFIG_DIR, inherited from the CLI process); multi-account machines get one
+# state dir per profile instead of clobbering a shared one.
 export PATH="/opt/homebrew/bin:$HOME/.local/share/mise/shims:$PATH"
 
-STATE_DIR="$HOME/.claude/.usage-guard"
+STATE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.usage-guard"
 RENDER_CMD="${CLAUDE_USAGE_RENDER_CMD:-ccstatusline}"
 
 input=$(cat)

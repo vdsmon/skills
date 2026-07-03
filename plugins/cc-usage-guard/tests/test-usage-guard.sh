@@ -16,7 +16,7 @@ SENSOR="$HERE/../hooks/usage-sensor.sh"
 unset CLAUDE_USAGE_THRESHOLD CLAUDE_USAGE_THRESHOLD_5H CLAUDE_USAGE_THRESHOLD_WEEKLY \
   CLAUDE_USAGE_WARN_5H CLAUDE_USAGE_WARN_WEEKLY CLAUDE_USAGE_RESUME_BUFFER_MIN \
   CLAUDE_USAGE_REMIND_PARK_MIN CLAUDE_USAGE_REMIND_WARN_MIN \
-  CLAUDE_USAGE_SENSOR_MAX_AGE_MIN CLAUDE_USAGE_RENDER_CMD 2>/dev/null
+  CLAUDE_USAGE_SENSOR_MAX_AGE_MIN CLAUDE_USAGE_RENDER_CMD CLAUDE_CONFIG_DIR 2>/dev/null
 
 TESTHOME=$(mktemp -d "${TMPDIR:-/tmp}/usage-guard-test.XXXXXX")
 if [ -z "$TESTHOME" ] || [ ! -d "$TESTHOME" ]; then
@@ -169,6 +169,28 @@ printf 'total garbage' | HOME="$TESTHOME" CLAUDE_USAGE_RENDER_CMD=cat bash "$SEN
 after=$(cat "$STATE")
 [ "$before" = "$after" ] && { PASS=$((PASS + 1)); echo "ok: garbage stdin does not clobber good state"; } \
   || { FAIL=$((FAIL + 1)); echo "FAIL: good state clobbered by failed sensor run"; }
+
+# --- multi-profile (CLAUDE_CONFIG_DIR) ----------------------------------------
+
+WORKPROF="$TESTHOME/profile-work"
+reset_state
+printf '%s' "$sensor_fixture" | HOME="$TESTHOME" CLAUDE_CONFIG_DIR="$WORKPROF" CLAUDE_USAGE_RENDER_CMD=cat bash "$SENSOR" >/dev/null
+prof_ok=1
+[ -f "$WORKPROF/.usage-guard/usage.json" ] || prof_ok=0
+[ -f "$STATE" ] && prof_ok=0
+[ "$prof_ok" = "1" ] && { PASS=$((PASS + 1)); echo "ok: sensor writes to the CLAUDE_CONFIG_DIR profile, not the default"; } \
+  || { FAIL=$((FAIL + 1)); echo "FAIL: profile-scoped sensor write landed in the wrong dir"; }
+
+printf '{"schema":2,"five_hour":98,"weekly":10,"five_hour_reset":%s,"weekly_reset":%s}\n' \
+  "$(date -v+2H +%s)" "$(date -v+2d +%s)" > "$WORKPROF/.usage-guard/usage.json"
+out=$(printf '%s' "$(stdin_json s-prof)" | HOME="$TESTHOME" CLAUDE_CONFIG_DIR="$WORKPROF" bash "$GUARD")
+assert_contains "guard reads state from the CLAUDE_CONFIG_DIR profile" "$out" "STOP - usage at"
+out=$(run_guard "$(stdin_json s-prof-default)")
+assert_contains "default profile is independent (missing state faults)" "$out" "state file missing"
+
+rm -rf "$WORKPROF"
+out=$(printf '%s' "$(stdin_json s-prof-missing)" | HOME="$TESTHOME" CLAUDE_CONFIG_DIR="$WORKPROF" bash "$GUARD")
+assert_contains "offline fix hint names the profile settings.json" "$out" "$WORKPROF/settings.json"
 
 # --- marker GC ---------------------------------------------------------------
 

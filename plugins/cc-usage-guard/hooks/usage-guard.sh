@@ -18,7 +18,10 @@ BUFFER_MIN="${CLAUDE_USAGE_RESUME_BUFFER_MIN:-2}"
 REMIND_PARK_MIN="${CLAUDE_USAGE_REMIND_PARK_MIN:-1}"
 REMIND_WARN_MIN="${CLAUDE_USAGE_REMIND_WARN_MIN:-5}"
 SENSOR_MAX_AGE_MIN="${CLAUDE_USAGE_SENSOR_MAX_AGE_MIN:-15}"
-STATE_DIR="$HOME/.claude/.usage-guard"
+# profile dir (CLAUDE_CONFIG_DIR, inherited from the CLI process): state isolates per
+# profile so multi-account machines never guard one account against another's usage
+PROFILE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+STATE_DIR="$PROFILE_DIR/.usage-guard"
 state="$STATE_DIR/usage.json"
 
 input=$(cat)
@@ -107,7 +110,7 @@ if [ -n "$fault" ]; then
   [ -f "$warn_marker" ] && exit 0
   mkdir -p "$STATE_DIR"
   printf '%s' "$fault" > "$warn_marker"
-  msg="cc-usage-guard SENSOR OFFLINE - $fault. The guard is blind: WARN/PARK will NOT fire even if the account hits a rate limit. Fix: wire usage-sensor.sh as the statusLine command in ~/.claude/settings.json (see the plugin README) and keep an attended session open. Relay this to the user in one short line in your next reply, then continue normally."
+  msg="cc-usage-guard SENSOR OFFLINE - $fault. The guard is blind: WARN/PARK will NOT fire even if the account hits a rate limit. Fix: wire usage-sensor.sh as the statusLine command in $PROFILE_DIR/settings.json (see the plugin README) and keep an attended session open. Relay this to the user in one short line in your next reply, then continue normally."
   jq -nc --arg hook_event "$hook_event" --arg ctx "$msg" '{hookSpecificOutput:{hookEventName:$hook_event,additionalContext:$ctx}}'
   exit 0
 fi
