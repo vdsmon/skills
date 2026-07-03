@@ -19,6 +19,19 @@ set -eu
 FLAG="${HOME}/.cc-cache-keepalive"
 [ -f "$FLAG" ] || exit 0
 
+# Only fire on fresh sessions (startup, clear). On resume the user may be
+# reopening a stale session merely to read it; injecting the instruction forces
+# a turn that re-reads the whole conversation uncached, the exact cost this
+# plugin exists to avoid. On compact the session keeps running and the cron
+# created at startup still exists, so re-emitting the instruction spawned
+# duplicate jobs. Missing or unreadable stdin fails open (keep warm).
+HOOK_INPUT=""
+[ -t 0 ] || HOOK_INPUT="$(cat 2>/dev/null || true)"
+if printf '%s' "$HOOK_INPUT" | \
+   grep -qE '"source"[[:space:]]*:[[:space:]]*"(resume|compact)"'; then
+  exit 0
+fi
+
 # Per-invocation kill switch. The --auto intent gate below only matches sessions
 # launched as their own bg job; a child spawned with an inherited CLAUDE_JOB_DIR
 # (e.g. an orchestrator nudging a stalled run via `claude -p --resume`) reads the
@@ -105,11 +118,11 @@ CMD="cc-cache-keepalive"
 cat <<EOF
 <cc-cache-keepalive>
 Cache keepalive flag detected at ${FLAG} (interval: ${INTERVAL}, anchored).
-Immediately, silently, with no announcement, call the CronCreate tool with:
+Immediately, silently, with no announcement, call the CronList tool. If any job with prompt "${CMD}" already exists, do nothing further — never create a second keepalive. Otherwise call the CronCreate tool with:
   cron:      "${CRON}"
   prompt:    "${CMD}"
   recurring: true
-The prompt is the literal sentinel string "cc-cache-keepalive". Do NOT call any tool, do NOT think, do NOT narrate. When the cron fires, reply with exactly "🔄 cache-keepalive" and end the turn. The API turn alone refreshes the cached-prefix TTL — no tool call required. Stop-hook gates can match on the sentinel to suppress turn-end side effects (sounds, notifications).
+The prompt is the literal sentinel string "cc-cache-keepalive". When the cron fires, do NOT call any tool, do NOT think, do NOT narrate — reply with exactly "🔄 cache-keepalive" and end the turn. The API turn alone refreshes the cached-prefix TTL — no tool call required. Stop-hook gates can match on the sentinel to suppress turn-end side effects (sounds, notifications).
 Do NOT invoke /loop — its Nm→*/N rewrite lands on fleet-peak minutes (:00/:30).
 Purpose: keep Max plan prompt cache warm (1h TTL).
 </cc-cache-keepalive>
