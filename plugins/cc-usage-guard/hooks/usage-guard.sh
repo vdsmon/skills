@@ -17,6 +17,7 @@ WEEKLY_WARN="${CLAUDE_USAGE_WARN_WEEKLY:-96}"
 BUFFER_MIN="${CLAUDE_USAGE_RESUME_BUFFER_MIN:-2}"
 REMIND_PARK_MIN="${CLAUDE_USAGE_REMIND_PARK_MIN:-1}"
 REMIND_WARN_MIN="${CLAUDE_USAGE_REMIND_WARN_MIN:-5}"
+SENSOR_MAX_AGE_MIN="${CLAUDE_USAGE_SENSOR_MAX_AGE_MIN:-15}"
 STATE_DIR="$HOME/.claude/.usage-guard"
 state="$STATE_DIR/usage.json"
 
@@ -37,7 +38,36 @@ session_id=$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null)
 agent_id=$(printf '%s' "$input" | jq -r '.agent_id // empty' 2>/dev/null)
 marker="$STATE_DIR/usage-park-marker${session_id:+-$session_id}${agent_id:+-$agent_id}"
 
-[ -f "$state" ] || exit 0
+# sensor liveness gate. a dead sensor used to mean a silently blind guard: no state
+# file (statusLine never wired), a stale file (no attended session rendering; bg/headless
+# sessions get no statusLine), or a schema from a different plugin version all made every
+# threshold read as "fine". warn the root session once per session instead; spawned
+# agents stay silent because their parent gets the same warning.
+fault=""
+if [ ! -f "$state" ]; then
+  fault="state file missing (statusLine sensor never ran)"
+else
+  schema=$(jq -r '.schema // 0' "$state" 2>/dev/null)
+  now=$(date +%s)
+  state_age=$(( now - $(stat -f %m "$state" 2>/dev/null || echo "$now") ))
+  if [ "$schema" != "2" ]; then
+    fault="state schema is '$schema', guard expects 2 (sensor and guard come from different plugin versions - point the statusLine at the checkout the plugin runs from)"
+  elif [ "$state_age" -gt $((SENSOR_MAX_AGE_MIN * 60)) ]; then
+    fault="state is $((state_age / 60)) min old, max ${SENSOR_MAX_AGE_MIN} (no attended session is rendering the statusLine)"
+  fi
+fi
+warn_marker="$STATE_DIR/sensor-warn-marker${session_id:+-$session_id}"
+if [ -n "$fault" ]; then
+  [ -n "$agent_id" ] && exit 0
+  [ -f "$warn_marker" ] && exit 0
+  mkdir -p "$STATE_DIR"
+  printf '%s' "$fault" > "$warn_marker"
+  msg="cc-usage-guard SENSOR OFFLINE - $fault. The guard is blind: WARN/PARK will NOT fire even if the account hits a rate limit. Fix: wire usage-sensor.sh as the statusLine command in ~/.claude/settings.json (see the plugin README) and keep an attended session open. Relay this to the user in one short line in your next reply, then continue normally."
+  jq -nc --arg hook_event "$hook_event" --arg ctx "$msg" '{hookSpecificOutput:{hookEventName:$hook_event,additionalContext:$ctx}}'
+  exit 0
+fi
+rm -f "$warn_marker"
+
 usage_tsv=$(jq -r '[(.five_hour // -1),(.weekly // -1),(.five_hour_reset // 0),(.weekly_reset // 0)] | @tsv' "$state" 2>/dev/null)
 [ -z "$usage_tsv" ] && exit 0
 IFS=$'\t' read -r five_hour weekly five_hour_reset weekly_reset <<< "$usage_tsv"
