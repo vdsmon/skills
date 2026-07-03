@@ -90,8 +90,8 @@
     {
       "name": "git-cleanup",
       "source": "./plugins/git-cleanup",
-      "description": "Clean up stale git branches and worktrees. Finds branches merged into dev/develop/master/main, checks worktrees for uncommitted changes, removes what's safe while skipping dirty worktrees. Use for 'clean up branches', 'git housekeeping', 'remove merged branches', 'clean worktrees'. Portable across SKILL.md-native hosts.",
-      "version": "0.2.2"
+      "description": "Clean up stale git branches and worktrees. Finds branches merged into dev/develop/master/main (squash-merge aware on GitHub remotes via gh PR state), checks worktrees for uncommitted changes, removes what's safe while skipping dirty worktrees. Use for 'clean up branches', 'git housekeeping', 'remove merged branches', 'clean worktrees'. Portable across SKILL.md-native hosts.",
+      "version": "0.3.0"
     },
     {
       "name": "strip-migration-cruft",

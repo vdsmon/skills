@@ -2,12 +2,14 @@
 name: git-cleanup
 argument-hint: "[--dry-run]"
 disable-model-invocation: true
-description: "Clean up stale git branches and worktrees. Finds branches merged into dev/develop/master/main, checks worktrees for uncommitted changes, and removes what's safe, skipping dirty worktrees. Use when the user says 'clean up branches', 'git cleanup', 'git housekeeping', 'remove stale branches', 'remove merged branches', 'clean worktrees', or any variation of wanting to tidy up their local git state."
+description: "Clean up stale git branches and worktrees. Finds branches merged into dev/develop/master/main (squash-merge aware on GitHub remotes), checks worktrees for uncommitted changes, and removes what's safe, skipping dirty worktrees. Use when the user says 'clean up branches', 'git cleanup', 'git housekeeping', 'remove stale branches', 'remove merged branches', 'clean worktrees', or any variation of wanting to tidy up their local git state."
 ---
 
 # Git Cleanup
 
 Removes local branches that have been merged into target branches (dev/develop/master/main), along with their associated worktrees. Worktrees with uncommitted or untracked changes are never removed.
+
+Merge detection is ancestry-based (`git branch --merged`) plus squash-aware on GitHub remotes: when `gh` is available, a branch whose tip equals the head SHA of a merged PR also counts as merged (squash/rebase merges never make the branch tip an ancestor of the target, so ancestry alone misses them). A tip with commits past the merged PR head stays in KEEP.
 
 ## Workflow
 
@@ -26,7 +28,7 @@ bash "<skill-base-dir>/scripts/git_cleanup.sh" --dry-run
 ```
 
 Present the output to the user. The script categorizes branches into:
-- **REMOVE:** merged and clean (or no worktree)
+- **REMOVE:** merged and clean (or no worktree); squash-merged entries are annotated with their PR number
 - **SKIP (dirty):** merged but worktree has uncommitted changes
 - **SKIP (current):** merged but currently checked out
 - **KEEP:** not merged into any target branch
@@ -55,5 +57,5 @@ bash "<skill-base-dir>/scripts/git_cleanup.sh" --exclude=feature/keep-me,fix/als
 
 1. `git worktree remove --force <path>`: `--force` is mandatory; uncommitted/untracked changes in that worktree are permanently discarded, so confirm the user means it.
 2. If the dir survives (git de-registers but leaves untracked files behind), `rm -rf <path>`.
-3. Only then `git branch -d <branch>`: git refuses to delete a branch still checked out in a registered worktree, so the worktree must go first.
+3. Only then `git branch -d <branch>`: git refuses to delete a branch still checked out in a registered worktree, so the worktree must go first. Use `-D` if the branch was squash-merged (`-d` refuses non-ancestors), but only after confirming its PR is actually merged.
 4. Finish with `git worktree prune`.
