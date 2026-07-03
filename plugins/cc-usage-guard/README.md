@@ -64,11 +64,14 @@ The guard only sees what the sensor writes, and the sensor only runs when a stat
 - **Missing state file**: the statusLine was never wired to `usage-sensor.sh`.
 - **Stale state file** (older than `CLAUDE_USAGE_SENSOR_MAX_AGE_MIN`): no attended session is rendering a statusLine. Background/headless sessions (`claude --bg`, cron runners, subagent fleets) do **not** render one, so a machine running only unattended work stops refreshing the state even when wired correctly. Keep an attended session open while unattended fleets burn budget, or the guard cannot see usage.
 - **Schema mismatch**: the sensor stamps `schema: 2` into the state file and the guard refuses anything else, so a sensor and guard from different plugin versions (a drifted personal clone, a stale versioned cache path) fail loud instead of the guard reading nulls off renamed keys.
+- **Unreadable state file** (empty or invalid JSON): the guard retries once after 200ms, then decides by freshness. A *fresh* unreadable file means a sensor is actively writing and the guard caught a torn read - it skips the cycle silently. A *stale* unreadable file means the sensor wrote a bad state and stopped - that faults loud like the cases above. (The sensor writes atomically - tmp file + rename - and never overwrites good state when its own jq call fails, so this case is a belt-and-braces guard for mixed-version rollouts where an older sensor still truncates in place.)
+- **Missing `jq`**: without jq neither half can function; the guard warns once per machine (not per session) and points at the fix, and the sensor's built-in status-line fallback prints a visible `usage sensor blind` notice instead of going blank.
 
 While any of these hold, WARN/PARK cannot fire - the warning says so explicitly and points at the fix. The warning re-arms if the sensor recovers and later goes dark again in the same session.
 
 ## Notes
 
 - macOS/BSD: the guard uses `date -r <epoch>` for reset-time math and `stat -f %m` for the repeat-throttle clock. On Linux that would need `date -d @<epoch>` and `stat -c %Y`.
-- Requires `jq` and `awk` on PATH.
-- State lives at `~/.claude/.usage-guard/` (created on first run), not inside the plugin dir, because the statusLine sensor gets no `${CLAUDE_PLUGIN_ROOT}` and both halves must agree on one path.
+- Requires `jq` and `awk` on PATH (missing jq fails loud, see above).
+- State lives at `~/.claude/.usage-guard/` (created on first run), not inside the plugin dir, because the statusLine sensor gets no `${CLAUDE_PLUGIN_ROOT}` and both halves must agree on one path. Stale session markers (>7 days) and orphaned sensor tmp files are garbage-collected on prompt-submit.
+- Tests: `bash plugins/cc-usage-guard/tests/test-usage-guard.sh` (or `mise run test:usage-guard`); add `--soak` for a concurrent write/read race check.

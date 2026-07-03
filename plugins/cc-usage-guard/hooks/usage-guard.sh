@@ -22,8 +22,36 @@ STATE_DIR="$HOME/.claude/.usage-guard"
 state="$STATE_DIR/usage.json"
 
 input=$(cat)
+
+# jq gate: without jq the guard can parse neither stdin nor state, and the sensor writes
+# nothing (its non-clobber write skips on empty jq output) - a silently blind guard, the
+# exact failure mode the liveness gate exists to prevent. fail loud once per machine
+# (missing jq is machine-level, not per-session) with hand-rolled JSON; safe because the
+# message is fully static. hook_event_name comes from a sed scrape with a fallback.
+if ! command -v jq >/dev/null 2>&1; then
+  jq_marker="$STATE_DIR/jq-missing-warn-marker"
+  [ -f "$jq_marker" ] && exit 0
+  mkdir -p "$STATE_DIR"
+  : > "$jq_marker"
+  hook_event=$(printf '%s' "$input" | sed -n 's/.*"hook_event_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+  [ -n "$hook_event" ] || hook_event="PostToolUse"
+  printf '{"hookSpecificOutput":{"hookEventName":"%s","additionalContext":"cc-usage-guard SENSOR OFFLINE - jq is not on PATH, so the guard cannot read usage state. The guard is blind: WARN/PARK will NOT fire even if the account hits a rate limit. Fix: install jq (brew install jq). Relay this to the user in one short line in your next reply, then continue normally."}}\n' "$hook_event"
+  exit 0
+fi
+rm -f "$STATE_DIR/jq-missing-warn-marker" 2>/dev/null
+
 hook_event=$(printf '%s' "$input" | jq -r '.hook_event_name // "PostToolUse"' 2>/dev/null)
 if [ -z "$hook_event" ] || [ "$hook_event" = "null" ]; then hook_event="PostToolUse"; fi
+
+# GC: markers from sessions that ended while over-threshold or mid-fault are never
+# cleaned by the in-session paths, and a crash between tmp write and rename can orphan
+# a sensor tmp. sweep on UserPromptSubmit only (roughly once per turn) so the hot
+# per-tool-call path stays find-free.
+if [ "$hook_event" = "UserPromptSubmit" ] && [ -d "$STATE_DIR" ]; then
+  find "$STATE_DIR" -maxdepth 1 -type f \
+    \( \( -name '*-marker*' -mtime +7 \) -o \( -name 'usage.json.tmp.*' -mmin +60 \) \) \
+    -delete 2>/dev/null
+fi
 
 # marker, keyed by session_id + agent_id. a parent, its subagents (any of
 # the up-to-5 nesting depths), and its team teammates ALL share one session_id; a
@@ -48,9 +76,26 @@ if [ ! -f "$state" ]; then
   fault="state file missing (statusLine sensor never ran)"
 else
   schema=$(jq -r '.schema // 0' "$state" 2>/dev/null)
+  if [ -z "$schema" ]; then
+    # empty or unparseable: almost certainly a read inside a pre-0.5.1 sensor's
+    # truncate-then-write window (this exact race produced false version-skew
+    # alerts). retry once past the window before judging.
+    sleep 0.2
+    schema=$(jq -r '.schema // 0' "$state" 2>/dev/null)
+  fi
   now=$(date +%s)
   state_age=$(( now - $(stat -f %m "$state" 2>/dev/null || echo "$now") ))
-  if [ "$schema" != "2" ]; then
+  if [ -z "$schema" ]; then
+    if [ "$state_age" -gt $((SENSOR_MAX_AGE_MIN * 60)) ]; then
+      fault="state file unreadable (empty or invalid JSON), last written $((state_age / 60)) min ago (sensor wrote a bad state and stopped)"
+    else
+      # fresh but unreadable: a sensor is actively writing, so this is a torn
+      # read, not a dead sensor. skip this cycle; the next read gets a whole
+      # file. deliberately does not touch warn_marker - a transient skip must
+      # not clear a legitimately armed fault warning.
+      exit 0
+    fi
+  elif [ "$schema" != "2" ]; then
     fault="state schema is '$schema', guard expects 2 (sensor and guard come from different plugin versions - point the statusLine at the checkout the plugin runs from)"
   elif [ "$state_age" -gt $((SENSOR_MAX_AGE_MIN * 60)) ]; then
     fault="state is $((state_age / 60)) min old, max ${SENSOR_MAX_AGE_MIN} (no attended session is rendering the statusLine)"
