@@ -12,6 +12,10 @@ run = "scripts/sync-codex.sh"
 description = "Bump a plugin version + marketplace entry (level: patch|minor|major)"
 run = "scripts/bump-plugin.sh {{arg(name='plugin')}} {{arg(name='level', default='patch')}}"
 
+[tasks."test:usage-guard"]
+description = "Run the cc-usage-guard hook test suite (pass --soak for the race check)"
+run = "bash plugins/cc-usage-guard/tests/test-usage-guard.sh"
+
 [tasks.verify]
 description = "Fail if generated artifacts are stale (sync not run after a plugin change)"
 run = """

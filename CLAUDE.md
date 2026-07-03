@@ -4,7 +4,7 @@ File guide Claude Code (claude.ai/code) work in this repo.
 
 ## Repository purpose
 
-Personal Claude Code plugin marketplace published as `vdsmon/skills`. Each skill ship own plugin — users install only what want. No build, no tests, no package manager — pure content (Markdown skill files, shell hooks, one Python report script).
+Personal Claude Code plugin marketplace published as `vdsmon/skills`. Each skill ship own plugin — users install only what want. No build, no package manager — pure content (Markdown skill files, shell hooks, one Python report script). Tests exist only where hooks have real failure modes (`mise run test:usage-guard` for cc-usage-guard's sensor/guard pair); run them when touching those hooks.
 
 ## Layout and the marketplace contract
 
