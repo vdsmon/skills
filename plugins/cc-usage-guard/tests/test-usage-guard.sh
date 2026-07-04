@@ -151,6 +151,20 @@ fresh_state 92
 out=$(run_guard "$(stdin_json s-warn-agent a1)")
 assert_silent "spawned agent at warn stays silent" "$out"
 
+# --- stale snapshots (window reset already past) -------------------------------
+
+reset_state
+printf '{"schema":2,"five_hour":110,"weekly":10,"five_hour_reset":%s,"weekly_reset":%s}\n' \
+  "$(date -v-1H +%s)" "$(date -v+2d +%s)" > "$STATE"
+out=$(run_guard "$(stdin_json s-past-reset)")
+assert_silent "over-threshold pct with past reset is ignored" "$out"
+
+reset_state
+printf '{"schema":2,"five_hour":110,"weekly":97,"five_hour_reset":%s,"weekly_reset":%s}\n' \
+  "$(date -v-1H +%s)" "$(date -v+2d +%s)" > "$STATE"
+out=$(run_guard "$(stdin_json s-past-reset-weekly)")
+assert_contains "past-reset 5h window dropped, live weekly still fires" "$out" "weekly limit"
+
 # --- sensor ------------------------------------------------------------------
 
 reset_state
@@ -169,6 +183,20 @@ printf 'total garbage' | HOME="$TESTHOME" CLAUDE_USAGE_RENDER_CMD=cat bash "$SEN
 after=$(cat "$STATE")
 [ "$before" = "$after" ] && { PASS=$((PASS + 1)); echo "ok: garbage stdin does not clobber good state"; } \
   || { FAIL=$((FAIL + 1)); echo "FAIL: good state clobbered by failed sensor run"; }
+
+# stale snapshot: an idle session re-reports its frozen rate_limits; a past 5h reset
+# must not be written at all, let alone clobber fresh state from a live session
+stale_fixture='{"rate_limits":{"five_hour":{"used_percentage":110,"resets_at":1600000000},"seven_day":{"used_percentage":2,"resets_at":1900050000}}}'
+before=$(cat "$STATE")
+printf '%s' "$stale_fixture" | HOME="$TESTHOME" CLAUDE_USAGE_RENDER_CMD=cat bash "$SENSOR" >/dev/null
+after=$(cat "$STATE")
+[ "$before" = "$after" ] && { PASS=$((PASS + 1)); echo "ok: stale snapshot does not clobber fresh state"; } \
+  || { FAIL=$((FAIL + 1)); echo "FAIL: stale snapshot clobbered fresh state"; }
+
+rm -rf "$STATE_DIR"
+printf '%s' "$stale_fixture" | HOME="$TESTHOME" CLAUDE_USAGE_RENDER_CMD=cat bash "$SENSOR" >/dev/null
+[ ! -f "$STATE" ] && { PASS=$((PASS + 1)); echo "ok: sensor refuses to write a stale snapshot"; } \
+  || { FAIL=$((FAIL + 1)); echo "FAIL: stale snapshot written to state"; }
 
 # --- multi-profile (CLAUDE_CONFIG_DIR) ----------------------------------------
 

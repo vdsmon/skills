@@ -22,8 +22,14 @@ mkdir -p "$STATE_DIR"
 # into place so a guard read can never observe a partial or empty file. a plain
 # `jq > usage.json` truncates at process start and fills at exit, and the guard fires on
 # every PostToolUse in every session, so torn reads were a matter of when, not if. $$
-# keeps concurrent attended sessions' tmps distinct; last writer wins, which is correct
-# (every sensor reports the same account-level data).
+# keeps concurrent attended sessions' tmps distinct.
+#
+# stale-snapshot rejection: rate_limits is a snapshot of the session's last API
+# response, not live account data, so an idle session keeps re-rendering a frozen
+# snapshot every refresh. last writer wins between sessions, and a day-old over-limit
+# snapshot was observed flapping against a live one and triggering a false PARK. a
+# 5-hour reset in the past proves the snapshot predates a window rollover (a live one
+# is always at most 5h out) - keep rendering, skip the write.
 usage=$(printf '%s' "$input" | jq -c '{
   schema:          2,
   five_hour:       (.rate_limits.five_hour.used_percentage // null),
@@ -31,6 +37,11 @@ usage=$(printf '%s' "$input" | jq -c '{
   five_hour_reset: (.rate_limits.five_hour.resets_at // null),
   weekly_reset:    (.rate_limits.seven_day.resets_at // null)
 }' 2>/dev/null)
+reset_epoch=$(printf '%s' "$usage" | jq -r '.five_hour_reset // empty' 2>/dev/null)
+reset_epoch=${reset_epoch%%.*}
+if [ -n "$reset_epoch" ] && [ "$reset_epoch" -lt "$(date +%s)" ] 2>/dev/null; then
+  usage=""
+fi
 if [ -n "$usage" ]; then
   tmp="$STATE_DIR/usage.json.tmp.$$"
   { printf '%s\n' "$usage" > "$tmp" && mv -f "$tmp" "$STATE_DIR/usage.json"; } 2>/dev/null \
