@@ -73,6 +73,7 @@ While any of these hold, WARN/PARK cannot fire - the warning says so explicitly 
 
 ## Notes
 
+- A session's `rate_limits` is a snapshot of its **last API response**, not live account data, so an idle session keeps re-rendering a frozen snapshot every statusLine refresh. The sensor refuses to write any snapshot whose 5-hour reset is already past (it provably predates a window rollover), and the guard ignores windows whose reset is past - so a day-old over-limit snapshot from a still-open session can neither poison the state file nor trigger a false park. Side effect of the guard check: repeat reminders stop on their own once a window resets, even if no sensor refreshes the state.
 - macOS/BSD: the guard uses `date -r <epoch>` for reset-time math and `stat -f %m` for the repeat-throttle clock. On Linux that would need `date -d @<epoch>` and `stat -c %Y`.
 - Requires `jq` and `awk` on PATH (missing jq fails loud, see above).
 - State lives at `${CLAUDE_CONFIG_DIR:-~/.claude}/.usage-guard/` (created on first run), not inside the plugin dir, because the statusLine sensor gets no `${CLAUDE_PLUGIN_ROOT}` and both halves must derive the same per-profile path. Stale session markers (>7 days) and orphaned sensor tmp files are garbage-collected on prompt-submit.

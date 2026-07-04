@@ -120,6 +120,16 @@ usage_tsv=$(jq -r '[(.five_hour // -1),(.weekly // -1),(.five_hour_reset // 0),(
 [ -z "$usage_tsv" ] && exit 0
 IFS=$'\t' read -r five_hour weekly five_hour_reset weekly_reset <<< "$usage_tsv"
 
+# a window whose reset is already past cannot be over its limit: the pct is a stale
+# snapshot from before the rollover (a >=0.6.1 sensor refuses to write those, but a
+# pre-fix sensor in a still-open session can). drop the window instead of parking on
+# it - a past reset would also put the suggested auto-resume cron on a date cron
+# rolls over to next year. side effect: repeat reminders stop on their own once a
+# window resets even if no sensor refreshes the state.
+now=$(date +%s)
+[ "${five_hour_reset%%.*}" -gt 0 ] 2>/dev/null && [ "${five_hour_reset%%.*}" -lt "$now" ] && five_hour=-1
+[ "${weekly_reset%%.*}" -gt 0 ] 2>/dev/null && [ "${weekly_reset%%.*}" -lt "$now" ] && weekly=-1
+
 # pick the most severe window: level 2=park, 1=warn, 0=none; tie-break on higher pct
 read -r win_key level <<< "$(awk -v five_hour_pct="$five_hour" -v weekly_pct="$weekly" \
   -v five_hour_park_thresh="$FIVE_HOUR_THRESHOLD" -v weekly_park_thresh="$WEEKLY_THRESHOLD" \
