@@ -1,7 +1,7 @@
 {
   "name": "grilling",
-  "version": "0.1.2",
-  "description": "Relentless one-question-at-a-time interview that stress-tests a plan or design to convergence, exploring the codebase to answer its own questions where it can. Bundles grilling (the engine), grill-with-docs (grill + write ADRs and a glossary as you go), and domain-modeling (sharpen a ubiquitous language, CONTEXT.md glossary, sparing ADRs). Portable across SKILL.md-native hosts.",
+  "version": "0.2.0",
+  "description": "Relentless one-question-at-a-time interview that stress-tests a plan or design to convergence: facts get looked up in the codebase, decisions go to the human, and nothing is enacted until shared understanding is confirmed. Bundles grilling (the engine), grill-with-docs (grill + write ADRs and a glossary as you go), and domain-modeling (sharpen a ubiquitous language, CONTEXT.md glossary, sparing ADRs). Portable across SKILL.md-native hosts.",
   "author": {
     "name": "Victor De Simone",
     "email": "victorsmoliveira@gmail.com",
