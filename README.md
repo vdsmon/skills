@@ -102,7 +102,7 @@ Generated from `.claude-plugin/marketplace.json` (the source of truth) by `scrip
 | `skill-smith` | any | Forge for Agent Skills: create, test, evaluate, optimize triggering, and package skills. |
 | `git-cleanup` | any | Clean up stale git branches and worktrees. |
 | `strip-migration-cruft` | any | Scan a repo for transitional / migration / phase / wave / story / legacy-alias cruft comments, bucket into safe-to-strip vs keep-semantic, propose surgical edits and execute after confirmation. |
-| `grilling` | any | Relentless one-question-at-a-time interview that stress-tests a plan or design to convergence, exploring the codebase to answer its own questions where it can. |
+| `grilling` | any | Relentless one-question-at-a-time interview that stress-tests a plan or design to convergence: facts get looked up in the codebase, decisions go to the human, and nothing is enacted until shared understanding is confirmed. |
 | `teach` | any | Stateful, multi-session teaching workspace: grounds every lesson in a MISSION.md, gathers trusted RESOURCES.md, produces short self-contained HTML lessons in the learner's zone of proximal development, tracks progress via learning-records, and builds storage strength through retrieval, spacing, and interleaving. |
 | `codebase-design` | any | Shared vocabulary for designing deep modules: a lot of behaviour behind a small interface, placed at a clean seam, testable through that interface. |
 <!-- END PLUGINS -->
