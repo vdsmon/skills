@@ -106,6 +106,12 @@
       "version": "0.2.0"
     },
     {
+      "name": "wayfinder",
+      "source": "./plugins/wayfinder",
+      "description": "Chart work too big for one agent session as a shared map of investigation tickets on the repo's issue tracker: name the destination, sketch the fog of war, then resolve one ticket per session (grilling, research, prototype, task) until the way is clear. Plans decisions, never deliverables. Pairs with the grilling plugin. Portable across SKILL.md-native hosts.",
+      "version": "0.1.0"
+    },
+    {
       "name": "teach",
       "source": "./plugins/teach",
       "description": "Stateful, multi-session teaching workspace: grounds every lesson in a MISSION.md, gathers trusted RESOURCES.md, produces short self-contained HTML lessons in the learner's zone of proximal development, tracks progress via learning-records, and builds storage strength through retrieval, spacing, and interleaving. Portable across SKILL.md-native hosts.",
