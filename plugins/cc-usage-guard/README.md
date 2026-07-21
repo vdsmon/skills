@@ -40,7 +40,7 @@ Point the path at the **marketplace checkout** (`~/.claude/plugins/marketplaces/
 | `CLAUDE_USAGE_THRESHOLD_WEEKLY` | `99` | weekly window % that trips the hard PARK (STOP) |
 | `CLAUDE_USAGE_WARN_5H` | `90` | 5-hour window % that trips the soft WARN nudge |
 | `CLAUDE_USAGE_WARN_WEEKLY` | `96` | weekly window % that trips the soft WARN nudge |
-| `CLAUDE_USAGE_RESUME_BUFFER_MIN` | `2` | minutes after reset to schedule the auto-resume cron |
+| `CLAUDE_USAGE_RESUME_BUFFER_MIN` | `1` | minutes after reset to schedule the auto-resume cron |
 | `CLAUDE_USAGE_REMIND_PARK_MIN` | `1` | minutes between throttled PARK repeat reminders |
 | `CLAUDE_USAGE_REMIND_WARN_MIN` | `5` | minutes between throttled WARN repeat reminders |
 | `CLAUDE_USAGE_SENSOR_MAX_AGE_MIN` | `15` | minutes before the guard treats the sensor state as stale and warns |
