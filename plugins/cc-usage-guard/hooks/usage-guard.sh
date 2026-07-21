@@ -190,7 +190,7 @@ if [ -n "$agent_id" ]; then
 elif [ "$level" = "2" ]; then
   if [ "$repeat_form" = "full" ]; then
     if [ -n "$cron" ]; then
-      resume_step="3. Schedule auto-resume: use the CronCreate tool (load it via ToolSearch if needed) with cron \`$cron\` and prompt: \"RESUME: the usage limit has reset, continue the work we paused. Once resumed, delete this cron via CronDelete.\""
+      resume_step="3. Schedule auto-resume: use the CronCreate tool (load it via ToolSearch if needed) with cron \`$cron\`, \`recurring: false\` (one-shot - it fires once and deletes itself, so never schedule a CronDelete for it), and prompt: \"RESUME: the usage limit has reset, continue the work we paused.\""
     else
       resume_step="3. Could not compute the reset time, so do not schedule a cron; tell the user to resume manually after the limit resets."
     fi
