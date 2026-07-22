@@ -10,10 +10,10 @@
 export PATH="/opt/homebrew/bin:$HOME/.local/share/mise/shims:/bin:/usr/bin:$PATH"
 
 # hard PARK thresholds (stop + auto-resume) and soft WARN thresholds (one nudge), per window
-FIVE_HOUR_THRESHOLD="${CLAUDE_USAGE_THRESHOLD_5H:-${CLAUDE_USAGE_THRESHOLD:-97}}"
-WEEKLY_THRESHOLD="${CLAUDE_USAGE_THRESHOLD_WEEKLY:-99}"
+FIVE_HOUR_THRESHOLD="${CLAUDE_USAGE_THRESHOLD_5H:-${CLAUDE_USAGE_THRESHOLD:-96}}"
+WEEKLY_THRESHOLD="${CLAUDE_USAGE_THRESHOLD_WEEKLY:-98}"
 FIVE_HOUR_WARN="${CLAUDE_USAGE_WARN_5H:-90}"
-WEEKLY_WARN="${CLAUDE_USAGE_WARN_WEEKLY:-96}"
+WEEKLY_WARN="${CLAUDE_USAGE_WARN_WEEKLY:-95}"
 BUFFER_MIN="${CLAUDE_USAGE_RESUME_BUFFER_MIN:-1}"
 REMIND_PARK_MIN="${CLAUDE_USAGE_REMIND_PARK_MIN:-1}"
 REMIND_WARN_MIN="${CLAUDE_USAGE_REMIND_WARN_MIN:-5}"
@@ -194,11 +194,30 @@ elif [ "$level" = "2" ]; then
     else
       resume_step="3. Could not compute the reset time, so do not schedule a cron; tell the user to resume manually after the limit resets."
     fi
+    # cc-cache-keepalive chain: a park longer than the 1h prompt-cache TTL loses the
+    # session's cached prefix, so the resume pays a full uncached re-read. A session
+    # that opted into cc-cache-keepalive normally already carries a keepalive cron from
+    # its SessionStart hook, and the CronList dedup below makes this step a no-op there.
+    # The step exists for the gap cases (session resumed from disk, flag created after
+    # session start). Gated on the same opt-in flag and using the same sentinel prompt
+    # as the keepalive plugin, so nothing ever double-schedules and Stop-hook gates on
+    # the sentinel keep matching. Fires only when the park outlives the TTL (50 min
+    # keeps a margin under the 60 min TTL). Default 30m anchored cron; the flag's
+    # interval override applies only to SessionStart-created crons.
+    keepalive_step=""
+    park_final=4
+    if [ -f "$HOME/.cc-cache-keepalive" ] && [ "$reset_int" -gt 0 ] 2>/dev/null \
+       && [ $((reset_int - $(date +%s))) -gt 3000 ]; then
+      ka_min=$((10#$(date +%M) % 30))
+      keepalive_step="4. This park outlives the 1h prompt-cache TTL and cc-cache-keepalive is enabled: call CronList; if a job with prompt \"cc-cache-keepalive\" already exists, skip this step (it already keeps the cache warm). Otherwise call CronCreate with cron \`${ka_min},$((ka_min + 30)) * * * *\`, \`recurring: true\`, and prompt: \"cc-cache-keepalive\". When that cron fires, reply with exactly \"🔄 cache-keepalive\" - no tool calls, no thinking, no narration; the bare API turn refreshes the cache TTL so the resume finds this context still cached.
+"
+      park_final=5
+    fi
     msg="STOP - usage at ${pct_int}% of the ${window} limit; it resets ~${hhmm} local. This session and its context stay alive across the limit, so you do NOT need to dump state to a file - just pause cleanly and wake yourself when it resets:
 1. Stop starting new work now (only finish an atomic step already in flight; do not spawn new subagents).
 2. In one short message, note where you are and the immediate next step (stays in context for the resume).
 ${resume_step}
-4. Then stop. Tell the user in chat you paused and will auto-resume ~${hhmm}, AND send the same as a push: use the PushNotification tool (load it via ToolSearch if needed) with a short message like \"cc-usage-guard: paused at ${pct_int}% of the ${window} limit, auto-resume ~${hhmm}\"."
+${keepalive_step}${park_final}. Then stop. Tell the user in chat you paused and will auto-resume ~${hhmm}, AND send the same as a push: use the PushNotification tool (load it via ToolSearch if needed) with a short message like \"cc-usage-guard: paused at ${pct_int}% of the ${window} limit, auto-resume ~${hhmm}\"."
   else
     msg="STILL AT the ${window} limit (${pct_int}%); resets ~${hhmm} local. Stop now if you haven't already."
   fi

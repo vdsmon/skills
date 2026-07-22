@@ -68,6 +68,14 @@ assert_silent() { # <name> <output>
   fi
 }
 
+assert_lacks() { # <name> <haystack> <needle>
+  if printf '%s' "$2" | grep -qF "$3"; then
+    FAIL=$((FAIL + 1)); echo "FAIL: $1 - expected output WITHOUT '$3', got: $2"
+  else
+    PASS=$((PASS + 1)); echo "ok: $1"
+  fi
+}
+
 # --- liveness gate -----------------------------------------------------------
 
 reset_state
@@ -150,6 +158,38 @@ reset_state
 fresh_state 92
 out=$(run_guard "$(stdin_json s-warn-agent a1)")
 assert_silent "spawned agent at warn stays silent" "$out"
+
+# --- cc-cache-keepalive chain --------------------------------------------------
+
+KEEPALIVE_FLAG="$TESTHOME/.cc-cache-keepalive"
+
+reset_state
+fresh_state 98
+out=$(run_guard "$(stdin_json s-park-noflag)")
+assert_lacks "park without keepalive flag has no keepalive step" "$out" "cc-cache-keepalive"
+
+touch "$KEEPALIVE_FLAG"
+reset_state
+fresh_state 98
+out=$(run_guard "$(stdin_json s-park-flag)")
+assert_contains "park with keepalive flag adds the keepalive step" "$out" 'prompt: \"cc-cache-keepalive\"'
+assert_contains "keepalive step embeds the sentinel reply contract" "$out" "cache-keepalive\\\" - no tool calls"
+assert_contains "keepalive park renumbers the final step" "$out" "5. Then stop."
+
+# reset closer than the ~50 min TTL margin: cache survives the park, no step needed
+reset_state
+printf '{"schema":2,"five_hour":98,"weekly":10,"five_hour_reset":%s,"weekly_reset":%s}\n' \
+  "$(date -v+10M +%s)" "$(date -v+2d +%s)" > "$STATE"
+out=$(run_guard "$(stdin_json s-park-short)")
+assert_lacks "short park (reset < TTL margin) skips the keepalive step" "$out" "cc-cache-keepalive"
+assert_contains "short park still numbers the final step 4" "$out" "4. Then stop."
+
+reset_state
+fresh_state 98
+out=$(run_guard "$(stdin_json s-park-flag-agent a1)")
+assert_lacks "spawned agent wind-down never schedules keepalive" "$out" "cc-cache-keepalive"
+
+rm -f "$KEEPALIVE_FLAG"
 
 # --- stale snapshots (window reset already past) -------------------------------
 

@@ -7,7 +7,7 @@ Two parts:
 - **`hooks/usage-sensor.sh`**: a `statusLine` wrapper. Claude Code only exposes `rate_limits` on statusLine stdin (Pro/Max), so this is the one place the data can be read. It records 5-hour + weekly usage to `${CLAUDE_CONFIG_DIR:-~/.claude}/.usage-guard/usage.json`, then renders your normal status line.
 - **`hooks/usage-guard.sh`**: a `PostToolUse` + `UserPromptSubmit` hook. It reads that state and acts in two tiers, per window:
   - **WARN** (soft, lower threshold): a one-time heads-up nudging the model to land the current thread and reach a clean stopping point. No pause, no cron.
-  - **PARK** (hard, higher threshold): injects a STOP, and the model pauses cleanly, schedules a one-shot `CronCreate` to auto-resume just after the limit resets, and fires a `PushNotification` so you learn about the park + resume time even when away. The session and its context stay alive across the limit, so the resume is in-context (no state dump needed).
+  - **PARK** (hard, higher threshold): injects a STOP, and the model pauses cleanly, schedules a one-shot `CronCreate` to auto-resume just after the limit resets, and fires a `PushNotification` so you learn about the park + resume time even when away. The session and its context stay alive across the limit, so the resume is in-context (no state dump needed). If you've opted into `cc-cache-keepalive`, a park longer than the cache TTL also makes sure a keepalive cron is armed, so the paused context stays *cached* until the resume (see "Chaining with cc-cache-keepalive").
 
   Each tier fires in full once per session per window-reset (a WARN that graduates to a PARK re-fires in full), then repeats as a short one-line reminder on a throttled interval until the level changes or the window resets - PARK repeats tighter than WARN, since ignoring a STOP is the worse failure mode.
 
@@ -36,10 +36,10 @@ Point the path at the **marketplace checkout** (`~/.claude/plugins/marketplaces/
 
 | Var | Default | Effect |
 | --- | --- | --- |
-| `CLAUDE_USAGE_THRESHOLD_5H` (or `CLAUDE_USAGE_THRESHOLD`) | `97` | 5-hour window % that trips the hard PARK (STOP) |
-| `CLAUDE_USAGE_THRESHOLD_WEEKLY` | `99` | weekly window % that trips the hard PARK (STOP) |
+| `CLAUDE_USAGE_THRESHOLD_5H` (or `CLAUDE_USAGE_THRESHOLD`) | `96` | 5-hour window % that trips the hard PARK (STOP) |
+| `CLAUDE_USAGE_THRESHOLD_WEEKLY` | `98` | weekly window % that trips the hard PARK (STOP) |
 | `CLAUDE_USAGE_WARN_5H` | `90` | 5-hour window % that trips the soft WARN nudge |
-| `CLAUDE_USAGE_WARN_WEEKLY` | `96` | weekly window % that trips the soft WARN nudge |
+| `CLAUDE_USAGE_WARN_WEEKLY` | `95` | weekly window % that trips the soft WARN nudge |
 | `CLAUDE_USAGE_RESUME_BUFFER_MIN` | `1` | minutes after reset to schedule the auto-resume cron |
 | `CLAUDE_USAGE_REMIND_PARK_MIN` | `1` | minutes between throttled PARK repeat reminders |
 | `CLAUDE_USAGE_REMIND_WARN_MIN` | `5` | minutes between throttled WARN repeat reminders |
@@ -58,6 +58,14 @@ The hooks fire inside spawned agents too, so the guard stays correct when work f
 - **Main/root session:** full WARN -> PARK (STOP + auto-resume cron + push).
 - **Subagent or teammate (at any depth):** silent at WARN (keeps the runway; its parent is blocked and can't re-check meanwhile), and at PARK it gets a **wind-down**: finish the step and return, don't start new work or spawn further agents, and *don't* schedule a pause/cron (it can't pause the session). The wind-down cascades up the stack until the main session runs the real park. The main session's WARN also tells it not to *launch* new subagent fleets while near the cap.
 - Markers key on `session_id` + `agent_id`, so the main session and every spawned agent fire (and repeat) independently, no cross-muting.
+
+## Chaining with cc-cache-keepalive
+
+A park longer than the prompt-cache TTL (1h on Max) loses the session's cached prefix, so the auto-resume pays a full uncached re-read of the whole conversation. If you've opted into [`cc-cache-keepalive`](../cc-cache-keepalive) (flag file `~/.cc-cache-keepalive`), the parked session normally already carries its own keepalive cron from SessionStart, and its 30-minute fires keep the context cached across the park for free.
+
+For the gap cases (a session resumed from disk, where the keepalive hook deliberately doesn't fire, or a flag created after the session started), the PARK instruction adds one step when the flag is present and the reset is more than ~50 minutes out: check `CronList` for a `cc-cache-keepalive` job, and only if missing, create one (default 30m anchored cron, same sentinel prompt, same reply contract). Because it reuses the keepalive plugin's opt-in flag, sentinel, and dedup, nothing ever double-schedules and sentinel-matching Stop-hook gates keep working. Without the flag, the guard never schedules a keepalive. Note the flag's interval override applies only to SessionStart-created crons; the guard's gap-filler always uses 30m.
+
+Caveat: keepalive fires during a park spend cache-read tokens against an almost-exhausted window. If that tips the window over, the fires fail until reset and the cache may die anyway - the worst case is exactly today's behavior without the chain.
 
 ## Sensor liveness (the guard fails loud, not blind)
 
