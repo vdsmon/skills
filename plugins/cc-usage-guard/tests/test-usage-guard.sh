@@ -76,6 +76,14 @@ assert_lacks() { # <name> <haystack> <needle>
   fi
 }
 
+assert_matches() { # <name> <haystack> <ERE pattern>
+  if printf '%s' "$2" | grep -qE "$3"; then
+    PASS=$((PASS + 1)); echo "ok: $1"
+  else
+    FAIL=$((FAIL + 1)); echo "FAIL: $1 - expected output matching '$3', got: ${2:-<empty>}"
+  fi
+}
+
 # --- liveness gate -----------------------------------------------------------
 
 reset_state
@@ -188,6 +196,37 @@ reset_state
 fresh_state 98
 out=$(run_guard "$(stdin_json s-park-flag-agent a1)")
 assert_lacks "spawned agent wind-down never schedules keepalive" "$out" "cc-cache-keepalive"
+
+# interval override: empty flag = 30m (two anchored minutes), valid sub-hour values
+# are honored, h/d or invalid fall back to 30m
+reset_state
+fresh_state 98
+out=$(run_guard "$(stdin_json s-ka-default)")
+assert_matches "empty flag uses a 30m two-minute anchored cron" "$out" 'cron \`[0-9]+,[0-9]+ \* \* \* \*\`'
+
+printf '1m\n' > "$KEEPALIVE_FLAG"
+reset_state
+fresh_state 98
+out=$(run_guard "$(stdin_json s-ka-1m)")
+assert_contains "1m override becomes an every-minute cron" "$out" "cron \`* * * * *\`"
+
+printf '10m\n' > "$KEEPALIVE_FLAG"
+reset_state
+fresh_state 98
+out=$(run_guard "$(stdin_json s-ka-10m)")
+assert_matches "10m override builds a six-minute anchored list" "$out" 'cron \`[0-9]+(,[0-9]+){5} \* \* \* \*\`'
+
+printf '2h\n' > "$KEEPALIVE_FLAG"
+reset_state
+fresh_state 98
+out=$(run_guard "$(stdin_json s-ka-2h)")
+assert_matches "interval >= TTL falls back to 30m" "$out" 'cron \`[0-9]+,[0-9]+ \* \* \* \*\`'
+
+printf 'banana\n' > "$KEEPALIVE_FLAG"
+reset_state
+fresh_state 98
+out=$(run_guard "$(stdin_json s-ka-junk)")
+assert_matches "invalid override falls back to 30m" "$out" 'cron \`[0-9]+,[0-9]+ \* \* \* \*\`'
 
 rm -f "$KEEPALIVE_FLAG"
 

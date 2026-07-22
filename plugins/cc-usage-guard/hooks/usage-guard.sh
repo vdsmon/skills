@@ -202,14 +202,34 @@ elif [ "$level" = "2" ]; then
     # session start). Gated on the same opt-in flag and using the same sentinel prompt
     # as the keepalive plugin, so nothing ever double-schedules and Stop-hook gates on
     # the sentinel keep matching. Fires only when the park outlives the TTL (50 min
-    # keeps a margin under the 60 min TTL). Default 30m anchored cron; the flag's
-    # interval override applies only to SessionStart-created crons.
+    # keeps a margin under the 60 min TTL).
     keepalive_step=""
     park_final=4
     if [ -f "$HOME/.cc-cache-keepalive" ] && [ "$reset_int" -gt 0 ] 2>/dev/null \
        && [ $((reset_int - $(date +%s))) -gt 3000 ]; then
-      ka_min=$((10#$(date +%M) % 30))
-      keepalive_step="4. This park outlives the 1h prompt-cache TTL and cc-cache-keepalive is enabled: call CronList; if a job with prompt \"cc-cache-keepalive\" already exists, skip this step (it already keeps the cache warm). Otherwise call CronCreate with cron \`${ka_min},$((ka_min + 30)) * * * *\`, \`recurring: true\`, and prompt: \"cc-cache-keepalive\". When that cron fires, reply with exactly \"🔄 cache-keepalive\" - no tool calls, no thinking, no narration; the bare API turn refreshes the cache TTL so the resume finds this context still cached.
+      # honor the flag's interval override (line 1, <digits><s|m|h|d>, same contract as
+      # keepalive.sh) when it stays under the TTL: seconds round up to minutes, and
+      # h/d units, >=60m, or invalid values fall back to 30m, because a cadence at or
+      # above the TTL cannot keep the cache warm, which is this step's whole point
+      ka_n=30
+      ka_raw=$(head -n1 "$HOME/.cc-cache-keepalive" 2>/dev/null | tr -d '[:space:]')
+      if [[ "$ka_raw" =~ ^([0-9]+)([smhd])$ ]]; then
+        n=$((10#${BASH_REMATCH[1]})); u="${BASH_REMATCH[2]}"
+        if [ "$u" = "s" ]; then n=$(( (n + 59) / 60 )); u="m"; fi
+        if [ "$u" = "m" ] && [ "$n" -ge 1 ] && [ "$n" -lt 60 ]; then ka_n=$n; fi
+      fi
+      # anchored minute list like keepalive.sh (avoids the */N fleet-peak minutes
+      # whenever N divides the hour)
+      if [ "$ka_n" -eq 1 ]; then
+        ka_cron="* * * * *"
+      elif [ $((60 % ka_n)) -eq 0 ]; then
+        ka_m=$((10#$(date +%M) % ka_n)); ka_list="$ka_m"
+        while [ $((ka_m + ka_n)) -lt 60 ]; do ka_m=$((ka_m + ka_n)); ka_list="$ka_list,$ka_m"; done
+        ka_cron="$ka_list * * * *"
+      else
+        ka_cron="*/$ka_n * * * *"
+      fi
+      keepalive_step="4. This park outlives the 1h prompt-cache TTL and cc-cache-keepalive is enabled: call CronList; if a job with prompt \"cc-cache-keepalive\" already exists, skip this step (it already keeps the cache warm). Otherwise call CronCreate with cron \`$ka_cron\`, \`recurring: true\`, and prompt: \"cc-cache-keepalive\". When that cron fires, reply with exactly \"🔄 cache-keepalive\" - no tool calls, no thinking, no narration; the bare API turn refreshes the cache TTL so the resume finds this context still cached.
 "
       park_final=5
     fi
