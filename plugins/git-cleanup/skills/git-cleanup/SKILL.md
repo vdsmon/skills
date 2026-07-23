@@ -45,7 +45,7 @@ Once confirmed, run without `--dry-run`:
 bash "<skill-base-dir>/scripts/git_cleanup.sh"
 ```
 
-The execute loop force-removes each clean worktree (`--force` gets past macOS `.DS_Store` that otherwise makes the dir "not empty"), `rm -rf`s any leftover dir, deletes the branch only after its worktree is gone, runs `git worktree prune`, and prints a `FAILED` list (exiting non-zero) if anything could not be removed. Surface that `FAILED` list to the user.
+The execute loop force-removes each clean worktree (`--force` gets past macOS `.DS_Store` that otherwise makes the dir "not empty"), then `chmod -R u+w`s and `rm -rf`s any leftover dir (worktrees can hold read-only files, e.g. content-addressed store blobs or immutable caches, in read-only dirs that plain `rm` cannot unlink), deletes the branch only after its worktree is gone, runs `git worktree prune`, and prints a `FAILED` list (exiting non-zero) if anything could not be removed. Surface that `FAILED` list to the user.
 
 **Excluding branches:** if the user wants to keep specific branches out of the REMOVE set, pass them with `--exclude` (comma-separated) rather than hand-rolling git commands:
 
@@ -56,6 +56,12 @@ bash "<skill-base-dir>/scripts/git_cleanup.sh" --exclude=feature/keep-me,fix/als
 **Removing dirty worktrees the script SKIPPED (only when the user explicitly approves):** the script never touches dirty worktrees. If the user names dirty/skipped worktrees they want gone anyway, remove each manually in this exact order:
 
 1. `git worktree remove --force <path>`: `--force` is mandatory; uncommitted/untracked changes in that worktree are permanently discarded, so confirm the user means it.
-2. If the dir survives (git de-registers but leaves untracked files behind), `rm -rf <path>`.
+2. If the dir survives (git de-registers but leaves files behind), `chmod -R u+w <path>` then `rm -rf <path>`. A "Permission denied" from step 1 or from `rm` almost always means the worktree holds read-only files (content-addressed store blobs, immutable caches) in read-only dirs, NOT a sandbox or ownership wall; `chmod -R u+w` is what lets `rm` unlink them.
 3. Only then `git branch -d <branch>`: git refuses to delete a branch still checked out in a registered worktree, so the worktree must go first. Use `-D` if the branch was squash-merged (`-d` refuses non-ancestors), but only after confirming its PR is actually merged.
 4. Finish with `git worktree prune`.
+
+**Wiping unmerged branches too (the KEEP set), when the user says "wipe them all":** the script never deletes unmerged branches because their commits may exist nowhere else. When the user explicitly wants them gone, do not `git branch -D` blindly:
+
+1. **Write a recovery map first.** Snapshot every branch tip to a durable file outside the repo, so any deletion is reversible: `git for-each-ref --format='%(objectname) %(refname:short)' refs/heads > ~/branches-wiped-$(date +%F).txt`. Deleted commits linger in the object store ~2 weeks, so `git branch <name> <sha>` from this file recovers any of them. Tell the user where the file is.
+2. **Verify nothing meaningful is lost** (the "is it meaningful?" check). A branch is safe to drop if its patches already landed in the target under another name (squash-merge: compare with `git patch-id --stable` against target commits) or its tip exists on `origin` (recoverable from the remote). A local-only branch whose patches are NOT in the target is genuine unmerged work: show the user `git log origin/<target>..<branch>` before deleting it.
+3. Delete with `git branch -D <branch>` (`-d` refuses unmerged branches since they are never ancestors of the target). Remove any worktree first, per the dirty-worktree steps above.
