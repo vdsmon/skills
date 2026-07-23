@@ -247,9 +247,13 @@ else
       # so plain `git worktree remove` fails with "Directory not empty". These
       # worktrees are already verified clean, so --force discards nothing of value.
       git worktree remove --force "$wt" 2>/dev/null
-      # git de-registers the worktree even when the dir survives (leftover
-      # untracked files). Nuke the leftover dir; retry once for nested copies.
+      # git de-registers the worktree even when the dir survives: leftover
+      # untracked files, or read-only files (content-addressed store blobs,
+      # immutable caches) in read-only dirs that neither `git worktree remove`
+      # nor plain `rm` can unlink. Restore write perms across the tree first,
+      # then nuke it; retry once for nested copies.
       if [[ -d "$wt" ]]; then
+        chmod -R u+w "$wt" 2>/dev/null
         rm -rf "$wt" 2>/dev/null
         rm -rf "$wt" 2>/dev/null
       fi
