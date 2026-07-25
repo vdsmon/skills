@@ -1,13 +1,7 @@
 ---
 name: prep-compact
 disable-model-invocation: true
-description: >-
-  Audits in-flight session state before a context-compacting step truncates
-  history. Flags uncommitted git changes, scratch files, unfinished plans,
-  running background tasks, and chat-only decisions; proposes concrete
-  actions to persist what matters; produces a copy-paste focus message for
-  the next session. Portable across Agent Skills hosts, compacting is a
-  general concept, not Claude-specific.
+description: Audits in-flight session state before compaction truncates history, then emits a paste-ready focus message for the next session.
 when_to_use: >-
   Use when the user says "compact", "let's compact", "ready to compact?",
   "prep for compact", "suggest a compact message", "what should I put in

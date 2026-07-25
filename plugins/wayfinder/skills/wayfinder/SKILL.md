@@ -1,7 +1,7 @@
 ---
 name: wayfinder
 disable-model-invocation: true
-description: Plan a huge chunk of work, more than one agent session can hold, as a shared map of investigation tickets on the repo's issue tracker, then resolve them one per session until the way to the destination is clear. Use when the user says "wayfinder", "chart this", "map this effort", brings a greenfield project or a feature too big for one session, or points at an existing map to work through. Produces decisions, not deliverables; hand the cleared way to your execution pipeline.
+description: Plans work too big for one session as a map of investigation tickets on the issue tracker, then resolves them one per session. Produces decisions, not deliverables.
 argument-hint: "[loose idea to chart, or a map to work through]"
 ---
 

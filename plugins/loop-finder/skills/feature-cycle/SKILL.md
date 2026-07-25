@@ -1,12 +1,7 @@
 ---
 name: feature-cycle
 disable-model-invocation: true
-description: >-
-  Feature-driven outer cycle for a converged loop-finder gate. One
-  invocation = one cycle: flush the queued harness fix from the prior
-  retro, ship the next feature against the current gate, retro with
-  Pain / Workaround / Fix queued, log to per-class feature-log.jsonl.
-  Across-cycle queued-fix chain optimizes the harness, not the product.
+description: One feature cycle against a converged loop-finder gate. Flushes the queued harness fix, ships the feature, retros with the next fix queued.
 when_to_use: >-
   Use when the user says "ship feature X against the converged loop",
   "self-improvement loop", "ADX loop", "harness pressure-test", "dogfood
