@@ -2,14 +2,7 @@
 name: slack-draft
 argument-hint: "[what to say or thread context] [--tech|--plain]"
 disable-model-invocation: true
-description: >-
-  Drafts a Slack message for the user to send, in Slack mrkdwn, ready to
-  copy-paste. Leads with the conclusion, backticks technical identifiers,
-  defaults to English and switches to Brazilian Portuguese or Spanish only
-  when the user explicitly asks, and strips AI-writing tells. Defaults to a
-  plain, high-level register for a non-technical reader; pass --tech for a
-  peer who reads code. Output is the drafted message only; the skill never
-  posts to Slack.
+description: Drafts a copy-paste Slack message in mrkdwn, conclusion first, AI tells stripped. Pass --tech for a peer who reads code. Never posts.
 when_to_use: >-
   Use when the user wants to send something on Slack and asks you to write
   it: "draft a Slack message", "write a reply for this thread", "what should

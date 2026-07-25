@@ -1,12 +1,7 @@
 ---
 name: humanize
 argument-hint: "[text or file to humanize]"
-description: >-
-  Rewrites text to strip AI-writing tells and inject human voice. Detects
-  em-dash overuse, AI vocabulary, inflated significance, rule-of-three,
-  negative parallelisms, sycophancy, and 20+ more patterns catalogued in
-  Wikipedia's Signs of AI writing. Output is a final rewrite plus a short
-  residual-tells list.
+description: Rewrites text to strip AI-writing tells (em-dash overuse, AI vocabulary, inflated significance, sycophancy) and restore a human voice. Returns the rewrite plus any residual tells.
 when_to_use: >-
   Use when the user says "humanize this", "remove AI tells", "edit for
   voice", "sounds too AI", "make this more human", or pastes text for a

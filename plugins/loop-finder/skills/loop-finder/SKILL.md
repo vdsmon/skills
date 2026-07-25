@@ -1,14 +1,7 @@
 ---
 name: loop-finder
 disable-model-invocation: true
-description: >-
-  Engineers a self-verifiable end-to-end feedback loop for a task class
-  (no HITL at run time), measures it against a strict metric tuple, races
-  parallel variants against the baseline, and converges on the best loop
-  config. HITL is concentrated at permission boundaries (install CLI,
-  register MCP, touch shared files), never mid-iteration. Caches per
-  task class so future runs reuse. Sibling to loop-finder:feature-cycle
-  which runs the outer queued-fix chain against the converged gate.
+description: Engineers and converges a self-verifiable end-to-end feedback loop for a task class, racing parallel variants against a baseline. Sibling to feature-cycle.
 when_to_use: >-
   Use when the user says "find me a loop for X", "engineer a feedback
   loop", "race loop variants", "I keep hitting HITL", "set up a self-

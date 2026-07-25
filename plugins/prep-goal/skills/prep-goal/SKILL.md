@@ -1,7 +1,7 @@
 ---
 name: prep-goal
 disable-model-invocation: true
-description: Interrogates a rough objective into a tight, verifiable `/goal` completion condition before the user hands it to the native /goal autonomous loop. Grills to pin down what the goal actually is, then emits a short paste-ready `/goal` line. Use when the user says "prep-goal", "sharpen this goal", "turn this into a goal", "write a /goal for X", "what should my goal be", "help me set a goal", or hands you a loose objective destined for the /goal loop. Run it whenever a goal is vague, compound, or has no obvious done-signal. A bad goal sends an hours-long, token-heavy loop down the wrong path. Pass `--delegate` to emit a goal that runs each iteration in a fresh implement subagent, so a long run's context grows slowly.
+description: Interrogates a rough objective into a tight, verifiable /goal completion condition, emitted paste-ready. Pass --delegate to run each iteration in a fresh subagent.
 argument-hint: "[--delegate] <the rough goal / objective>"
 allowed-tools:
   - Bash(git status *)

@@ -1,7 +1,7 @@
 ---
 name: brainstorming
 argument-hint: "[what to design]"
-description: "You MUST use this before any creative work - creating features, building components, adding functionality, or modifying behavior. Explores user intent, requirements and design before implementation."
+description: Use before any creative work, including new features, components, or behavior changes. Explores intent, requirements, and design before implementing.
 ---
 
 # Brainstorming Ideas Into Designs

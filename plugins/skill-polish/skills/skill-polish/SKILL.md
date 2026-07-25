@@ -1,11 +1,6 @@
 ---
 name: skill-polish
-description: >-
-  Post-mortem for any skill. Scans the current conversation for friction
-  (corrections, skipped steps, rejected tool calls, validated surprises),
-  traces each signal to the responsible skill file, and applies concrete
-  edits so the same friction doesn't recur. Works on any installed skill,
-  not just its own.
+description: Post-mortem for any installed skill. Scans the conversation for friction (corrections, skipped steps, rejected calls), traces each to the responsible skill file, and applies fixes.
 when_to_use: >-
   Use when the user says "skill-polish", "polish the skill", "improve
   the skill", "that should have been automatic", "you skipped X", "close

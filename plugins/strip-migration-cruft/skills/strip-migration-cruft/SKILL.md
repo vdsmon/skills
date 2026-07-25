@@ -2,7 +2,7 @@
 name: strip-migration-cruft
 argument-hint: "[path or scope]"
 disable-model-invocation: true
-description: Scan a repo for transitional / migration / phase / wave / story / "old box" / "moved from X" / "legacy alias" cruft comments that document past project history rather than current behavior, categorize hits into safe-to-strip vs keep-semantic buckets, then propose surgical edits and execute after confirmation. Use whenever the user says "scan for migration comments", "remove phase comments", "nuke wave 1/wave 2 / story refs", "strip transitional cruft", "kill the migration matrix doc", "clean up roadmap pointers", "I don't want these old-box / replaced / formerly comments", "the codebase has too many migration / wave / phase narratives", or any variation expressing fatigue with project-history breadcrumbs in code and docs. Also covers complaints about repo noise from "punchlist", "rollout", "cutover", "Story 25", "Wave 2", "(Phase 1)", or "Authored as part of ..." annotations.
+description: Finds comments and docs narrating past project history (phase, wave, story, migration, legacy-alias breadcrumbs), sorts safe-to-strip from keep-semantic, and edits after confirmation.
 ---
 
 # strip-migration-cruft

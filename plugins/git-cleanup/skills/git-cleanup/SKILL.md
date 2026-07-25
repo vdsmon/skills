@@ -2,7 +2,7 @@
 name: git-cleanup
 argument-hint: "[--dry-run]"
 disable-model-invocation: true
-description: "Clean up stale git branches and worktrees. Finds branches merged into dev/develop/master/main (squash-merge aware on GitHub remotes), checks worktrees for uncommitted changes, and removes what's safe, skipping dirty worktrees. Use when the user says 'clean up branches', 'git cleanup', 'git housekeeping', 'remove stale branches', 'remove merged branches', 'clean worktrees', or any variation of wanting to tidy up their local git state."
+description: Removes stale git branches and worktrees that are safely merged, skipping anything dirty. Squash-merge aware on GitHub remotes.
 ---
 
 # Git Cleanup
