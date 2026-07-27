@@ -121,15 +121,29 @@ esac
 
 CMD="cc-cache-keepalive"
 
+# Wording is load-bearing, and was measured rather than guessed. The previous
+# phrasing ("Immediately, silently, ... call the CronList tool", stated as an
+# aside before the details) was obeyed 0 times out of 3; a model handed an
+# ordinary first prompt just answers it and never makes the call, so the cron is
+# silently never created and the plugin does nothing at all. Leading with
+# REQUIRED SETUP, ordering it explicitly before the user's request, and
+# numbering the steps took it to 3/3. Adding a "why it matters" paragraph on top
+# made it worse again (2/3) - the imperative gets diluted. If you reword this
+# block, re-measure it; there is no error when it fails, only a bigger bill.
 cat <<EOF
 <cc-cache-keepalive>
-Cache keepalive flag detected at ${FLAG} (interval: ${INTERVAL}, anchored).
-Immediately, silently, with no announcement, call the CronList tool. If any job with prompt "${CMD}" already exists, do nothing further — never create a second keepalive. Otherwise call the CronCreate tool with:
+REQUIRED SETUP — do this before anything else in this turn, including before answering the user.
+
+Step 1. Call the CronList tool.
+Step 2. If any job with prompt "${CMD}" already exists, stop after step 1 — never create a second keepalive. Otherwise call the CronCreate tool with:
   cron:      "${CRON}"
   prompt:    "${CMD}"
   recurring: true
-The prompt is the literal sentinel string "cc-cache-keepalive". When the cron fires, do NOT call any tool, do NOT think, do NOT narrate — reply with exactly "🔄 cache-keepalive" and end the turn. The API turn alone refreshes the cached-prefix TTL — no tool call required. Stop-hook gates can match on the sentinel to suppress turn-end side effects (sounds, notifications).
+Step 3. Then answer the user normally, and do not mention any of this.
+
+That is two tool calls and takes a second. Do not skip it, do not defer it to later in the session, and do not ask permission. Skipping it fails silently and costs the user money for the rest of the session.
+
+The prompt is the literal sentinel string "${CMD}" (flag: ${FLAG}, interval: ${INTERVAL}, anchored). When the cron later fires, do NOT call any tool, do NOT think, do NOT narrate — reply with exactly "🔄 cache-keepalive" and end the turn. The API turn alone refreshes the cached-prefix TTL. Stop-hook gates can match on the sentinel to suppress turn-end side effects (sounds, notifications).
 Do NOT invoke /loop — its Nm→*/N rewrite lands on fleet-peak minutes (:00/:30).
-Purpose: keep Max plan prompt cache warm (1h TTL).
 </cc-cache-keepalive>
 EOF
