@@ -6,7 +6,7 @@ Automation that keeps the prompt cache warm across idle periods. The tokenomics 
 - Why 30 minutes is the only viable interval on Max
 - How the plugin works
 - Installing + opting in
-- Silent-mode rule
+- Cancelling ticks a real turn already paid for
 - Cost per poll
 
 ## Why 30 minutes is the only viable interval on Max
@@ -19,13 +19,13 @@ Net: 30 min is the sweet spot. Shorter works but wastes poll overhead.
 
 ## How the plugin works
 
-Three files, no skill:
+Three hooks, no skill:
 
-- `hooks/keepalive.sh`: runs at SessionStart. Reads the flag file, computes an anchored cron expression, emits a `<cc-cache-keepalive>` directive telling the model to call `CronCreate` with that cron + a silent-prefix prompt.
-- `scripts/keepalive-noop.sh`: literal `exit 0`. The cron fires this every interval.
-- `.claude-plugin/plugin.json`: registers the SessionStart hook.
+- `hooks/keepalive.sh`: runs at SessionStart. Reads the flag file, computes an anchored cron expression, emits a `<cc-cache-keepalive>` directive telling the model to call `CronCreate` with that cron and the bare sentinel prompt `cc-cache-keepalive`.
+- `hooks/keepalive-sensor.sh`: runs at Stop. Records when the last real turn ended.
+- `hooks/keepalive-guard.sh`: runs at UserPromptSubmit. Cancels a tick whose work was already done by a recent real turn.
 
-Why a no-op script warms the cache: each cron firing is a fresh Bash tool call, which is an API turn against the cached prefix. The turn reads the cache; that read resets the 1-hour TTL. The script's output is irrelevant.
+Why the ping warms the cache: each cron firing injects a prompt, and answering it is an API turn against the cached prefix. The turn reads the cache; that read resets the 1-hour TTL. No tool call is needed — the reply is a bare `🔄 cache-keepalive`, and the turn itself is the whole mechanism.
 
 ## Installing + opting in
 
@@ -37,11 +37,17 @@ touch ~/.cc-cache-keepalive
 
 Flag file opt-in is required because the hook short-circuits if `~/.cc-cache-keepalive` is absent, so every user's default state is zero side effects.
 
-To override the interval, put a single line like `15m` or `1h` at the top of the flag file. Format: `<digits><s|m|h|d>`. Invalid values fall back to 30m.
+To override the interval, put a single line like `15m` or `1h` at the top of the flag file. Format: `<digits><s|m|h|d>`. Invalid values fall back to 30m. Line 2 overrides the cancel window below.
 
-## Silent-mode rule
+## Cancelling ticks a real turn already paid for
 
-Every cron firing carries a user-prompt prefix: `[Silent cc-cache-keepalive — run Bash tool only. No text output, no acknowledgment, no summary.]`. That directive alone is sufficient, the model reads it and runs Bash without narrating. The tokenomics skill does not need any silent-mode rule of its own.
+A ping is not free. Answering it means sending the whole conversation, and even a cache hit bills every token of context at roughly a tenth of the input rate — ~26k input tokens per poll at the measured sizes below. If a real turn happened minutes ago, that turn already reset the TTL and the ping bought nothing.
+
+The cron cannot be rescheduled on activity: jobs are in-memory in the CLI process, and the next fire time is a pure function of the cron expression plus a per-job jitter — no activity input exists to reset. So the guard cancels the tick instead. A `decision: block` on `UserPromptSubmit` makes the prompt pipeline return `shouldQuery: false`, so no API request is sent at all; the notice it leaves is a local `type: "system"` record that the API-request builder filters out, costing no tokens and no context.
+
+The cancel window is `min(interval, TTL - interval - safety)` — 15 min at the default 30-min interval, 0 (never cancel) above 45 min. The `min` bounds the worst case: a real turn landing just after a tick is invisible to it, so the cache can go untouched for `window + interval`, which comes out at exactly `TTL - safety` = 45 min either way. `safety` is 15 rather than tighter precisely because of the jitter measured in #5b above.
+
+Net: pings you were awake for stop being billed; pings you were away for behave exactly as before.
 
 ## Cost per poll
 
