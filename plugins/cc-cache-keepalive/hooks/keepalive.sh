@@ -54,11 +54,17 @@ fi
 
 DEFAULT_INTERVAL="30m"
 INTERVAL="$(head -n1 "$FLAG" 2>/dev/null | tr -d '[:space:]')"
-if [[ ! "$INTERVAL" =~ ^[0-9]+[smhd]$ ]]; then
+# The zero check is not cosmetic: `0m` passes the regex and then divides by zero
+# in the `60 % N` below, which under `set -eu` kills the hook with no cron, no
+# output, and no visible error. Same for the `10#` below - `08m` and `09s` are
+# decimal to a user but octal to $(( )), and die the same silent way. (Only line
+# 1 is read here; hooks/keepalive-guard.sh reads line 2 for the cancel window,
+# where zero IS meaningful and means "never skip".)
+if [[ ! "$INTERVAL" =~ ^[0-9]+[smhd]$ ]] || [ "$((10#${INTERVAL%[smhd]}))" -eq 0 ]; then
   INTERVAL="$DEFAULT_INTERVAL"
 fi
 
-N="${INTERVAL%[smhd]}"
+N=$((10#${INTERVAL%[smhd]}))
 UNIT="${INTERVAL: -1}"
 NOW_MIN=$((10#$(date +%M)))
 NOW_HOUR=$((10#$(date +%H)))

@@ -4,7 +4,7 @@ File guide Claude Code (claude.ai/code) work in this repo.
 
 ## Repository purpose
 
-Personal Claude Code plugin marketplace published as `vdsmon/skills`. Each skill ship own plugin — users install only what want. No build, no package manager — pure content (Markdown skill files, shell hooks, one Python report script). Tests exist only where hooks have real failure modes (`mise run test:usage-guard` for cc-usage-guard's sensor/guard pair); run them when touching those hooks.
+Personal Claude Code plugin marketplace published as `vdsmon/skills`. Each skill ship own plugin — users install only what want. No build, no package manager — pure content (Markdown skill files, shell hooks, one Python report script). Tests exist only where hooks have real failure modes — `mise run test:usage-guard` and `mise run test:cache-keepalive`, both sensor/guard pairs; run them when touching those hooks. `mise run test:keepalive-live` additionally drives a real bg session against a 1-minute cron (spends tokens, opt-in) to confirm Claude Code still honours a `UserPromptSubmit` block for cron ticks — re-run it after a CLI upgrade, since that breaking is silent.
 
 ## Layout and the marketplace contract
 
@@ -59,15 +59,17 @@ Body = prompt, not docs. Second-person imperative. Keep CLAUDE.md concision: eve
 
 **ultrathink trigger**: include the literal word `ultrathink` anywhere in skill body to switch on extended thinking for the turn when the skill fires. Useful for analysis-heavy skills.
 
-## Hooks (only cc-cache-keepalive uses one)
+## Hooks (cc-cache-keepalive and cc-usage-guard)
 
-`plugins/cc-cache-keepalive/.claude-plugin/plugin.json` declares `SessionStart` hook running `hooks/keepalive.sh`. Pattern preserve when adding hooks:
+`cc-cache-keepalive` declares three (`SessionStart` → `keepalive.sh`, `Stop` → `keepalive-sensor.sh`, `UserPromptSubmit` → `keepalive-guard.sh`); `cc-usage-guard` declares two. Pattern preserve when adding hooks:
 
-- **Opt-in via flag file in `$HOME`** (`~/.cc-cache-keepalive`). Hook short-circuits with `exit 0` when flag absent — zero output, zero side effects for non-opt-in users.
-- **Flag file doubles as config**: first line overrides default interval, regex-validated with fallback.
-- **Hook emits instruction inside `<name-of-hook>` XML tag to stdout.** Claude Code injects stdout as system reminder; model sees as directive to schedule `CronCreate` with a silent-prefix prompt.
+- **Opt-in via flag file in `$HOME`** (`~/.cc-cache-keepalive`). Every hook short-circuits with `exit 0` when flag absent — zero output, zero side effects for non-opt-in users. Cheapest check first: the flag `stat` precedes reading stdin.
+- **Flag file doubles as config**: line 1 = cron interval, line 2 = cancel window, both regex-validated with fallback. Env vars override.
+- **Hook emits instruction inside `<name-of-hook>` XML tag to stdout.** Claude Code injects stdout as system reminder; model sees as directive to schedule `CronCreate`. Cron prompt is the bare sentinel `cc-cache-keepalive` — no prefix. Gate Stop hooks on that string to silence turn-end sounds.
 - **Do NOT use `/loop` for scheduling** — its `Nm` → `*/N * * * *` rewrite lands every user on fleet-peak minutes (:00/:30). The hook computes an anchored cron itself.
-- **Silent-mode rule lives in the cron prompt**, not in any skill — the prompt string emitted by the hook starts with `[Silent cc-cache-keepalive — run Bash tool only. No text output, no acknowledgment, no summary.]`. Model reads that directive and runs Bash silently. Don't duplicate the rule in a SKILL.md.
+- **Sensor/guard pairs**: state under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.<plugin>/`, keyed by `session_id` (never an unkeyed shared file — that leaks one session's state into another). `set -u`, never `set -eu`, and an explicit `exit 0` on every path: a `Stop` hook exiting 2 blocks stopping, and a `UserPromptSubmit` hook exiting non-zero errors on every prompt.
+- **Fail open, and say which way that points.** For the keepalive pair, a wasted ping is cheap and a cold cache is not, so the guard matches the sentinel *strictly* (a false positive would block a real user prompt) while the sensor matches *loosely* (a false positive costs one ping). Write the direction down in a comment — porting a similar hook verbatim gets it backwards.
+- **`Stop` only, never `SubagentStop`**, when a hook should fire once per main-agent turn. They are separate events and `Stop` carries no `agent_id`, so `Stop` alone is already main-agent-only.
 
 ## The one script: `token-report.py`
 
