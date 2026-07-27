@@ -24,6 +24,10 @@ run = "bash plugins/cc-cache-keepalive/tests/test-cache-keepalive.sh"
 description = "Live cron-tick check for cc-cache-keepalive — spends tokens, spawns a bg session, ~5 min"
 run = "bash plugins/cc-cache-keepalive/tests/live-gate-e2e.sh --live"
 
+[tasks."test:keepalive-directive"]
+description = "Check the SessionStart directive is still obeyed (cron actually gets created) — spends tokens"
+run = "bash plugins/cc-cache-keepalive/tests/live-directive-compliance.sh --live"
+
 [tasks.verify]
 description = "Fail if generated artifacts are stale (sync not run after a plugin change)"
 run = """

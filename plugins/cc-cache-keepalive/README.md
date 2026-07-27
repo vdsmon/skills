@@ -77,7 +77,22 @@ Cancelling only helps if Claude Code really skips the request, and that is not d
 
 The blocked tick still fired — the scheduler's `scheduled_task_fire` record is there — but nothing reached the API. The two allowed ticks either side are the controls: they rule out "the session was simply dead" as an explanation for the silence.
 
-Two details worth knowing if you re-run it after a CLI upgrade. A cancelled tick leaves no user record in the transcript at all, because the block branch discards the pending message rather than appending to it — so assert on the *absence* of an assistant reply, not on finding a user record. And the reply does not chain directly to the injected prompt: attachment records sit between them, so follow `parentUuid` several hops rather than expecting a direct link.
+### The cron has to actually get created
+
+A second thing that fails silently: the `SessionStart` hook only *asks* the model to register the cron. If the model doesn't act on that instruction, no cron exists, nothing errors, and the plugin does nothing whatsoever for the whole session.
+
+The wording is therefore measured, not guessed. `tests/live-directive-compliance.sh` scores it:
+
+| Directive | Print mode | Real `--bg` session |
+| --- | --- | --- |
+| "Immediately, silently, call the CronList tool…" (through 1.4.0) | 0/8 | 0/2 |
+| "REQUIRED SETUP — do this before anything else…" (1.4.1) | 8/8 | 3/3 |
+
+A model handed an ordinary first prompt just answers it; the instruction has to be ordered explicitly ahead of the user's request to survive. Adding a "why it matters" paragraph on top made it *worse* (2/3) — the imperative gets diluted. If you reword that block, re-measure it.
+
+### Notes for re-running after a CLI upgrade
+
+Two details worth knowing. A cancelled tick leaves no user record in the transcript at all, because the block branch discards the pending message rather than appending to it — so assert on the *absence* of an assistant reply, not on finding a user record. And the reply does not chain directly to the injected prompt: attachment records sit between them, so follow `parentUuid` several hops rather than expecting a direct link.
 
 ## Notes
 
