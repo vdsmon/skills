@@ -1,6 +1,6 @@
 {
   "name": "cc-cache-keepalive",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "Keeps Claude Code's prompt cache warm on Max plans via a silent cron, cancelling any tick a recent real turn already refreshed. Opt-in via ~/.cc-cache-keepalive flag file. A Stop sensor records the last real turn and a UserPromptSubmit guard drops the redundant tick before it costs a request; everything fails open. 1h TTL requires a 30-min or shorter interval.",
   "author": {
     "name": "Victor De Simone",

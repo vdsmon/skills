@@ -128,10 +128,16 @@ AGE=$(( $(date +%s) - 10#$STAMPED ))
 # above true at the boundary.
 [ "$AGE" -lt $((WINDOW * 60)) ] || exit 0
 
-# No additionalContext - injecting text into the turn would defeat the point.
-# Both interpolations are shell-computed integers, so this needs no JSON
-# escaping and the plugin stays jq-free. The window is in the message because
-# it makes the arithmetic assertable from one probe per interval.
-printf '{"decision":"block","reason":"cc-cache-keepalive: cache already warm (real turn %sm ago, window %sm)","hookSpecificOutput":{"hookEventName":"UserPromptSubmit","suppressOriginalPrompt":true}}\n' \
-  "$((AGE / 60))" "$WINDOW"
+# Keep the reason to one short line. Claude Code prefixes every block with a
+# fixed "UserPromptSubmit operation blocked by hook:" and there is no way to
+# suppress that (confirmed in the binary - the notice is pushed unconditionally
+# - and in the docs; suppressOutput only hides the hook's stdout. Upstream
+# feature request: anthropics/claude-code#39499). Since the prefix already costs
+# two wrapped lines several times an hour, the part we control stays minimal.
+# No additionalContext either - injecting text into the turn defeats the point.
+# Static string, so no interpolation and no JSON escaping: the plugin stays
+# jq-free. The window is deliberately NOT quoted here; the tests assert the
+# block/pass boundary itself, which pins the arithmetic without coupling to
+# wording.
+printf '{"decision":"block","reason":"cc-cache-keepalive: already warm","hookSpecificOutput":{"hookEventName":"UserPromptSubmit","suppressOriginalPrompt":true}}\n'
 exit 0

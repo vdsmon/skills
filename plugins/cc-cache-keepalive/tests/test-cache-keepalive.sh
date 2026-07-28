@@ -298,9 +298,12 @@ while read -r iv expect; do
     stamp "$SA" 0
     assert_silent "window($label) = never skip" "$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")"
   else
+    # Probing both sides of the boundary pins the window to the exact minute
+    # without asserting on the message text - the reason string is deliberately
+    # terse and must stay free to change.
     stamp "$SA" $(( expect * 60 - 30 ))
-    out=$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")
-    assert_contains "window($label) = ${expect}m, blocks just inside" "$out" "window ${expect}m"
+    assert_contains "window($label) = ${expect}m, blocks just inside" \
+      "$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")" '"decision":"block"'
     stamp "$SA" $(( expect * 60 + 30 ))
     assert_silent "window($label) = ${expect}m, passes just outside" \
       "$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")"
@@ -322,27 +325,37 @@ banana 15
 08m 8
 TABLE
 
-reset_state; set_flag "30m"; stamp "$SA" $(( 29 * 60 ))
-assert_contains "CC_KEEPALIVE_TTL_MIN=120 widens the window to the interval" \
-  "$(printf '%s' "$(ups "$SA" '"cc-cache-keepalive"')" | HOME="$TESTHOME" CC_KEEPALIVE_TTL_MIN=120 bash "$GUARD" 2>&1)" \
-  "window 30m"
+# run_guard_env <VAR=value> <age_seconds> -> stdout, with the stamp set first
+run_guard_env() {
+  stamp "$SA" "$2"
+  printf '%s' "$(ups "$SA" '"cc-cache-keepalive"')" | HOME="$TESTHOME" env "$1" bash "$GUARD" 2>&1
+}
 
-reset_state; set_flag "30m"; stamp "$SA" $(( 29 * 60 ))
+reset_state; set_flag "30m"
+assert_contains "CC_KEEPALIVE_TTL_MIN=120 widens the window to the interval" \
+  "$(run_guard_env CC_KEEPALIVE_TTL_MIN=120 $(( 29 * 60 )))" '"decision":"block"'
+assert_silent "CC_KEEPALIVE_TTL_MIN=120 window stops at the interval, not beyond" \
+  "$(run_guard_env CC_KEEPALIVE_TTL_MIN=120 $(( 31 * 60 )))"
+
+reset_state; set_flag "30m"
 assert_contains "CC_KEEPALIVE_SAFETY_MIN=0 widens the window" \
-  "$(printf '%s' "$(ups "$SA" '"cc-cache-keepalive"')" | HOME="$TESTHOME" CC_KEEPALIVE_SAFETY_MIN=0 bash "$GUARD" 2>&1)" \
-  "window 30m"
+  "$(run_guard_env CC_KEEPALIVE_SAFETY_MIN=0 $(( 29 * 60 )))" '"decision":"block"'
+assert_silent "CC_KEEPALIVE_SAFETY_MIN=0 still caps at the interval" \
+  "$(run_guard_env CC_KEEPALIVE_SAFETY_MIN=0 $(( 31 * 60 )))"
 
 reset_state; set_flag "30m" "25m"; stamp "$SA" $(( 24 * 60 ))
 assert_contains "flag line 2 overrides the derived window" \
-  "$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")" "window 25m"
+  "$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")" '"decision":"block"'
 stamp "$SA" $(( 26 * 60 ))
 assert_silent "flag line 2 window is respected on the far side" \
   "$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")"
 
-reset_state; set_flag "30m" "25m"; stamp "$SA" 240
+# Silence at 6m is what proves the env value (5) won over flag line 2 (25).
+reset_state; set_flag "30m" "25m"
 assert_contains "env beats flag line 2 beats derived" \
-  "$(printf '%s' "$(ups "$SA" '"cc-cache-keepalive"')" | HOME="$TESTHOME" CC_KEEPALIVE_WINDOW_MIN=5 bash "$GUARD" 2>&1)" \
-  "window 5m"
+  "$(run_guard_env CC_KEEPALIVE_WINDOW_MIN=5 240)" '"decision":"block"'
+assert_silent "env window of 5m really is 5m, not the flag's 25m" \
+  "$(run_guard_env CC_KEEPALIVE_WINDOW_MIN=5 360)"
 
 # --- sensor -------------------------------------------------------------------
 

@@ -96,7 +96,14 @@ Two details worth knowing. A cancelled tick leaves no user record in the transcr
 
 ## Notes
 
-- **A cancelled tick prints a two-line local notice** (`UserPromptSubmit operation blocked by hook: …`). It never reaches the API, so it costs nothing, but it is visible in an attended session and it grows the transcript on disk. There is no way to suppress it.
+- **A cancelled tick prints a local notice** and there is no way to switch it off:
+
+  ```
+  UserPromptSubmit operation blocked by hook:
+  cc-cache-keepalive: already warm
+  ```
+
+  Claude Code prepends that first line to every block and pushes the message unconditionally — `suppressOutput` only hides a hook's stdout, not this. The upstream request for a quiet block is [anthropics/claude-code#39499](https://github.com/anthropics/claude-code/issues/39499). Since only the second line is ours, it is kept to one short string; that is also why the tests assert the block/pass boundary rather than the wording. The notice never reaches the API, so it costs no tokens and no context — it is just visible, a few times an hour, in an attended session.
 - **`Stop` only, never `SubagentStop`.** They are separate events and `Stop` carries no `agent_id`, so wiring `Stop` alone gives main-agent-only stamping for free. A subagent's or teammate's turn does not refresh the main session's cached prefix, so stamping on one would suppress a ping the main session actually needs.
 - **The guard matches strictly, the sensor loosely.** A guard false positive would block a real user prompt, so it matches the whole prompt against the sentinel — and since the payload is JSON, a prompt that merely *mentions* the sentinel arrives with escaped quotes and cannot match. A sensor false positive only wastes one ping, so it matches loosely, which also covers pre-1.3.0 crons whose prompt carried a `[Silent …]` prefix.
 - State is per session, keyed by `session_id`, under the profile dir so multiple accounts (`CLAUDE_CONFIG_DIR`) never share stamps. Stale stamps and orphaned temp files are swept during a tick, not on the every-prompt path.
