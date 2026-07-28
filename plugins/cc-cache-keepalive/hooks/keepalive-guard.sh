@@ -66,8 +66,15 @@ case "${INTERVAL: -1}" in
 esac
 [ "$IMIN" -lt 1 ] && IMIN=1
 
+# TTL measured, not assumed: eight sessions idled for a controlled interval then
+# took exactly one turn. Hits up to 57.9 min (cache_read 42585 / create 15),
+# total misses from 60.8 min on (cache_read 0). So the cliff is 60 min, and it
+# is a cliff, not a slope. Safety is the margin for what the arithmetic cannot
+# see - a machine that slept, or a tick queued behind a long turn. It does NOT
+# need to cover cron jitter: that is a constant phase offset per job, so it
+# shifts every tick equally and never widens the gap between them.
 TTL_MIN="${CC_KEEPALIVE_TTL_MIN:-60}"
-SAFETY_MIN="${CC_KEEPALIVE_SAFETY_MIN:-15}"
+SAFETY_MIN="${CC_KEEPALIVE_SAFETY_MIN:-10}"
 case "$TTL_MIN" in ''|*[!0-9]*) TTL_MIN=60 ;; esac
 case "$SAFETY_MIN" in ''|*[!0-9]*) SAFETY_MIN=15 ;; esac
 
@@ -97,7 +104,8 @@ if [ -z "$WINDOW" ]; then
   # window = min(interval, TTL - interval - safety). The min is what bounds the
   # worst case: a real turn landing just after a tick is invisible to that tick,
   # so the cache can go untouched for window + interval. Substituting the min,
-  # that is exactly TTL - safety for every interval (45m at the defaults).
+  # that is exactly TTL - safety for every interval (50m at the defaults,
+  # against a measured 60m cliff).
   WINDOW=$((TTL_MIN - IMIN - SAFETY_MIN))
   [ "$WINDOW" -gt "$IMIN" ] && WINDOW=$IMIN
   [ "$WINDOW" -lt 0 ] && WINDOW=0

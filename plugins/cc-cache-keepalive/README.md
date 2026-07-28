@@ -41,7 +41,7 @@ Environment overrides, highest precedence first:
 | --- | --- | --- |
 | `CC_KEEPALIVE_WINDOW_MIN` | derived | cancel window in minutes; `0` disables cancelling |
 | `CC_KEEPALIVE_TTL_MIN` | `60` | assumed prompt-cache TTL |
-| `CC_KEEPALIVE_SAFETY_MIN` | `15` | margin subtracted from the TTL to absorb cron jitter |
+| `CC_KEEPALIVE_SAFETY_MIN` | `10` | margin subtracted from the TTL (for a sleeping machine or a delayed tick) |
 | `CC_KEEPALIVE_OFF` | unset | per-invocation kill switch; disables all three hooks |
 
 Prefer line 2 of the flag file over the env vars for a permanent change: a cron waking a stopped session spawns a fresh process that never saw your shell exports.
@@ -52,20 +52,46 @@ Prefer line 2 of the flag file over the env vars for a permanent change: a cron 
 window = min(interval, TTL - interval - safety)
 ```
 
-The worst case for going cold is a real turn landing *just after* a tick — that turn is invisible to the tick that just passed, so the cache can go untouched for `window + interval`. The `min` is what bounds it: whichever branch wins, the gap comes out at exactly `TTL - safety`, 45 minutes at the defaults, against a 60-minute TTL.
+The worst case for going cold is a real turn landing *just after* a tick — that turn is invisible to the tick that just passed, so the cache can go untouched for `window + interval`. The `min` is what bounds it: whichever branch wins, the gap comes out at exactly `TTL - safety`, 50 minutes at the defaults, against a measured 60-minute TTL.
 
 | Interval | Window | Worst gap between cache touches |
 | --- | --- | --- |
 | `10m` | 10m | 20m |
 | `20m` | 20m | 40m |
-| `30m` (default) | 15m | 45m |
-| `45m` and above | 0 — never cancels | unchanged |
+| `30m` (default) | 20m | 50m |
+| `45m` | 5m | 50m |
+| `50m` and above | 0 — never cancels | unchanged |
 
-`safety` is 15 rather than something tighter because jitter is this plugin's documented failure mode: 60-minute intervals dropped the cache hit rate from 99.98% to 0.00% across 10+ consecutive pings (test #5b in cc-tokenomics' `experiments.md`). A cold cache costs a full uncached re-read — roughly ten times the ping it would have saved — so the margin is worth more than the extra cancellations.
+`safety` is 10 because the TTL is 60 and that number is measured (below), not folklore. What the margin actually covers is the two things the arithmetic can't see: a machine that slept, and a tick queued behind a long turn.
+
+It deliberately does **not** cover cron jitter. Jitter is `hash(job_id) × fraction × period`, constant for the life of the job — it shifts every tick by the same amount and never widens the gap between consecutive ticks. An earlier version of this file blamed jitter for needing a wide margin, citing the 60-minute-interval failure in cc-tokenomics' `experiments.md` (#5b). That experiment fails for a simpler reason: a 60-minute spacing against a 60-minute TTL misses by construction, jitter or no jitter.
+
+Widening further buys little. During active work every tick is already inside the window and cancelled, so a larger window only catches the first tick or two after you stop — a few per day. Against that, one cache miss makes the next real turn pay the write rate (1.25×) instead of the read rate (0.1×), so **a miss costs about twelve pings**. 10 minutes of headroom against a measured cliff is the point where that trade stops paying.
 
 Everything fails open. A missing, unreadable, corrupt, or future-dated stamp lets the ping through; so does a session id the hook can't read. The only cost of failing open is a redundant ping.
 
 ## Measured, not assumed
+
+### Where the cache actually expires
+
+The 1-hour TTL is widely repeated but was never checked here, and the whole safety margin hangs off it. Eight throwaway sessions were seeded, left in total silence for a controlled interval, then made to take exactly one turn via a one-shot cron. Idle time is measured from the last record of the seed turn to the probe reply:
+
+| True idle | `cache_read` | `cache_creation` | |
+| --- | --- | --- | --- |
+| 6.0 min | 41,464 | 1,402 | hit |
+| 44.1 min | 41,786 | 1,076 | hit |
+| 51.0 min | 41,885 | 952 | hit |
+| 56.0 min | 41,454 | 1,408 | hit |
+| **57.9 min** | **42,585** | **15** | **hit** |
+| **60.8 min** | **0** | **42,853** | **miss** |
+| 64.8 min | 0 | 42,876 | miss |
+| 70.8 min | 0 | 42,875 | miss |
+
+So the cliff is between 57.9 and 60.8 minutes — 60 minutes, and it is a cliff rather than a slope: the misses read exactly zero from cache and rewrite the whole prefix.
+
+Two traps if you repeat this. `claude -p --resume` **cannot** measure it: a resumed print-mode turn rewrites the conversation block every time (`cache_read` covers only the shared system prefix), so it reports a miss at two minutes and a "hit" that is really someone else's cache. Use a real `--bg` session driven by a cron, which is the path the plugin actually uses. And count *API records*, not turns, when checking the idle window was silent — one seed turn with two tool calls produces three assistant records, which looks like contamination and isn't.
+
+### That a block really skips the request
 
 Cancelling only helps if Claude Code really skips the request, and that is not documented anywhere — it is behaviour of the prompt pipeline. `tests/live-gate-e2e.sh` measures it: it runs a real background session with a 1-minute cron and flips one stamp file to arm the gate for exactly one tick. Observed on 2.1.220:
 
@@ -103,7 +129,7 @@ Two details worth knowing. A cancelled tick leaves no user record in the transcr
   cc-cache-keepalive: already warm
   ```
 
-  Claude Code prepends that first line to every block and pushes the message unconditionally — `suppressOutput` only hides a hook's stdout, not this. The upstream request for a quiet block is [anthropics/claude-code#39499](https://github.com/anthropics/claude-code/issues/39499). Since only the second line is ours, it is kept to one short string; that is also why the tests assert the block/pass boundary rather than the wording. The notice never reaches the API, so it costs no tokens and no context — it is just visible, a few times an hour, in an attended session.
+  Claude Code prepends that first line to every block and pushes the message unconditionally — `suppressOutput` only hides a hook's stdout, not this. `suppressOutput: true` was tested and changes nothing. [anthropics/claude-code#39499](https://github.com/anthropics/claude-code/issues/39499) asked for a quiet block and was closed by the inactivity bot with no maintainer reply; [#81818](https://github.com/anthropics/claude-code/issues/81818) re-raises it with a repro. Since only the second line is ours, it is kept to one short string; that is also why the tests assert the block/pass boundary rather than the wording. The notice never reaches the API, so it costs no tokens and no context — it is just visible, a few times an hour, in an attended session.
 - **`Stop` only, never `SubagentStop`.** They are separate events and `Stop` carries no `agent_id`, so wiring `Stop` alone gives main-agent-only stamping for free. A subagent's or teammate's turn does not refresh the main session's cached prefix, so stamping on one would suppress a ping the main session actually needs.
 - **The guard matches strictly, the sensor loosely.** A guard false positive would block a real user prompt, so it matches the whole prompt against the sentinel — and since the payload is JSON, a prompt that merely *mentions* the sentinel arrives with escaped quotes and cannot match. A sensor false positive only wastes one ping, so it matches loosely, which also covers pre-1.3.0 crons whose prompt carried a `[Silent …]` prefix.
 - State is per session, keyed by `session_id`, under the profile dir so multiple accounts (`CLAUDE_CONFIG_DIR`) never share stamps. Stale stamps and orphaned temp files are swept during a tick, not on the every-prompt path.

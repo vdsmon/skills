@@ -148,15 +148,15 @@ assert_contains "block payload names the hook event" "$out" '"hookEventName":"Us
 assert_lacks "block payload injects no additionalContext" "$out" 'additionalContext'
 assert_lacks "block payload never uses continue:false" "$out" '"continue"'
 
-reset_state; set_flag "30m"; stamp "$SA" 1500
+reset_state; set_flag "30m"; stamp "$SA" 1800
 assert_silent "exact sentinel passes when the last real turn is stale" \
   "$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")"
 
-# window at 30m is min(30, 60-30-15) = 15m = 900s
-reset_state; set_flag "30m"; stamp "$SA" 900
+# window at the 30m default is min(30, 60-30-10) = 20m = 1200s
+reset_state; set_flag "30m"; stamp "$SA" 1200
 assert_silent "boundary: age == window fires (strict <)" \
   "$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")"
-reset_state; set_flag "30m"; stamp "$SA" 899
+reset_state; set_flag "30m"; stamp "$SA" 1199
 assert_contains "boundary: age == window - 1 blocks" \
   "$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")" '"decision":"block"'
 
@@ -313,15 +313,16 @@ done <<'TABLE'
 90s 2
 10m 10
 20m 20
-22m 22
-23m 22
-30m 15
-45m 0
+24m 24
+26m 24
+30m 20
+45m 5
+50m 0
 1h 0
 1d 0
-EMPTY 15
-banana 15
-0m 15
+EMPTY 20
+banana 20
+0m 20
 08m 8
 TABLE
 
