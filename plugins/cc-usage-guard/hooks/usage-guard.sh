@@ -53,7 +53,7 @@ if [ -z "$hook_event" ] || [ "$hook_event" = "null" ]; then hook_event="PostTool
 # per-tool-call path stays find-free.
 if [ "$hook_event" = "UserPromptSubmit" ] && [ -d "$STATE_DIR" ]; then
   find "$STATE_DIR" -maxdepth 1 -type f \
-    \( \( -name '*-marker*' -mtime +7 \) -o \( -name 'usage.json.tmp.*' -mmin +60 \) \) \
+    \( \( -name '*-marker*' -mtime +7 \) -o \( -name '*.tmp.*' -mmin +60 \) \) \
     -delete 2>/dev/null
 fi
 

@@ -62,7 +62,9 @@ fresh_state() { # <five_hour_pct>
     "$1" "$(date -v+2H +%s)" "$(date -v+2d +%s)" > "$STATE"
 }
 
-make_stale() { touch -t 202601010000 "$STATE"; }
+# "stale" has to age the attempt stamp too: the poller throttles on when it last *tried*,
+# so an old state file with a fresh attempt stamp is deliberately not a refetch trigger
+make_stale() { touch -t 202601010000 "$STATE" "$STATE_DIR/poller-last-attempt" 2>/dev/null; }
 
 assert_contains() { # <name> <haystack> <needle>
   if printf '%s' "$2" | grep -qF "$3"; then
@@ -252,13 +254,34 @@ JSON
 if command -v python3 >/dev/null 2>&1; then
   PORT_FILE="$TESTHOME/fixture-port"
   SEEN_AUTH="$TESTHOME/fixture-auth"
-  python3 - "$FIXTURE" "$PORT_FILE" "$SEEN_AUTH" >/dev/null 2>&1 <<'PY' &
+  HITS="$TESTHOME/fixture-hits"
+  : > "$HITS"
+  python3 - "$FIXTURE" "$PORT_FILE" "$SEEN_AUTH" "$HITS" >/dev/null 2>&1 <<'PY' &
 import http.server, socketserver, sys
 body = open(sys.argv[1], 'rb').read()
 class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
+        # every request is counted, so a throttle test can assert "did not reach the
+        # endpoint" directly instead of inferring it from an unchanged mtime
+        with open(sys.argv[4], 'a') as f:
+            f.write(self.path + '\n')
         # record the bearer token so a test can prove which credential source was used
         open(sys.argv[3], 'w').write(self.headers.get('Authorization', ''))
+        # /429 and /429-bare stand in for a rate-limited endpoint, with and without the
+        # Retry-After header the real one sends
+        if self.path.startswith('/429'):
+            self.send_response(429)
+            if self.path == '/429':
+                self.send_header('Retry-After', '3379')
+            elif self.path == '/429-date':
+                # the HTTP-date form RFC 9110 also allows, 120s out
+                import email.utils, time
+                self.send_header('Retry-After',
+                                 email.utils.formatdate(time.time() + 120, usegmt=True))
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', '0')
+            self.end_headers()
+            return
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Content-Length', str(len(body)))
@@ -303,6 +326,61 @@ if [ -n "${PORT:-}" ]; then
   refreshed_age=$(( $(date +%s) - $(stat -f %m "$STATE") ))
   [ "$refreshed_age" -lt 60 ] && { PASS=$((PASS + 1)); echo "ok: poller refetches once state ages past the interval"; } \
     || { FAIL=$((FAIL + 1)); echo "FAIL: poller left state stale (${refreshed_age}s old) instead of refetching"; }
+
+  # --- rate-limit backoff -------------------------------------------------------
+  # Regression: the throttle used to key on usage.json's mtime, which a failed fetch never
+  # moves. One 429 therefore made every following tool call refetch, endlessly renewing the
+  # limit it was waiting out. These cases pin both halves of the fix.
+  BACKOFF="$STATE_DIR/poller-backoff-until"
+  EP429="http://127.0.0.1:$PORT/429"
+
+  reset_state
+  run_poller "$EP429" CLAUDE_USAGE_POLL_INTERVAL_SEC=0 >/dev/null
+  assert_contains "a 429 is reported as a backoff, not a bare HTTP error" \
+    "$(cat "$POLLER_ERR" 2>/dev/null)" "rate-limited"
+  slack=$(( $(cat "$BACKOFF" 2>/dev/null || echo 0) - $(date +%s) ))
+  [ "$slack" -gt 3300 ] && [ "$slack" -le 3379 ] \
+    && { PASS=$((PASS + 1)); echo "ok: backoff deadline honours the Retry-After header"; } \
+    || { FAIL=$((FAIL + 1)); echo "FAIL: backoff deadline is ${slack}s out, expected ~3379"; }
+
+  # the guard self-heals with CLAUDE_USAGE_POLL_INTERVAL_SEC=0, so the interval bypass must
+  # NOT reach past a limit the server itself set - this is the case that made it a hammer
+  hits_before=$(wc -l < "$HITS")
+  run_poller "$EP429" CLAUDE_USAGE_POLL_INTERVAL_SEC=0 >/dev/null
+  [ "$hits_before" = "$(wc -l < "$HITS")" ] \
+    && { PASS=$((PASS + 1)); echo "ok: backoff cannot be bypassed by INTERVAL=0"; } \
+    || { FAIL=$((FAIL + 1)); echo "FAIL: INTERVAL=0 re-hit a rate-limited endpoint"; }
+
+  # Retry-After's other legal shape: an HTTP-date, which must become a delta not a fallback
+  reset_state
+  run_poller "http://127.0.0.1:$PORT/429-date" CLAUDE_USAGE_POLL_INTERVAL_SEC=0 >/dev/null
+  slack=$(( $(cat "$BACKOFF" 2>/dev/null || echo 0) - $(date +%s) ))
+  [ "$slack" -gt 60 ] && [ "$slack" -le 120 ] \
+    && { PASS=$((PASS + 1)); echo "ok: Retry-After as an HTTP-date is honoured too"; } \
+    || { FAIL=$((FAIL + 1)); echo "FAIL: HTTP-date Retry-After gave ${slack}s, expected ~120"; }
+
+  # a 429 that carries no Retry-After must still park polling, or the loop comes back
+  reset_state
+  run_poller "http://127.0.0.1:$PORT/429-bare" CLAUDE_USAGE_POLL_INTERVAL_SEC=0 >/dev/null
+  [ -s "$BACKOFF" ] && { PASS=$((PASS + 1)); echo "ok: 429 without Retry-After still backs off"; } \
+    || { FAIL=$((FAIL + 1)); echo "FAIL: 429 without Retry-After left no backoff"; }
+
+  # every failed fetch moves the attempt clock - not just the ones that back off
+  reset_state
+  run_poller "$DEAD_ENDPOINT" CLAUDE_USAGE_POLL_INTERVAL_SEC=0 CLAUDE_USAGE_POLL_TIMEOUT_SEC=1 >/dev/null
+  rm -f "$BACKOFF"   # isolate the attempt gate from the backoff gate
+  hits_before=$(wc -l < "$HITS")
+  run_poller "$EP" >/dev/null
+  [ "$hits_before" = "$(wc -l < "$HITS")" ] \
+    && { PASS=$((PASS + 1)); echo "ok: a failed fetch still moves the throttle clock"; } \
+    || { FAIL=$((FAIL + 1)); echo "FAIL: failed fetch left the clock unmoved - refetched immediately"; }
+
+  # an elapsed deadline must not block, and a good poll must clear it
+  reset_state
+  printf '1\n' > "$BACKOFF"
+  run_poller "$EP" CLAUDE_USAGE_POLL_INTERVAL_SEC=0 >/dev/null
+  [ ! -f "$BACKOFF" ] && { PASS=$((PASS + 1)); echo "ok: expired backoff clears on the next good poll"; } \
+    || { FAIL=$((FAIL + 1)); echo "FAIL: backoff survived a successful poll"; }
 
   # the guard must read poller-written state exactly as it reads the sensor's
   out=$(run_guard "$(stdin_json s-poller-state)")

@@ -60,7 +60,10 @@ In both cases the guard could see nothing and the account could sail past its li
 | `CLAUDE_USAGE_REMIND_PARK_MIN` | `1` | minutes between throttled PARK repeat reminders |
 | `CLAUDE_USAGE_REMIND_WARN_MIN` | `5` | minutes between throttled WARN repeat reminders |
 | `CLAUDE_USAGE_SENSOR_MAX_AGE_MIN` | `15` | minutes before the guard treats the usage state as stale and warns |
-| `CLAUDE_USAGE_POLL_INTERVAL_SEC` | `60` | minimum state age before the poller fetches again |
+| `CLAUDE_USAGE_POLL_INTERVAL_SEC` | `60` | minimum age of the poller's last *attempt* before it fetches again |
+| `CLAUDE_USAGE_BACKOFF_FAIL_SEC` | `60` | pause after any failed fetch (timeout, 5xx) before the next attempt |
+| `CLAUDE_USAGE_BACKOFF_429_SEC` | `300` | pause after a `429` that carries no usable `Retry-After` |
+| `CLAUDE_USAGE_BACKOFF_MAX_SEC` | `3600` | cap on any backoff, so a wild `Retry-After` can't blind the guard for long |
 | `CLAUDE_USAGE_POLL_TIMEOUT_SEC` | `3` | hard timeout on the poller's fetch, so a hook never hangs on the network |
 | `CLAUDE_USAGE_KEYCHAIN_SERVICE` | `Claude Code-credentials` | keychain item the poller reads the OAuth token from |
 | `CLAUDE_USAGE_ENDPOINT` | `https://api.anthropic.com/api/oauth/usage` | usage endpoint (override mainly for tests) |
@@ -90,9 +93,11 @@ The guard only sees what a source writes. Before acting on the state file it che
 - **Unreadable state file** (empty or invalid JSON): the guard retries once after 200ms, then decides by freshness. A *fresh* unreadable file means a source is actively writing and the guard caught a torn read - it skips the cycle silently. A *stale* unreadable file means a source wrote a bad state and stopped - that faults loud like the cases above. (Both sources write atomically - tmp file + rename - and never overwrite good state when their own jq call fails, so this case is a belt-and-braces guard for mixed-version rollouts.)
 - **Missing `jq`**: without jq no part can function; the guard warns once per machine (not per session) and points at the fix, and the sensor's built-in status-line fallback prints a visible `usage sensor blind` notice instead of going blank.
 
-Hooks on the same event are not ordered against each other, so on a session's first turn the guard could read state the poller was about to write. Rather than depend on ordering, the guard polls once itself (throttle bypassed) whenever it finds no usable state, and only faults if that fetch also fails - so an "offline" warning always means the source really is broken.
+Hooks on the same event are not ordered against each other, so on a session's first turn the guard could read state the poller was about to write. Rather than depend on ordering, the guard polls once itself (interval throttle bypassed) whenever it finds no usable state, and only faults if that fetch also fails - so an "offline" warning always means the source really is broken.
 
-The poller records why its last fetch failed in `<state dir>/poller-last-error` (expired token, no `curl`, HTTP status) and clears it on success; the guard quotes that line in its warning, so the message names the real cause instead of sending you to check wiring. While any fault holds, WARN/PARK cannot fire - the warning says so explicitly. It re-arms if the source recovers and later goes dark again in the same session.
+**Backoff.** The usage endpoint has its own undocumented rate limit, and its `429` carries no `anthropic-ratelimit-*` headers - only `Retry-After`. The poller therefore throttles on when it last *tried*, not when it last *succeeded*, and parks itself after any failed fetch: until `Retry-After` on a `429`, `CLAUDE_USAGE_BACKOFF_FAIL_SEC` otherwise. The guard's self-heal cannot bypass this the way it bypasses the ordinary interval - a limit the server asked for is not the guard's to override. Without both halves, one `429` makes every following tool call refetch, endlessly renewing the limit it is waiting out. While a backoff holds, the guard is blind and says so; there is nothing to fix but the wait.
+
+The poller records why its last fetch failed in `<state dir>/poller-last-error` (expired token, no `curl`, HTTP status, backoff deadline) and clears it on success; the guard quotes that line in its warning, so the message names the real cause instead of sending you to check wiring. While any fault holds, WARN/PARK cannot fire - the warning says so explicitly. It re-arms if the source recovers and later goes dark again in the same session.
 
 ## Notes
 
