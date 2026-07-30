@@ -64,6 +64,7 @@ In both cases the guard could see nothing and the account could sail past its li
 | `CLAUDE_USAGE_POLL_TIMEOUT_SEC` | `3` | hard timeout on the poller's fetch, so a hook never hangs on the network |
 | `CLAUDE_USAGE_KEYCHAIN_SERVICE` | `Claude Code-credentials` | keychain item the poller reads the OAuth token from |
 | `CLAUDE_USAGE_ENDPOINT` | `https://api.anthropic.com/api/oauth/usage` | usage endpoint (override mainly for tests) |
+| `CLAUDE_USAGE_SENSOR_DEFER_SEC` | `90` | state age below which the sensor leaves the file to the poller |
 | `CLAUDE_USAGE_RENDER_CMD` | `ccstatusline` | downstream status-line renderer the sensor pipes to |
 
 Keep each `WARN` below its `THRESHOLD` (warn fires on the approach; park fires at the cap).
@@ -94,7 +95,7 @@ The poller records why its last fetch failed in `<state dir>/poller-last-error` 
 ## Notes
 
 - The poller reads **live account data**, so it needs no staleness heuristics. The sensor's `rate_limits`, by contrast, is a snapshot of its session's **last API response**, so an idle session keeps re-rendering a frozen snapshot every statusLine refresh. The sensor refuses to write any snapshot whose 5-hour reset is already past (it provably predates a window rollover), and the guard ignores windows whose reset is past - so a day-old over-limit snapshot from a still-open session can neither poison the state file nor trigger a false park. Side effect of the guard check: repeat reminders stop on their own once a window resets, even if nothing refreshes the state.
-- Last writer wins between the two sources, which is safe: both write the same schema, and the poller's numbers are always current.
+- The poller wins over the sensor by design. Both write the same schema, but the sensor's snapshot can be hours old while still inside its window, so writing it over live data would be a downgrade. The sensor therefore skips its write whenever the state file is younger than `CLAUDE_USAGE_SENSOR_DEFER_SEC` (90s, comfortably above the poller's 60s floor) - with the poller healthy the sensor stays quiet, and it takes over automatically if the poller stops.
 - The poller costs one small authenticated GET per minute at most, only on turns where a hook fires, with a 3-second timeout so a slow network can never hang a tool call.
 - macOS/BSD: the guard uses `date -r <epoch>` for reset-time math and `stat -f %m` for the repeat-throttle clock; the poller uses `stat -f %m` and the login keychain via `security`. On Linux that would need `date -d @<epoch>`, `stat -c %Y`, and a `.credentials.json` for the token.
 - Requires `jq` and `awk` on PATH (missing jq fails loud, see above), plus `curl` for the poller.

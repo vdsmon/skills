@@ -19,7 +19,7 @@ unset CLAUDE_USAGE_THRESHOLD CLAUDE_USAGE_THRESHOLD_5H CLAUDE_USAGE_THRESHOLD_WE
   CLAUDE_USAGE_REMIND_PARK_MIN CLAUDE_USAGE_REMIND_WARN_MIN \
   CLAUDE_USAGE_SENSOR_MAX_AGE_MIN CLAUDE_USAGE_RENDER_CMD CLAUDE_CONFIG_DIR \
   CLAUDE_USAGE_POLL_INTERVAL_SEC CLAUDE_USAGE_POLL_TIMEOUT_SEC \
-  CLAUDE_USAGE_KEYCHAIN_SERVICE CLAUDE_USAGE_ENDPOINT 2>/dev/null
+  CLAUDE_USAGE_KEYCHAIN_SERVICE CLAUDE_USAGE_ENDPOINT CLAUDE_USAGE_SENSOR_DEFER_SEC 2>/dev/null
 
 TESTHOME=$(mktemp -d "${TMPDIR:-/tmp}/usage-guard-test.XXXXXX")
 if [ -z "$TESTHOME" ] || [ ! -d "$TESTHOME" ]; then
@@ -201,6 +201,20 @@ printf '%s' "$stale_fixture" | HOME="$TESTHOME" CLAUDE_USAGE_RENDER_CMD=cat bash
 [ ! -f "$STATE" ] && { PASS=$((PASS + 1)); echo "ok: sensor refuses to write a stale snapshot"; } \
   || { FAIL=$((FAIL + 1)); echo "FAIL: stale snapshot written to state"; }
 
+# precedence: the sensor's snapshot can be hours old yet still inside its window, so it
+# must not overwrite fresher state (the poller's live numbers) - but it must take over
+# once that state ages out
+reset_state
+printf '{"schema":2,"five_hour":11,"weekly":22,"five_hour_reset":%s,"weekly_reset":%s}\n' \
+  "$(date -v+2H +%s)" "$(date -v+2d +%s)" > "$STATE"
+fresh_written=$(cat "$STATE")
+printf '%s' "$sensor_fixture" | HOME="$TESTHOME" CLAUDE_USAGE_RENDER_CMD=cat bash "$SENSOR" >/dev/null
+[ "$fresh_written" = "$(cat "$STATE")" ] && { PASS=$((PASS + 1)); echo "ok: sensor defers to state fresher than the defer window"; } \
+  || { FAIL=$((FAIL + 1)); echo "FAIL: sensor overwrote fresher state"; }
+printf '%s' "$sensor_fixture" | HOME="$TESTHOME" CLAUDE_USAGE_SENSOR_DEFER_SEC=0 CLAUDE_USAGE_RENDER_CMD=cat bash "$SENSOR" >/dev/null
+[ "$fresh_written" != "$(cat "$STATE")" ] && { PASS=$((PASS + 1)); echo "ok: sensor writes once the state ages past the defer window"; } \
+  || { FAIL=$((FAIL + 1)); echo "FAIL: sensor stayed deferred with defer window 0"; }
+
 # --- poller ------------------------------------------------------------------
 # Never touches the real account: the keychain service name is forced to a nonexistent
 # one (a real `security` lookup ignores HOME, so this is the only way to isolate it), the
@@ -229,11 +243,14 @@ JSON
 
 if command -v python3 >/dev/null 2>&1; then
   PORT_FILE="$TESTHOME/fixture-port"
-  python3 - "$FIXTURE" "$PORT_FILE" >/dev/null 2>&1 <<'PY' &
+  SEEN_AUTH="$TESTHOME/fixture-auth"
+  python3 - "$FIXTURE" "$PORT_FILE" "$SEEN_AUTH" >/dev/null 2>&1 <<'PY' &
 import http.server, socketserver, sys
 body = open(sys.argv[1], 'rb').read()
 class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
+        # record the bearer token so a test can prove which credential source was used
+        open(sys.argv[3], 'w').write(self.headers.get('Authorization', ''))
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Content-Length', str(len(body)))
@@ -282,6 +299,18 @@ if [ -n "${PORT:-}" ]; then
   # the guard must read poller-written state exactly as it reads the sensor's
   out=$(run_guard "$(stdin_json s-poller-state)")
   assert_contains "guard acts on poller-written state" "$out" "weekly limit"
+
+  # credentials precedence: a per-profile .credentials.json must win over the keychain -
+  # that is what lets two profiles poll two different accounts. Point the keychain name at
+  # the REAL login item, so only genuine precedence (not a keychain miss) can produce the
+  # profile's token; the fixture server records which bearer it received.
+  reset_state
+  printf '{"claudeAiOauth":{"accessToken":"from-credentials-file"}}' > "$TESTHOME/.claude/.credentials.json"
+  env HOME="$TESTHOME" CLAUDE_USAGE_KEYCHAIN_SERVICE="Claude Code-credentials" \
+    CLAUDE_USAGE_ENDPOINT="$EP" bash "$POLLER" </dev/null >/dev/null 2>&1
+  assert_contains "per-profile .credentials.json is preferred over the keychain" \
+    "$(cat "$SEEN_AUTH" 2>/dev/null)" "Bearer from-credentials-file"
+  printf '%s' "$FAKE_CREDS" > "$TESTHOME/.claude/.credentials.json"
 else
   echo "skip: poller happy-path tests (python3 unavailable for the fixture server)"
 fi
@@ -355,7 +384,9 @@ if [ "${1:-}" = "--soak" ]; then
   (
     i=0
     while [ $i -lt 200 ]; do
-      printf '%s' "$sensor_fixture" | HOME="$TESTHOME" CLAUDE_USAGE_RENDER_CMD=cat bash "$SENSOR" >/dev/null
+      # defer window off, or the sensor would skip every write and the race never happens
+      printf '%s' "$sensor_fixture" | HOME="$TESTHOME" CLAUDE_USAGE_SENSOR_DEFER_SEC=0 \
+        CLAUDE_USAGE_RENDER_CMD=cat bash "$SENSOR" >/dev/null
       i=$((i + 1))
     done
   ) &
