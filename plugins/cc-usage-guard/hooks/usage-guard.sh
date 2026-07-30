@@ -77,6 +77,7 @@ marker="$STATE_DIR/usage-park-marker${session_id:+-$session_id}${agent_id:+-$age
 # is the primary writer and usage-sensor.sh (statusLine, terminal only) an optional
 # supplement, so a fault here means the poller is failing - it leaves its reason in
 # poller-last-error, which the message below quotes.
+compute_fault() {
 fault=""
 if [ ! -f "$state" ]; then
   fault="state file missing (no usage source has written yet)"
@@ -106,6 +107,20 @@ else
   elif [ "$state_age" -gt $((SENSOR_MAX_AGE_MIN * 60)) ]; then
     fault="state is $((state_age / 60)) min old, max ${SENSOR_MAX_AGE_MIN} (nothing is refreshing usage state)"
   fi
+fi
+}
+compute_fault
+
+# self-heal before crying offline. The poller is a sibling hook, and hooks on the same
+# event are not ordered relative to each other, so on a session's first turn the guard can
+# read state the poller is about to replace - which fired a one-time-per-session "offline"
+# warning that was already false by the time the user read it. Fetching once here, with
+# the poller's own throttle bypassed, removes the dependency on ordering entirely: after
+# this, a fault means the poller really cannot produce state, not that it hadn't run yet.
+poller="$(dirname "${BASH_SOURCE[0]}")/usage-poller.sh"
+if [ -n "$fault" ] && [ -z "$agent_id" ] && [ -f "$poller" ]; then
+  CLAUDE_USAGE_POLL_INTERVAL_SEC=0 bash "$poller" </dev/null >/dev/null 2>&1
+  compute_fault
 fi
 warn_marker="$STATE_DIR/sensor-warn-marker${session_id:+-$session_id}"
 if [ -n "$fault" ]; then

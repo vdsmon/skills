@@ -90,6 +90,8 @@ The guard only sees what a source writes. Before acting on the state file it che
 - **Unreadable state file** (empty or invalid JSON): the guard retries once after 200ms, then decides by freshness. A *fresh* unreadable file means a source is actively writing and the guard caught a torn read - it skips the cycle silently. A *stale* unreadable file means a source wrote a bad state and stopped - that faults loud like the cases above. (Both sources write atomically - tmp file + rename - and never overwrite good state when their own jq call fails, so this case is a belt-and-braces guard for mixed-version rollouts.)
 - **Missing `jq`**: without jq no part can function; the guard warns once per machine (not per session) and points at the fix, and the sensor's built-in status-line fallback prints a visible `usage sensor blind` notice instead of going blank.
 
+Hooks on the same event are not ordered against each other, so on a session's first turn the guard could read state the poller was about to write. Rather than depend on ordering, the guard polls once itself (throttle bypassed) whenever it finds no usable state, and only faults if that fetch also fails - so an "offline" warning always means the source really is broken.
+
 The poller records why its last fetch failed in `<state dir>/poller-last-error` (expired token, no `curl`, HTTP status) and clears it on success; the guard quotes that line in its warning, so the message names the real cause instead of sending you to check wiring. While any fault holds, WARN/PARK cannot fire - the warning says so explicitly. It re-arms if the source recovers and later goes dark again in the same session.
 
 ## Notes
