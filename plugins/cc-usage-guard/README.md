@@ -23,6 +23,8 @@ That wires the poller and the guard automatically - nothing else is needed, on a
 
 The poller authenticates as you: it reads your Claude subscription OAuth token from the login keychain (item `Claude Code-credentials`), or from `${CLAUDE_CONFIG_DIR:-~/.claude}/.credentials.json` when that file exists, and sends it to `api.anthropic.com` only. The token is never written to disk or printed. API-key and Bedrock/Vertex sessions have no plan limits to read, so the poller records that and stays quiet.
 
+**That token comes from a terminal login, and only from there** — signing into the desktop app does not create it. If you have never run `claude` in a terminal on this machine, do it once now, or the guard starts blind: see [the fix](#fix-sign-in-from-a-terminal).
+
 ## Optional: the statusLine sensor
 
 Only worth wiring if you work in a terminal and want state refreshed with zero extra API calls. **A `statusLine` cannot be declared by a plugin**, so add it to `~/.claude/settings.json` by hand:
@@ -97,11 +99,21 @@ Hooks on the same event are not ordered against each other, so on a session's fi
 
 **Backoff.** The usage endpoint has its own undocumented rate limit, and its `429` carries no `anthropic-ratelimit-*` headers - only `Retry-After`. The poller therefore throttles on when it last *tried*, not when it last *succeeded*, and parks itself after any failed fetch: until `Retry-After` on a `429`, `CLAUDE_USAGE_BACKOFF_FAIL_SEC` otherwise. The guard's self-heal cannot bypass this the way it bypasses the ordinary interval - a limit the server asked for is not the guard's to override. Without both halves, one `429` makes every following tool call refetch, endlessly renewing the limit it is waiting out. While a backoff holds, the guard is blind and says so; there is nothing to fix but the wait.
 
-**Known limitation: the poller needs a terminal CLI login.** It authenticates with the OAuth token from the keychain item `Claude Code-credentials` (or a per-profile `.credentials.json`) — the store the **terminal CLI** maintains. It cannot use the token of the session it is running inside: Claude Code strips OAuth credentials from every hook subprocess by design, and [the hooks reference](https://code.claude.com/docs/en/hooks) states plainly that no API credentials are passed to hooks. A desktop-app session does not populate that keychain item either.
-
-So on a machine used **only** through the desktop app, with no terminal CLI login, the guard has no usage source at all: no statusLine renders, so the sensor cannot run, and the poller has nothing to authenticate with. It fails loud rather than pretending otherwise, and the offline warning says so instead of sending you to this README. Signing in once with the terminal CLI fixes it for as long as that token stays refreshed.
-
 The poller records why its last fetch failed in `<state dir>/poller-last-error` (expired token, no `curl`, HTTP status, backoff deadline) and clears it on success; the guard quotes that line in its warning, so the message names the real cause instead of sending you to check wiring. While any fault holds, WARN/PARK cannot fire - the warning says so explicitly. It re-arms if the source recovers and later goes dark again in the same session.
+
+## Fix: sign in from a terminal
+
+**The poller needs a terminal CLI login.** If the offline warning says `no OAuth token found`, this is the fix, and it is yours to run — open a terminal app (Terminal, iTerm, an IDE terminal) and start Claude Code there:
+
+```
+claude
+```
+
+Sign in at the prompt. If a terminal session is already running, `/login` inside it does the same. It has to be a real terminal: the sign-in opens a browser and waits for you, so no session, hook, or agent can do it on your behalf. One sign-in is enough — the token then keeps refreshing on its own, and the guard works everywhere, including the desktop app.
+
+**Why a terminal, when you are already signed in?** Two separate credential stores. The poller authenticates with the OAuth token from the keychain item `Claude Code-credentials` (or a per-profile `.credentials.json`) — the store the **terminal CLI** maintains. It cannot use the token of the session it is running inside: Claude Code strips OAuth credentials from every hook subprocess by design, and [the hooks reference](https://code.claude.com/docs/en/hooks) states plainly that no API credentials are passed to hooks. The desktop app keeps its own session state elsewhere and never populates that keychain item, so being signed into the app does not help the poller.
+
+So on a machine used **only** through the desktop app, with no terminal CLI login, the guard has no usage source at all: no statusLine renders, so the sensor cannot run, and the poller has nothing to authenticate with. It fails loud rather than pretending otherwise, and the offline warning gives you the command above instead of sending you to this README.
 
 ## Notes
 

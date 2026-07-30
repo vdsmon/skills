@@ -43,7 +43,7 @@
       "name": "cc-usage-guard",
       "source": "./plugins/cc-usage-guard",
       "description": "Pause-at-limit guard for Claude Code. A hook-driven poller reads 5h + weekly rate-limit usage from the account usage endpoint, so it works in the desktop app, the terminal, and headless runs alike (an optional statusLine sensor supplies the same numbers for free where one renders). PostToolUse/UserPromptSubmit hooks watch that state in two tiers: a soft WARN nudge on approach, then a hard PARK that pauses the session, schedules a one-shot auto-resume cron for just after the window resets, and fires a push notification. Spawned agents (subagents, teammates) wind down and hand back instead of parking, and if the usage source goes dark the guard warns instead of going silently blind. Per-profile state, per-window thresholds; see the README for details. Claude Code only (hooks).",
-      "version": "0.8.1"
+      "version": "0.8.2"
     },
     {
       "name": "prep-compact",

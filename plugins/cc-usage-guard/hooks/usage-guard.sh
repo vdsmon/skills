@@ -134,20 +134,27 @@ if [ -n "$fault" ]; then
   poller_err=""
   [ -f "$STATE_DIR/poller-last-error" ] && poller_err=$(head -c 300 "$STATE_DIR/poller-last-error" 2>/dev/null)
   remedy="Fix per the plugin README; state lives in $STATE_DIR."
+  relay="Relay this to the user in one short line in your next reply, then continue normally."
   if [ -n "$poller_err" ]; then
     cause="Last poller error: $poller_err."
     # Credentials are the one fault the README cannot help with: hooks are never handed
     # the session's OAuth token (Claude Code strips it from every subprocess by design),
     # so the poller has no source at all until the terminal CLI's keychain item holds a
     # live token. Say that instead of pointing at wiring that is already correct.
+    #
+    # Lead with the command, not the explanation. The remedy used to describe the cause
+    # correctly and never name the action, so a model relaying it "in one short line"
+    # dropped the one part the user needed - the fix is theirs to run, in a terminal this
+    # session cannot reach, so an unstated action is an unfixed problem.
     case "$poller_err" in
       *"no OAuth token found"*)
-        remedy="Not a wiring problem: hooks are never handed the session's own OAuth token, so the poller has no source until a terminal CLI login refreshes the stored one - a desktop-app session does not. On a desktop-only machine, where no statusLine renders either, that leaves no usage source at all. State lives in $STATE_DIR." ;;
+        remedy="THE FIX IS THE USER'S TO RUN, IN A REAL TERMINAL: they start \`claude\` in a terminal app (Terminal, iTerm, an IDE terminal - not this session) and sign in; in a terminal session already running, \`/login\` does the same. You must not run it from a tool call: it waits on an interactive browser sign-in and would hang. Reason, short version: hooks never receive the session's own OAuth token, so the poller can only read the one a terminal login stores. State lives in $STATE_DIR."
+        relay="Tell the user this in your next reply, before anything else: the guard is blind, and the terminal sign-in is theirs to run - give them the command in a shell code block. Do not bury it and do not run it yourself." ;;
     esac
   else
     cause="No poller error was recorded, so usage-poller.sh is probably not running at all - check that the cc-usage-guard plugin's hooks are enabled."
   fi
-  msg="cc-usage-guard USAGE SOURCE OFFLINE - $fault. The guard is blind: WARN/PARK will NOT fire even if the account hits a rate limit. $cause $remedy Relay this to the user in one short line in your next reply, then continue normally."
+  msg="cc-usage-guard USAGE SOURCE OFFLINE - $fault. The guard is blind: WARN/PARK will NOT fire even if the account hits a rate limit. $cause $remedy $relay"
   jq -nc --arg hook_event "$hook_event" --arg ctx "$msg" '{hookSpecificOutput:{hookEventName:$hook_event,additionalContext:$ctx}}'
   exit 0
 fi

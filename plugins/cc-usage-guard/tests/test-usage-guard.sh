@@ -444,9 +444,16 @@ assert_contains "no-token poll records the cause" "$(cat "$POLLER_ERR" 2>/dev/nu
 make_stale 2>/dev/null || true
 out=$(run_guard "$(stdin_json s-poller-fault)")
 assert_contains "guard offline message quotes the poller error" "$out" "Last poller error: no OAuth token found"
-# credentials are the one fault the README cannot fix, so that case gets its own remedy
+# credentials are the one fault the README cannot fix, so that case gets its own remedy.
+# Assert on the *action*, not the explanation: the remedy is worthless to a user who never
+# learns which command to run, and a reworded cause must not be able to drop it silently.
 assert_contains "no-credentials fault gets its own remedy, not 'see the README'" "$out" \
-  "terminal CLI login"
+  "REAL TERMINAL"
+assert_contains "no-credentials remedy names the command to run" "$out" '`claude`'
+assert_contains "no-credentials remedy forbids running it from a tool call" "$out" \
+  "must not run it from a tool call"
+assert_contains "no-credentials remedy tells the model to surface the command" "$out" \
+  "shell code block"
 case "$out" in
   *"Fix per the plugin README"*) FAIL=$((FAIL + 1)); echo "FAIL: no-credentials fault still points at the README";;
   *) PASS=$((PASS + 1)); echo "ok: no-credentials fault drops the generic README pointer";;
