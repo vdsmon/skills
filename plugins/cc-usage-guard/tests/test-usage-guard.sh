@@ -444,6 +444,24 @@ assert_contains "no-token poll records the cause" "$(cat "$POLLER_ERR" 2>/dev/nu
 make_stale 2>/dev/null || true
 out=$(run_guard "$(stdin_json s-poller-fault)")
 assert_contains "guard offline message quotes the poller error" "$out" "Last poller error: no OAuth token found"
+# credentials are the one fault the README cannot fix, so that case gets its own remedy
+assert_contains "no-credentials fault gets its own remedy, not 'see the README'" "$out" \
+  "terminal CLI login"
+case "$out" in
+  *"Fix per the plugin README"*) FAIL=$((FAIL + 1)); echo "FAIL: no-credentials fault still points at the README";;
+  *) PASS=$((PASS + 1)); echo "ok: no-credentials fault drops the generic README pointer";;
+esac
+
+# every other fault keeps the generic remedy - the branch above must not swallow them.
+# Credentials have to be back in place or the guard's self-heal poll fails on the token
+# first and overwrites the fault under test with the credentials one.
+reset_state
+printf '%s' "$FAKE_CREDS" > "$TESTHOME/.claude/.credentials.json"
+fresh_state 50
+make_stale
+out=$(run_guard "$(stdin_json s-other-fault)")
+assert_contains "other faults still point at the README" "$out" "Fix per the plugin README"
+assert_contains "other faults quote the endpoint cause" "$out" "usage endpoint returned HTTP"
 
 # --- multi-profile (CLAUDE_CONFIG_DIR) ----------------------------------------
 
