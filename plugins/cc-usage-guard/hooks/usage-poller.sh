@@ -81,8 +81,11 @@ creds=""
 # back off on EVERY failed fetch, not just 429: a timeout or a 5xx left unthrottled would
 # be hammered by the guard's INTERVAL=0 self-heal exactly like the 429 was
 set_backoff() { # <seconds>
-  _s=$1
-  [ "$_s" -gt "$BACKOFF_MAX_SEC" ] 2>/dev/null && _s=$BACKOFF_MAX_SEC
+  # a blank or non-numeric override must not silently mean "no backoff at all" - that is
+  # the exact failure this whole mechanism exists to prevent
+  case "$1" in ''|*[!0-9]*) _s=60 ;; *) _s=$1 ;; esac
+  case "$BACKOFF_MAX_SEC" in ''|*[!0-9]*) _cap=3600 ;; *) _cap=$BACKOFF_MAX_SEC ;; esac
+  [ "$_s" -gt "$_cap" ] && _s=$_cap
   write_atomic "$backoff_file" "$(( now + _s ))"
 }
 
