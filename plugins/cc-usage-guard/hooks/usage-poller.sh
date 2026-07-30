@@ -76,7 +76,8 @@ creds=""
 [ -n "$creds" ] || creds=$(security find-generic-password -s "$KEYCHAIN_SERVICE" -w 2>/dev/null)
 token=$(printf '%s' "$creds" | jq -r '.claudeAiOauth.accessToken // empty' 2>/dev/null)
 creds=""
-[ -n "$token" ] || fail "no OAuth token found (keychain item '$KEYCHAIN_SERVICE' and $PROFILE_DIR/.credentials.json both unusable) - subscription login required, API-key sessions have no plan limits to read"
+# keep this short: the guard truncates the quoted cause, and it supplies the remedy itself
+[ -n "$token" ] || fail "no OAuth token found (keychain item '$KEYCHAIN_SERVICE' and $PROFILE_DIR/.credentials.json both unusable, or present but blank) - subscription login required, API-key sessions have no plan limits to read"
 
 # back off on EVERY failed fetch, not just 429: a timeout or a 5xx left unthrottled would
 # be hammered by the guard's INTERVAL=0 self-heal exactly like the 429 was

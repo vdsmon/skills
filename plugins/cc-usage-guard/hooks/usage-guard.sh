@@ -133,12 +133,21 @@ if [ -n "$fault" ]; then
   # the user to check wiring that is already correct.
   poller_err=""
   [ -f "$STATE_DIR/poller-last-error" ] && poller_err=$(head -c 300 "$STATE_DIR/poller-last-error" 2>/dev/null)
+  remedy="Fix per the plugin README; state lives in $STATE_DIR."
   if [ -n "$poller_err" ]; then
     cause="Last poller error: $poller_err."
+    # Credentials are the one fault the README cannot help with: hooks are never handed
+    # the session's OAuth token (Claude Code strips it from every subprocess by design),
+    # so the poller has no source at all until the terminal CLI's keychain item holds a
+    # live token. Say that instead of pointing at wiring that is already correct.
+    case "$poller_err" in
+      *"no OAuth token found"*)
+        remedy="Not a wiring problem: hooks are never handed the session's own OAuth token, so the poller has no source until a terminal CLI login refreshes the stored one - a desktop-app session does not. On a desktop-only machine, where no statusLine renders either, that leaves no usage source at all. State lives in $STATE_DIR." ;;
+    esac
   else
     cause="No poller error was recorded, so usage-poller.sh is probably not running at all - check that the cc-usage-guard plugin's hooks are enabled."
   fi
-  msg="cc-usage-guard USAGE SOURCE OFFLINE - $fault. The guard is blind: WARN/PARK will NOT fire even if the account hits a rate limit. $cause Fix per the plugin README; state lives in $STATE_DIR. Relay this to the user in one short line in your next reply, then continue normally."
+  msg="cc-usage-guard USAGE SOURCE OFFLINE - $fault. The guard is blind: WARN/PARK will NOT fire even if the account hits a rate limit. $cause $remedy Relay this to the user in one short line in your next reply, then continue normally."
   jq -nc --arg hook_event "$hook_event" --arg ctx "$msg" '{hookSpecificOutput:{hookEventName:$hook_event,additionalContext:$ctx}}'
   exit 0
 fi
