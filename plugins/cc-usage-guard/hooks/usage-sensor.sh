@@ -9,6 +9,13 @@ export PATH="/opt/homebrew/bin:$HOME/.local/share/mise/shims:$PATH"
 
 STATE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.usage-guard"
 RENDER_CMD="${CLAUDE_USAGE_RENDER_CMD:-ccstatusline}"
+# defer to a fresher writer: usage-poller.sh fetches live account data once a minute,
+# while this sensor sees only its own session's last-response snapshot and re-renders it
+# every few seconds. Writing unconditionally let an idle session overwrite live numbers
+# with a snapshot that is hours old but still inside its window (the stale-snapshot
+# rejection below only catches snapshots past their reset). So when the state file is
+# younger than this, leave it alone - the poller's numbers are strictly better.
+DEFER_SEC="${CLAUDE_USAGE_SENSOR_DEFER_SEC:-90}"
 
 input=$(cat)
 mkdir -p "$STATE_DIR"
@@ -41,6 +48,10 @@ reset_epoch=$(printf '%s' "$usage" | jq -r '.five_hour_reset // empty' 2>/dev/nu
 reset_epoch=${reset_epoch%%.*}
 if [ -n "$reset_epoch" ] && [ "$reset_epoch" -lt "$(date +%s)" ] 2>/dev/null; then
   usage=""
+fi
+if [ -n "$usage" ] && [ -f "$STATE_DIR/usage.json" ]; then
+  state_age=$(( $(date +%s) - $(stat -f %m "$STATE_DIR/usage.json" 2>/dev/null || echo 0) ))
+  [ "$state_age" -lt "$DEFER_SEC" ] && usage=""
 fi
 if [ -n "$usage" ]; then
   tmp="$STATE_DIR/usage.json.tmp.$$"

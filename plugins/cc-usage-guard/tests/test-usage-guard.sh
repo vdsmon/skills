@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Test suite for usage-guard.sh + usage-sensor.sh. Plain bash, no test framework,
+# Test suite for usage-guard.sh + usage-poller.sh + usage-sensor.sh. Plain bash, no framework,
 # macOS-only (the scripts themselves use BSD stat/date). Run directly:
 #   bash plugins/cc-usage-guard/tests/test-usage-guard.sh [--soak]
 # Every case points HOME at a throwaway dir so the real ~/.claude state is never touched.
@@ -12,11 +12,14 @@ set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GUARD="$HERE/../hooks/usage-guard.sh"
 SENSOR="$HERE/../hooks/usage-sensor.sh"
+POLLER="$HERE/../hooks/usage-poller.sh"
 
 unset CLAUDE_USAGE_THRESHOLD CLAUDE_USAGE_THRESHOLD_5H CLAUDE_USAGE_THRESHOLD_WEEKLY \
   CLAUDE_USAGE_WARN_5H CLAUDE_USAGE_WARN_WEEKLY CLAUDE_USAGE_RESUME_BUFFER_MIN \
   CLAUDE_USAGE_REMIND_PARK_MIN CLAUDE_USAGE_REMIND_WARN_MIN \
-  CLAUDE_USAGE_SENSOR_MAX_AGE_MIN CLAUDE_USAGE_RENDER_CMD CLAUDE_CONFIG_DIR 2>/dev/null
+  CLAUDE_USAGE_SENSOR_MAX_AGE_MIN CLAUDE_USAGE_RENDER_CMD CLAUDE_CONFIG_DIR \
+  CLAUDE_USAGE_POLL_INTERVAL_SEC CLAUDE_USAGE_POLL_TIMEOUT_SEC \
+  CLAUDE_USAGE_KEYCHAIN_SERVICE CLAUDE_USAGE_ENDPOINT CLAUDE_USAGE_SENSOR_DEFER_SEC 2>/dev/null
 
 TESTHOME=$(mktemp -d "${TMPDIR:-/tmp}/usage-guard-test.XXXXXX")
 if [ -z "$TESTHOME" ] || [ ! -d "$TESTHOME" ]; then
@@ -198,6 +201,143 @@ printf '%s' "$stale_fixture" | HOME="$TESTHOME" CLAUDE_USAGE_RENDER_CMD=cat bash
 [ ! -f "$STATE" ] && { PASS=$((PASS + 1)); echo "ok: sensor refuses to write a stale snapshot"; } \
   || { FAIL=$((FAIL + 1)); echo "FAIL: stale snapshot written to state"; }
 
+# precedence: the sensor's snapshot can be hours old yet still inside its window, so it
+# must not overwrite fresher state (the poller's live numbers) - but it must take over
+# once that state ages out
+reset_state
+printf '{"schema":2,"five_hour":11,"weekly":22,"five_hour_reset":%s,"weekly_reset":%s}\n' \
+  "$(date -v+2H +%s)" "$(date -v+2d +%s)" > "$STATE"
+fresh_written=$(cat "$STATE")
+printf '%s' "$sensor_fixture" | HOME="$TESTHOME" CLAUDE_USAGE_RENDER_CMD=cat bash "$SENSOR" >/dev/null
+[ "$fresh_written" = "$(cat "$STATE")" ] && { PASS=$((PASS + 1)); echo "ok: sensor defers to state fresher than the defer window"; } \
+  || { FAIL=$((FAIL + 1)); echo "FAIL: sensor overwrote fresher state"; }
+printf '%s' "$sensor_fixture" | HOME="$TESTHOME" CLAUDE_USAGE_SENSOR_DEFER_SEC=0 CLAUDE_USAGE_RENDER_CMD=cat bash "$SENSOR" >/dev/null
+[ "$fresh_written" != "$(cat "$STATE")" ] && { PASS=$((PASS + 1)); echo "ok: sensor writes once the state ages past the defer window"; } \
+  || { FAIL=$((FAIL + 1)); echo "FAIL: sensor stayed deferred with defer window 0"; }
+
+# --- poller ------------------------------------------------------------------
+# Never touches the real account: the keychain service name is forced to a nonexistent
+# one (a real `security` lookup ignores HOME, so this is the only way to isolate it), the
+# token comes from a fake per-profile .credentials.json, and the endpoint is a local
+# fixture server. NO_TOKEN also proves the poller does not fall back to the login item.
+NO_KEYCHAIN="cc-usage-guard-test-no-such-service"
+FAKE_CREDS='{"claudeAiOauth":{"accessToken":"test-token-not-real"}}'
+POLLER_ERR="$STATE_DIR/poller-last-error"
+
+run_poller() { # <endpoint> [extra env assignments...]
+  local ep="$1"; shift
+  env HOME="$TESTHOME" CLAUDE_USAGE_KEYCHAIN_SERVICE="$NO_KEYCHAIN" \
+    CLAUDE_USAGE_ENDPOINT="$ep" CLAUDE_USAGE_POLL_TIMEOUT_SEC=3 "$@" \
+    bash "$POLLER" </dev/null 2>&1
+}
+
+reset_state
+printf '%s' "$FAKE_CREDS" > "$TESTHOME/.claude/.credentials.json"
+
+# fixture body: fractional seconds + a +00:00 offset, the shape the real endpoint returns
+FIXTURE="$TESTHOME/usage-fixture.json"
+cat > "$FIXTURE" <<'JSON'
+{"five_hour":{"utilization":2.0,"resets_at":"2026-07-30T15:09:59.935998+00:00"},
+ "seven_day":{"utilization":97.0,"resets_at":"2026-07-30T20:00:00.936019+00:00"}}
+JSON
+
+if command -v python3 >/dev/null 2>&1; then
+  PORT_FILE="$TESTHOME/fixture-port"
+  SEEN_AUTH="$TESTHOME/fixture-auth"
+  python3 - "$FIXTURE" "$PORT_FILE" "$SEEN_AUTH" >/dev/null 2>&1 <<'PY' &
+import http.server, socketserver, sys
+body = open(sys.argv[1], 'rb').read()
+class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        # record the bearer token so a test can prove which credential source was used
+        open(sys.argv[3], 'w').write(self.headers.get('Authorization', ''))
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+    def log_message(self, *a): pass
+srv = socketserver.TCPServer(('127.0.0.1', 0), H)
+open(sys.argv[2], 'w').write(str(srv.server_address[1]))
+srv.serve_forever()
+PY
+  FIXTURE_SRV=$!
+  trap 'kill "$FIXTURE_SRV" 2>/dev/null; rm -rf "$TESTHOME"' EXIT
+  waited=0
+  while [ ! -s "$PORT_FILE" ] && [ "$waited" -lt 50 ]; do sleep 0.1; waited=$((waited + 1)); done
+  PORT=$(cat "$PORT_FILE" 2>/dev/null)
+fi
+
+if [ -n "${PORT:-}" ]; then
+  EP="http://127.0.0.1:$PORT/api/oauth/usage"
+  out=$(run_poller "$EP")
+  assert_silent "poller prints nothing (its stdout would land in the model's context)" "$out"
+  schema=$(jq -r '.schema' "$STATE" 2>/dev/null)
+  [ "$schema" = "2" ] && { PASS=$((PASS + 1)); echo "ok: poller writes schema-2 state"; } \
+    || { FAIL=$((FAIL + 1)); echo "FAIL: poller state schema '$schema' != 2"; }
+  got=$(jq -r '[.five_hour,.weekly,.five_hour_reset,.weekly_reset]|@tsv' "$STATE" 2>/dev/null)
+  want_5h=$(date -j -u -f '%Y-%m-%dT%H:%M:%S' '2026-07-30T15:09:59' +%s 2>/dev/null)
+  want_wk=$(date -j -u -f '%Y-%m-%dT%H:%M:%S' '2026-07-30T20:00:00' +%s 2>/dev/null)
+  assert_contains "poller maps utilization + ISO resets to epochs" "$got" \
+    "$(printf '2.0\t97.0\t%s\t%s' "$want_5h" "$want_wk")"
+  [ ! -f "$POLLER_ERR" ] && { PASS=$((PASS + 1)); echo "ok: successful poll clears the error file"; } \
+    || { FAIL=$((FAIL + 1)); echo "FAIL: poller-last-error left behind after a good poll"; }
+
+  # throttle: a state file younger than the poll interval must not be refetched
+  before=$(stat -f %m "$STATE")
+  run_poller "$EP" >/dev/null
+  [ "$before" = "$(stat -f %m "$STATE")" ] && { PASS=$((PASS + 1)); echo "ok: poller throttles on fresh state"; } \
+    || { FAIL=$((FAIL + 1)); echo "FAIL: poller refetched inside the throttle window"; }
+  # ...and refetches once the state ages past it (mtime granularity is one second, so
+  # age the file rather than racing two writes inside the same second)
+  make_stale
+  run_poller "$EP" >/dev/null
+  refreshed_age=$(( $(date +%s) - $(stat -f %m "$STATE") ))
+  [ "$refreshed_age" -lt 60 ] && { PASS=$((PASS + 1)); echo "ok: poller refetches once state ages past the interval"; } \
+    || { FAIL=$((FAIL + 1)); echo "FAIL: poller left state stale (${refreshed_age}s old) instead of refetching"; }
+
+  # the guard must read poller-written state exactly as it reads the sensor's
+  out=$(run_guard "$(stdin_json s-poller-state)")
+  assert_contains "guard acts on poller-written state" "$out" "weekly limit"
+
+  # credentials precedence: a per-profile .credentials.json must win over the keychain -
+  # that is what lets two profiles poll two different accounts. Point the keychain name at
+  # the REAL login item, so only genuine precedence (not a keychain miss) can produce the
+  # profile's token; the fixture server records which bearer it received.
+  reset_state
+  printf '{"claudeAiOauth":{"accessToken":"from-credentials-file"}}' > "$TESTHOME/.claude/.credentials.json"
+  env HOME="$TESTHOME" CLAUDE_USAGE_KEYCHAIN_SERVICE="Claude Code-credentials" \
+    CLAUDE_USAGE_ENDPOINT="$EP" bash "$POLLER" </dev/null >/dev/null 2>&1
+  assert_contains "per-profile .credentials.json is preferred over the keychain" \
+    "$(cat "$SEEN_AUTH" 2>/dev/null)" "Bearer from-credentials-file"
+  printf '%s' "$FAKE_CREDS" > "$TESTHOME/.claude/.credentials.json"
+else
+  echo "skip: poller happy-path tests (python3 unavailable for the fixture server)"
+fi
+
+# a failed fetch must leave the last good state alone and record why
+good=$(cat "$STATE" 2>/dev/null)
+out=$(run_poller "http://127.0.0.1:1/api/oauth/usage" CLAUDE_USAGE_POLL_INTERVAL_SEC=0)
+assert_silent "poller stays silent on fetch failure" "$out"
+[ "$good" = "$(cat "$STATE" 2>/dev/null)" ] && { PASS=$((PASS + 1)); echo "ok: failed poll does not clobber good state"; } \
+  || { FAIL=$((FAIL + 1)); echo "FAIL: failed poll clobbered good state"; }
+assert_contains "failed poll records the HTTP cause" "$(cat "$POLLER_ERR" 2>/dev/null)" "usage endpoint returned HTTP"
+
+# no credentials anywhere: must fault to the error file, never write state, and never
+# silently read the real login keychain item
+reset_state
+rm -f "$TESTHOME/.claude/.credentials.json"
+out=$(run_poller "http://127.0.0.1:1/api/oauth/usage" CLAUDE_USAGE_POLL_INTERVAL_SEC=0)
+assert_silent "poller silent when no token is available" "$out"
+[ ! -f "$STATE" ] && { PASS=$((PASS + 1)); echo "ok: no-token poll writes no state"; } \
+  || { FAIL=$((FAIL + 1)); echo "FAIL: no-token poll wrote a state file"; }
+assert_contains "no-token poll records the cause" "$(cat "$POLLER_ERR" 2>/dev/null)" "no OAuth token found"
+
+# the guard's offline message quotes the poller's reason instead of guessing at wiring
+make_stale 2>/dev/null || true
+out=$(run_guard "$(stdin_json s-poller-fault)")
+assert_contains "guard offline message quotes the poller error" "$out" "Last poller error: no OAuth token found"
+
 # --- multi-profile (CLAUDE_CONFIG_DIR) ----------------------------------------
 
 WORKPROF="$TESTHOME/profile-work"
@@ -218,7 +358,7 @@ assert_contains "default profile is independent (missing state faults)" "$out" "
 
 rm -rf "$WORKPROF"
 out=$(printf '%s' "$(stdin_json s-prof-missing)" | HOME="$TESTHOME" CLAUDE_CONFIG_DIR="$WORKPROF" bash "$GUARD")
-assert_contains "offline fix hint names the profile settings.json" "$out" "$WORKPROF/settings.json"
+assert_contains "offline message names the profile state dir" "$out" "$WORKPROF/.usage-guard"
 
 # --- marker GC ---------------------------------------------------------------
 
@@ -244,7 +384,9 @@ if [ "${1:-}" = "--soak" ]; then
   (
     i=0
     while [ $i -lt 200 ]; do
-      printf '%s' "$sensor_fixture" | HOME="$TESTHOME" CLAUDE_USAGE_RENDER_CMD=cat bash "$SENSOR" >/dev/null
+      # defer window off, or the sensor would skip every write and the race never happens
+      printf '%s' "$sensor_fixture" | HOME="$TESTHOME" CLAUDE_USAGE_SENSOR_DEFER_SEC=0 \
+        CLAUDE_USAGE_RENDER_CMD=cat bash "$SENSOR" >/dev/null
       i=$((i + 1))
     done
   ) &
@@ -253,12 +395,12 @@ if [ "${1:-}" = "--soak" ]; then
   j=0
   while [ $j -lt 500 ]; do
     out=$(run_guard "$(stdin_json "soak-$j")")
-    case "$out" in *"SENSOR OFFLINE"*) offline=$((offline + 1));; esac
+    case "$out" in *"USAGE SOURCE OFFLINE"*) offline=$((offline + 1));; esac
     j=$((j + 1))
   done
   wait "$writer"
-  [ "$offline" = "0" ] && { PASS=$((PASS + 1)); echo "ok: soak - 0 SENSOR OFFLINE in 500 reads vs 200 writes"; } \
-    || { FAIL=$((FAIL + 1)); echo "FAIL: soak - $offline SENSOR OFFLINE emissions"; }
+  [ "$offline" = "0" ] && { PASS=$((PASS + 1)); echo "ok: soak - 0 offline faults in 500 reads vs 200 writes"; } \
+    || { FAIL=$((FAIL + 1)); echo "FAIL: soak - $offline offline-fault emissions"; }
 fi
 
 # ------------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 {
   "name": "cc-usage-guard",
-  "version": "0.6.3",
-  "description": "Pause-at-limit guard for Claude Code. A statusLine sensor records 5h + weekly rate-limit usage; PostToolUse/UserPromptSubmit hooks watch it in two tiers: a soft WARN nudge on approach, then a hard PARK that pauses the session, schedules a one-shot auto-resume cron for just after the window resets, and fires a push notification. Spawned agents (subagents, teammates) wind down and hand back instead of parking, and if the sensor goes dark the guard warns instead of going silently blind. Per-profile state, per-window thresholds; see the README for details.",
+  "version": "0.7.0",
+  "description": "Pause-at-limit guard for Claude Code. A hook-driven poller reads 5h + weekly rate-limit usage from the account usage endpoint (works in the desktop app, terminal, and headless runs alike; an optional statusLine sensor supplies the same numbers for free where one renders); PostToolUse/UserPromptSubmit hooks watch it in two tiers: a soft WARN nudge on approach, then a hard PARK that pauses the session, schedules a one-shot auto-resume cron for just after the window resets, and fires a push notification. Spawned agents (subagents, teammates) wind down and hand back instead of parking, and if the usage source goes dark the guard warns instead of going silently blind. Per-profile state, per-window thresholds; see the README for details.",
   "author": {
     "name": "Victor De Simone",
     "email": "victorsmoliveira@gmail.com",
@@ -16,6 +16,10 @@
         "hooks": [
           {
             "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/usage-poller.sh\""
+          },
+          {
+            "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/usage-guard.sh\""
           }
         ]
@@ -24,6 +28,10 @@
     "UserPromptSubmit": [
       {
         "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/usage-poller.sh\""
+          },
           {
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/usage-guard.sh\""

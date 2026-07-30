@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# PostToolUse + UserPromptSubmit hook. Reads usage state written by usage-sensor.sh.
+# PostToolUse + UserPromptSubmit hook. Reads usage state written by usage-poller.sh
+# (primary, every surface) or usage-sensor.sh (statusLine, terminal only).
 # When a usage window crosses a threshold, injects a pause+auto-resume (PARK) or
 # heads-up (WARN) instruction via hookSpecificOutput.additionalContext. Fires once in
 # full per (window:level:reset), then throttled short-form repeats until the level
@@ -38,7 +39,7 @@ if ! command -v jq >/dev/null 2>&1; then
   : > "$jq_marker"
   hook_event=$(printf '%s' "$input" | sed -n 's/.*"hook_event_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
   [ -n "$hook_event" ] || hook_event="PostToolUse"
-  printf '{"hookSpecificOutput":{"hookEventName":"%s","additionalContext":"cc-usage-guard SENSOR OFFLINE - jq is not on PATH, so the guard cannot read usage state. The guard is blind: WARN/PARK will NOT fire even if the account hits a rate limit. Fix: install jq (brew install jq). Relay this to the user in one short line in your next reply, then continue normally."}}\n' "$hook_event"
+  printf '{"hookSpecificOutput":{"hookEventName":"%s","additionalContext":"cc-usage-guard USAGE SOURCE OFFLINE - jq is not on PATH, so the guard cannot read usage state. The guard is blind: WARN/PARK will NOT fire even if the account hits a rate limit. Fix: install jq (brew install jq). Relay this to the user in one short line in your next reply, then continue normally."}}\n' "$hook_event"
   exit 0
 fi
 rm -f "$STATE_DIR/jq-missing-warn-marker" 2>/dev/null
@@ -69,14 +70,16 @@ session_id=$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null)
 agent_id=$(printf '%s' "$input" | jq -r '.agent_id // empty' 2>/dev/null)
 marker="$STATE_DIR/usage-park-marker${session_id:+-$session_id}${agent_id:+-$agent_id}"
 
-# sensor liveness gate. a dead sensor used to mean a silently blind guard: no state
-# file (statusLine never wired), a stale file (no attended session rendering; bg/headless
-# sessions get no statusLine), or a schema from a different plugin version all made every
-# threshold read as "fine". warn the root session once per session instead; spawned
-# agents stay silent because their parent gets the same warning.
+# source liveness gate. a dead usage source used to mean a silently blind guard: no state
+# file, a stale file, or a schema from a different plugin version all made every threshold
+# read as "fine". warn the root session once per session instead; spawned agents stay
+# silent because their parent gets the same warning. usage-poller.sh (hook, every surface)
+# is the primary writer and usage-sensor.sh (statusLine, terminal only) an optional
+# supplement, so a fault here means the poller is failing - it leaves its reason in
+# poller-last-error, which the message below quotes.
 fault=""
 if [ ! -f "$state" ]; then
-  fault="state file missing (statusLine sensor never ran)"
+  fault="state file missing (no usage source has written yet)"
 else
   schema=$(jq -r '.schema // 0' "$state" 2>/dev/null)
   if [ -z "$schema" ]; then
@@ -90,18 +93,18 @@ else
   state_age=$(( now - $(stat -f %m "$state" 2>/dev/null || echo "$now") ))
   if [ -z "$schema" ]; then
     if [ "$state_age" -gt $((SENSOR_MAX_AGE_MIN * 60)) ]; then
-      fault="state file unreadable (empty or invalid JSON), last written $((state_age / 60)) min ago (sensor wrote a bad state and stopped)"
+      fault="state file unreadable (empty or invalid JSON), last written $((state_age / 60)) min ago (a usage source wrote a bad state and stopped)"
     else
-      # fresh but unreadable: a sensor is actively writing, so this is a torn
-      # read, not a dead sensor. skip this cycle; the next read gets a whole
+      # fresh but unreadable: a source is actively writing, so this is a torn
+      # read, not a dead source. skip this cycle; the next read gets a whole
       # file. deliberately does not touch warn_marker - a transient skip must
       # not clear a legitimately armed fault warning.
       exit 0
     fi
   elif [ "$schema" != "2" ]; then
-    fault="state schema is '$schema', guard expects 2 (sensor and guard come from different plugin versions - point the statusLine at the checkout the plugin runs from)"
+    fault="state schema is '$schema', guard expects 2 (a usage source and the guard come from different plugin versions - if a statusLine sensor is wired, point it at the checkout the plugin runs from)"
   elif [ "$state_age" -gt $((SENSOR_MAX_AGE_MIN * 60)) ]; then
-    fault="state is $((state_age / 60)) min old, max ${SENSOR_MAX_AGE_MIN} (no attended session is rendering the statusLine)"
+    fault="state is $((state_age / 60)) min old, max ${SENSOR_MAX_AGE_MIN} (nothing is refreshing usage state)"
   fi
 fi
 warn_marker="$STATE_DIR/sensor-warn-marker${session_id:+-$session_id}"
@@ -110,7 +113,17 @@ if [ -n "$fault" ]; then
   [ -f "$warn_marker" ] && exit 0
   mkdir -p "$STATE_DIR"
   printf '%s' "$fault" > "$warn_marker"
-  msg="cc-usage-guard SENSOR OFFLINE - $fault. The guard is blind: WARN/PARK will NOT fire even if the account hits a rate limit. Fix: wire usage-sensor.sh as the statusLine command in $PROFILE_DIR/settings.json (see the plugin README) and keep an attended session open. Relay this to the user in one short line in your next reply, then continue normally."
+  # the poller records why its last fetch failed; quoting it turns a generic "offline"
+  # into the actual cause (expired token, no curl, endpoint error) instead of sending
+  # the user to check wiring that is already correct.
+  poller_err=""
+  [ -f "$STATE_DIR/poller-last-error" ] && poller_err=$(head -c 300 "$STATE_DIR/poller-last-error" 2>/dev/null)
+  if [ -n "$poller_err" ]; then
+    cause="Last poller error: $poller_err."
+  else
+    cause="No poller error was recorded, so usage-poller.sh is probably not running at all - check that the cc-usage-guard plugin's hooks are enabled."
+  fi
+  msg="cc-usage-guard USAGE SOURCE OFFLINE - $fault. The guard is blind: WARN/PARK will NOT fire even if the account hits a rate limit. $cause Fix per the plugin README; state lives in $STATE_DIR. Relay this to the user in one short line in your next reply, then continue normally."
   jq -nc --arg hook_event "$hook_event" --arg ctx "$msg" '{hookSpecificOutput:{hookEventName:$hook_event,additionalContext:$ctx}}'
   exit 0
 fi
