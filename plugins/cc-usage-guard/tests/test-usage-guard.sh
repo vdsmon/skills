@@ -38,9 +38,18 @@ reset_state() {
   mkdir -p "$STATE_DIR"
 }
 
+# The guard now self-heals by invoking the poller when it finds no usable state. Every
+# guard case therefore has to neutralize the poller, or it would fetch with the real login
+# keychain against the real account: force a keychain miss and an unreachable endpoint, so
+# the poll fails instantly and offline behaviour stays observable. The self-heal path gets
+# its own test with a working fixture endpoint.
+NO_KEYCHAIN="cc-usage-guard-test-no-such-service"
+DEAD_ENDPOINT="http://127.0.0.1:1/api/oauth/usage"
+
 # run_guard <stdin-json> -> stdout
 run_guard() {
-  printf '%s' "$1" | HOME="$TESTHOME" bash "$GUARD"
+  printf '%s' "$1" | env HOME="$TESTHOME" CLAUDE_USAGE_KEYCHAIN_SERVICE="$NO_KEYCHAIN" \
+    CLAUDE_USAGE_ENDPOINT="$DEAD_ENDPOINT" CLAUDE_USAGE_POLL_TIMEOUT_SEC=1 bash "$GUARD"
 }
 
 stdin_json() { # <session_id> [agent_id] [hook_event]
@@ -220,7 +229,6 @@ printf '%s' "$sensor_fixture" | HOME="$TESTHOME" CLAUDE_USAGE_SENSOR_DEFER_SEC=0
 # one (a real `security` lookup ignores HOME, so this is the only way to isolate it), the
 # token comes from a fake per-profile .credentials.json, and the endpoint is a local
 # fixture server. NO_TOKEN also proves the poller does not fall back to the login item.
-NO_KEYCHAIN="cc-usage-guard-test-no-such-service"
 FAKE_CREDS='{"claudeAiOauth":{"accessToken":"test-token-not-real"}}'
 POLLER_ERR="$STATE_DIR/poller-last-error"
 
@@ -299,6 +307,27 @@ if [ -n "${PORT:-}" ]; then
   # the guard must read poller-written state exactly as it reads the sensor's
   out=$(run_guard "$(stdin_json s-poller-state)")
   assert_contains "guard acts on poller-written state" "$out" "weekly limit"
+
+  # self-heal: hooks on one event are unordered, so on a session's first turn the guard can
+  # read state the poller is about to replace. It must fetch once itself before declaring
+  # the source offline - otherwise that race emits a one-time-per-session false alarm.
+  reset_state
+  fresh_state 50
+  make_stale
+  out=$(printf '%s' "$(stdin_json s-selfheal)" | env HOME="$TESTHOME" \
+    CLAUDE_USAGE_KEYCHAIN_SERVICE="$NO_KEYCHAIN" CLAUDE_USAGE_ENDPOINT="$EP" bash "$GUARD")
+  case "$out" in
+    *"USAGE SOURCE OFFLINE"*) FAIL=$((FAIL + 1)); echo "FAIL: guard cried offline instead of polling for itself";;
+    *) PASS=$((PASS + 1)); echo "ok: guard self-heals stale state by polling before faulting";;
+  esac
+  assert_contains "self-healed guard acts on the freshly polled numbers" "$out" "weekly limit"
+
+  # ...and still faults when the poll itself cannot produce state
+  reset_state
+  fresh_state 50
+  make_stale
+  out=$(run_guard "$(stdin_json s-selfheal-dead)")
+  assert_contains "guard still faults when the self-heal poll fails" "$out" "USAGE SOURCE OFFLINE"
 
   # credentials precedence: a per-profile .credentials.json must win over the keychain -
   # that is what lets two profiles poll two different accounts. Point the keychain name at
