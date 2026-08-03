@@ -1,7 +1,7 @@
 {
   "name": "humanize",
-  "version": "1.3.3",
-  "description": "Strip AI-writing tells from text. Detects em-dash overuse, AI vocabulary, inflated significance, rule-of-three, sycophancy, negative parallelisms, and 20+ more patterns. Use when editing prose to sound human.",
+  "version": "1.4.0",
+  "description": "Strip AI-writing tells from text. Detects em-dash overuse, AI vocabulary, inflated significance, rule-of-three, sycophancy, negative parallelisms, and 20+ more patterns. `--casual` also adds the small inconsistencies real writers have. Use when editing prose to sound human.",
   "author": {
     "name": "Victor De Simone",
     "email": "victorsmoliveira@gmail.com",
