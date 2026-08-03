@@ -7,8 +7,8 @@ when_to_use: >-
   voice", "sounds too AI", "make this more human", or pastes text for a
   humanization pass. Also triggers when editing or reviewing prose in
   Markdown or plain text files where AI-ness is the target to strip.
-  Add "--casual", "make it casual", or "loosen it up" for the
-  inconsistency pass on top.
+  Pass "--casual" for the inconsistency pass on top, or ask for it in
+  conversation ("now loosen it up").
 paths: "*.md, *.mdx, *.txt, *.rst"
 allowed-tools:
   - Read
@@ -27,10 +27,12 @@ Rewrite text to sound human. Identify AI tells, fix them, inject voice.
 
 Raw input: `$ARGUMENTS`
 
-- `$ARGUMENTS` contains `--casual` (or `--loose`, `casual`, `loosen it up`, `make it looser`) -> **casual mode**: everything below, plus the Inconsistency pass.
+- `$ARGUMENTS` contains `--casual` or `--loose` -> **casual mode**: everything below, plus the Inconsistency pass.
 - Otherwise -> **default mode**: everything below, and the Inconsistency pass does not run. Output stays internally consistent, which is what you want for an ADR, a README, or anything a stranger reads under pressure.
 
-Strip the flag from `$ARGUMENTS` before treating the rest as the text or the file path. Honour a natural-language switch mid-conversation ("now loosen it up") without re-running the whole pass.
+Match the dashed flags only, never a bare word. `$ARGUMENTS` here holds the prose being rewritten, so matching `casual` on its own would turn the pass on for any paragraph that happens to discuss tone, and that failure is silent. Leading dashes don't show up in prose.
+
+Strip the flag from `$ARGUMENTS` before treating the rest as the text or the file path. A spoken switch is fine and needs no flag: "now loosen it up" mid-conversation flips the mode without re-running the whole pass.
 
 ## Task
 
