@@ -5,13 +5,14 @@
 # attention as context grows and other plugins inject per-turn instructions.
 # This line re-anchors the mode every prompt for ~15 tokens.
 #
+# No flag file: installing the plugin IS the opt-in. CC_CAVEMAN_OFF env var
+# is the escape hatch for a session without the style.
+#
 # Always exit 0 on every path: a UserPromptSubmit hook exiting non-zero errors
 # on every prompt. Fail open = fail silent - a skipped reminder costs at most
 # one turn of style drift, a blocked prompt costs the user a real turn.
 set -u
 
-FLAG="${HOME}/.cc-caveman"
-[ -f "$FLAG" ] || exit 0
 [ -n "${CC_CAVEMAN_OFF:-}" ] && exit 0
 
 input=""

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# SessionStart hook: injects the full-mode caveman ruleset when opted in.
+# SessionStart hook: injects the full-mode caveman ruleset.
 #
-# Opt-in via ~/.cc-caveman flag file (existence = on, contents ignored).
-# Cheapest check first: non-opt-in users pay one stat(2) and get zero output.
+# No flag file: installing the plugin IS the opt-in. CC_CAVEMAN_OFF env var
+# is the escape hatch for a session without the style.
 #
 # Re-firing on resume/clear/compact is intentional - compaction prunes the
 # ruleset out of context, and re-injection is what brings it back. With a
@@ -12,8 +12,6 @@
 # so every error path exits 0 with no output.
 set -u
 
-FLAG="${HOME}/.cc-caveman"
-[ -f "$FLAG" ] || exit 0
 [ -n "${CC_CAVEMAN_OFF:-}" ] && exit 0
 
 # Drain stdin (hook payload) so the parent never blocks on a full pipe.
