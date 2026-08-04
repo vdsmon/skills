@@ -1,0 +1,37 @@
+{
+  "name": "cc-caveman",
+  "version": "0.1.0",
+  "description": "Always-on caveman full mode: drops articles, filler, and tool-call narration while keeping every technical fact exact. Opt-in via ~/.cc-caveman flag file; a SessionStart hook injects the ruleset and a per-prompt one-liner keeps it anchored. Ships /caveman-compress to shrink memory files the same way. Extracted (full mode only) from JuliusBrussee/caveman, MIT.",
+  "author": {
+    "name": "Victor De Simone",
+    "email": "victorsmoliveira@gmail.com",
+    "url": "https://github.com/vdsmon"
+  },
+  "homepage": "https://github.com/vdsmon/skills",
+  "repository": "https://github.com/vdsmon/skills",
+  "license": "MIT",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/caveman.sh\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/caveman-reinforce.sh\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
