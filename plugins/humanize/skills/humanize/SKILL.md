@@ -175,11 +175,18 @@ Use the system's actual verb when describing an action the system performs. If a
 
 Audience reminder: most prose you produce will be read by non-native English speakers, often a majority. The word a teenager would use is the right default. If the plain word makes the sentence shorter, even better. US-cultural idioms (sports, military, business-casual Americana) are a hard stop, treated like the em-dash rule, not a stylistic nicety. When in doubt about a phrase, say the literal thing.
 
+**28. Compound coinages.** AI mints hyphenated compounds that read fluent to a native English speaker and force everyone else to decode a metaphor mid-sentence. Two families:
+
+- Productive suffixes, where AI coins fresh compounds on the fly: *X-bearing* (*load-bearing*, *quote-bearing*), *X-shaped* (*an API-shaped problem*), *X-flavored* (*a Lisp-flavored syntax*), *X-adjacent* (*crypto-adjacent*).
+- Fixed pairs it reuses constantly: *hand-rolled, battle-tested, first-class* (figurative, as in *a first-class concept*).
+
+Same test as #27: if the literal words do not give a non-native reader the meaning, say the plain thing. *Load-bearing* -> *essential* or *other code depends on it*. *Hand-rolled* -> *written from scratch* or *custom*. *Battle-tested* -> *proven in production* (it is also on the military list in #27). *First-class* -> *fully supported* or *built in*. *An API-shaped problem* -> name what the problem actually is. *Lisp-flavored* -> *Lisp-like*. *Crypto-adjacent* -> *related to crypto*. Literal compounds that mean exactly what they say (*read-only*, *case-sensitive*, *built-in*) are fine: this rule is about metaphor packed into a hyphen, not hyphens themselves (for plain hyphenated pairs, see #26).
+
 ## Process
 
 1. Read the input.
 2. `grep` for `—` and ` -- `. Fix every hit first, highest-signal tell, easiest to miss by eye.
-3. Scan for the 26 patterns above.
+3. Scan for the 28 patterns above.
 4. Rewrite sections. Check the revision:
    - Sounds natural read aloud
    - Varies sentence structure naturally
