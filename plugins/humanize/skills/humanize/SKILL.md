@@ -1,7 +1,7 @@
 ---
 name: humanize
 argument-hint: "[text or file to humanize]"
-description: Rewrites text to strip AI-writing tells (em-dash overuse, AI vocabulary, inflated significance, sycophancy) and restore a human voice. Returns the rewrite plus any residual tells.
+description: Rewrites text to strip AI-writing tells (em-dash overuse, AI vocabulary, inflated significance, sycophancy) and restore a human voice. Outputs only the corrected text; files are edited in place.
 when_to_use: >-
   Use when the user says "humanize this", "remove AI tells", "edit for
   voice", "sounds too AI", "make this more human", or pastes text for a
@@ -185,17 +185,18 @@ Audience reminder: most prose you produce will be read by non-native English spe
    - Varies sentence structure naturally
    - Prefers specific over vague
    - Uses *is / are / has* where appropriate
-5. Produce a draft.
-6. Ask yourself: *"What still sounds AI?"* List the residue as bullets.
+5. Produce a draft (internally; never show it).
+6. Ask yourself: *"What still sounds AI?"* Note the residue (internally).
 7. Revise against that list.
-8. Output final.
+8. Deliver the final rewrite only.
 
 ## Output
 
-1. Draft rewrite
-2. Residual-tells bullets
-3. Final rewrite
-4. (Optional) short changelog of removed patterns
+The corrected text, and nothing else. No draft, no residual-tells list, no changelog, no commentary. The draft/residue/revise loop in Process is your working method, not your deliverable.
+
+- Input is a file: edit the file in place and confirm in one short line. Do not reproduce the text in chat.
+- Input is text destined for a file or another surface (a PR body, a commit message, a doc): write it where it is going; the chat shows at most one short line.
+- Input is chat text with nowhere else to land: reply with the final rewrite alone.
 
 ## Source
 
