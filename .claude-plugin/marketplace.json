@@ -10,12 +10,6 @@
   },
   "plugins": [
     {
-      "name": "investigate",
-      "source": "./plugins/investigate",
-      "description": "Investigate a reported error or incident end to end across every reachable system, never inferring past a missing source and instead stopping to raise to the human for access or clarity. Builds an access ledger, batch-raises blockers up front, digs wide through logs/state/code/history (any repo), and delivers a root-cause report plus a proposed (unapplied) fix. Claude-Code-leaning (AskUserQuestion + read-only subagents + MCP access ledger), and ships a swappable environment access-map reference.",
-      "version": "0.1.7"
-    },
-    {
       "name": "slack-draft",
       "source": "./plugins/slack-draft",
       "description": "Draft a Slack message for the user to send: Slack mrkdwn, lead-with-conclusion, backticked identifiers and domain values, ASCII punctuation. Defaults to English and a plain high-level register, or pass --tech for a code-reading peer. Draft only, never posts. Portable across SKILL.md-native hosts.",
@@ -30,7 +24,7 @@
     {
       "name": "cc-caveman",
       "source": "./plugins/cc-caveman",
-      "description": "Always-on caveman full mode: drops articles, filler, and tool-call narration while keeping every technical fact exact. Installing is the opt-in — a SessionStart hook injects the ruleset and a per-prompt one-liner keeps it anchored (CC_CAVEMAN_OFF=1 skips a session). Ships /caveman-compress to shrink memory files the same way. Extracted (full mode only) from JuliusBrussee/caveman, MIT. Claude Code only (hooks).",
+      "description": "Always-on caveman full mode: drops articles, filler, and tool-call narration while keeping every technical fact exact. Installing is the opt-in \u2014 a SessionStart hook injects the ruleset and a per-prompt one-liner keeps it anchored (CC_CAVEMAN_OFF=1 skips a session). Ships /caveman-compress to shrink memory files the same way. Extracted (full mode only) from JuliusBrussee/caveman, MIT. Claude Code only (hooks).",
       "version": "0.1.0"
     },
     {
