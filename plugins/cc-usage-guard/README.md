@@ -103,13 +103,13 @@ The poller records why its last fetch failed in `<state dir>/poller-last-error` 
 
 ## Fix: sign in from a terminal
 
-**The poller needs a terminal CLI login.** If the offline warning says `no OAuth token found`, this is the fix, and it is yours to run — open a terminal app (Terminal, iTerm, an IDE terminal) and start Claude Code there:
+**The poller needs a terminal CLI login.** If the offline warning says `no OAuth token found`, this is the fix, and it is yours to run — open a terminal app (Terminal, iTerm, an IDE terminal) and run:
 
 ```
-claude
+claude /login
 ```
 
-Sign in at the prompt. If a terminal session is already running, `/login` inside it does the same. It has to be a real terminal: the sign-in opens a browser and waits for you, so no session, hook, or agent can do it on your behalf. One sign-in is enough — the token then keeps refreshing on its own, and the guard works everywhere, including the desktop app.
+Sign in at the prompt. It has to be a real terminal: the sign-in opens a browser and waits for you, so no session, hook, or agent can do it on your behalf. One sign-in is enough — the token then keeps refreshing on its own, and the guard works everywhere, including the desktop app.
 
 **Why a terminal, when you are already signed in?** Two separate credential stores. The poller authenticates with the OAuth token from the keychain item `Claude Code-credentials` (or a per-profile `.credentials.json`) — the store the **terminal CLI** maintains. It cannot use the token of the session it is running inside: Claude Code strips OAuth credentials from every hook subprocess by design, and [the hooks reference](https://code.claude.com/docs/en/hooks) states plainly that no API credentials are passed to hooks. The desktop app keeps its own session state elsewhere and never populates that keychain item, so being signed into the app does not help the poller.
 
