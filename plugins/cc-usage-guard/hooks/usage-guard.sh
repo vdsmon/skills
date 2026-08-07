@@ -145,11 +145,14 @@ if [ -n "$fault" ]; then
     # Lead with the command, not the explanation. The remedy used to describe the cause
     # correctly and never name the action, so a model relaying it "in one short line"
     # dropped the one part the user needed - the fix is theirs to run, in a terminal this
-    # session cannot reach, so an unstated action is an unfixed problem.
+    # session cannot reach, so an unstated action is an unfixed problem. One literal
+    # command, no prose alternatives: earlier wording ("start claude and sign in; /login
+    # does the same") made models paraphrase, and users got instructions instead of a
+    # runnable line.
     case "$poller_err" in
       *"no OAuth token found"*)
-        remedy="THE FIX IS THE USER'S TO RUN, IN A REAL TERMINAL: they start \`claude\` in a terminal app (Terminal, iTerm, an IDE terminal - not this session) and sign in; in a terminal session already running, \`/login\` does the same. You must not run it from a tool call: it waits on an interactive browser sign-in and would hang. Reason, short version: hooks never receive the session's own OAuth token, so the poller can only read the one a terminal login stores. State lives in $STATE_DIR."
-        relay="Tell the user this in your next reply, before anything else: the guard is blind, and the terminal sign-in is theirs to run - give them the command in a shell code block. Do not bury it and do not run it yourself." ;;
+        remedy="THE FIX IS ONE COMMAND THE USER RUNS THEMSELVES in any terminal app (Terminal, iTerm, an IDE terminal - not this session): \`claude /login\`. You must not run it from a tool call: it waits on an interactive browser sign-in and would hang. Reason, short version: hooks never receive the session's own OAuth token, so the poller can only read the one a terminal login stores. State lives in $STATE_DIR."
+        relay="Tell the user this in your next reply, before anything else: the guard is blind until they run \`claude /login\` in a terminal. Give exactly that command in a shell code block, nothing else in the block. Do not paraphrase it into steps and do not run it yourself." ;;
     esac
   else
     cause="No poller error was recorded, so usage-poller.sh is probably not running at all - check that the cc-usage-guard plugin's hooks are enabled."
