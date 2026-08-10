@@ -5,18 +5,6 @@
   },
   "plugins": [
     {
-      "name": "investigate",
-      "source": {
-        "source": "local",
-        "path": "./plugins/investigate"
-      },
-      "policy": {
-        "installation": "AVAILABLE",
-        "authentication": "ON_INSTALL"
-      },
-      "category": "Engineering"
-    },
-    {
       "name": "slack-draft",
       "source": {
         "source": "local",
