@@ -87,7 +87,6 @@ Generated from `.claude-plugin/marketplace.json` (the source of truth) by `scrip
 <!-- BEGIN PLUGINS (generated) -->
 | Plugin | Host | What it does |
 |---|---|---|
-| `investigate` | any | Investigate a reported error or incident end to end across every reachable system, never inferring past a missing source and instead stopping to raise to the human for access or clarity. |
 | `slack-draft` | any | Draft a Slack message for the user to send: Slack mrkdwn, lead-with-conclusion, backticked identifiers and domain values, ASCII punctuation. |
 | `skill-polish` | any | Post-mortem for any skill: scans a session for friction and applies concrete edits to the responsible skill file. Portable across SKILL.md-native hosts. |
 | `cc-caveman` | CC only | Always-on caveman full mode: drops articles, filler, and tool-call narration while keeping every technical fact exact. |
