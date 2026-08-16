@@ -1,6 +1,18 @@
 #!/usr/bin/env bash
 # UserPromptSubmit hook: cancels a keepalive cron tick that a recent real turn
-# already paid for.
+# already paid for, or that would land on a cache that is already gone.
+#
+# Two gates, both reading stamps hooks/keepalive-sensor.sh wrote:
+#   cold  - the newest turn of any kind is older than the TTL, so the cached
+#           prefix has expired. Firing now would not refresh anything; it would
+#           re-read the whole conversation uncached to warm a session nobody is
+#           using, and every later tick would keep it warm for no one. This is
+#           what happens after the laptop slept or was offline: the in-process
+#           cron is dormant, not dead, and fires the moment the machine wakes.
+#           Blocked ticks stay blocked until a real turn (which pays that
+#           re-read once, on purpose) restarts the chain.
+#   warm  - a real turn landed inside the cancel window, so the TTL was just
+#           reset and the tick buys nothing.
 #
 # The cron fires on a fixed schedule and cannot be rescheduled on activity -
 # jobs live in-memory in the CLI process, and next-fire is a pure function of
@@ -48,6 +60,83 @@ session_id="$(printf '%s' "$input" \
   | head -n1 | grep -oE '[0-9a-fA-F-]{8,}' | tail -n1)"
 [ -n "$session_id" ] || exit 0
 
+# Keep the reason to one short line. Claude Code prefixes every block with a
+# fixed "UserPromptSubmit operation blocked by hook:" and there is no way to
+# suppress that (confirmed in the binary - the notice is pushed unconditionally
+# - and in the docs; suppressOutput only hides the hook's stdout. Upstream
+# feature request: anthropics/claude-code#39499). Since the prefix already costs
+# two wrapped lines several times an hour, the part we control stays minimal.
+# No additionalContext either - injecting text into the turn defeats the point.
+# Reasons are static strings, so no JSON escaping: the plugin stays jq-free.
+# The tests assert the block/pass boundaries, not the wording.
+block() { # <reason>
+  printf '{"decision":"block","reason":"%s","hookSpecificOutput":{"hookEventName":"UserPromptSubmit","suppressOriginalPrompt":true}}\n' "$1"
+  exit 0
+}
+
+# TTL measured, not assumed: eight sessions idled for a controlled interval then
+# took exactly one turn. Hits up to 57.9 min (cache_read 42585 / create 15),
+# total misses from 60.8 min on (cache_read 0). So the cliff is 60 min, and it
+# is a cliff, not a slope. Safety is the margin for what the arithmetic cannot
+# see - a machine that slept, or a tick queued behind a long turn. It does NOT
+# need to cover cron jitter: that is a constant phase offset per job, so it
+# shifts every tick equally and never widens the gap between them.
+TTL_MIN="${CC_KEEPALIVE_TTL_MIN:-60}"
+SAFETY_MIN="${CC_KEEPALIVE_SAFETY_MIN:-10}"
+case "$TTL_MIN" in ''|*[!0-9]*) TTL_MIN=60 ;; esac
+case "$SAFETY_MIN" in ''|*[!0-9]*) SAFETY_MIN=15 ;; esac
+
+PROFILE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+STATE_DIR="$PROFILE_DIR/.cc-cache-keepalive"
+STAMP="$STATE_DIR/last-real-turn-$session_id"
+STAMP_ANY="$STATE_DIR/last-turn-$session_id"
+NOW="$(date +%s)"
+
+# GC inside the sentinel branch only - at most twice an hour per session, and it
+# keeps the every-prompt hot path free of find(1). (cc-usage-guard sweeps on
+# every UserPromptSubmit; it has no equally cheap branch to hide the sweep in.)
+[ -d "$STATE_DIR" ] && find "$STATE_DIR" -maxdepth 1 -type f \
+  \( \( -name 'last-real-turn-*' -mtime +7 \) -o \( -name 'last-turn-*' -mtime +7 \) \
+     -o \( -name '.tmp.*' -mmin +60 \) \) \
+  -delete 2>/dev/null
+
+# read_stamp <path>: epoch from line 1, or nothing when the file is absent,
+# unreadable, corrupt, or dated in the future (clock skew, a bad write - a
+# future stamp would otherwise gate every tick, silently, until it aged out).
+read_stamp() {
+  local v
+  [ -r "$1" ] || return 0
+  v="$(head -n1 "$1" 2>/dev/null | tr -d '[:space:]')"
+  case "$v" in ''|*[!0-9]*) return 0 ;; esac
+  v=$((10#$v))
+  [ "$v" -le "$NOW" ] || return 0
+  printf '%s' "$v"
+}
+REAL_AT="$(read_stamp "$STAMP")"
+ANY_AT="$(read_stamp "$STAMP_ANY")"
+
+# --- cold gate --------------------------------------------------------------
+# The cache was last touched by the newest turn of any kind - a real one or a
+# ping. Older than the TTL and it is gone; the tick can only re-create it. The
+# threshold is the TTL itself, not TTL - safety: blocking early would take a
+# still-warm cache cold on purpose, the exact loss this plugin exists to prevent,
+# while a tick a minute past the cliff costs what the next real turn would have
+# paid anyway. Missing or unreadable stamps fall through (fail open); a session
+# that predates the second stamp is covered by the first until its next Stop.
+COLD_MIN="${CC_KEEPALIVE_COLD_MIN:-$TTL_MIN}"
+case "$COLD_MIN" in ''|*[!0-9]*) COLD_MIN=$TTL_MIN ;; esac
+COLD_MIN=$((10#$COLD_MIN))
+if [ "$COLD_MIN" -gt 0 ]; then
+  LATEST="$ANY_AT"
+  if [ -n "$REAL_AT" ] && { [ -z "$LATEST" ] || [ "$REAL_AT" -gt "$LATEST" ]; }; then
+    LATEST="$REAL_AT"
+  fi
+  if [ -n "$LATEST" ] && [ $((NOW - LATEST)) -ge $((COLD_MIN * 60)) ]; then
+    block "cc-cache-keepalive: cache cold, holding for a real turn"
+  fi
+fi
+
+# --- warm gate --------------------------------------------------------------
 # Interval, same contract as keepalive.sh line 1 of the flag file (that file is
 # the source of truth; tests/test-cache-keepalive.sh pins the two parsers to one
 # input table). Collapsed to whole minutes, which is what the window math needs.
@@ -65,18 +154,6 @@ case "${INTERVAL: -1}" in
   *) IMIN=30 ;;
 esac
 [ "$IMIN" -lt 1 ] && IMIN=1
-
-# TTL measured, not assumed: eight sessions idled for a controlled interval then
-# took exactly one turn. Hits up to 57.9 min (cache_read 42585 / create 15),
-# total misses from 60.8 min on (cache_read 0). So the cliff is 60 min, and it
-# is a cliff, not a slope. Safety is the margin for what the arithmetic cannot
-# see - a machine that slept, or a tick queued behind a long turn. It does NOT
-# need to cover cron jitter: that is a constant phase offset per job, so it
-# shifts every tick equally and never widens the gap between them.
-TTL_MIN="${CC_KEEPALIVE_TTL_MIN:-60}"
-SAFETY_MIN="${CC_KEEPALIVE_SAFETY_MIN:-10}"
-case "$TTL_MIN" in ''|*[!0-9]*) TTL_MIN=60 ;; esac
-case "$SAFETY_MIN" in ''|*[!0-9]*) SAFETY_MIN=15 ;; esac
 
 # Cancel window, in precedence order: env, then flag-file line 2, then derived.
 # The flag file matters because a cron waking a stopped session spawns a fresh
@@ -110,42 +187,15 @@ if [ -z "$WINDOW" ]; then
   [ "$WINDOW" -gt "$IMIN" ] && WINDOW=$IMIN
   [ "$WINDOW" -lt 0 ] && WINDOW=0
 fi
-# Zero window means never skip - the 1.3.0 behaviour. Intervals above
-# TTL - safety land here on their own: there is no room left to skip safely.
+# Zero window means never skip a warm tick - the 1.3.0 behaviour. Intervals
+# above TTL - safety land here on their own: there is no room left to skip
+# safely. The cold gate above still applies: "never cancel" was never meant to
+# include re-creating a dead cache.
 [ "$WINDOW" -le 0 ] && exit 0
 
-PROFILE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-STATE_DIR="$PROFILE_DIR/.cc-cache-keepalive"
-STAMP="$STATE_DIR/last-real-turn-$session_id"
-
-# GC inside the sentinel branch only - at most twice an hour per session, and it
-# keeps the every-prompt hot path free of find(1). (cc-usage-guard sweeps on
-# every UserPromptSubmit; it has no equally cheap branch to hide the sweep in.)
-[ -d "$STATE_DIR" ] && find "$STATE_DIR" -maxdepth 1 -type f \
-  \( \( -name 'last-real-turn-*' -mtime +7 \) -o \( -name '.tmp.*' -mmin +60 \) \) \
-  -delete 2>/dev/null
-
-[ -r "$STAMP" ] || exit 0
-STAMPED="$(head -n1 "$STAMP" 2>/dev/null | tr -d '[:space:]')"
-case "$STAMPED" in ''|*[!0-9]*) exit 0 ;; esac
-AGE=$(( $(date +%s) - 10#$STAMPED ))
-# A stamp in the future (clock skew, a bad write) would otherwise block every
-# tick forever, silently, until the file aged out.
-[ "$AGE" -lt 0 ] && exit 0
+[ -n "$REAL_AT" ] || exit 0
+AGE=$((NOW - REAL_AT))
 # Strict <, so age == window fires. That is what keeps the worst-case bound
 # above true at the boundary.
 [ "$AGE" -lt $((WINDOW * 60)) ] || exit 0
-
-# Keep the reason to one short line. Claude Code prefixes every block with a
-# fixed "UserPromptSubmit operation blocked by hook:" and there is no way to
-# suppress that (confirmed in the binary - the notice is pushed unconditionally
-# - and in the docs; suppressOutput only hides the hook's stdout. Upstream
-# feature request: anthropics/claude-code#39499). Since the prefix already costs
-# two wrapped lines several times an hour, the part we control stays minimal.
-# No additionalContext either - injecting text into the turn defeats the point.
-# Static string, so no interpolation and no JSON escaping: the plugin stays
-# jq-free. The window is deliberately NOT quoted here; the tests assert the
-# block/pass boundary itself, which pins the arithmetic without coupling to
-# wording.
-printf '{"decision":"block","reason":"cc-cache-keepalive: already warm","hookSpecificOutput":{"hookEventName":"UserPromptSubmit","suppressOriginalPrompt":true}}\n'
-exit 0
+block "cc-cache-keepalive: already warm"

@@ -5,8 +5,8 @@ Keeps Claude Code's prompt cache warm across idle stretches on Max plans, withou
 Three hooks:
 
 - **`hooks/keepalive.sh`** (`SessionStart`): reads the opt-in flag file, computes a cron expression anchored to the session-start minute, and tells the model to register it with `CronCreate`. The cron's prompt is the literal sentinel `cc-cache-keepalive`; when it fires the model replies `🔄 cache-keepalive` and stops. That bare API turn is the whole point — it reads the cached prefix, and the read resets the 1-hour TTL.
-- **`hooks/keepalive-sensor.sh`** (`Stop`): records when the last *real* turn ended, at `${CLAUDE_CONFIG_DIR:-~/.claude}/.cc-cache-keepalive/last-real-turn-<session_id>`. Turns that were themselves keepalive pings don't count.
-- **`hooks/keepalive-guard.sh`** (`UserPromptSubmit`): when the incoming prompt is exactly the sentinel, cancels it if that stamp is recent.
+- **`hooks/keepalive-sensor.sh`** (`Stop`): records when the last turn ended, under `${CLAUDE_CONFIG_DIR:-~/.claude}/.cc-cache-keepalive/`. Two stamps per session: `last-real-turn-<session_id>` for turns you typed, and `last-turn-<session_id>` for any turn the API answered, pings included. A turn that ended in an API error (offline, rate-limited, logged out) writes neither — it never touched the cache.
+- **`hooks/keepalive-guard.sh`** (`UserPromptSubmit`): when the incoming prompt is exactly the sentinel, cancels it if the real-turn stamp is recent (the cache is already warm) **or** if the newest stamp of either kind is older than the TTL (the cache is already gone — see [When the machine slept](#when-the-machine-slept)).
 
 ## Why cancelling matters
 
@@ -14,7 +14,7 @@ A ping isn't free. Sending it means sending the whole conversation, and even a c
 
 The cron can't be rescheduled on activity: jobs live in memory in the CLI process, and the next fire time is a pure function of the cron expression plus a per-job jitter — there's no "last activity" input to reset and no file to rewrite. So the guard drops the tick instead. A `decision: block` on `UserPromptSubmit` makes the prompt pipeline return `shouldQuery: false`, so no API request is sent at all. The notice you see is a local `type: "system"` record that the API-request builder filters out, so a cancelled tick costs no tokens and no context.
 
-Net effect: while you're working, ticks are cancelled. While you're away, nothing changes.
+Net effect: while you're working, ticks are cancelled. While you're away for less than the TTL, ticks keep the cache alive. Once you've been away longer than that, ticks are cancelled again — there is nothing left to keep alive.
 
 ## Install
 
@@ -40,8 +40,9 @@ Environment overrides, highest precedence first:
 | Var | Default | Effect |
 | --- | --- | --- |
 | `CC_KEEPALIVE_WINDOW_MIN` | derived | cancel window in minutes; `0` disables cancelling |
-| `CC_KEEPALIVE_TTL_MIN` | `60` | assumed prompt-cache TTL |
-| `CC_KEEPALIVE_SAFETY_MIN` | `10` | margin subtracted from the TTL (for a sleeping machine or a delayed tick) |
+| `CC_KEEPALIVE_TTL_MIN` | `60` | assumed prompt-cache TTL; also the default cold threshold |
+| `CC_KEEPALIVE_SAFETY_MIN` | `10` | margin subtracted from the TTL when deriving the cancel window |
+| `CC_KEEPALIVE_COLD_MIN` | `= TTL` | age of the newest turn beyond which a tick is held as cold; `0` disables the cold gate |
 | `CC_KEEPALIVE_OFF` | unset | per-invocation kill switch; disables all three hooks |
 
 Prefer line 2 of the flag file over the env vars for a permanent change: a cron waking a stopped session spawns a fresh process that never saw your shell exports.
@@ -69,6 +70,23 @@ It deliberately does **not** cover cron jitter. Jitter is `hash(job_id) × fract
 Widening further buys little. During active work every tick is already inside the window and cancelled, so a larger window only catches the first tick or two after you stop — a few per day. Against that, one cache miss makes the next real turn pay the write rate (1.25×) instead of the read rate (0.1×), so **a miss costs about twelve pings**. 10 minutes of headroom against a measured cliff is the point where that trade stops paying.
 
 Everything fails open. A missing, unreadable, corrupt, or future-dated stamp lets the ping through; so does a session id the hook can't read. The only cost of failing open is a redundant ping.
+
+## When the machine slept
+
+The cron lives inside the CLI process, so closing the lid or losing the network does not stop it — it goes dormant and fires the moment the machine is back. By then the cache expired hours ago, and the tick that fires into it is the worst case this plugin can produce: a full uncached re-read of the entire conversation, to warm a session nobody is sitting at, after which every later tick keeps it warm for no one until the session is closed. On a 250k-token session that first tick alone costs about 300k token-equivalents at the write rate; the same session left open over a weekend used to pay it every morning.
+
+So the guard has a second gate. It reads the newer of the two stamps — the last real turn, or the last ping the API actually answered — and if that is older than the TTL (60 minutes at the defaults) the tick is held:
+
+```
+UserPromptSubmit operation blocked by hook:
+cc-cache-keepalive: cache cold, holding for a real turn
+```
+
+Held ticks stay held: they refresh nothing, so the stamps keep ageing and every later tick sees the same dead cache. Your next real turn pays the cold read once — you were going to pay that anyway to continue the conversation — the sensor stamps it, and the warm chain restarts. A tick that arrives *before* the cliff still fires: waking after 55 minutes is exactly the case a keepalive exists for, and the cold threshold is the TTL itself rather than `TTL - safety` so that a live cache is never abandoned on purpose.
+
+The offline case is covered by the sensor side. A tick that fires with no network ends in a synthetic assistant record (`API Error: Unable to connect to API (ENOTFOUND)`); stamping it would call a dead cache warm, so turns that end in an API error write no stamp at all, and the age keeps counting from the last turn that really reached the API.
+
+Two limits worth knowing. Sessions from before 1.6 have only the real-turn stamp until their next `Stop`; the cold gate uses that alone in the meantime, which is right for a sleeping machine and merely fails open for a session that was being kept warm purely by pings. And the state directory is swept of stamps older than 7 days, so a session left open and untouched for over a week fails open once, pays one cold read, and then holds again for another week — the price of keeping the sweep.
 
 ## Measured, not assumed
 
@@ -129,7 +147,7 @@ Two details worth knowing. A cancelled tick leaves no user record in the transcr
   cc-cache-keepalive: already warm
   ```
 
-  Claude Code prepends that first line to every block and pushes the message unconditionally — `suppressOutput` only hides a hook's stdout, not this. `suppressOutput: true` was tested and changes nothing. [anthropics/claude-code#39499](https://github.com/anthropics/claude-code/issues/39499) asked for a quiet block and was closed by the inactivity bot with no maintainer reply; [#81818](https://github.com/anthropics/claude-code/issues/81818) re-raises it with a repro. Since only the second line is ours, it is kept to one short string; that is also why the tests assert the block/pass boundary rather than the wording. The notice never reaches the API, so it costs no tokens and no context — it is just visible, a few times an hour, in an attended session.
+  (or `cc-cache-keepalive: cache cold, holding for a real turn` for the cold gate). Claude Code prepends that first line to every block and pushes the message unconditionally — `suppressOutput` only hides a hook's stdout, not this. `suppressOutput: true` was tested and changes nothing. [anthropics/claude-code#39499](https://github.com/anthropics/claude-code/issues/39499) asked for a quiet block and was closed by the inactivity bot with no maintainer reply; [#81818](https://github.com/anthropics/claude-code/issues/81818) re-raises it with a repro. Since only the second line is ours, it is kept to one short string; that is also why the tests assert the block/pass boundary rather than the wording. The notice never reaches the API, so it costs no tokens and no context — it is just visible, a few times an hour, in an attended session.
 - **`Stop` only, never `SubagentStop`.** They are separate events and `Stop` carries no `agent_id`, so wiring `Stop` alone gives main-agent-only stamping for free. A subagent's or teammate's turn does not refresh the main session's cached prefix, so stamping on one would suppress a ping the main session actually needs.
 - **The guard matches strictly, the sensor loosely.** A guard false positive would block a real user prompt, so it matches the whole prompt against the sentinel — and since the payload is JSON, a prompt that merely *mentions* the sentinel arrives with escaped quotes and cannot match. A sensor false positive only wastes one ping, so it matches loosely, which also covers pre-1.3.0 crons whose prompt carried a `[Silent …]` prefix.
 - State is per session, keyed by `session_id`, under the profile dir so multiple accounts (`CLAUDE_CONFIG_DIR`) never share stamps. Stale stamps and orphaned temp files are swept during a tick, not on the every-prompt path.
