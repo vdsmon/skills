@@ -448,8 +448,8 @@ assert_contains "guard offline message quotes the poller error" "$out" "Last pol
 # Assert on the *action*, not the explanation: the remedy is worthless to a user who never
 # learns which command to run, and a reworded cause must not be able to drop it silently.
 assert_contains "no-credentials fault gets its own remedy, not 'see the README'" "$out" \
-  "REAL TERMINAL"
-assert_contains "no-credentials remedy names the command to run" "$out" '`claude`'
+  "ONE COMMAND THE USER RUNS THEMSELVES"
+assert_contains "no-credentials remedy names the command to run" "$out" '`claude /login`'
 assert_contains "no-credentials remedy forbids running it from a tool call" "$out" \
   "must not run it from a tool call"
 assert_contains "no-credentials remedy tells the model to surface the command" "$out" \
