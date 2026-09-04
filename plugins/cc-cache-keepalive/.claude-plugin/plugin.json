@@ -1,6 +1,6 @@
 {
   "name": "cc-cache-keepalive",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Keeps Claude Code's prompt cache warm on Max plans via a silent cron, cancelling any tick a recent real turn already refreshed and any tick that would land on a cache that already expired (machine slept, went offline). Opt-in via ~/.cc-cache-keepalive flag file. A Stop sensor stamps real turns and API-answered pings; a UserPromptSubmit guard drops warm and cold ticks before they cost a request; everything fails open. Cron prompt is the sentinel 'cc-cache-keepalive', so you can gate Stop hooks on it to silence turn-end sounds. Claude Code only (hook + cron).",
   "author": {
     "name": "Victor De Simone",
