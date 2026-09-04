@@ -51,8 +51,9 @@ else
   echo "usage.json: written $(age_min "$state") min ago (stale for the guard after ${max_age} min)"
   schema=$(jq -r '.schema // "none"' "$state" 2>/dev/null)
   [ "$schema" = "2" ] || echo "  schema: $schema (the guard expects 2; a mismatch means mixed plugin versions)"
-  five=$(jq -r '.five_hour // "-"' "$state" 2>/dev/null)
-  weekly=$(jq -r '.weekly // "-"' "$state" 2>/dev/null)
+  # one decimal: the endpoint reports floats such as 7.000000000000001
+  five=$(jq -r '(.five_hour // "-") | if type == "number" then (. * 10 | round / 10) else . end' "$state" 2>/dev/null)
+  weekly=$(jq -r '(.weekly // "-") | if type == "number" then (. * 10 | round / 10) else . end' "$state" 2>/dev/null)
   five_reset=$(jq -r '.five_hour_reset // 0' "$state" 2>/dev/null)
   weekly_reset=$(jq -r '.weekly_reset // 0' "$state" 2>/dev/null)
   five_note=""; weekly_note=""
