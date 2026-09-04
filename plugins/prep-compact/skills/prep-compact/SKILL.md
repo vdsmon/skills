@@ -29,7 +29,7 @@ Description covers most phrases. Whenever user about to run the compact step or 
 
 Raw input: `$ARGUMENTS`
 
-- `$ARGUMENTS` contains `--message-only` (or `-m`, `message only`, `just the message`, `skip audit`) -> **message-only mode**: skip steps 1-2, jump straight to step 3. Still run `git status --short` + `git log -5 --oneline` so the message can cite branch + recent commits accurately, but no audit summary, no action list.
+- `$ARGUMENTS` contains `--message-only` (or `-m`, `message only`, `just the message`, `skip audit`) -> **message-only mode**: skip steps 1-2, jump straight to step 3. Still run `scripts/baseline.sh` (or the two git commands it wraps) so the message can cite branch + recent commits accurately, but no audit summary, no action list.
 - Otherwise -> **full mode**: all three steps in order.
 
 Also honour natural language overrides mid-conversation: if the user says "skip audit, just give me the message" after invocation, switch to message-only without re-running.
@@ -42,24 +42,23 @@ Don't skip step 1 in full mode: point = catch lost things.
 
 ### 1. Assess: what's in flight?
 
-First, gather the git baseline with two Bash calls:
+First, gather the mechanical baseline in one call. The script lives in this skill's directory (the base directory announced when the skill loaded):
 
 ```bash
-git status --short
-git log -5 --oneline
+bash <skill-dir>/scripts/baseline.sh
 ```
 
-(On Claude Code, these calls are pre-approved via `allowed-tools` and run without prompting. On other hosts, the user may need to approve them once.)
+It prints the branch and upstream, `git status --short` with counts, the last five commits, the stash count, and the gitignored plan or state files modified after the last commit: the files a compact message must point at and that `git status` never shows (a `.sweep/plan.md`, a `.flow/` record, a scratch note). Deterministic work belongs in the script, not in your memory of what to check. The script asks for one Bash approval per session on hosts that pre-approve only the `git` prefixes below; if the host refuses it, fall back to `git status --short` and `git log -5 --oneline`.
 
 Audit silently, and **do not** dump a summary recap. The recap is noise; the user knows their own session. Audit feeds step 2 (surface save-actions) and step 3 (the compact message). Check:
 
 **Code state**
-- Start from the `git status --short` output (and the last 5 commits). Unstaged/untracked files? Which matter (real work) vs. ignorable (temp/scratch)?
+- Start from the status output (and the last 5 commits). Unstaged/untracked files? Which matter (real work) vs. ignorable (temp/scratch)?
 - Files edited this session user hasn't reviewed or uncommitted?
 - ultrathink about which uncommitted changes represent real work vs experimental cruft: the call is subtle and wrong-side-of-the-line loses actual work.
 
 **Workflow / task state**
-- State files, plan files, scratch notes session read/write: reflect current progress?
+- State files, plan files, scratch notes session read/write: reflect current progress? The "ignored files changed after the last commit" list from the script is the starting point: each entry either reflects the current state or needs a sync before compacting.
 - Mid-task skill/agent invocations: next step clearly derivable from disk?
 - TaskList: in-progress tasks that will orphan? (TaskList session-local; won't survive compact.)
 
@@ -194,7 +193,7 @@ In message-only mode, drop the Audit/Action sections. Still output both blocks:
 ```
 ```
 
-Keep the focus message grounded in the `git status` and `git log` output so branch, uncommitted work, and recent commits are accurate. No audit bullets, no action list, no preamble.
+Keep the focus message grounded in the baseline output so branch, uncommitted work, and recent commits are accurate. No audit bullets, no action list, no preamble.
 
 ## Notes
 
