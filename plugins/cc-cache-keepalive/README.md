@@ -4,9 +4,21 @@ Keeps Claude Code's prompt cache warm across idle stretches on Max plans, withou
 
 Three hooks:
 
-- **`hooks/keepalive.sh`** (`SessionStart`): reads the opt-in flag file, computes a cron expression anchored to the session-start minute, and tells the model to register it with `CronCreate`. The cron's prompt is the literal sentinel `cc-cache-keepalive`; when it fires the model replies `🔄 cache-keepalive` and stops. That bare API turn is the whole point — it reads the cached prefix, and the read resets the 1-hour TTL.
+- **`hooks/keepalive.sh`** (`SessionStart`): reads the opt-in flag file, computes a cron expression anchored to the session-start minute, and tells the model to register it with `CronCreate`. The cron's prompt is the literal sentinel `cc-cache-keepalive`; when it fires the model replies `🔄 cache-keepalive` and stops. That bare API turn is the whole point — it reads the cached prefix, and the read resets the 1-hour TTL. On `--resume` it leaves a pending marker instead (see [After a resume, or by hand](#after-a-resume-or-by-hand)); `bash hooks/keepalive.sh --now` prints the same instruction on demand.
 - **`hooks/keepalive-sensor.sh`** (`Stop`): records when the last turn ended, under `${CLAUDE_CONFIG_DIR:-~/.claude}/.cc-cache-keepalive/`. Two stamps per session: `last-real-turn-<session_id>` for turns you typed, and `last-turn-<session_id>` for any turn the API answered, pings included. A turn that ended in an API error (offline, rate-limited, logged out) writes neither — it never touched the cache.
-- **`hooks/keepalive-guard.sh`** (`UserPromptSubmit`): when the incoming prompt is exactly the sentinel, cancels it if the real-turn stamp is recent (the cache is already warm) **or** if the newest stamp of either kind is older than the TTL (the cache is already gone — see [When the machine slept](#when-the-machine-slept)).
+- **`hooks/keepalive-guard.sh`** (`UserPromptSubmit`): when the incoming prompt is exactly the sentinel, cancels it if the real-turn stamp is recent (the cache is already warm) **or** if the newest stamp of either kind is older than the TTL (the cache is already gone — see [When the machine slept](#when-the-machine-slept)). When the prompt is a real one and a pending marker exists for the session, it emits the `CronCreate` instruction as `additionalContext` and clears the marker.
+
+## After a resume, or by hand
+
+Cron jobs live in the CLI process, so `claude --resume` (or a restart after a usage-limit stop) comes back without the keepalive. The SessionStart hook does not arm it there on purpose: you may be reopening a stale session only to read it, and an injected instruction would force a turn that re-reads the whole conversation uncached. Instead it writes `${CLAUDE_CONFIG_DIR:-~/.claude}/.cc-cache-keepalive/pending-<session_id>`, and the guard arms the cron on your first real prompt, when that turn is being paid for anyway. Nothing to do on your side.
+
+To arm it by hand (or when a model is asked to "start the keepalive"), run the hook in on-demand mode and follow what it prints; it computes the cron expression the same way SessionStart does, anchored to the current minute:
+
+```
+bash ~/.claude/plugins/cache/vdsmon-skills/cc-cache-keepalive/<version>/hooks/keepalive.sh --now
+```
+
+A model must never guess the expression from memory or from old transcripts: the anchor minute is what keeps the ticks off the fleet peaks.
 
 ## Why cancelling matters
 

@@ -42,6 +42,41 @@ FLAG="${HOME}/.cc-cache-keepalive"
 input=""
 [ -t 0 ] || input="$(cat 2>/dev/null || true)"
 
+# A resumed session has no cron: jobs live in the CLI process that ended, and
+# hooks/keepalive.sh left a pending marker instead of arming at SessionStart.
+# The first real prompt is the moment to arm. The user is working, the turn is
+# paid for anyway, and the instruction rides along as additionalContext at no
+# extra cost. The sentinel never arms: a tick from nowhere is not a real prompt.
+# This is the one place the plugin emits additionalContext; the block path
+# below still does not. JSON escaping needs jq or python3; with neither, the
+# marker stays for the next prompt (fail toward trying again, not toward a
+# malformed payload).
+if ! printf '%s' "$input" | grep -qE '"prompt"[[:space:]]*:[[:space:]]*"cc-cache-keepalive"'; then
+  pending_session="$(printf '%s' "$input" \
+    | grep -oE '"session_id"[[:space:]]*:[[:space:]]*"[0-9a-fA-F-]{8,}"' \
+    | head -n1 | grep -oE '[0-9a-fA-F-]{8,}' | tail -n1)"
+  pending="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.cc-cache-keepalive/pending-${pending_session:-none}"
+  if [ -n "$pending_session" ] && [ -f "$pending" ]; then
+    instruction="$(bash "$(dirname "${BASH_SOURCE[0]}")/keepalive.sh" --now 2>/dev/null || true)"
+    if [ -z "$instruction" ]; then
+      rm -f "$pending"  # keepalive.sh declined (flag gone, kill switch): nothing to arm
+      exit 0
+    fi
+    payload=""
+    if command -v jq >/dev/null 2>&1; then
+      payload="$(jq -nc --arg ctx "$instruction" \
+        '{hookSpecificOutput:{hookEventName:"UserPromptSubmit",additionalContext:$ctx}}' 2>/dev/null)"
+    elif command -v python3 >/dev/null 2>&1; then
+      payload="$(printf '%s' "$instruction" | python3 -c 'import json,sys; print(json.dumps({"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":sys.stdin.read()}}))' 2>/dev/null)"
+    fi
+    if [ -n "$payload" ]; then
+      rm -f "$pending"
+      printf '%s\n' "$payload"
+    fi
+  fi
+  exit 0
+fi
+
 # Whole-prompt sentinel match, safe by construction rather than by heuristic.
 # The payload is JSON, so a prompt that merely *mentions* the sentinel arrives
 # with its quotes escaped - \"prompt\":\"cc-cache-keepalive\" - which puts a

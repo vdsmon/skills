@@ -702,6 +702,56 @@ reset_state; set_flag "30m"; stamp "$SA" 60
 touch "$STATE_DIR/last-real-turn-old"; touch -t 202601010000 "$STATE_DIR/last-real-turn-old"
 run_guard "$(ups "$SA" '"just a normal prompt"')" >/dev/null
 assert_file_present "GC does not run on the non-sentinel hot path" "$STATE_DIR/last-real-turn-old"
+# --- resume marker and on-demand arming (1.7.0) --------------------------------
+# A resumed CLI process has no cron. SessionStart leaves a pending marker instead of
+# arming (the user may only be reading), the guard arms on the first real prompt, and
+# `--now` prints the instruction on demand so nobody guesses a cron expression.
+reset_state
+set_flag "30m"
+ss() { # <session_id> <source> -> SessionStart stdin json
+  printf '{"session_id":"%s","transcript_path":"/tmp/x.jsonl","cwd":"/w","hook_event_name":"SessionStart","source":"%s"}' "$1" "$2"
+}
+run_sessionstart() { printf '%s' "$1" | HOME="$TESTHOME" bash "$SESSIONSTART" 2>&1; }
+
+out=$(run_sessionstart "$(ss "$SA" startup)")
+assert_contains "startup emits the CronCreate instruction" "$out" "REQUIRED SETUP"
+assert_contains "startup instruction carries a cron expression" "$out" 'cron:      "'
+assert_file_absent "startup leaves no pending marker" "$STATE_DIR/pending-$SA"
+
+out=$(run_sessionstart "$(ss "$SA" compact)")
+assert_silent "compact emits nothing (the cron survives compaction)" "$out"
+assert_file_absent "compact leaves no pending marker" "$STATE_DIR/pending-$SA"
+
+out=$(run_sessionstart "$(ss "$SA" resume)")
+assert_silent "resume emits nothing at SessionStart" "$out"
+assert_file_present "resume leaves a pending marker" "$STATE_DIR/pending-$SA"
+
+out=$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")
+assert_lacks "a sentinel tick never arms" "$out" "REQUIRED SETUP"
+assert_file_present "a sentinel tick keeps the pending marker" "$STATE_DIR/pending-$SA"
+
+out=$(run_guard "$(ups "$SA" '"fix the bug"')")
+assert_contains "first real prompt after a resume arms the cron" "$out" "REQUIRED SETUP"
+assert_contains "arming rides as additionalContext" "$out" '"additionalContext"'
+assert_contains "arming names the hook event" "$out" '"hookEventName":"UserPromptSubmit"'
+assert_lacks "arming never blocks the real prompt" "$out" '"decision":"block"'
+assert_file_absent "arming clears the pending marker" "$STATE_DIR/pending-$SA"
+assert_silent "second real prompt is silent" "$(run_guard "$(ups "$SA" '"and ship it"')")"
+
+run_sessionstart "$(ss "$SB" resume)" >/dev/null
+assert_silent "another session's pending marker does not arm this one" "$(run_guard "$(ups "$SA" '"hello"')")"
+assert_file_present "the other session stays pending" "$STATE_DIR/pending-$SB"
+
+out=$(HOME="$TESTHOME" bash "$SESSIONSTART" --now </dev/null 2>&1)
+assert_contains "--now prints the instruction on demand" "$out" "REQUIRED SETUP"
+assert_contains "--now anchors a cron expression" "$out" 'cron:      "'
+rm -f "$FLAG"
+assert_silent "--now without the flag prints nothing" "$(HOME="$TESTHOME" bash "$SESSIONSTART" --now </dev/null 2>&1)"
+set_flag "30m"
+run_sessionstart "$(ss "$SA" resume)" >/dev/null
+assert_silent "kill switch stops the arming too" "$(CC_KEEPALIVE_OFF=1 run_guard "$(ups "$SA" '"hi"')")"
+reset_state
+
 
 echo
 echo "$PASS passed, $FAIL failed"

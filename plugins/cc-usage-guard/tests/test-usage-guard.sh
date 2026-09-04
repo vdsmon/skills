@@ -534,6 +534,32 @@ if [ "${1:-}" = "--soak" ]; then
   [ "$offline" = "0" ] && { PASS=$((PASS + 1)); echo "ok: soak - 0 offline faults in 500 reads vs 200 writes"; } \
     || { FAIL=$((FAIL + 1)); echo "FAIL: soak - $offline offline-fault emissions"; }
 fi
+# --- usage-status.sh (0.9.0) ----------------------------------------------------
+# One command shows what the guard acts on, so nobody reads the state directory by
+# hand; --clear-markers is the only write, and it never touches usage.json.
+STATUS="$HERE/../hooks/usage-status.sh"
+run_status() { HOME="$TESTHOME" bash "$STATUS" "$@" 2>&1; }
+reset_state
+out=$(run_status)
+assert_contains "status reports a missing state file" "$out" "usage.json: missing"
+assert_contains "status reports no markers" "$out" "markers: none"
+fresh_state 42
+printf '5-hour:2:123' > "$STATE_DIR/usage-park-marker-sess-a"
+printf 'state file missing' > "$STATE_DIR/sensor-warn-marker-sess-a"
+printf 'usage endpoint returned HTTP 500' > "$STATE_DIR/poller-last-error"
+out=$(run_status)
+assert_contains "status prints the 5-hour percentage" "$out" "5-hour: 42% used"
+assert_contains "status prints the weekly percentage" "$out" "weekly: 10% used"
+assert_contains "status prints the thresholds in effect" "$out" "park 97%"
+assert_contains "status lists the park marker with its key" "$out" "park-marker-sess-a = 5-hour:2:123"
+assert_contains "status quotes the poller error" "$out" "usage endpoint returned HTTP 500"
+out=$(run_status --clear-markers)
+assert_contains "--clear-markers reports the count" "$out" "cleared 2 marker(s)"
+assert_contains "--clear-markers leaves none" "$out" "markers: none"
+if [ -f "$STATE" ]; then PASS=$((PASS + 1)); echo "ok: --clear-markers keeps usage.json"
+else FAIL=$((FAIL + 1)); echo "FAIL: --clear-markers removed usage.json"; fi
+rm -f "$STATE_DIR/poller-last-error"
+
 
 # ------------------------------------------------------------------------------
 

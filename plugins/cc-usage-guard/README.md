@@ -115,6 +115,16 @@ Sign in at the prompt. It has to be a real terminal: the sign-in opens a browser
 
 So on a machine used **only** through the desktop app, with no terminal CLI login, the guard has no usage source at all: no statusLine renders, so the sensor cannot run, and the poller has nothing to authenticate with. It fails loud rather than pretending otherwise, and the offline warning gives you the command above instead of sending you to this README.
 
+## Checking the guard's state
+
+One command prints what the guard acts on, so nobody reads the state directory by hand:
+
+```
+bash ~/.claude/plugins/cache/vdsmon-skills/cc-usage-guard/<version>/hooks/usage-status.sh
+```
+
+It shows the state file and its age, both windows with their resets in local time, the thresholds in effect, the poller's last attempt, error, and backoff, and every park or warn marker of this profile. `--clear-markers` removes the markers; that is always safe, the next crossing then fires in full instead of as a throttled repeat. A plan upgrade or a window reset needs nothing from you: the next poll, within a minute, replaces the numbers, and a past reset already makes the guard ignore that window.
+
 ## Notes
 
 - The poller reads **live account data**, so it needs no staleness heuristics. The sensor's `rate_limits`, by contrast, is a snapshot of its session's **last API response**, so an idle session keeps re-rendering a frozen snapshot every statusLine refresh. The sensor refuses to write any snapshot whose 5-hour reset is already past (it provably predates a window rollover), and the guard ignores windows whose reset is past - so a day-old over-limit snapshot from a still-open session can neither poison the state file nor trigger a false park. Side effect of the guard check: repeat reminders stop on their own once a window resets, even if nothing refreshes the state.
@@ -124,3 +134,4 @@ So on a machine used **only** through the desktop app, with no terminal CLI logi
 - Requires `jq` and `awk` on PATH (missing jq fails loud, see above), plus `curl` for the poller.
 - State lives at `${CLAUDE_CONFIG_DIR:-~/.claude}/.usage-guard/` (created on first run), not inside the plugin dir, because the statusLine sensor gets no `${CLAUDE_PLUGIN_ROOT}` and every part must derive the same per-profile path. Stale session markers (>7 days) and orphaned tmp files are garbage-collected on prompt-submit.
 - Tests: `bash plugins/cc-usage-guard/tests/test-usage-guard.sh` (or `mise run test:usage-guard`); add `--soak` for a concurrent write/read race check.
+- The guard sees hooks, not processes. A background process the model started that calls the API on its own (an Agent SDK run, an agent fleet under `nohup`) keeps calling after the PARK, and at the limit every call fails. The PARK message therefore tells the model to stop such processes itself; the guard cannot.
