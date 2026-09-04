@@ -37,19 +37,19 @@
       "name": "cc-cache-keepalive",
       "source": "./plugins/cc-cache-keepalive",
       "description": "Keeps Claude Code's prompt cache warm on Max plans via a silent cron, cancelling any tick a recent real turn already refreshed and any tick that would land on a cache that already expired (machine slept, went offline). Opt-in via ~/.cc-cache-keepalive flag file. A Stop sensor stamps real turns and API-answered pings; a UserPromptSubmit guard drops warm and cold ticks before they cost a request; everything fails open. Cron prompt is the sentinel 'cc-cache-keepalive', so you can gate Stop hooks on it to silence turn-end sounds. Claude Code only (hook + cron).",
-      "version": "1.6.0"
+      "version": "1.7.0"
     },
     {
       "name": "cc-usage-guard",
       "source": "./plugins/cc-usage-guard",
       "description": "Pause-at-limit guard for Claude Code. A hook-driven poller reads 5h + weekly rate-limit usage from the account usage endpoint, so it works in the desktop app, the terminal, and headless runs alike (an optional statusLine sensor supplies the same numbers for free where one renders). PostToolUse/UserPromptSubmit hooks watch that state in two tiers: a soft WARN nudge on approach, then a hard PARK that pauses the session, schedules a one-shot auto-resume cron for just after the window resets, and fires a push notification. Spawned agents (subagents, teammates) wind down and hand back instead of parking, and if the usage source goes dark the guard warns instead of going silently blind. Per-profile state, per-window thresholds; see the README for details. Claude Code only (hooks).",
-      "version": "0.8.3"
+      "version": "0.9.0"
     },
     {
       "name": "prep-compact",
       "source": "./plugins/prep-compact",
       "description": "Audit in-flight state before any context-compacting step, and produce a copy-paste /compact message plus a queue-able follow-up that chains the next action when compact finishes. Portable across Agent Skills hosts, since compacting is a general concept, not Claude-specific.",
-      "version": "1.7.3"
+      "version": "1.8.0"
     },
     {
       "name": "prep-goal",
