@@ -212,6 +212,18 @@ printf '%s' "$stale_fixture" | HOME="$TESTHOME" CLAUDE_USAGE_RENDER_CMD=cat bash
 [ ! -f "$STATE" ] && { PASS=$((PASS + 1)); echo "ok: sensor refuses to write a stale snapshot"; } \
   || { FAIL=$((FAIL + 1)); echo "FAIL: stale snapshot written to state"; }
 
+# null state: a status line with no usage numbers must not replace real ones. Both
+# windows null reads as "usage source offline" to the guard, and it would win on
+# freshness over the poller's numbers until the next successful poll.
+reset_state
+printf '{"schema":2,"five_hour":33,"weekly":44,"five_hour_reset":%s,"weekly_reset":%s}\n' \
+  "$(date -v+2H +%s)" "$(date -v+2d +%s)" > "$STATE"
+real_numbers=$(cat "$STATE")
+printf '%s' '{"session_id":"nullstate","model":{"id":"opus"}}' \
+  | HOME="$TESTHOME" CLAUDE_USAGE_SENSOR_DEFER_SEC=0 CLAUDE_USAGE_RENDER_CMD=cat bash "$SENSOR" >/dev/null
+[ "$real_numbers" = "$(cat "$STATE")" ] && { PASS=$((PASS + 1)); echo "ok: payload without usage numbers leaves state untouched"; } \
+  || { FAIL=$((FAIL + 1)); echo "FAIL: null-usage payload clobbered real numbers with $(cat "$STATE")"; }
+
 # precedence: the sensor's snapshot can be hours old yet still inside its window, so it
 # must not overwrite fresher state (the poller's live numbers) - but it must take over
 # once that state ages out
