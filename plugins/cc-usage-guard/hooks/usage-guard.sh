@@ -237,12 +237,12 @@ if [ -n "$agent_id" ]; then
 elif [ "$level" = "2" ]; then
   if [ "$repeat_form" = "full" ]; then
     if [ -n "$cron" ]; then
-      resume_step="3. Schedule auto-resume: use the CronCreate tool (load it via ToolSearch if needed) with cron \`$cron\`, \`recurring: false\` (one-shot - it fires once and deletes itself, so never schedule a CronDelete for it), and prompt: \"RESUME: the usage limit has reset, continue the work we paused.\""
+      resume_step="3. Schedule auto-resume: use the CronCreate tool (load it via ToolSearch if needed) with cron \`$cron\`, \`recurring: false\` (one-shot - it fires once and deletes itself, so never schedule a CronDelete for it), and prompt: \"RESUME: the usage limit has reset, continue the work we paused.\" If the user resumes work before it fires (a plan upgrade, an early reset), delete it with CronDelete using the id CronCreate returned, or it wakes the session for nothing."
     else
       resume_step="3. Could not compute the reset time, so do not schedule a cron; tell the user to resume manually after the limit resets."
     fi
     msg="STOP - usage at ${pct_int}% of the ${window} limit; it resets ~${hhmm} local. This session and its context stay alive across the limit, so you do NOT need to dump state to a file - just pause cleanly and wake yourself when it resets:
-1. Stop starting new work now (only finish an atomic step already in flight; do not spawn new subagents).
+1. Stop starting new work now (only finish an atomic step already in flight; do not spawn new subagents). Also stop any background process of yours that calls the Claude API (an Agent SDK run, an agent fleet started with nohup): this guard cannot see it, at the limit every one of its calls fails and its state degrades step by step, so kill it and keep its partial output for the resume.
 2. In one short message, note where you are and the immediate next step (stays in context for the resume).
 ${resume_step}
 4. Then stop. Tell the user in chat you paused and will auto-resume ~${hhmm}, AND send the same as a push: use the PushNotification tool (load it via ToolSearch if needed) with a short message like \"cc-usage-guard: paused at ${pct_int}% of the ${window} limit, auto-resume ~${hhmm}\"."
