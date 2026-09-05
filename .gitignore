@@ -14,3 +14,4 @@
 
 # /caveman:compress backups
 *.original.md
+__pycache__/
