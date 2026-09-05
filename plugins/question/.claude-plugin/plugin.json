@@ -1,0 +1,14 @@
+{
+  "name": "question",
+  "version": "0.1.0",
+  "description": "Answer a genuine question in full, with no edits and no side effects. Treats 'why X and not Y?' as curiosity, not as a hidden request to switch to Y or an attack on X. Investigates read-only, explains the tradeoff, gives an honest verdict, and stops.",
+  "author": {
+    "name": "Victor De Simone",
+    "email": "victorsmoliveira@gmail.com",
+    "url": "https://github.com/vdsmon"
+  },
+  "homepage": "https://github.com/vdsmon/skills",
+  "repository": "https://github.com/vdsmon/skills",
+  "license": "MIT",
+  "skills": "./skills"
+}

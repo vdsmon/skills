@@ -91,7 +91,7 @@ Generated from `.claude-plugin/marketplace.json` (the source of truth) by `scrip
 | `skill-polish` | any | Post-mortem for any skill: scans a session for friction and applies concrete edits to the responsible skill file. Portable across SKILL.md-native hosts. |
 | `cc-caveman` | CC only | Always-on caveman full mode: drops articles, filler, and tool-call narration while keeping every technical fact exact. |
 | `cc-tokenomics` | CC only | Token usage, cache hit rates, and Max plan consumption analyzer. |
-| `cc-cache-keepalive` | CC only | Keeps Claude Code's prompt cache warm on Max plans via a silent cron, cancelling any tick a recent real turn already refreshed. |
+| `cc-cache-keepalive` | CC only | Keeps Claude Code's prompt cache warm on Max plans via a silent cron, cancelling any tick a recent real turn already refreshed and any tick that would land on a cache that already expired (machine slept, went offline). |
 | `cc-usage-guard` | CC only | Pause-at-limit guard for Claude Code. |
 | `prep-compact` | any | Audit in-flight state before any context-compacting step, and produce a copy-paste /compact message plus a queue-able follow-up that chains the next action when compact finishes. |
 | `prep-goal` | any | Interrogate a rough objective into a tight, verifiable /goal completion condition before handing it to an autonomous goal loop. |
@@ -106,6 +106,7 @@ Generated from `.claude-plugin/marketplace.json` (the source of truth) by `scrip
 | `wayfinder` | any | Chart work too big for one agent session as a shared map of investigation tickets on the repo's issue tracker: name the destination, sketch the fog of war, then resolve one ticket per session (grilling, research, prototype, task) until the way is clear. |
 | `teach` | any | Stateful, multi-session teaching workspace: grounds every lesson in a MISSION.md, gathers trusted RESOURCES.md, produces short self-contained HTML lessons in the learner's zone of proximal development, tracks progress via learning-records, and builds storage strength through retrieval, spacing, and interleaving. |
 | `codebase-design` | any | Shared vocabulary for designing deep modules: a lot of behaviour behind a small interface, placed at a clean seam, testable through that interface. |
+| `question` | any | Answer a genuine question in full, with no edits and no side effects. Treats 'why X and not Y?' as curiosity, not as a hidden request to switch to Y or an attack on X. |
 <!-- END PLUGINS -->
 
 ## Layout
