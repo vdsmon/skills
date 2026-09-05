@@ -91,9 +91,10 @@ Generated from `.claude-plugin/marketplace.json` (the source of truth) by `scrip
 | `skill-polish` | any | Post-mortem for any skill: scans a session for friction and applies concrete edits to the responsible skill file. Portable across SKILL.md-native hosts. |
 | `cc-caveman` | CC only | Always-on caveman full mode: drops articles, filler, and tool-call narration while keeping every technical fact exact. |
 | `cc-tokenomics` | CC only | Token usage, cache hit rates, and Max plan consumption analyzer. |
-| `cc-cache-keepalive` | CC only | Keeps Claude Code's prompt cache warm on Max plans via a silent cron, cancelling any tick a recent real turn already refreshed. |
+| `cc-cache-keepalive` | CC only | Keeps Claude Code's prompt cache warm on Max plans via a silent cron, cancelling any tick a recent real turn already refreshed and any tick that would land on a cache that already expired (machine slept, went offline). |
 | `cc-usage-guard` | CC only | Pause-at-limit guard for Claude Code. |
 | `prep-compact` | any | Audit in-flight state before any context-compacting step, and produce a copy-paste /compact message plus a queue-able follow-up that chains the next action when compact finishes. |
+| `prep-exit` | any | Audit in-flight state before the session is killed, save what only the conversation knows into files and persistent memory, and leave a handoff note plus a paste-ready resume prompt for the next session. |
 | `prep-goal` | any | Interrogate a rough objective into a tight, verifiable /goal completion condition before handing it to an autonomous goal loop. |
 | `humanize` | any | Strip AI-writing tells from text. Detects em-dash overuse, AI vocabulary, inflated significance, rule-of-three, sycophancy, and 20+ more patterns. |
 | `loop-finder` | any | Loop discovery + race + feature-driven iteration. |

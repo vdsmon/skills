@@ -41,6 +41,18 @@
       "category": "Engineering"
     },
     {
+      "name": "prep-exit",
+      "source": {
+        "source": "local",
+        "path": "./plugins/prep-exit"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Engineering"
+    },
+    {
       "name": "prep-goal",
       "source": {
         "source": "local",

@@ -24,7 +24,7 @@
     {
       "name": "cc-caveman",
       "source": "./plugins/cc-caveman",
-      "description": "Always-on caveman full mode: drops articles, filler, and tool-call narration while keeping every technical fact exact. Installing is the opt-in \u2014 a SessionStart hook injects the ruleset and a per-prompt one-liner keeps it anchored (CC_CAVEMAN_OFF=1 skips a session). Ships /caveman-compress to shrink memory files the same way. Extracted (full mode only) from JuliusBrussee/caveman, MIT. Claude Code only (hooks).",
+      "description": "Always-on caveman full mode: drops articles, filler, and tool-call narration while keeping every technical fact exact. Installing is the opt-in — a SessionStart hook injects the ruleset and a per-prompt one-liner keeps it anchored (CC_CAVEMAN_OFF=1 skips a session). Ships /caveman-compress to shrink memory files the same way. Extracted (full mode only) from JuliusBrussee/caveman, MIT. Claude Code only (hooks).",
       "version": "0.1.0"
     },
     {
@@ -50,6 +50,12 @@
       "source": "./plugins/prep-compact",
       "description": "Audit in-flight state before any context-compacting step, and produce a copy-paste /compact message plus a queue-able follow-up that chains the next action when compact finishes. Portable across Agent Skills hosts, since compacting is a general concept, not Claude-specific.",
       "version": "1.8.0"
+    },
+    {
+      "name": "prep-exit",
+      "source": "./plugins/prep-exit",
+      "description": "Audit in-flight state before the session is killed, save what only the conversation knows into files and persistent memory, and leave a handoff note plus a paste-ready resume prompt for the next session. Sibling of prep-compact for the case where nothing survives. Portable across Agent Skills hosts.",
+      "version": "0.1.0"
     },
     {
       "name": "prep-goal",
