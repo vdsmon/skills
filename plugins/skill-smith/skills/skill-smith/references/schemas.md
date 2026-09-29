@@ -248,6 +248,6 @@ Written by `scripts/aggregate_benchmark.py`. Located at `<workspace>/iteration-<
 - `run_summary`: Statistical aggregates per configuration
   - One key per config, new version first and baseline last: each contains `pass_rate`, `time_seconds`, `tokens` objects with `mean` and `stddev` fields
   - `delta`: New minus baseline, as strings like `"+0.50"`, `"+13.0"`, `"+1700"`. Absent when only one config ran
-- `notes`: Freeform observations from the analyst pass (SKILL.md Step 3.4)
+- `notes`: Freeform observations from the analyst pass (SKILL.md Step 3.3)
 
 **Important:** The viewer reads these field names exactly. Using `config` instead of `configuration`, or putting `pass_rate` at the top level of a run instead of nested under `result`, will cause the viewer to show empty/zero values. Always reference this schema when generating benchmark.json manually.
