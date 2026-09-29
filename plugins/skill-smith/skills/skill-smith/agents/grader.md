@@ -13,7 +13,7 @@ You have two jobs: grade the outputs, and critique the evals themselves. A passi
 You receive these parameters in your prompt:
 
 - **expectations**: List of expectations to evaluate (strings)
-- **transcript_path**: Path to the execution transcript (markdown file)
+- **transcript_path**: Path to the execution transcript, normally `<run-dir>/outputs/transcript.md`. If it is missing, grade from the outputs and the executor's final message, and say so in `user_notes_summary.needs_review`
 - **outputs_dir**: Directory containing output files from execution
 
 ## Process
@@ -172,10 +172,10 @@ Write a JSON file with this structure:
     "suggestions": [
       {
         "assertion": "The output includes the name 'John Smith'",
-        "reason": "A hallucinated document that mentions the name would also pass — consider checking it appears as the primary contact with matching phone and email from the input"
+        "reason": "A hallucinated document that mentions the name would also pass. Consider checking it appears as the primary contact with matching phone and email from the input"
       },
       {
-        "reason": "No assertion checks whether the extracted phone numbers match the input — I observed incorrect numbers in the output that went uncaught"
+        "reason": "No assertion checks whether the extracted phone numbers match the input. I observed incorrect numbers in the output that went uncaught"
       }
     ],
     "overall": "Assertions check presence but not correctness. Consider adding content verification."

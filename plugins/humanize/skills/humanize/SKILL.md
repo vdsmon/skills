@@ -1,14 +1,16 @@
 ---
 name: humanize
 argument-hint: "[--casual] [text or file to humanize]"
-description: Rewrites text to strip AI-writing tells (em-dash overuse, AI vocabulary, inflated significance, sycophancy) and restore a human voice. `--casual` also adds the small inconsistencies real writers have. Outputs only the corrected text; files are edited in place.
+description: Rewrites text to strip AI-writing tells (em-dash overuse, AI vocabulary, inflated significance, sycophancy) and restore a human voice. `--casual` also adds the small inconsistencies real writers have. Outputs only the corrected text and edits files in place.
 when_to_use: >-
   Use when the user says "humanize this", "remove AI tells", "edit for
   voice", "sounds too AI", "make this more human", or pastes text for a
-  humanization pass. Also triggers when editing or reviewing prose in
-  Markdown or plain text files where AI-ness is the target to strip.
-  Pass "--casual" for the inconsistency pass on top, or ask for it in
-  conversation ("now loosen it up").
+  humanization pass. Same in Portuguese: "mais humanizado", "deixa mais
+  humano", "não parece que foi gerado por IA", "tira a cara de IA". Also
+  triggers when editing or reviewing prose in Markdown or plain text
+  files where AI-ness is the target to strip. Pass "--casual" for the
+  inconsistency pass on top, or ask for it in conversation ("now loosen
+  it up").
 paths: "*.md, *.mdx, *.txt, *.rst"
 allowed-tools:
   - Read
@@ -16,7 +18,6 @@ allowed-tools:
   - Edit
   - Grep
   - Glob
-  - AskUserQuestion
 ---
 
 # humanize
@@ -27,19 +28,12 @@ Rewrite text to sound human. Identify AI tells, fix them, inject voice.
 
 Raw input: `$ARGUMENTS`
 
-- `$ARGUMENTS` contains `--casual` or `--loose` -> **casual mode**: everything below, plus the Inconsistency pass.
-- Otherwise -> **default mode**: everything below, and the Inconsistency pass does not run. Output stays internally consistent, which is what you want for an ADR, a README, or anything a stranger reads under pressure.
+- `$ARGUMENTS` contains `--casual` or `--loose` -> **casual mode**: everything below, plus the Inconsistency pass in `references/casual.md` (next to this file). Read it before you start.
+- Otherwise -> **default mode**: everything below, and the Inconsistency pass does not run, so don't read that file. Output stays internally consistent, which is what you want for an ADR, a README, or anything a stranger reads under pressure.
 
 Match the dashed flags only, never a bare word. `$ARGUMENTS` here holds the prose being rewritten, so matching `casual` on its own would turn the pass on for any paragraph that happens to discuss tone, and that failure is silent. Leading dashes don't show up in prose.
 
-Strip the flag from `$ARGUMENTS` before treating the rest as the text or the file path. A spoken switch is fine and needs no flag: "now loosen it up" mid-conversation flips the mode without re-running the whole pass.
-
-## Task
-
-1. Scan text for the patterns below.
-2. Rewrite problem sections. Preserve meaning and intended tone.
-3. Add voice, don't just strip tells. Soulless is not human.
-4. Final pass: ask yourself *"what still sounds AI?"* then fix the residue.
+Strip the flag from `$ARGUMENTS` before treating the rest as the text or the file path. A spoken switch is fine and needs no flag: "now loosen it up" mid-conversation flips the mode (read `references/casual.md` then) without re-running the whole pass.
 
 ## Soul
 
@@ -64,8 +58,10 @@ Ways to add voice:
 Before (clean, no pulse):
 > The experiment produced interesting results. Agents generated 3 million lines of code. Some developers were impressed while others were skeptical. Implications remain unclear.
 
-After (has a pulse):
-> 3 million lines of code, generated while the humans slept. Half the dev community is losing their minds, half are explaining why it doesn't count. The truth is probably boring and in the middle. But I keep thinking about those agents working through the night.
+After (has a pulse, same facts):
+> Agents generated 3 million lines of code in this experiment. Some developers were impressed, others were skeptical, and I don't think anyone knows yet what it means.
+
+The After adds voice (first person, an honest opinion, uneven rhythm) and not one fact the Before lacks. Voice never licenses invented detail.
 
 ## Patterns
 
@@ -130,9 +126,9 @@ After (chained, reads human):
 
 **17. Decorative emojis.** 🚀 💡 ✅ on headings and bullets. Strip.
 
-**18. Stay on the ASCII keyboard.** Restrict to characters you can type on a US keyboard: straight quotes (`"…"`), straight apostrophe (`'`), ASCII arrow (`->`), tight slashes (`A/B`), regular hyphen (`-`), regular star (`*`), the letter `x` for multiplication. NEVER use Unicode flourishes: curly quotes (`"…"`), curly apostrophe (`'`), Unicode arrow (`→`), em-dash (`—`), en-dash (`–`), multiplier sign (`×`), bullet character (`•`), ellipsis character (`…`), or any other typographic Unicode character. LLMs default to the typographically "correct" Unicode form, especially in tech-adjacent contexts. Humans default to ASCII for grep-ability, terminal compatibility, and copy-paste safety. The em-dash rule (#13) is the highest-signal version of this same axis. Rule #18 generalizes it to every Unicode typography character. Scope: TYPOGRAPHY ONLY. Accented letters and language-native characters (á, ç, ã, é, ñ, ü, ...) are not flourishes: text in Portuguese or any other language keeps its full correct accentuation everywhere (prose, commits, PR bodies, JSON strings). Stripping accents is a violation of this skill, not compliance with it.
+**18. Stay on the ASCII keyboard.** Restrict to characters you can type on a US keyboard: straight quotes (`"..."`), straight apostrophe (`'`), ASCII arrow (`->`), tight slashes (`A/B`), regular hyphen (`-`), regular star (`*`), the letter `x` for multiplication. NEVER use Unicode flourishes: curly double quotes (U+201C `“` and U+201D `”`), curly single quotes and apostrophe (U+2018 `‘` and U+2019 `’`), Unicode arrow (`→`), em-dash (`—`), en-dash (`–`), multiplier sign (`×`), bullet character (`•`), ellipsis character (`…`), or any other typographic Unicode character. LLMs default to the typographically "correct" Unicode form, especially in tech-adjacent contexts. Humans default to ASCII for grep-ability, terminal compatibility, and copy-paste safety. The em-dash rule (#13) is the highest-signal version of this same axis. Rule #18 generalizes it to every Unicode typography character. Scope: TYPOGRAPHY ONLY. Accented letters and language-native characters (á, ç, ã, é, ñ, ü, ...) are not flourishes: text in Portuguese or any other language keeps its full correct accentuation everywhere (prose, commits, PR bodies, JSON strings). Stripping accents is a violation of this skill, not compliance with it.
 
-Quick grep before submitting: `grep -nP '[—–×•…→"'"'"''""'"'"']' <file>` should print nothing. (Spaced slashes like `A / B` won't be caught by that grep, scan visually for those.)
+Quick grep before submitting: `grep -nE '—|–|×|•|…|→|“|”|‘|’' <file>` should print nothing. (Spaced slashes like `A / B` won't be caught by that grep, scan visually for those.)
 
 ### Communication
 
@@ -168,9 +164,9 @@ Common merge patterns: `X. Y.` becomes `X, and Y.` or `X while Y.` or `X because
 
 **26. Hyphenated-pair overuse.** *third-party, cross-functional, client-facing, data-driven, decision-making, well-known, high-quality, real-time, long-term, end-to-end.* AI hyphenates these with perfect consistency. Humans drop the hyphens inconsistently. Drop them for common pairs.
 
-**27. Jargon and corporate idioms.** Watch: *leverage, synergy, ecosystem, holistic, paradigm, robust, scalable, mission-critical, best-in-class, low-hanging fruit, move the needle, deep dive, circle back, going forward, value-add, deliverable, actionable, operationalize, level up, north star, single source of truth, at scale, in the weeds, on the same page.* These read smooth in a US boardroom and slow down anyone who learned English as a second language.
+**27. Jargon and corporate idioms.** Watch: *leverage, synergy, ecosystem, holistic, paradigm, robust, scalable, mission-critical, best-in-class, deep dive, circle back, going forward, value-add, deliverable, actionable, operationalize, level up, north star, single source of truth, at scale, in the weeds, on the same page.* These read smooth in a US boardroom and slow down anyone who learned English as a second language.
 
-Latinate-over-Anglo-Saxon is the same tell in vocabulary form: *utilize, implement, commence, terminate, facilitate, demonstrate, acquire, ascertain, endeavor, sufficient, additional, approximately.* Pick the shorter, plainer word.
+Latinate-over-Anglo-Saxon is the same tell in vocabulary form: *utilize, implement, commence, terminate, facilitate, demonstrate, acquire, ascertain, endeavor, sufficient, additional, approximately.* Pick the shorter, plainer word, the one a teenager would use.
 
 Dev-specific jargon is the same problem with a different audience: *shim, gate, bake in, swallow (errors), bubble up, wire up, fan out, plumb through, plumbing, blast radius, footgun, monkey-patch, kick off, hook into, surface (verb).* These are vivid and exact to engineers, opaque to anyone else. If the audience includes non-engineers (PR readers from product, finance, ops, legal), prefer the plain word: *shim* -> *wrapper*, *gate* -> *check*, *swallow* -> *ignore* or *hide*, *bubble up* -> *show* or *pass up*, *wire up* -> *connect*, *fan out* -> *split*, *kick off* -> *start*.
 
@@ -180,13 +176,9 @@ US-cultural idioms are the sharpest version of this and get a hard stop, not a s
 - Military and combat: *air cover, beachhead, boots on the ground, in the trenches, war room, rally the troops, scorched earth, take point, in the line of fire, battle-tested, bite the bullet, dodged a bullet, double down, fall on your sword, top brass, bandwidth (figurative).*
 - Business-casual Americana: *move the needle, boil the ocean, sacred cow, dog and pony show, drink the Kool-Aid, ducks in a row, herding cats, bang for the buck, table stakes, skin in the game, run it up the flagpole, open the kimono, eat our own dog food, secret sauce, the whole nine yards, par for the course, ground floor, blue-sky, moonshot, 80/20, low-hanging fruit, take it offline.*
 
-Swap for the literal meaning: *air cover* -> *public backing*. *ballpark* -> *rough estimate*. *touch base* -> *check in*. *table stakes* -> *the minimum to compete*. *skin in the game* -> *something to lose*. *boil the ocean* -> *do too much at once*. *move the needle* -> *make a real difference*. *ducks in a row* -> *organized*. *par for the course* -> *what you would expect*. *bite the bullet* -> *accept the pain*. *the ball is in your court* -> *it is your decision*. Test: if the literal words do not give a non-American the meaning, replace it.
-
-Common swaps: *leverage* -> *use*. *robust* -> *handles errors*. *paradigm* -> *approach*. *deep dive* -> *look closely*. *circle back* -> *come back to it*. *deliverable* -> *what we ship*. *low-hanging fruit* -> *easy wins*. *move the needle* -> *make a real difference*. *at scale* -> *under load*. *utilize* -> *use*. *implement* -> *build, do*. *facilitate* -> *help*. *demonstrate* -> *show*. *commence* -> *start*. *terminate* -> *stop*. *acquire* -> *get*. *ascertain* -> *find out*. *additional* -> *more*. *sufficient* -> *enough*.
+Swap for the literal meaning: *leverage* -> *use*. *robust* -> *handles errors*. *paradigm* -> *approach*. *deep dive* -> *look closely*. *circle back* -> *come back to it*. *deliverable* -> *what we ship*. *at scale* -> *under load*. *utilize* -> *use*. *implement* -> *build, do*. *facilitate* -> *help*. *demonstrate* -> *show*. *commence* -> *start*. *terminate* -> *stop*. *acquire* -> *get*. *ascertain* -> *find out*. *additional* -> *more*. *sufficient* -> *enough*. *air cover* -> *public backing*. *ballpark* -> *rough estimate*. *touch base* -> *check in*. *table stakes* -> *the minimum to compete*. *skin in the game* -> *something to lose*. *boil the ocean* -> *do too much at once*. *move the needle* -> *make a real difference*. *low-hanging fruit* -> *easy wins*. *ducks in a row* -> *organized*. *par for the course* -> *what you would expect*. *bite the bullet* -> *accept the pain*. *the ball is in your court* -> *it is your decision*. Test: if the literal words do not give a non-American the meaning, replace it.
 
 Use the system's actual verb when describing an action the system performs. If a UI button says "Mark as ready", write "marking as ready" rather than "going non-draft" (which isn't a verb anywhere). If an API method is named `update_user_email`, write "called `update_user_email`" rather than "submitted the change". Coining new phrasing where a canonical one exists is an AI tell: the model fills in the most plausible-sounding verb when the precise one was right there. Same for CLI subcommands, queue/topic names, status enums, button labels.
-
-Audience reminder: most prose you produce will be read by non-native English speakers, often a majority. The word a teenager would use is the right default. If the plain word makes the sentence shorter, even better. US-cultural idioms (sports, military, business-casual Americana) are a hard stop, treated like the em-dash rule, not a stylistic nicety. When in doubt about a phrase, say the literal thing.
 
 **28. Compound coinages.** AI mints hyphenated compounds that read fluent to a native English speaker and force everyone else to decode a metaphor mid-sentence. Two families:
 
@@ -195,52 +187,20 @@ Audience reminder: most prose you produce will be read by non-native English spe
 
 Same test as #27: if the literal words do not give a non-native reader the meaning, say the plain thing. *Load-bearing* -> *essential* or *other code depends on it*. *Hand-rolled* -> *written from scratch* or *custom*. *Battle-tested* -> *proven in production* (it is also on the military list in #27). *First-class* -> *fully supported* or *built in*. *An API-shaped problem* -> name what the problem actually is. *Lisp-flavored* -> *Lisp-like*. *Crypto-adjacent* -> *related to crypto*. Literal compounds that mean exactly what they say (*read-only*, *case-sensitive*, *built-in*) are fine: this rule is about metaphor packed into a hyphen, not hyphens themselves (for plain hyphenated pairs, see #26).
 
-## Inconsistency (casual mode only)
-
-Everything above removes a tell. This section adds something instead, so it runs only when `--casual` is set.
-
-Real writers are not sloppy, they're inconsistent. They pick differently on the same question in paragraph 2 and paragraph 9, because the local sentence pulled them a different way. An LLM picks once and holds it for the whole document, and that unbroken consistency is itself a signature.
-
-**The test: two valid forms means inconsistency, and that reads human. One valid form means error, and that reads sloppy.** Never cross into the second. Typos are not on this list and never will be, they're the one edit a reader can spot and blame.
-
-Ten axes:
-
-1. **Contractions track emphasis.** `don't` normally, `do not` when you actually mean it. Driven by the sentence, not by a coin flip.
-2. **Oxford comma optional.** Keep it where it prevents ambiguity, drop it where it doesn't. Humans hold no policy here.
-3. **Bullet terminal periods mixed.** Full-sentence bullets get one, fragments don't, and the boundary is fuzzy. LLMs go all-or-nothing.
-4. **Uneven bullet shape.** One bullet three words, the next three lines. Mix a verb-led bullet with a noun-led one. LLMs match length and part of speech across every item in a list.
-5. **Backtick fatigue.** Backtick an identifier on first use, then write it plain. LLMs backtick every occurrence forever.
-6. **Second-reference shortening.** `the authentication service` -> `auth service` -> `auth`. Direction is the test: shorter is human, a sideways synonym is #11 and stays banned.
-7. **Number-style drift.** `3 million lines` in one sentence, `two or three times` in the next. LLMs apply "spell out under ten" with no exceptions.
-8. **Sentence-initial `And` / `But` / `So`.** LLMs avoid these. Humans start sentences this way constantly.
-9. **Lowercase after a colon,** even when the clause is independent. LLMs capitalize by rule.
-10. **Dropped optional `that`, dropped intro comma.** `the thing I built` over `the thing that I built`, `In 2023 we shipped` over `In 2023, we shipped`. Not every time, which is the entire point.
-
-Guard, still binding in casual mode:
-
-- **Never vary anything with one canonical form.** API names, CLI flags, file paths, env vars, error strings, function names, anything inside a code fence. #27 already requires the system's actual name and casual mode does not relax it.
-- **Never introduce an error.** Misspellings, `its`/`it's`, `their`/`there`, subject-verb disagreement, broken Markdown. Those are wrong, not loose. If only one form is valid there is nothing to vary.
-- **No alternating on a schedule.** `ABABAB` is just a different machine pattern. Each variation needs a local reason.
-- **Accents stay fully correct** (#18). Casual is about register, never about the language itself.
-- **Skip it entirely** in commit messages, error text, API docs, legal or compliance text, and migration steps.
-- **Ceiling: a handful per page.** If the reader can count them, there are too many.
-
-#26 stays always-on and is not part of this section: dropping hyphens removes a tell, while these axes add variance. The Soul section already covers emotional variance, so don't duplicate it here.
-
 ## Process
 
 1. Read the input.
 2. `grep` for `—` and ` -- `. Fix every hit first, highest-signal tell, easiest to miss by eye.
-3. Scan for the 28 patterns above.
-4. Rewrite sections. Check the revision:
+3. Scan for the patterns above.
+4. Rewrite sections, and add voice (see Soul) instead of only stripping tells. Check the revision:
    - Sounds natural read aloud
    - Varies sentence structure naturally
    - Prefers specific over vague
    - Uses *is / are / has* where appropriate
-5. Produce a draft (internally; never show it).
+5. Produce a draft (internally, never show it).
 6. Ask yourself: *"What still sounds AI?"* Note the residue (internally).
 7. Revise against that list.
-8. Casual mode only: apply the Inconsistency axes now, once every tell is stripped and never before. Varying text you're about to rewrite throws the variance away.
+8. Casual mode only: apply the Inconsistency axes from `references/casual.md` now, once every tell is stripped and never before. Varying text you're about to rewrite throws the variance away.
 9. Deliver the final rewrite only.
 
 ## Output
@@ -248,11 +208,9 @@ Guard, still binding in casual mode:
 The corrected text, and nothing else. No draft, no residual-tells list, no changelog, no commentary. The draft/residue/revise loop in Process is your working method, not your deliverable.
 
 - Input is a file: edit the file in place and confirm in one short line. Do not reproduce the text in chat.
-- Input is text destined for a file or another surface (a PR body, a commit message, a doc): write it where it is going; the chat shows at most one short line.
+- Input is text destined for a file or another surface (a PR body, a commit message, a doc): write it where it is going, and the chat shows at most one short line.
 - Input is chat text with nowhere else to land: reply with the final rewrite alone.
-
-Casual mode: name the Inconsistency axes you applied in that one short confirmation line, since skipping the pass is otherwise invisible. A bare chat reply stays the rewrite alone.
 
 ## Source
 
-Pattern taxonomy adapted from [Wikipedia: Signs of AI writing](https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing) (WikiProject AI Cleanup). Core idea: LLMs pick the most statistically likely next token across the widest range of cases. That's the signature you're erasing.
+Pattern taxonomy adapted from [Wikipedia: Signs of AI writing](https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing) (WikiProject AI Cleanup, CC BY-SA 4.0).

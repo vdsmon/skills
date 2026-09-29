@@ -25,7 +25,7 @@ A `/goal` run is a loop (reason -> act -> observe -> **verify**) and the verify 
 
 ## Method: grill first, emit last
 
-Pin the goal by interrogation, grilling-style: **one question at a time, each with your recommended answer**, so a confident user just says "yes, yes, go." Explore the codebase to answer your own questions instead of asking (find the test command, the entry file, the call sites). Stop grilling the moment these five are nailed; don't pad.
+Pin the goal by interrogation: **one question at a time, each with your recommended answer**, so a confident user just says "yes, yes, go." Explore the codebase to answer your own questions instead of asking (find the test command, the entry file, the call sites). Stop grilling the moment these five are nailed; don't pad.
 
 Ground first (silent, no recap):
 
@@ -58,12 +58,12 @@ No rubric recap, no "why this is better" essay. If grilling is unresolved, ask t
 
 ## `--delegate` mode (long / heavy goals)
 
-If `$ARGUMENTS` contains `--delegate` (or "delegate" / "subagent"), append a delegation clause to the goal. It tells the loop to do each iteration's work in a *fresh implement subagent* and surface only its raw gate output, so the main `/goal` context (the persistent orchestrator) grows by distilled returns, not the full work transcript, while keeping continuity across turns.
+If `$ARGUMENTS` contains `--delegate` (or "delegate" / "subagent"), append a delegation clause to the goal. It tells the loop to do each iteration's work in a *fresh subagent* and paste only its raw gate output, so the main `/goal` context (the persistent orchestrator) grows by distilled returns, not the full work transcript, while keeping continuity across turns.
 
 Delegation is a context-economy optimization, not a correctness one: the gate still guards correctness no matter who does the work, so if the loop inlines a turn you lose efficiency, never safety. Keep the two clauses distinct. The gate says *what done is*, the delegate clause says *how to work*:
 
 ```text
-Each turn, spawn an implement subagent to make the change and return its raw gate output; don't edit files in your own context.
+Each turn, spawn a subagent to make the change and return the raw gate output; paste that output verbatim in your reply; don't edit files in your own context.
 ```
 
 Skip the flag for short goals, because a worker per turn isn't worth its re-orientation cost when the work fits in a few inline turns.
@@ -79,7 +79,7 @@ Raw: *"fix the parser, it breaks on nested quotes"* -> after pinning gate + chea
 Same goal with `--delegate` (heavy work -> keep main context lean):
 
 ```text
-/goal The tokenizer parses nested quotes correctly. Gate: `pytest tests/test_tokenizer.py` shows 0 failures plus a new test for `"a \"b\" c"`. Each turn, spawn an implement subagent to make the change and return its raw pytest output; don't edit files in your own context. Don't weaken existing assertions; touch only src/tokenizer.py and its test. Stop after 15 turns.
+/goal The tokenizer parses nested quotes correctly. Gate: run `pytest tests/test_tokenizer.py` each turn and paste its output; done when it shows 0 failures and includes a new test for input `"a \"b\" c"`. Each turn, spawn a subagent to make the change and return the raw pytest output; paste that output verbatim in your reply; don't edit files in your own context. Don't weaken or delete existing assertions; touch only src/tokenizer.py and its test. Stop after 15 turns.
 ```
 
 Raw: *"clean up the forms module"* -> too vague, grill the WHAT first (one question):
@@ -97,6 +97,6 @@ That's two goals — the evaluator checks one condition and would stall on which
 ## Notes
 
 - This skill **outputs** a `/goal` line; it doesn't run `/goal` (native, user-driven). User pastes it.
-- A good `/goal` line is reusable: save the ones that work and rerun them; a folder of them is your loop library, no machinery needed. Reach for `loop-finder` only when the gate itself is unknown or flaky *and* the task recurs enough that racing variants to pick one beats authoring it by judgment here.
+- A good `/goal` line is reusable: save the ones that work and rerun them; a folder of them is your loop library, no machinery needed.
 - Every gate is a command, never prose: `exits 0` is unambiguous, "works" is not. No runnable gate means no real loop, just churn; if none exists yet, the first goal is to build one.
 - Short goal beats complete goal. The fewer words the loop can game, the better.

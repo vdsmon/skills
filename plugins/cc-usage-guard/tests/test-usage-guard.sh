@@ -14,7 +14,7 @@ GUARD="$HERE/../hooks/usage-guard.sh"
 SENSOR="$HERE/../hooks/usage-sensor.sh"
 POLLER="$HERE/../hooks/usage-poller.sh"
 
-unset CLAUDE_USAGE_THRESHOLD CLAUDE_USAGE_THRESHOLD_5H CLAUDE_USAGE_THRESHOLD_WEEKLY \
+unset CC_USAGE_GUARD_OFF CLAUDE_USAGE_THRESHOLD CLAUDE_USAGE_THRESHOLD_5H CLAUDE_USAGE_THRESHOLD_WEEKLY \
   CLAUDE_USAGE_WARN_5H CLAUDE_USAGE_WARN_WEEKLY CLAUDE_USAGE_RESUME_BUFFER_MIN \
   CLAUDE_USAGE_REMIND_PARK_MIN CLAUDE_USAGE_REMIND_WARN_MIN \
   CLAUDE_USAGE_SENSOR_MAX_AGE_MIN CLAUDE_USAGE_RENDER_CMD CLAUDE_CONFIG_DIR \
@@ -38,11 +38,11 @@ reset_state() {
   mkdir -p "$STATE_DIR"
 }
 
-# The guard now self-heals by invoking the poller when it finds no usable state. Every
-# guard case therefore has to neutralize the poller, or it would fetch with the real login
-# keychain against the real account: force a keychain miss and an unreachable endpoint, so
-# the poll fails instantly and offline behaviour stays observable. The self-heal path gets
-# its own test with a working fixture endpoint.
+# The guard runs the poller first on every call. Every guard case therefore has to
+# neutralize it, or it would fetch with the real login keychain against the real account:
+# force a keychain miss and an unreachable endpoint, so the poll fails instantly and
+# offline behaviour stays observable. The poll-first path gets its own test with a working
+# fixture endpoint.
 NO_KEYCHAIN="cc-usage-guard-test-no-such-service"
 DEAD_ENDPOINT="http://127.0.0.1:1/api/oauth/usage"
 
@@ -158,12 +158,43 @@ assert_contains "park threshold emits STOP" "$out" "STOP - usage at"
 
 reset_state
 fresh_state 98
+out=$(printf '%s' "$(stdin_json s-off)" | env HOME="$TESTHOME" CC_USAGE_GUARD_OFF=1 \
+  CLAUDE_USAGE_KEYCHAIN_SERVICE="$NO_KEYCHAIN" CLAUDE_USAGE_ENDPOINT="$DEAD_ENDPOINT" bash "$GUARD")
+assert_silent "CC_USAGE_GUARD_OFF=1 silences the guard even at the park threshold" "$out"
+[ -z "$(ls "$STATE_DIR" | grep -v "^usage.json$")" ] && PASS=$((PASS + 1)) || {
+  FAIL=$((FAIL + 1)); echo "FAIL: CC_USAGE_GUARD_OFF=1 writes no markers or poll stamps"; }
+
+reset_state
+fresh_state 98
 out=$(run_guard "$(stdin_json s-park-agent a1)")
 assert_contains "spawned agent at park gets WIND DOWN" "$out" "WIND DOWN"
 reset_state
 fresh_state 92
 out=$(run_guard "$(stdin_json s-warn-agent a1)")
 assert_silent "spawned agent at warn stays silent" "$out"
+
+# a cc-cache-keepalive cron tick can act on nothing (blocked, or told to call no tool), so
+# it must not use up the full WARN/PARK message the next real prompt needs
+TICK='{"hook_event_name":"UserPromptSubmit","session_id":"s-tick","prompt":"cc-cache-keepalive"}'
+reset_state
+fresh_state 98
+out=$(run_guard "$TICK")
+assert_silent "keepalive tick gets no WARN/PARK" "$out"
+[ ! -f "$STATE_DIR/usage-park-marker-s-tick" ] && { PASS=$((PASS + 1)); echo "ok: keepalive tick writes no marker"; } \
+  || { FAIL=$((FAIL + 1)); echo "FAIL: keepalive tick wrote a park marker"; }
+out=$(run_guard "$(stdin_json s-tick '' UserPromptSubmit)")
+assert_contains "the next real prompt still gets the full STOP" "$out" "STOP - usage at"
+assert_contains "the full STOP still carries the auto-resume step" "$out" "CronCreate"
+out=$(run_guard '{"hook_event_name":"PostToolUse","session_id":"s-cron","tool_input":{"prompt":"cc-cache-keepalive"}}')
+assert_contains "a tool call carrying the sentinel is not a tick" "$out" "STOP - usage at"
+out=$(run_guard '{"hook_event_name":"UserPromptSubmit","session_id":"s-mention","prompt":"what does cc-cache-keepalive do?"}')
+assert_contains "a prompt that only mentions the sentinel is not a tick" "$out" "STOP - usage at"
+rm -rf "$STATE_DIR"
+out=$(run_guard "$TICK")
+assert_silent "keepalive tick gets no offline notice either" "$out"
+[ ! -e "$STATE_DIR/poller-last-attempt" ] && [ ! -e "$STATE_DIR/sensor-warn-marker-s-tick" ] \
+  && { PASS=$((PASS + 1)); echo "ok: keepalive tick neither polls nor writes a warn marker"; } \
+  || { FAIL=$((FAIL + 1)); echo "FAIL: keepalive tick polled or wrote a warn marker"; }
 
 # --- stale snapshots (window reset already past) -------------------------------
 
@@ -256,11 +287,15 @@ run_poller() { # <endpoint> [extra env assignments...]
 reset_state
 printf '%s' "$FAKE_CREDS" > "$TESTHOME/.claude/.credentials.json"
 
-# fixture body: fractional seconds + a +00:00 offset, the shape the real endpoint returns
+# fixture body: fractional seconds + a +00:00 offset, the shape the real endpoint returns.
+# The resets are built at run time, in the future: the guard ignores a window whose reset
+# is past, so a hard-coded date turned the suite red the day it expired.
+RESET_5H=$(date -u -v+2H '+%Y-%m-%dT%H:%M:%S')
+RESET_WK=$(date -u -v+3d '+%Y-%m-%dT%H:%M:%S')
 FIXTURE="$TESTHOME/usage-fixture.json"
-cat > "$FIXTURE" <<'JSON'
-{"five_hour":{"utilization":2.0,"resets_at":"2026-07-30T15:09:59.935998+00:00"},
- "seven_day":{"utilization":97.0,"resets_at":"2026-07-30T20:00:00.936019+00:00"}}
+cat > "$FIXTURE" <<JSON
+{"five_hour":{"utilization":2.0,"resets_at":"${RESET_5H}.935998+00:00"},
+ "seven_day":{"utilization":97.0,"resets_at":"${RESET_WK}.936019+00:00"}}
 JSON
 
 if command -v python3 >/dev/null 2>&1; then
@@ -319,8 +354,8 @@ if [ -n "${PORT:-}" ]; then
   [ "$schema" = "2" ] && { PASS=$((PASS + 1)); echo "ok: poller writes schema-2 state"; } \
     || { FAIL=$((FAIL + 1)); echo "FAIL: poller state schema '$schema' != 2"; }
   got=$(jq -r '[.five_hour,.weekly,.five_hour_reset,.weekly_reset]|@tsv' "$STATE" 2>/dev/null)
-  want_5h=$(date -j -u -f '%Y-%m-%dT%H:%M:%S' '2026-07-30T15:09:59' +%s 2>/dev/null)
-  want_wk=$(date -j -u -f '%Y-%m-%dT%H:%M:%S' '2026-07-30T20:00:00' +%s 2>/dev/null)
+  want_5h=$(date -j -u -f '%Y-%m-%dT%H:%M:%S' "$RESET_5H" +%s 2>/dev/null)
+  want_wk=$(date -j -u -f '%Y-%m-%dT%H:%M:%S' "$RESET_WK" +%s 2>/dev/null)
   assert_contains "poller maps utilization + ISO resets to epochs" "$got" \
     "$(printf '2.0\t97.0\t%s\t%s' "$want_5h" "$want_wk")"
   [ ! -f "$POLLER_ERR" ] && { PASS=$((PASS + 1)); echo "ok: successful poll clears the error file"; } \
@@ -354,9 +389,11 @@ if [ -n "${PORT:-}" ]; then
   [ "$slack" -gt 3300 ] && [ "$slack" -le 3379 ] \
     && { PASS=$((PASS + 1)); echo "ok: backoff deadline honours the Retry-After header"; } \
     || { FAIL=$((FAIL + 1)); echo "FAIL: backoff deadline is ${slack}s out, expected ~3379"; }
+  assert_contains "a failed fetch is logged with its code and Retry-After" \
+    "$(tail -n 1 "$STATE_DIR/poller-failures.log" 2>/dev/null)" "http=429 retry_after=3379"
 
-  # the guard self-heals with CLAUDE_USAGE_POLL_INTERVAL_SEC=0, so the interval bypass must
-  # NOT reach past a limit the server itself set - this is the case that made it a hammer
+  # an interval override, even 0, must NOT reach past a limit the server itself set - an
+  # interval bypass that could is what once made the poller a hammer
   hits_before=$(wc -l < "$HITS")
   run_poller "$EP429" CLAUDE_USAGE_POLL_INTERVAL_SEC=0 >/dev/null
   [ "$hits_before" = "$(wc -l < "$HITS")" ] \
@@ -376,6 +413,16 @@ if [ -n "${PORT:-}" ]; then
   run_poller "http://127.0.0.1:$PORT/429-bare" CLAUDE_USAGE_POLL_INTERVAL_SEC=0 >/dev/null
   [ -s "$BACKOFF" ] && { PASS=$((PASS + 1)); echo "ok: 429 without Retry-After still backs off"; } \
     || { FAIL=$((FAIL + 1)); echo "FAIL: 429 without Retry-After left no backoff"; }
+
+  # the failure log is capped, so a months-long outage cannot grow it without bound
+  reset_state
+  seq 1 150 | sed 's/^/old line /' > "$STATE_DIR/poller-failures.log"
+  run_poller "$EP429" CLAUDE_USAGE_POLL_INTERVAL_SEC=0 >/dev/null
+  n=$(wc -l < "$STATE_DIR/poller-failures.log" | tr -d ' ')
+  last=$(tail -n 1 "$STATE_DIR/poller-failures.log")
+  [ "$n" -le 100 ] && case "$last" in *"http=429"*) true;; *) false;; esac \
+    && { PASS=$((PASS + 1)); echo "ok: the failure log stays capped and keeps the newest line"; } \
+    || { FAIL=$((FAIL + 1)); echo "FAIL: failure log has $n lines, last: $last"; }
 
   # every failed fetch moves the attempt clock - not just the ones that back off
   reset_state
@@ -398,26 +445,58 @@ if [ -n "${PORT:-}" ]; then
   out=$(run_guard "$(stdin_json s-poller-state)")
   assert_contains "guard acts on poller-written state" "$out" "weekly limit"
 
-  # self-heal: hooks on one event are unordered, so on a session's first turn the guard can
-  # read state the poller is about to replace. It must fetch once itself before declaring
-  # the source offline - otherwise that race emits a one-time-per-session false alarm.
+  # poll first: on a session's first turn the state can be stale. When the poller was a
+  # sibling hook, hook order was not fixed and the guard could judge before the poll
+  # landed, a one-time-per-session false "offline". The guard now polls before it judges.
+  run_guard_ep() { # <endpoint> <stdin-json>
+    printf '%s' "$2" | env HOME="$TESTHOME" CLAUDE_USAGE_KEYCHAIN_SERVICE="$NO_KEYCHAIN" \
+      CLAUDE_USAGE_ENDPOINT="$1" bash "$GUARD"
+  }
   reset_state
   fresh_state 50
   make_stale
-  out=$(printf '%s' "$(stdin_json s-selfheal)" | env HOME="$TESTHOME" \
-    CLAUDE_USAGE_KEYCHAIN_SERVICE="$NO_KEYCHAIN" CLAUDE_USAGE_ENDPOINT="$EP" bash "$GUARD")
+  out=$(run_guard_ep "$EP" "$(stdin_json s-pollfirst)")
   case "$out" in
-    *"USAGE SOURCE OFFLINE"*) FAIL=$((FAIL + 1)); echo "FAIL: guard cried offline instead of polling for itself";;
-    *) PASS=$((PASS + 1)); echo "ok: guard self-heals stale state by polling before faulting";;
+    *"USAGE SOURCE OFFLINE"*) FAIL=$((FAIL + 1)); echo "FAIL: guard cried offline instead of polling first";;
+    *) PASS=$((PASS + 1)); echo "ok: guard polls before it judges stale state";;
   esac
-  assert_contains "self-healed guard acts on the freshly polled numbers" "$out" "weekly limit"
+  assert_contains "guard acts on the numbers it just polled" "$out" "weekly limit"
 
   # ...and still faults when the poll itself cannot produce state
   reset_state
   fresh_state 50
   make_stale
-  out=$(run_guard "$(stdin_json s-selfheal-dead)")
-  assert_contains "guard still faults when the self-heal poll fails" "$out" "USAGE SOURCE OFFLINE"
+  out=$(run_guard "$(stdin_json s-pollfirst-dead)")
+  assert_contains "guard still faults when its poll fails" "$out" "USAGE SOURCE OFFLINE"
+
+  # --- rate-limit outage notice -------------------------------------------------
+  # A 429 is machine-wide and ends on its own: one notice per outage, not one per new
+  # session, and never none. The next good poll re-arms it for the next outage.
+  RL_MARKER="$STATE_DIR/rate-limit-warn-marker"
+  reset_state
+  fresh_state 50
+  make_stale
+  out=$(run_guard_ep "$EP429" "$(stdin_json s-429-a)")
+  assert_contains "a rate-limit outage is reported" "$out" "rate-limited (HTTP 429)"
+  assert_contains "the outage notice says it shows once per outage" "$out" "once per outage"
+  case "$out" in
+    *"Fix per the plugin README"*) FAIL=$((FAIL + 1)); echo "FAIL: outage notice sends the user to the README with nothing to fix";;
+    *) PASS=$((PASS + 1)); echo "ok: outage notice drops the README pointer";;
+  esac
+  case "$out" in
+    *..*) FAIL=$((FAIL + 1)); echo "FAIL: quoted poller error ends in a doubled period: $out";;
+    *) PASS=$((PASS + 1)); echo "ok: quoted poller error ends in one period";;
+  esac
+  out=$(run_guard_ep "$EP429" "$(stdin_json s-429-b)")
+  assert_silent "another session in the same outage gets no second notice" "$out"
+  rm -f "$BACKOFF"   # the outage ends: the next poll is allowed and succeeds
+  make_stale
+  run_poller "$EP" >/dev/null
+  [ ! -f "$RL_MARKER" ] && { PASS=$((PASS + 1)); echo "ok: a good poll clears the outage marker"; } \
+    || { FAIL=$((FAIL + 1)); echo "FAIL: outage marker survived a good poll"; }
+  make_stale
+  out=$(run_guard_ep "$EP429" "$(stdin_json s-429-c)")
+  assert_contains "the next outage is reported again" "$out" "rate-limited (HTTP 429)"
 
   # credentials precedence: a per-profile .credentials.json must win over the keychain -
   # that is what lets two profiles poll two different accounts. Point the keychain name at
@@ -451,6 +530,12 @@ assert_silent "poller silent when no token is available" "$out"
 [ ! -f "$STATE" ] && { PASS=$((PASS + 1)); echo "ok: no-token poll writes no state"; } \
   || { FAIL=$((FAIL + 1)); echo "FAIL: no-token poll wrote a state file"; }
 assert_contains "no-token poll records the cause" "$(cat "$POLLER_ERR" 2>/dev/null)" "no OAuth token found"
+# the attempt is stamped before the credential lookup, so a missing token is retried once
+# per interval instead of reading the keychain on every tool call
+rm -f "$POLLER_ERR"
+run_poller "http://127.0.0.1:1/api/oauth/usage" >/dev/null
+[ ! -f "$POLLER_ERR" ] && { PASS=$((PASS + 1)); echo "ok: a no-token poll still moves the throttle clock"; } \
+  || { FAIL=$((FAIL + 1)); echo "FAIL: no-token poll retried inside the interval"; }
 
 # the guard's offline message quotes the poller's reason instead of guessing at wiring
 make_stale 2>/dev/null || true
@@ -472,7 +557,7 @@ case "$out" in
 esac
 
 # every other fault keeps the generic remedy - the branch above must not swallow them.
-# Credentials have to be back in place or the guard's self-heal poll fails on the token
+# Credentials have to be back in place or the guard's own poll fails on the token
 # first and overwrites the fault under test with the credentials one.
 reset_state
 printf '%s' "$FAKE_CREDS" > "$TESTHOME/.claude/.credentials.json"
@@ -495,13 +580,18 @@ prof_ok=1
 
 printf '{"schema":2,"five_hour":98,"weekly":10,"five_hour_reset":%s,"weekly_reset":%s}\n' \
   "$(date -v+2H +%s)" "$(date -v+2d +%s)" > "$WORKPROF/.usage-guard/usage.json"
-out=$(printf '%s' "$(stdin_json s-prof)" | HOME="$TESTHOME" CLAUDE_CONFIG_DIR="$WORKPROF" bash "$GUARD")
+run_guard_prof() { # <stdin-json>; same poller isolation as run_guard
+  printf '%s' "$1" | env HOME="$TESTHOME" CLAUDE_CONFIG_DIR="$WORKPROF" \
+    CLAUDE_USAGE_KEYCHAIN_SERVICE="$NO_KEYCHAIN" CLAUDE_USAGE_ENDPOINT="$DEAD_ENDPOINT" \
+    CLAUDE_USAGE_POLL_TIMEOUT_SEC=1 bash "$GUARD"
+}
+out=$(run_guard_prof "$(stdin_json s-prof)")
 assert_contains "guard reads state from the CLAUDE_CONFIG_DIR profile" "$out" "STOP - usage at"
 out=$(run_guard "$(stdin_json s-prof-default)")
 assert_contains "default profile is independent (missing state faults)" "$out" "state file missing"
 
 rm -rf "$WORKPROF"
-out=$(printf '%s' "$(stdin_json s-prof-missing)" | HOME="$TESTHOME" CLAUDE_CONFIG_DIR="$WORKPROF" bash "$GUARD")
+out=$(run_guard_prof "$(stdin_json s-prof-missing)")
 assert_contains "offline message names the profile state dir" "$out" "$WORKPROF/.usage-guard"
 
 # --- marker GC ---------------------------------------------------------------
@@ -546,6 +636,17 @@ if [ "${1:-}" = "--soak" ]; then
   [ "$offline" = "0" ] && { PASS=$((PASS + 1)); echo "ok: soak - 0 offline faults in 500 reads vs 200 writes"; } \
     || { FAIL=$((FAIL + 1)); echo "FAIL: soak - $offline offline-fault emissions"; }
 fi
+# --- registration --------------------------------------------------------------
+# The poller runs inside the guard, first. Registered as a sibling hook it raced the guard.
+MANIFEST="$HERE/../.claude-plugin/plugin.json"
+assert_contains "the guard is registered on PostToolUse and UserPromptSubmit" \
+  "$(jq -r '[.hooks | to_entries[] | select(any(.value[].hooks[]; .command | test("usage-guard.sh"))) | .key] | join(",")' "$MANIFEST")" \
+  "PostToolUse,UserPromptSubmit"
+case "$(jq -r '.hooks[][].hooks[].command' "$MANIFEST")" in
+  *usage-poller*) FAIL=$((FAIL + 1)); echo "FAIL: usage-poller.sh is still registered as its own hook";;
+  *) PASS=$((PASS + 1)); echo "ok: usage-poller.sh is not registered as its own hook";;
+esac
+
 # --- usage-status.sh (0.9.0) ----------------------------------------------------
 # One command shows what the guard acts on, so nobody reads the state directory by
 # hand; --clear-markers is the only write, and it never touches usage.json.

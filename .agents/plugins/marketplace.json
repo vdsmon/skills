@@ -77,18 +77,6 @@
       "category": "Engineering"
     },
     {
-      "name": "loop-finder",
-      "source": {
-        "source": "local",
-        "path": "./plugins/loop-finder"
-      },
-      "policy": {
-        "installation": "AVAILABLE",
-        "authentication": "ON_INSTALL"
-      },
-      "category": "Engineering"
-    },
-    {
       "name": "brainstorming",
       "source": {
         "source": "local",
@@ -153,18 +141,6 @@
       "source": {
         "source": "local",
         "path": "./plugins/grilling"
-      },
-      "policy": {
-        "installation": "AVAILABLE",
-        "authentication": "ON_INSTALL"
-      },
-      "category": "Engineering"
-    },
-    {
-      "name": "wayfinder",
-      "source": {
-        "source": "local",
-        "path": "./plugins/wayfinder"
       },
       "policy": {
         "installation": "AVAILABLE",

@@ -11,38 +11,24 @@ Repos accrue history breadcrumbs: `# Wave 1 gotcha`, `# Authored: Story 25, Wave
 
 This skill finds those breadcrumbs, separates **cruft** (safe to strip) from **semantic** (must keep, refers to live code behavior or active runbook step labels), proposes a precise edit list, and executes after the user confirms.
 
-## When this skill triggers
-
-Direct phrases:
-- "scan for migration comments"
-- "nuke / strip / remove wave 1 / wave 2 / story / phase / migration / transitional / roadmap / legacy / formerly / previously refs"
-- "kill the migration matrix doc"
-- "I don't want these old-box / replaced / lenovo / 'moved from X' comments"
-- "clean up roadmap / archive pointers in CLAUDE.md / README.md"
-
-Less direct cues:
-- User shows a grep hit list and says "I don't want it" / "all of them"
-- User complains about noise from `(Wave N)`, `Story N`, `Phase N`, `EXECUTED on YYYY-MM-DD`, `Authored as part of …`
-- Code review where breadcrumb comments about past data-shape upgrades clutter the file
-
 ## Workflow
 
 The skill runs in four phases. Stop after each and report, do not chain.
 
 ### 1. Scan
 
-Run `scripts/scan.sh <repo-root>` (or run ripgrep directly with the patterns in `references/patterns.md`). The script searches for the full pattern catalog and emits `path:line: <matched_text>` rows.
+Run `bash <skill-dir>/scripts/scan.sh <repo-root>`, where `<skill-dir>` is this skill's base directory and `<repo-root>` is the absolute path of the repo to scan. The script holds the full pattern catalog and prints `path:line: <matched_text>` rows grouped by bucket, plus a Borderline group of raw hits no bucket claimed.
 
 Default excludes:
 - `.git/`
 - `node_modules/`, `dist/`, `build/`, `.venv/`, `target/`
-- `docs/archive/**` (intentional historical archive, never strip without explicit user opt-in)
+- any `archive/` dir, such as `docs/archive/**` (intentional historical archive, never strip without explicit user opt-in; pass `--include-archive` once the user opts in)
 
 If the repo has its own archive directory under another name (e.g. `historical/`, `old/`, `attic/`), ask the user before scanning it.
 
 ### 2. Categorize
 
-For every hit, assign one of five buckets. The categorization rules live in `references/buckets.md`. In short:
+For every hit, assign one of five buckets. The categorization rules, including the technical terms that only look like cruft, live in `references/buckets.md`. In short:
 
 | Bucket | Default action | Example |
 |---|---|---|
@@ -95,7 +81,7 @@ Once the user confirms, edit files in parallel `Edit` calls. Rules:
 - Delete files only for bucket C, and only with explicit confirmation.
 - For bucket D rename: change `Phase N` to `Step N` throughout the file (use `replace_all`) plus update any cross-refs that pointed at `Phase N` by name.
 - For bucket E reword: keep the technical meaning. Replace `legacy X` with `X` (when standalone), or `flat X` / `prior schema X` when the comment specifically distinguishes from a newer shape. Replace `Backfill path:` with a literal description of what the branch does.
-- Verify with a final `rg` pass and report any residual hits with their bucket. Hits in buckets D + E remaining is expected and correct.
+- Verify with a final `scripts/scan.sh` pass and report any residual hits with their bucket. Hits in buckets D + E remaining is expected and correct.
 
 ## Pitfalls
 
@@ -105,12 +91,6 @@ Once the user confirms, edit files in parallel `Edit` calls. Rules:
 - **Don't claim a comment is bucket-E semantic without reading the surrounding code.** If the "legacy" comment refers to code that no longer exists, it's actually bucket A and the comment is rot, so strip it.
 - **Live-migration, legacy PCI, schema migration** are real technical terms (Proxmox feature, hardware spec, DB concept). Never strip these by pattern alone; check context first.
 - **The user's archive opt-out is sticky for the session.** If they say "skip the archive", remember it; don't re-ask.
-
-## References
-
-- `references/patterns.md`: full ripgrep pattern catalog grouped by bucket
-- `references/buckets.md`: categorization decision tree + edge-case examples
-- `scripts/scan.sh`: one-shot scanner that emits a categorized hit list
 
 ## Output expectations
 

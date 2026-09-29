@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# scan.sh — emit a categorized hit list for the strip-migration-cruft skill.
+# scan.sh: emit a categorized hit list for the strip-migration-cruft skill.
+# This file is the single source of the scan patterns.
 #
 # Usage:
 #   scan.sh <repo-root> [--include-archive]
 #
 # Output is grouped by bucket so the model can copy it directly into the
-# proposal template. Tries to use ripgrep at /opt/homebrew/bin/rg; falls
-# back to system rg, then grep -RIn.
+# proposal template. Uses ripgrep when it is on PATH, else grep -RIn.
 
 set -euo pipefail
 
@@ -25,60 +25,66 @@ if [[ ! -d "$ROOT" ]]; then
     echo "not a directory: $ROOT" >&2
     exit 2
 fi
+# The exclude globs are relative to the search root, so search from inside it.
+cd "$ROOT"
 
-if command -v /opt/homebrew/bin/rg >/dev/null 2>&1; then
-    RG=/opt/homebrew/bin/rg
-elif command -v rg >/dev/null 2>&1; then
-    RG=$(command -v rg)
-else
-    RG=""
-fi
+RG=$(command -v rg || true)
 
-EXCLUDES=(
-    "--glob=!.git/**"
-    "--glob=!node_modules/**"
-    "--glob=!dist/**"
-    "--glob=!build/**"
-    "--glob=!.venv/**"
-    "--glob=!target/**"
-)
+SKIP_DIRS=(.git node_modules dist build .venv target)
 if [[ $INCLUDE_ARCHIVE -eq 0 ]]; then
-    EXCLUDES+=("--glob=!docs/archive/**" "--glob=!archive/**")
+    SKIP_DIRS+=(archive)
 fi
+
+RG_EXCLUDES=()
+GREP_EXCLUDES=()
+FIND_PRUNE=(-name "${SKIP_DIRS[0]}")
+for d in "${SKIP_DIRS[@]}"; do
+    RG_EXCLUDES+=("--glob=!**/$d/**")
+    GREP_EXCLUDES+=("--exclude-dir=$d")
+    FIND_PRUNE+=(-o -name "$d")
+done
+
+SEEN=$(mktemp "${TMPDIR:-/tmp}/scan-seen.XXXXXX")
+trap 'rm -f "$SEEN"' EXIT
 
 scan() {
     local pattern="$1"
     if [[ -n "$RG" ]]; then
-        "$RG" -n -i --no-heading "${EXCLUDES[@]}" "$pattern" "$ROOT" 2>/dev/null || true
+        "$RG" -n -i --no-heading "${RG_EXCLUDES[@]}" "$pattern" . 2>/dev/null || true
     else
-        grep -RInE --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=dist \
-            --exclude-dir=build --exclude-dir=.venv --exclude-dir=target \
-            "$pattern" "$ROOT" 2>/dev/null || true
+        grep -RInEi "${GREP_EXCLUDES[@]}" "$pattern" . 2>/dev/null || true
     fi
 }
 
+# Bucket hits are remembered so Borderline only shows lines no bucket claimed.
+hits() { scan "$1" | tee -a "$SEEN"; }
+
 section() { printf '\n## %s\n\n' "$1"; }
 
-section "A — Transitional preamble candidates"
-scan '(old (server|box|host|lenovo|dell|imac)|replaced (on |20[0-9]{2}-)|salvaged from|died (apr|may|jun|jul|aug|sep|oct|nov|dec|jan|feb|mar) 20|read-only legacy|historical reference only|EXECUTED on [0-9])'
+section "A: Transitional preamble candidates"
+hits '(old (server|box|host|lenovo|dell|imac)|replaced (on |20[0-9]{2}-)|salvaged from|died (apr|may|jun|jul|aug|sep|oct|nov|dec|jan|feb|mar) 20|read-only legacy|historical reference only|EXECUTED on [0-9]|now (lives on|runs on|owned by))'
 
-section "B — Wave/Story/Phase narrative candidates"
-scan '(\(wave [0-9]\)|\(story [0-9]+\)|\(track [0-9]\)|authored: story [0-9]+, wave [0-9]|shipped in (wave|phase|track) [0-9]|wave [0-9] gotcha|wave [0-9] punchlist|wave [0-9] sweep|closed roadmap)'
+section "B: Wave/Story/Phase narrative candidates"
+hits '(\(wave [0-9]\)|\(story [0-9]+\)|\(track [0-9]\)|authored (as part of|: story|: wave)|shipped in (wave|phase|track) [0-9]|wave [0-9] gotcha|wave [0-9] punchlist|wave [0-9] sweep|closed roadmap)'
 
-section "C — Migration/roadmap doc candidates"
+section "C: Migration/roadmap doc candidates"
 if [[ -n "$RG" ]]; then
-    "$RG" --files "${EXCLUDES[@]}" "$ROOT" 2>/dev/null | grep -Ei '(migration-matrix|MIGRATION|PHASES|migration_plan|ROADMAP|WAVE-[0-9])\.(md|MD)$' || true
+    "$RG" --files "${RG_EXCLUDES[@]}" . 2>/dev/null | grep -Ei '(migration-matrix|MIGRATION|PHASES|migration_plan|ROADMAP|WAVE-[0-9])\.(md|MD)$' || true
 else
-    find "$ROOT" -type f \( -iname 'migration-matrix*' -o -iname 'MIGRATION*' -o -iname 'PHASES*' -o -iname 'migration_plan*' -o -iname 'ROADMAP*' -o -iname 'WAVE-*' \) 2>/dev/null || true
+    find . \( -type d \( "${FIND_PRUNE[@]}" \) -prune \) -o -type f \( -iname 'migration-matrix*' -o -iname 'MIGRATION*' -o -iname 'PHASES*' -o -iname 'migration_plan*' -o -iname 'ROADMAP*' -o -iname 'WAVE-*' \) -print 2>/dev/null || true
 fi
-scan '(phase 0 gate|status as of 20[0-9]{2}|🟢|🔵)'
+hits '(phase 0 gate|status as of 20[0-9]{2}|🟢|🔵)'
 
-section "D — Procedural step labels (likely KEEP — check RUNBOOK/PLAYBOOK/GUIDE/HOWTO context)"
-scan '^## phase [0-9] — '
-scan '^### [0-9]\.[0-9] — '
+section "D: Procedural step labels (likely KEEP, check RUNBOOK/PLAYBOOK/GUIDE/HOWTO context)"
+hits '^## phase [0-9] — '
+hits '^### [0-9]\.[0-9] — '
 
-section "E — Code-semantic refs (likely KEEP — check surrounding code)"
-scan '(# legacy (alias|field|attempts|schema|tracks)|# backfill path|# synthesize.*from legacy fields|# (mirror|matches) the legacy .*schema|live-migration|legacy pci|schema migration|migration trap)'
+section "E: Code-semantic refs (likely KEEP, check surrounding code)"
+hits '(# legacy (alias|field|attempts|schema|tracks)|# backfill path|# synthesize.*from legacy fields|# (mirror|matches) the legacy .*schema|live-migration|legacy pci|schema migration|migration trap)'
 
-section "Borderline (raw migration/phase/wave/legacy/formerly/previously hits — manual classify)"
-scan '(phase [0-9]|wave[ -][0-9]|story [0-9]+|migration|migrated|formerly|previously|legacy|backfill|rollout|cutover|punchlist|transitioned from|moved (from|to) )' | head -200
+section "Borderline (raw migration/phase/wave/legacy/formerly/previously hits not listed above, manual classify)"
+scan '(phase [0-9]|wave[ -][0-9]|story [0-9]+|track [0-9]|migration|migrated|formerly|previously|legacy|backfill|rollout|cutover|punchlist|roadmap|replaced with|transitioned from|moved (from|to) )' \
+    | awk -v seen_file="$SEEN" '
+        FILENAME == seen_file { split($0, k, ":"); seen[k[1] ":" k[2]] = 1; next }
+        { split($0, k, ":"); if (!((k[1] ":" k[2]) in seen)) print }' "$SEEN" - \
+    | head -200 || true

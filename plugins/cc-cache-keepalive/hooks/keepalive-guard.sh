@@ -38,26 +38,36 @@ FLAG="${HOME}/.cc-cache-keepalive"
 [ -n "${CC_KEEPALIVE_OFF:-}" ] && exit 0
 
 # Order matters: the two checks above are one stat(2) for anyone who has not
-# opted in. Everything below runs only for a keepalive tick.
+# opted in.
 input=""
 [ -t 0 ] || input="$(cat 2>/dev/null || true)"
 
-# A resumed session has no cron: jobs live in the CLI process that ended, and
-# hooks/keepalive.sh left a pending marker instead of arming at SessionStart.
-# The first real prompt is the moment to arm. The user is working, the turn is
-# paid for anyway, and the instruction rides along as additionalContext at no
-# extra cost. The sentinel never arms: a tick from nowhere is not a real prompt.
-# This is the one place the plugin emits additionalContext; the block path
-# below still does not. JSON escaping needs jq or python3; with neither, the
-# marker stays for the next prompt (fail toward trying again, not toward a
-# malformed payload).
+# Whole-prompt sentinel match, safe by construction rather than by heuristic.
+# The payload is JSON, so a prompt that merely *mentions* the sentinel arrives
+# with its quotes escaped - \"prompt\":\"cc-cache-keepalive\" - which puts a
+# backslash where this pattern needs a quote, and cannot match. The trailing
+# quote makes it whole-prompt, since a JSON string ends at the first unescaped
+# quote. Someone asking a question about this plugin must never be blocked.
+#
+# Anything else is a real prompt. A resumed session has no cron: jobs live in
+# the CLI process that ended, and hooks/keepalive.sh left a pending marker
+# instead of arming at SessionStart. The first real prompt is the moment to arm.
+# The user is working, the turn is paid for anyway, and the instruction rides
+# along as additionalContext at no extra cost. The sentinel never arms: a tick
+# from nowhere is not a real prompt. This is the one place the plugin emits
+# additionalContext; the block path below still does not. JSON escaping needs
+# jq or python3; with neither, the marker stays for the next prompt (fail
+# toward trying again, not toward a malformed payload).
 if ! printf '%s' "$input" | grep -qE '"prompt"[[:space:]]*:[[:space:]]*"cc-cache-keepalive"'; then
   pending_session="$(printf '%s' "$input" \
     | grep -oE '"session_id"[[:space:]]*:[[:space:]]*"[0-9a-fA-F-]{8,}"' \
     | head -n1 | grep -oE '[0-9a-fA-F-]{8,}' | tail -n1)"
   pending="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.cc-cache-keepalive/pending-${pending_session:-none}"
   if [ -n "$pending_session" ] && [ -f "$pending" ]; then
-    instruction="$(bash "$(dirname "${BASH_SOURCE[0]}")/keepalive.sh" --now 2>/dev/null || true)"
+    instruction="$(bash "$(dirname "${BASH_SOURCE[0]}")/keepalive.sh" --now 2>/dev/null)"
+    # a non-zero exit is a crash, not a decline: keep the marker so the next
+    # prompt tries again, and emit nothing (the output may be partial)
+    [ $? -eq 0 ] || exit 0
     if [ -z "$instruction" ]; then
       rm -f "$pending"  # keepalive.sh declined (flag gone, kill switch): nothing to arm
       exit 0
@@ -76,15 +86,6 @@ if ! printf '%s' "$input" | grep -qE '"prompt"[[:space:]]*:[[:space:]]*"cc-cache
   fi
   exit 0
 fi
-
-# Whole-prompt sentinel match, safe by construction rather than by heuristic.
-# The payload is JSON, so a prompt that merely *mentions* the sentinel arrives
-# with its quotes escaped - \"prompt\":\"cc-cache-keepalive\" - which puts a
-# backslash where this pattern needs a quote, and cannot match. The trailing
-# quote makes it whole-prompt, since a JSON string ends at the first unescaped
-# quote. Someone asking a question about this plugin must never be blocked.
-printf '%s' "$input" \
-  | grep -qE '"prompt"[[:space:]]*:[[:space:]]*"cc-cache-keepalive"' || exit 0
 
 # Both the prompt cache and the stamp are per-session, so the stamp is keyed by
 # session. An absent id fails open rather than falling back to a shared file:
@@ -109,17 +110,15 @@ block() { # <reason>
   exit 0
 }
 
-# TTL measured, not assumed: eight sessions idled for a controlled interval then
-# took exactly one turn. Hits up to 57.9 min (cache_read 42585 / create 15),
-# total misses from 60.8 min on (cache_read 0). So the cliff is 60 min, and it
-# is a cliff, not a slope. Safety is the margin for what the arithmetic cannot
-# see - a machine that slept, or a tick queued behind a long turn. It does NOT
-# need to cover cron jitter: that is a constant phase offset per job, so it
-# shifts every tick equally and never widens the gap between them.
+# TTL measured, not assumed (docs/experiments.md #16): a cliff at 60 min, not a
+# slope. Safety is the margin for what the arithmetic cannot see - a machine
+# that slept, or a tick queued behind a long turn. It does NOT need to cover
+# cron jitter: that is a constant phase offset per job, so it shifts every tick
+# equally and never widens the gap between them.
 TTL_MIN="${CC_KEEPALIVE_TTL_MIN:-60}"
 SAFETY_MIN="${CC_KEEPALIVE_SAFETY_MIN:-10}"
 case "$TTL_MIN" in ''|*[!0-9]*) TTL_MIN=60 ;; esac
-case "$SAFETY_MIN" in ''|*[!0-9]*) SAFETY_MIN=15 ;; esac
+case "$SAFETY_MIN" in ''|*[!0-9]*) SAFETY_MIN=10 ;; esac
 
 PROFILE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 STATE_DIR="$PROFILE_DIR/.cc-cache-keepalive"
@@ -130,9 +129,10 @@ NOW="$(date +%s)"
 # GC inside the sentinel branch only - at most twice an hour per session, and it
 # keeps the every-prompt hot path free of find(1). (cc-usage-guard sweeps on
 # every UserPromptSubmit; it has no equally cheap branch to hide the sweep in.)
+# A pending marker older than a week belongs to a session resumed only to be read.
 [ -d "$STATE_DIR" ] && find "$STATE_DIR" -maxdepth 1 -type f \
   \( \( -name 'last-real-turn-*' -mtime +7 \) -o \( -name 'last-turn-*' -mtime +7 \) \
-     -o \( -name '.tmp.*' -mmin +60 \) \) \
+     -o \( -name 'pending-*' -mtime +7 \) -o \( -name '.tmp.*' -mmin +60 \) \) \
   -delete 2>/dev/null
 
 # read_stamp <path>: epoch from line 1, or nothing when the file is absent,

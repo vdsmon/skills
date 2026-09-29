@@ -13,132 +13,108 @@
       "name": "slack-draft",
       "source": "./plugins/slack-draft",
       "description": "Draft a Slack message for the user to send: Slack mrkdwn, lead-with-conclusion, backticked identifiers and domain values, ASCII punctuation. Defaults to English and a plain high-level register, or pass --tech for a code-reading peer. Draft only, never posts. Portable across SKILL.md-native hosts.",
-      "version": "0.3.3"
+      "version": "0.3.4"
     },
     {
       "name": "skill-polish",
       "source": "./plugins/skill-polish",
-      "description": "Post-mortem for any skill: scans a session for friction and applies concrete edits to the responsible skill file. Portable across SKILL.md-native hosts.",
-      "version": "1.3.3"
-    },
-    {
-      "name": "cc-caveman",
-      "source": "./plugins/cc-caveman",
-      "description": "Always-on caveman full mode: drops articles, filler, and tool-call narration while keeping every technical fact exact. Installing is the opt-in — a SessionStart hook injects the ruleset and a per-prompt one-liner keeps it anchored (CC_CAVEMAN_OFF=1 skips a session). Ships /caveman-compress to shrink memory files the same way. Extracted (full mode only) from JuliusBrussee/caveman, MIT. Claude Code only (hooks).",
-      "version": "0.1.0"
-    },
-    {
-      "name": "cc-tokenomics",
-      "source": "./plugins/cc-tokenomics",
-      "description": "Token usage, cache hit rates, and Max plan consumption analyzer. /cc-tokenomics dashboard + reference docs on rate limits, cache lifecycle, and empirical billing experiments. Claude Code only.",
-      "version": "2.1.4"
+      "description": "Post-mortem for any skill: finds friction in a session, traces it to the responsible skill file, and edits that file's source checkout, not the plugin install copy. Portable across SKILL.md-native hosts.",
+      "version": "1.4.0"
     },
     {
       "name": "cc-cache-keepalive",
       "source": "./plugins/cc-cache-keepalive",
-      "description": "Keeps Claude Code's prompt cache warm on Max plans via a silent cron, cancelling any tick a recent real turn already refreshed and any tick that would land on a cache that already expired (machine slept, went offline). Opt-in via ~/.cc-cache-keepalive flag file. A Stop sensor stamps real turns and API-answered pings; a UserPromptSubmit guard drops warm and cold ticks before they cost a request; everything fails open. Cron prompt is the sentinel 'cc-cache-keepalive', so you can gate Stop hooks on it to silence turn-end sounds. Claude Code only (hook + cron).",
-      "version": "1.7.0"
+      "description": "Keeps Claude Code's prompt cache warm on Max plans with an opt-in silent cron, and cancels any tick that a recent real turn or an already-expired cache makes pointless. Claude Code only.",
+      "version": "1.7.1"
     },
     {
       "name": "cc-usage-guard",
       "source": "./plugins/cc-usage-guard",
-      "description": "Pause-at-limit guard for Claude Code. A hook-driven poller reads 5h + weekly rate-limit usage from the account usage endpoint, so it works in the desktop app, the terminal, and headless runs alike (an optional statusLine sensor supplies the same numbers for free where one renders). PostToolUse/UserPromptSubmit hooks watch that state in two tiers: a soft WARN nudge on approach, then a hard PARK that pauses the session, schedules a one-shot auto-resume cron for just after the window resets, and fires a push notification. Spawned agents (subagents, teammates) wind down and hand back instead of parking, and if the usage source goes dark the guard warns instead of going silently blind. Per-profile state, per-window thresholds; see the README for details. Claude Code only (hooks).",
-      "version": "0.9.1"
+      "description": "Pauses Claude Code before it hits the 5-hour or weekly usage limit and auto-resumes when the window resets, on every surface including the desktop app. Claude Code only.",
+      "version": "0.10.0"
     },
     {
       "name": "prep-compact",
       "source": "./plugins/prep-compact",
-      "description": "Audit in-flight state before any context-compacting step, save what would be lost (local commits, state files, notes), and produce a copy-paste /compact message plus a queue-able follow-up that chains the next action when compact finishes. Portable across Agent Skills hosts, since compacting is a general concept, not Claude-specific.",
-      "version": "1.9.0"
+      "description": "Audit in-flight session state before compaction truncates history, and save what would be lost. Commits real work locally, syncs stale plan and state files, and notes chat-only decisions, asking first only for risky items, then prints a paste-ready /compact message plus a queued follow-up. Portable across SKILL.md-native hosts.",
+      "version": "1.9.1"
     },
     {
       "name": "prep-exit",
       "source": "./plugins/prep-exit",
-      "description": "Audit in-flight state before the session is killed, save what only the conversation knows into files and persistent memory, and leave a handoff note plus a paste-ready resume prompt for the next session. Sibling of prep-compact for the case where nothing survives. Portable across Agent Skills hosts.",
-      "version": "0.1.0"
+      "description": "Save what only the conversation knows before a session ends, so a fresh session can pick up the work. Commits real work locally, syncs state files, writes a handoff note and a memory pointer, asks once only for risky items, and prints a paste-ready resume prompt. Portable across SKILL.md-native hosts.",
+      "version": "0.2.0"
     },
     {
       "name": "prep-goal",
       "source": "./plugins/prep-goal",
-      "description": "Interrogate a rough objective into a tight, verifiable /goal completion condition before handing it to an autonomous goal loop. Grills one question at a time to pin the real end-state, the gate (a runnable check whose raw output the loop pastes), a scope fence, the forbidden cheat, and guardrails (turn cap + credential liveness), then emits a short paste-ready /goal line. Pass --delegate to emit a goal that runs each iteration in a fresh implement subagent so a long run's context grows slowly. Built for Claude Code's native /goal; the technique ports to any autonomous-loop host.",
-      "version": "0.4.2"
+      "description": "Interrogate a rough objective into a tight, verifiable /goal completion condition before handing it to an autonomous goal loop. Pins the end-state, a gate whose raw output the loop pastes, a scope fence, the forbidden cheat, and a turn cap. Portable across SKILL.md-native hosts.",
+      "version": "0.4.3"
     },
     {
       "name": "humanize",
       "source": "./plugins/humanize",
-      "description": "Strip AI-writing tells from text. Detects em-dash overuse, AI vocabulary, inflated significance, rule-of-three, sycophancy, compound coinages, and 20+ more patterns. `--casual` also adds the small inconsistencies real writers have. Outputs only the corrected text; files are edited in place. Portable across SKILL.md-native hosts.",
-      "version": "1.6.0"
-    },
-    {
-      "name": "loop-finder",
-      "source": "./plugins/loop-finder",
-      "description": "Loop discovery + race + feature-driven iteration. Two skills: loop-finder (engineers a self-verifiable gate for a task class, races parallel variants, converges on the best loop config, with HITL concentrated at permission boundaries) and feature-cycle (outer queued-fix chain that ships features against the converged gate, retros pain, queues one harness fix per cycle: Karpathy autoresearch discipline applied to dev experience).",
-      "version": "0.3.2"
+      "description": "Strip AI-writing tells from text. Detects em-dash overuse, AI vocabulary, inflated significance, rule-of-three, sycophancy, compound coinages, and 20+ more patterns. `--casual` also adds the small inconsistencies real writers have. Outputs only the corrected text and edits files in place. Portable across SKILL.md-native hosts.",
+      "version": "1.6.1"
     },
     {
       "name": "brainstorming",
       "source": "./plugins/brainstorming",
-      "description": "Design-before-code gate. Explores intent, proposes 2-3 approaches, presents a design, and gets approval before any implementation. Use before creating features, building components, adding functionality, or changing behavior. Portable across SKILL.md-native hosts.",
-      "version": "0.1.3"
+      "description": "Design-before-code gate that sizes each request as a spike, a bounded change, or architectural work, and gets approval on a design before any code. Only architectural work gets a written spec and a planning handoff. Portable across SKILL.md-native hosts.",
+      "version": "0.2.0"
     },
     {
       "name": "systematic-debugging",
       "source": "./plugins/systematic-debugging",
-      "description": "Four-phase debugging discipline (root-cause investigation, pattern analysis, hypothesis, single-fix implementation). No fixes before investigation; 3+ failed fixes means stop and question the architecture. Use on a reproducible bug, test failure, or unexpected behavior in code you can run and inspect directly, before proposing fixes; for an incident reported across runtime systems with possibly-unreachable evidence, use the investigate skill instead. Portable across SKILL.md-native hosts.",
-      "version": "0.1.4"
+      "description": "Four-phase debugging discipline (root-cause investigation, pattern analysis, hypothesis, single-fix implementation). No fixes before investigation; 3+ failed fixes means stop and question the architecture. For bugs in code you can run. Portable across SKILL.md-native hosts.",
+      "version": "0.2.0"
     },
     {
       "name": "skill-smith",
       "source": "./plugins/skill-smith",
-      "description": "Forge for Agent Skills: create, test, evaluate, optimize triggering, and package skills. Merges an empirical eval loop (run with-skill vs baseline, benchmark, iterate) with TDD-for-skills discipline (baseline-test first, close rationalization loopholes). Bundles the eval harness, benchmark viewer, description-triggering optimizer, and a design-vocabulary reference (predictability, context vs cognitive load, information hierarchy, leading words, failure modes). Claude-Code-leaning (subagents + scripts).",
-      "version": "0.4.0"
+      "description": "Build and test Agent Skills with a baseline-first eval loop (Sonnet runs, benchmark viewer) and a skill-design vocabulary. Portable across SKILL.md-native hosts.",
+      "version": "0.5.0"
     },
     {
       "name": "git-cleanup",
       "source": "./plugins/git-cleanup",
-      "description": "Clean up stale git branches and worktrees. Finds branches merged into dev/develop/master/main (squash-merge aware on GitHub remotes via gh PR state), checks worktrees for uncommitted changes, removes what's safe while skipping dirty worktrees. Use for 'clean up branches', 'git housekeeping', 'remove merged branches', 'clean worktrees'. Portable across SKILL.md-native hosts.",
-      "version": "0.3.1"
+      "description": "Removes local git branches and worktrees that are safely merged into dev/develop/master/main, skipping dirty worktrees and the main checkout. Squash-merge aware on GitHub remotes, including PR branches rewritten before merge. Portable across SKILL.md-native hosts.",
+      "version": "0.4.0"
     },
     {
       "name": "strip-migration-cruft",
       "source": "./plugins/strip-migration-cruft",
-      "description": "Scan a repo for transitional / migration / phase / wave / story / legacy-alias cruft comments, bucket into safe-to-strip vs keep-semantic, propose surgical edits and execute after confirmation. Use for 'scan for migration comments', 'remove phase/wave/story refs', 'strip transitional cruft'. Portable across SKILL.md-native hosts.",
-      "version": "0.2.2"
+      "description": "Finds comments and docs that narrate past project history (phase, wave, story, migration notes), sorts cruft from live meaning, and strips the cruft after confirmation. Portable across SKILL.md-native hosts.",
+      "version": "0.3.0"
     },
     {
       "name": "grilling",
       "source": "./plugins/grilling",
-      "description": "Relentless one-question-at-a-time interview that stress-tests a plan or design to convergence: facts get looked up in the codebase, decisions go to the human, and nothing is enacted until shared understanding is confirmed. Bundles grilling (the engine), grill-with-docs (grill + write ADRs and a glossary as you go), and domain-modeling (sharpen a ubiquitous language, CONTEXT.md glossary, sparing ADRs). Portable across SKILL.md-native hosts.",
-      "version": "0.2.1"
-    },
-    {
-      "name": "wayfinder",
-      "source": "./plugins/wayfinder",
-      "description": "Chart work too big for one agent session as a shared map of investigation tickets on the repo's issue tracker: name the destination, sketch the fog of war, then resolve one ticket per session (grilling, research, prototype, task) until the way is clear. Plans decisions, never deliverables. Pairs with the grilling plugin. Portable across SKILL.md-native hosts.",
-      "version": "0.1.1"
+      "description": "Relentless interview that stress-tests a plan, decision, or idea one round of questions at a time, until you and the agent agree. Bundles grilling, grill-with-docs (grill and write docs as you go), and domain-modeling (sharpen project terms in GLOSSARY.md). Portable across SKILL.md-native hosts.",
+      "version": "0.3.0"
     },
     {
       "name": "teach",
       "source": "./plugins/teach",
-      "description": "Stateful, multi-session teaching workspace: grounds every lesson in a MISSION.md, gathers trusted RESOURCES.md, produces short self-contained HTML lessons in the learner's zone of proximal development, tracks progress via learning-records, and builds storage strength through retrieval, spacing, and interleaving. Portable across SKILL.md-native hosts.",
-      "version": "0.2.1"
+      "description": "Stateful, multi-session teaching workspace that turns a topic into short HTML lessons built for long-term retention. Grounds each lesson in a MISSION.md and trusted RESOURCES.md, and tracks progress in learning records and a GLOSSARY.md. Portable across SKILL.md-native hosts.",
+      "version": "0.2.2"
     },
     {
       "name": "codebase-design",
       "source": "./plugins/codebase-design",
-      "description": "Shared vocabulary for designing deep modules: a lot of behaviour behind a small interface, placed at a clean seam, testable through that interface. Precise glossary (module, interface, implementation, depth, seam, adapter, leverage, locality), the deletion test, the one-adapter-vs-two seam rule, and testability checks. Bundles DEEPENING.md and DESIGN-IT-TWICE.md. Portable across SKILL.md-native hosts.",
-      "version": "0.1.3"
+      "description": "Shared vocabulary for designing deep modules: a lot of behaviour behind a small interface, placed at a clean seam, testable through that interface. Adds the deletion test, the one-adapter-vs-two seam rule, a deepening guide, and design-it-twice. Portable across SKILL.md-native hosts.",
+      "version": "0.1.4"
     },
     {
       "name": "question",
       "source": "./plugins/question",
       "description": "Answer a genuine question in full, with no edits and no side effects. Treats 'why X and not Y?' as curiosity, not as a hidden request to switch to Y or an attack on X. Investigates read-only, explains the tradeoff, gives an honest verdict, and stops. Portable across SKILL.md-native hosts.",
-      "version": "0.1.0"
+      "version": "0.1.1"
     },
     {
       "name": "open-pr",
       "source": "./plugins/open-pr",
-      "description": "Write a short, plain pull request description a teammate reads in a minute: what changes, why now, what they must do. A script checks length, file-by-file bullets, AI tells, local paths and attribution; the user approves the text before the push and gh pr create or edit. Use for 'open a PR', 'update the PR body', 'this PR reads like AI'. Portable across SKILL.md-native hosts.",
+      "description": "Write a short, plain pull request description a teammate reads in a minute: what changes, why now, what they must do. A script checks length, file-list bullets, AI tells, local paths and attribution. The user approves the text before any push or PR. Use for 'open a PR' or 'update the PR body'. Portable across SKILL.md-native hosts.",
       "version": "0.1.0"
     }
   ]

@@ -1,7 +1,7 @@
 {
   "name": "open-pr",
   "version": "0.1.0",
-  "description": "Write a short, plain pull request description a teammate reads in a minute: what changes, why now, what they must do. A script checks length, file-by-file bullets, AI tells, local paths and attribution; the user approves the text before the push and gh pr create or edit. Use for 'open a PR', 'update the PR body', 'this PR reads like AI'. Portable across SKILL.md-native hosts.",
+  "description": "Write a short, plain pull request description a teammate reads in a minute: what changes, why now, what they must do. A script checks length, file-list bullets, AI tells, local paths and attribution. The user approves the text before any push or PR. Use for 'open a PR' or 'update the PR body'.",
   "author": {
     "name": "Victor De Simone",
     "email": "victorsmoliveira@gmail.com",

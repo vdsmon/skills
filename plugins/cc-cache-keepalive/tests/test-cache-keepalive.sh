@@ -164,8 +164,9 @@ assert_silent "exact sentinel passes when the last real turn is stale" \
 reset_state; set_flag "30m"; stamp "$SA" 1200
 assert_silent "boundary: age == window fires (strict <)" \
   "$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")"
-reset_state; set_flag "30m"; stamp "$SA" 1199
-assert_contains "boundary: age == window - 1 blocks" \
+# 1198, not 1199: a second can tick between writing the stamp and the guard reading the clock
+reset_state; set_flag "30m"; stamp "$SA" 1198
+assert_contains "boundary: age just under the window blocks" \
   "$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")" '"decision":"block"'
 
 # The false-positive cases that matter: a user talking ABOUT the plugin.
@@ -351,6 +352,11 @@ assert_contains "CC_KEEPALIVE_SAFETY_MIN=0 widens the window" \
   "$(run_guard_env CC_KEEPALIVE_SAFETY_MIN=0 $(( 29 * 60 )))" '"decision":"block"'
 assert_silent "CC_KEEPALIVE_SAFETY_MIN=0 still caps at the interval" \
   "$(run_guard_env CC_KEEPALIVE_SAFETY_MIN=0 $(( 31 * 60 )))"
+
+# an invalid safety falls back to the documented default of 10 (window 20m at 30m)
+reset_state; set_flag "30m"
+assert_contains "CC_KEEPALIVE_SAFETY_MIN=banana falls back to 10, not 15" \
+  "$(run_guard_env CC_KEEPALIVE_SAFETY_MIN=banana $(( 17 * 60 )))" '"decision":"block"'
 
 reset_state; set_flag "30m" "25m"; stamp "$SA" $(( 24 * 60 ))
 assert_contains "flag line 2 overrides the derived window" \
@@ -655,24 +661,43 @@ assert_silent "15:20 tick fires: the chain is back" \
   "$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")"
 
 # Parser drift: keepalive.sh owns the interval contract, the guard re-implements
-# it. Pin both to one input table so they cannot drift apart silently.
+# it. Pin both to one input table so they cannot drift apart silently. The
+# spacing of the cron keepalive.sh prints is what it made of the interval.
 echo
 echo "# integration: interval parser drift"
-while read -r iv reported; do
+cron_step() { # <keepalive.sh output> -> minutes between consecutive ticks
+  local cron min hour a rest b
+  cron=$(printf '%s' "$1" | sed -n 's/^ *cron: *"\(.*\)"$/\1/p')
+  min=${cron%% *}
+  hour=$(printf '%s' "$cron" | cut -d' ' -f2)
+  case "$min" in
+    '*') echo 1 ;;
+    '*/'*) echo "${min#*/}" ;;
+    *,*) a=${min%%,*}; rest=${min#*,}; b=${rest%%,*}; echo $(( b - a )) ;;
+    *) case "$hour" in
+         '*') echo 60 ;;
+         '*/'*) echo $(( ${hour#*/} * 60 )) ;;
+         *,*) a=${hour%%,*}; rest=${hour#*,}; b=${rest%%,*}; echo $(( (b - a) * 60 )) ;;
+         *) echo 1440 ;;
+       esac ;;
+  esac
+}
+while read -r iv minutes; do
   [ -n "$iv" ] || continue
   reset_state
   if [ "$iv" = "EMPTY" ]; then : > "$FLAG"; else set_flag "$iv"; fi
   out=$(printf '{"source":"startup"}' | HOME="$TESTHOME" bash "$SESSIONSTART" 2>&1)
-  assert_contains "keepalive.sh reports interval $iv as $reported" "$out" "interval: $reported"
+  assert_eq "keepalive.sh turns interval $iv into a cron every ${minutes}m" "$(cron_step "$out")" "$minutes"
 done <<'TABLE'
-30m 30m
-10m 10m
-90s 90s
-1h 1h
-08m 08m
-0m 30m
-banana 30m
-EMPTY 30m
+30m 30
+10m 10
+90s 2
+1h 60
+2h 120
+08m 8
+0m 30
+banana 30
+EMPTY 30
 TABLE
 
 reset_state; set_flag "08m"
@@ -689,12 +714,15 @@ assert_lacks "keepalive.sh emits no divide-by-zero for 0m" "$out" "division by 0
 echo
 echo "# integration: garbage collection"
 reset_state; set_flag "30m"; stamp "$SA" 60; stamp_any "$SA" 60
-touch "$STATE_DIR/last-real-turn-old" "$STATE_DIR/last-turn-old" "$STATE_DIR/.tmp.999"
-touch -t 202601010000 "$STATE_DIR/last-real-turn-old" "$STATE_DIR/last-turn-old" "$STATE_DIR/.tmp.999"
+touch "$STATE_DIR/last-real-turn-old" "$STATE_DIR/last-turn-old" "$STATE_DIR/.tmp.999" "$STATE_DIR/pending-old"
+touch -t 202601010000 "$STATE_DIR/last-real-turn-old" "$STATE_DIR/last-turn-old" "$STATE_DIR/.tmp.999" "$STATE_DIR/pending-old"
+touch "$STATE_DIR/pending-$SB"
 run_guard "$(ups "$SA" '"cc-cache-keepalive"')" >/dev/null
 assert_file_absent "GC sweeps stale real-turn stamps" "$STATE_DIR/last-real-turn-old"
 assert_file_absent "GC sweeps stale any-turn stamps" "$STATE_DIR/last-turn-old"
 assert_file_absent "GC sweeps orphaned tmp files" "$STATE_DIR/.tmp.999"
+assert_file_absent "GC sweeps pending markers older than a week" "$STATE_DIR/pending-old"
+assert_file_present "GC keeps a recent pending marker" "$STATE_DIR/pending-$SB"
 assert_file_present "GC keeps the live session's real-turn stamp" "$STATE_DIR/last-real-turn-$SA"
 assert_file_present "GC keeps the live session's any-turn stamp" "$STATE_DIR/last-turn-$SA"
 
@@ -717,6 +745,8 @@ out=$(run_sessionstart "$(ss "$SA" startup)")
 assert_contains "startup emits the CronCreate instruction" "$out" "REQUIRED SETUP"
 assert_contains "startup instruction carries a cron expression" "$out" 'cron:      "'
 assert_file_absent "startup leaves no pending marker" "$STATE_DIR/pending-$SA"
+assert_contains "the directive keeps the /loop warning" "$out" "Do NOT invoke /loop"
+assert_lacks "the directive carries no human-only Stop-hook note" "$out" "Stop-hook"
 
 out=$(run_sessionstart "$(ss "$SA" compact)")
 assert_silent "compact emits nothing (the cron survives compaction)" "$out"
@@ -750,6 +780,34 @@ assert_silent "--now without the flag prints nothing" "$(HOME="$TESTHOME" bash "
 set_flag "30m"
 run_sessionstart "$(ss "$SA" resume)" >/dev/null
 assert_silent "kill switch stops the arming too" "$(CC_KEEPALIVE_OFF=1 run_guard "$(ups "$SA" '"hi"')")"
+
+# keepalive.sh exits 0 on every path it chooses, because the guard reads any
+# other exit as a crash. Crash and decline must then part ways in the guard: a
+# crash keeps the pending marker for the next prompt, a decline clears it.
+for src in startup clear compact resume; do
+  run_sessionstart "$(ss "$SA" "$src")" >/dev/null
+  assert_eq "keepalive.sh exits 0 on source=$src" "$?" "0"
+done
+HOME="$TESTHOME" bash "$SESSIONSTART" --now </dev/null >/dev/null 2>&1
+assert_eq "keepalive.sh --now exits 0" "$?" "0"
+printf '%s' "$(ss "$SA" startup)" | HOME="$TESTHOME" CC_KEEPALIVE_OFF=1 bash "$SESSIONSTART" >/dev/null 2>&1
+assert_eq "keepalive.sh exits 0 under the kill switch" "$?" "0"
+rm -f "$FLAG"
+run_sessionstart "$(ss "$SA" startup)" >/dev/null
+assert_eq "keepalive.sh exits 0 without the flag" "$?" "0"
+set_flag "30m"
+
+FAKEHOOKS="$TESTHOME/fakehooks"
+mkdir -p "$FAKEHOOKS"
+cp "$GUARD" "$FAKEHOOKS/keepalive-guard.sh"
+run_fake_guard() { printf '%s' "$1" | HOME="$TESTHOME" bash "$FAKEHOOKS/keepalive-guard.sh" 2>&1; }
+printf 'echo "<cc-cache-keepalive> partial"\nexit 3\n' > "$FAKEHOOKS/keepalive.sh"
+rm -rf "$STATE_DIR"; run_sessionstart "$(ss "$SA" resume)" >/dev/null
+assert_silent "a crashed keepalive.sh arms nothing" "$(run_fake_guard "$(ups "$SA" '"fix the bug"')")"
+assert_file_present "a crashed keepalive.sh keeps the pending marker" "$STATE_DIR/pending-$SA"
+printf 'exit 0\n' > "$FAKEHOOKS/keepalive.sh"
+assert_silent "a declining keepalive.sh arms nothing" "$(run_fake_guard "$(ups "$SA" '"fix the bug"')")"
+assert_file_absent "a deliberate decline clears the pending marker" "$STATE_DIR/pending-$SA"
 reset_state
 
 

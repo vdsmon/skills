@@ -1,98 +1,102 @@
 # CLAUDE.md
 
-File guide Claude Code (claude.ai/code) work in this repo.
+Guidance for Claude Code when it works in this repo.
 
 ## Repository purpose
 
-Personal Claude Code plugin marketplace published as `vdsmon/skills`. Each skill ship own plugin — users install only what want. No build, no package manager — pure content (Markdown skill files, shell hooks, one Python report script). Tests exist only where hooks have real failure modes — `mise run test:usage-guard` and `mise run test:cache-keepalive`, both sensor/guard pairs; run them when touching those hooks. Two opt-in live tests cover the failure modes that are invisible when they break: `mise run test:keepalive-live` confirms Claude Code still honours a `UserPromptSubmit` block for cron ticks, and `mise run test:keepalive-directive` confirms the SessionStart directive still actually gets obeyed. Both spend tokens; re-run them after a CLI upgrade, since either breaking is silent and only shows up on the bill.
+`vdsmon/skills` is a personal plugin marketplace for Claude Code and Codex. Each skill ships as its own plugin, so users install only what they want. There is no build and no package manager: plugins are Markdown skills, plus helper scripts and shell hooks where a plugin needs them.
 
 ## Layout and the marketplace contract
 
 ```
-.claude-plugin/marketplace.json     # Claude Code marketplace — lists every plugin (source of truth)
-.agents/plugins/marketplace.json    # Codex CLI marketplace — GENERATED, non-cc- plugins only
-plugins/<plugin-name>/
-  .claude-plugin/plugin.json        # Plugin manifest (name, version, hooks, skills path) — source of truth
-  .codex-plugin -> .claude-plugin   # Symlink (non-cc- only); Codex reads .codex-plugin/plugin.json
-  skills/<skill-name>/SKILL.md      # Skill prompt with YAML frontmatter
-  skills/<skill-name>/scripts/*     # Optional scripts the skill calls
-  hooks/*.sh                        # Optional event hooks declared in plugin.json
+.claude-plugin/marketplace.json     # Claude Code marketplace: one entry per plugin
+.agents/plugins/marketplace.json    # Codex marketplace: GENERATED, non-cc- plugins only
+plugins/<plugin>/
+  .claude-plugin/plugin.json        # Manifest (name, version, description, hooks): source of truth
+  .codex-plugin -> .claude-plugin   # GENERATED symlink, non-cc- only; Codex reads .codex-plugin/plugin.json
+  skills/<skill>/SKILL.md           # Skill prompt with YAML frontmatter
+  skills/<skill>/agents/openai.yaml # GENERATED for user-only skills of non-cc- plugins
+  skills/<skill>/scripts/*          # Optional helper scripts the skill calls
+  hooks/*.sh                        # Optional event hooks declared in plugin.json (cc- only)
+  tests/test-*.sh                   # Optional offline test suite; tests/live-*.sh spend tokens
+scripts/                            # sync-codex.sh, bump-plugin.sh, check.py, test-offline.sh
+docs/                               # Repo notes that never ship, e.g. docs/experiments.md
+evals/<skill>/                      # Eval fixtures kept out of the shipped plugin; point skill-smith at them by path
 ```
 
-Dual marketplace, one source of truth. `.claude-plugin/*` is authored; the Codex artifacts are **derived** by `scripts/sync-codex.sh` (run it after adding/removing/renaming a plugin). Never hand-edit the Codex side:
+You author `plugin.json` and the skills. `scripts/sync-codex.sh` (`mise run sync`) derives the rest, so never hand-edit a generated file:
 
-- `.codex-plugin` is a **symlink to `.claude-plugin`** (git mode 120000). Codex requires the manifest at `.codex-plugin/plugin.json`; the symlink means there is exactly one `plugin.json` per plugin, so version and description can never drift between hosts. `bump-plugin.sh` only touches `.claude-plugin/plugin.json` — the Codex side follows for free.
-- `.agents/plugins/marketplace.json` is regenerated from `.claude-plugin/marketplace.json` (cc- plugins dropped, schema remapped to Codex's `source`/`policy`/`category` shape).
-- **cc- plugins are not Codex-installable** (hooks, `` !`cmd` `` injection, `${CLAUDE_SKILL_DIR}`, session-JSONL parsing don't run on Codex). They get no `.codex-plugin` symlink and are excluded from the Codex marketplace. A `.codex-plugin` symlink means "Codex-installable".
+- Each marketplace entry's `description` and `version` come from its `plugin.json`. The description gets one host note appended: "Portable across SKILL.md-native hosts." or, for cc- plugins, "Claude Code only." Write the description in `plugin.json` only, with no host note.
+- `.codex-plugin` is a symlink to `.claude-plugin` (git mode 120000), so each plugin has exactly one `plugin.json` and the two hosts cannot drift.
+- `.agents/plugins/marketplace.json` is the Claude marketplace minus cc- plugins, remapped to Codex's `source`/`policy`/`category` shape.
+- `agents/openai.yaml` sets `policy.allow_implicit_invocation: false` for every non-cc- skill with `disable-model-invocation: true`. Codex ignores that frontmatter flag; the file hides the skill from Codex's model listing, and an explicit `$skill` call still works.
+- The README plugin table: whole sentences of each `plugin.json` description, up to 170 chars.
 
-Three invariants preserve when add/rename plugins:
+cc- plugins are Claude-Code-only (hooks, `` !`cmd` `` injection, `${CLAUDE_SKILL_DIR}`, `claude -p`, session-JSONL parsing). They get no `.codex-plugin` symlink and no Codex marketplace entry. Unprefixed plugins must work on any Agent Skills host.
 
-1. **Every plugin listed in `.claude-plugin/marketplace.json`** with `name`, `source: ./plugins/<name>`, `description`, `version`. Forget = plugin invisible to `/plugin install`.
-2. **`plugin.json` `name` must match marketplace `name` and directory name.** Skill dir name under `skills/` independent but conventionally matches.
-3. **Run `mise run sync`** (= `scripts/sync-codex.sh`) after adding/removing/renaming a plugin (or flipping its cc- prefix) to regenerate the symlink + Codex marketplace. Idempotent; commit whatever it changes. `mise run verify` fails if the Codex artifacts are stale.
+To add, rename or remove a plugin, or to flip its cc- prefix: the dir name, the `plugin.json` `name` and the marketplace entry's `name` must match, and the entry needs `source: ./plugins/<name>`. Then run `mise run sync` and commit what it changes. A skill's dir name under `skills/` is independent but usually matches.
 
-Maintainer tasks live in `mise.toml` (task runner only, no tool pinning): `mise run sync` | `bump <plugin> [level]` | `verify`. The scripts under `scripts/` stay runnable standalone for anyone without mise.
+## Checks and tests
 
-The current plugin list lives in `.claude-plugin/marketplace.json` (source of truth) and the generated table in `README.md` — don't re-enumerate it here. Plugins prefixed with `cc-` are Claude-Code-specific (hooks, `` !`cmd` `` dynamic injection, `${CLAUDE_SKILL_DIR}`); unprefixed plugins port cleanly to other Agent Skills hosts (Codex CLI, Gemini CLI, Cursor, Goose, etc.). Knowledge not derivable from the dir names: `cc-tokenomics` is analysis + education only, cache warmup lives in `cc-cache-keepalive`; multi-skill plugins are `loop-finder` (ships `loop-finder` + `feature-cycle`) and `grilling` (ships `grilling` + `domain-modeling` + `grill-with-docs`).
+- `mise run verify` runs sync, fails if a generated file changed, then runs `scripts/check.py`. check.py fails on a broken contract (above), a description over its cap, `when_to_use` on a user-only skill, a cc- feature in an unprefixed plugin, or prep-compact's and prep-exit's `baseline.sh` copies differing (change both together). It warns on a SKILL.md over 100 lines.
+- `mise run test` runs every offline suite (`plugins/*/tests/test-*.sh`). Run the suite of any plugin whose hooks or scripts you touch.
+- CI (`.github/workflows/ci.yml`, on macOS because the hooks use BSD `stat` and `date`) runs sync, check.py and the offline suites on every pull request and on main.
+- `mise run test:keepalive-live` and `mise run test:keepalive-directive` are live tests: they spend tokens, so CI never runs them. Re-run them after a Claude Code upgrade, because both cover failures that are silent and only show up on the bill.
 
 ## Anatomy of a skill
 
-`SKILL.md` frontmatter fields affect behavior:
+Frontmatter fields that change behavior:
 
-- `name` — slug to invoke skill
-- `description` — what skill does + when to use; third person. Claude Code matches against user intent. Keep ≤280 chars, push trigger phrases to `when_to_use`.
-- `when_to_use` — trigger phrases. Appended to description in the skill listing. Shared 1,536-char cap.
-- `argument-hint` / `arguments` — autocomplete hint + named positional args for `$ARGUMENTS`/`$N`/`$name` substitution.
-- `allowed-tools` — pre-approved Bash/tool patterns (see `humanize`, `cc-tokenomics`).
-- `paths` — glob gate; auto-trigger only when matching files are open.
-- `context: fork` + `agent` — run skill in an isolated subagent.
-- `disable-model-invocation` — user-only (manual `/slash` trigger).
-- `user-invocable: false` — hide from `/` menu (background knowledge only).
+- `name`: the slug that invokes the skill.
+- `description`: what the skill does and when to use it, third person, 280 chars or fewer. Codex and other hosts read only this field, so name each distinct trigger once here.
+- `when_to_use`: extra trigger phrases, appended to the description in Claude Code's listing (shared 1,536-char cap). It is ignored on `disable-model-invocation` skills; omit it there.
+- `argument-hint` / `arguments`: autocomplete hint and named positional args for `$ARGUMENTS` / `$N` / `$name`.
+- `allowed-tools`: pre-approved tool patterns (see `humanize`).
+- `paths`: glob gate; auto-trigger only when matching files are open.
+- `context: fork` + `agent`: run the skill in an isolated subagent.
+- `disable-model-invocation: true`: user-only; it fires only on an explicit `/slash` call (on Codex, `$skill`, enforced by the generated `openai.yaml`).
+- `user-invocable: false`: hidden from the `/` menu (background knowledge only).
 
-Invocation policy: gate misfire-prone or token-heavy skills user-only (`disable-model-invocation: true`) so they fire only on explicit `/slash`; keep proactive guardrails (e.g. `brainstorming`) and friction-catchers (e.g. `skill-polish`) model-invocable. An edit/confirm gate inside the skill flow is not a reason to also block auto-fire.
+Invocation policy: make misfire-prone or token-heavy skills user-only, so they fire only on an explicit call. Keep proactive guardrails (e.g. `brainstorming`) and friction-catchers (e.g. `skill-polish`) model-invocable. An edit or confirm gate inside the skill flow is not a reason to also block auto-fire.
 
-Body = prompt, not docs. Second-person imperative. Keep CLAUDE.md concision: every token re-cached on prefix invalidation.
+The body is a prompt, not docs: second-person imperative. Keep this file and every SKILL.md concise, because each token is re-cached on every prefix invalidation.
 
-**Progressive disclosure**: move reference content out of `SKILL.md` into sibling files (see `cc-tokenomics/skills/cc-tokenomics/reference/*.md`). Keep references one level deep — chains of `.md` → `.md` → `.md` cause partial reads. Aim for ≤100 lines in `SKILL.md`.
+**Plugin description** (`plugin.json`): the first sentence must stand alone in 170 chars or fewer, because it becomes the README row. The whole description is 300 chars or fewer. Mechanics go in SKILL.md, not the description.
 
-**Dynamic context injection**: use `` !`cmd` `` inline or `` ```! `` fenced blocks in the skill body to pre-run shell commands. Output replaces the placeholder before the model reads the skill. Use `${CLAUDE_SKILL_DIR}` for portable script paths, `$ARGUMENTS` / `$0` for user args.
+**Progressive disclosure**: move reference content out of SKILL.md into sibling files (see `plugins/skill-smith/skills/skill-smith/references/`). Keep references one level deep: chains of `.md` -> `.md` -> `.md` cause partial reads. Aim for 100 lines or fewer in SKILL.md.
 
-**ultrathink trigger**: include the literal word `ultrathink` anywhere in skill body to switch on extended thinking for the turn when the skill fires. Useful for analysis-heavy skills.
+**Helper scripts**: put deterministic logic in `skills/<skill>/scripts/` and have the skill call it (e.g. prep-compact's `scripts/baseline.sh`). Otherwise the model re-interprets the prose on every run.
 
-## Hooks (cc-cache-keepalive and cc-usage-guard)
+**Dynamic context injection** (cc- only): `` !`cmd` `` inline or `` ```! `` fenced blocks in the skill body run shell commands, and their output replaces the placeholder before the model reads the skill. Use `${CLAUDE_SKILL_DIR}` for script paths, `$ARGUMENTS` / `$0` for user args.
 
-`cc-cache-keepalive` declares three (`SessionStart` → `keepalive.sh`, `Stop` → `keepalive-sensor.sh`, `UserPromptSubmit` → `keepalive-guard.sh`); `cc-usage-guard` declares two. Pattern preserve when adding hooks:
+**ultrathink**: the literal word `ultrathink` anywhere in the skill body switches on extended thinking for the turn when the skill fires. Use it on purpose, for analysis-heavy skills.
 
-- **Opt-in via flag file in `$HOME`** (`~/.cc-cache-keepalive`). Every hook short-circuits with `exit 0` when flag absent — zero output, zero side effects for non-opt-in users. Cheapest check first: the flag `stat` precedes reading stdin.
-- **Flag file doubles as config**: line 1 = cron interval, line 2 = cancel window, both regex-validated with fallback. Env vars override.
-- **Hook emits instruction inside `<name-of-hook>` XML tag to stdout.** Claude Code injects stdout as system reminder; model sees as directive to schedule `CronCreate`. Cron prompt is the bare sentinel `cc-cache-keepalive` — no prefix. Gate Stop hooks on that string to silence turn-end sounds.
-- **A hook that only *asks* the model to do something must have its wording measured, not guessed.** Handed an ordinary first prompt, a model answers the user and skips the aside — the keepalive directive scored 0/8 that way, creating no cron at all, with no error anywhere. Lead with `REQUIRED SETUP`, order the steps explicitly ahead of the user's request, and keep it terse (adding a "why it matters" paragraph diluted it back down). Re-measure any reword with `mise run test:keepalive-directive`.
-- **Do NOT use `/loop` for scheduling** — its `Nm` → `*/N * * * *` rewrite lands every user on fleet-peak minutes (:00/:30). The hook computes an anchored cron itself.
-- **Sensor/guard pairs**: state under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.<plugin>/`, keyed by `session_id` (never an unkeyed shared file — that leaks one session's state into another). `set -u`, never `set -eu`, and an explicit `exit 0` on every path: a `Stop` hook exiting 2 blocks stopping, and a `UserPromptSubmit` hook exiting non-zero errors on every prompt.
-- **Fail open, and say which way that points.** For the keepalive pair, a wasted ping is cheap and a cold cache is not, so the guard matches the sentinel *strictly* (a false positive would block a real user prompt) while the sensor matches *loosely* (a false positive costs one ping). Write the direction down in a comment — porting a similar hook verbatim gets it backwards.
-- **`Stop` only, never `SubagentStop`**, when a hook should fire once per main-agent turn. They are separate events and `Stop` carries no `agent_id`, so `Stop` alone is already main-agent-only.
+## Hooks
 
-## The one script: `token-report.py`
+Hooks are cc- only. Rules for any new hook:
 
-`plugins/cc-tokenomics/skills/cc-tokenomics/scripts/token-report.py` self-contained Python 3 (stdlib only, no deps). Three data sources:
+- **Opt-in.** A hook that spends tokens or schedules work is opt-in through a flag file in `$HOME` (e.g. `~/.cc-cache-keepalive`) and exits 0 with no output when the flag is absent. Check the flag before reading stdin; it is the cheapest check. An always-on hook (e.g. cc-usage-guard) treats installing as the opt-in; give it an env kill switch, named like cc-cache-keepalive's `CC_KEEPALIVE_OFF=1`.
+- **Output.** Hook stdout becomes a system reminder. Wrap it in a `<name-of-hook>` XML tag.
+- **Measure directive wording.** A hook that only asks the model to do something must have its wording measured, not guessed. Given an ordinary first prompt, a model answers the user and skips the aside: the keepalive directive scored 0/8 that way, created no cron at all, and showed no error. Lead with `REQUIRED SETUP`, order the steps ahead of the user's request, and keep it terse (a "why it matters" paragraph diluted it again). Re-measure any rewording with `mise run test:keepalive-directive`.
+- **State.** Keep it under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.<plugin>/`, keyed by `session_id`. One unkeyed shared file leaks one session's state into another.
+- **Exit codes.** Use `set -u`, never `set -eu`, and an explicit `exit 0` on every path. A `Stop` hook that exits 2 blocks stopping; a `UserPromptSubmit` hook that exits non-zero errors on every prompt.
+- **Fail open, and write down which way that points** in a comment. For the keepalive pair, a wasted ping is cheap and a cold cache is not, so the guard matches the sentinel strictly (a false positive would block a real prompt) and the sensor matches loosely (a false positive costs one ping). Copying a similar hook verbatim gets this backwards.
+- **`Stop`, never `SubagentStop`**, for a hook that should fire once per main-agent turn. `Stop` carries no `agent_id`, so it already fires for the main agent only.
+- **Record measurements** (cache TTLs, billing, directive compliance) as rows in `docs/experiments.md`, not in new notes.
 
-1. Session JSONL transcripts at `~/.claude/projects/<mangled-cwd>/*.jsonl` — parses `assistant` events for `usage` blocks.
-2. Plan usage from `https://api.anthropic.com/api/oauth/usage` with `anthropic-beta: oauth-2025-04-20`, using OAuth token from macOS Keychain (`security find-generic-password -s "Claude Code-credentials"`). Keychain-only — breaks on Linux.
-3. Per-file state cache `<session>.jsonl.tokenomics-state.json` for delta tracking.
+## Upstream-derived plugins
 
-Called from `SKILL.md` via dynamic-context injection: the `` ```! `` block runs `python3 "${CLAUDE_SKILL_DIR}/scripts/token-report.py" $ARGUMENTS` at invocation, so the numbers arrive before the model reads the skill. Can also run directly: `python3 plugins/cc-tokenomics/skills/cc-tokenomics/scripts/token-report.py [--all|<path>]`. Experiment findings live in `plugins/cc-tokenomics/skills/cc-tokenomics/reference/experiments.md` — update the table when running new tests rather than writing new docs.
+These plugins started as copies of other repos. Re-sync them from upstream from time to time: re-apply the local changes, and name the source in the commit body as `synced from <repo>@<sha> (<version>)`, so the next re-sync starts from a clean diff.
 
-## Plugin sub-dirs: `scripts/` + `templates/`
+- `mattpocock/skills`: grilling, codebase-design, teach, and skill-smith's design vocabulary (`references/skill-design-*.md`).
+- `obra/superpowers`: brainstorming, systematic-debugging, and skill-smith's TDD-for-skills discipline (from writing-skills).
+- `anthropics/skills`: skill-smith's eval harness (from skill-creator).
 
-Some plugins ship more than `SKILL.md` + hooks. Two conventions:
+## Shipping a change
 
-- **`plugins/<plugin>/skills/<skill>/scripts/`** — helper scripts the skill invokes (e.g. `plugins/cc-tokenomics/skills/cc-tokenomics/scripts/token-report.py`). Keeps deterministic logic out of the skill prose, which the model would otherwise re-interpret each invocation.
-- **`plugins/<plugin>/templates/`** — files copied into a project the first time the skill runs there (bootstrap pattern). Skill's `Bootstrap` block detects the template root via `${CLAUDE_SKILL_DIR}/../../templates` and `cp`s missing files. Example: `plugins/loop-finder/templates/iterate.sh.tmpl`.
-
-## Conventions
-
-- **No README/docs bloat inside plugins.** SKILL.md = prompt; separate docs rot and burn cache.
-- **Version bump + publish, whenever a plugin's files change.** This is a MUST that closes the change, not an optional follow-up. Run `scripts/bump-plugin.sh <plugin> [patch|minor|major]` (patch = fix/wording, minor = new behavior or arg, major = breaking) to bump `plugin.json` and the marketplace.json entry in lockstep (surgical, no other entry touched). If behavior changed, update the `description` in BOTH files (they differ: marketplace adds a portability suffix). Then commit the plugin's files plus the marketplace.json hunk and push (or open a PR per the recent worktree-branch history). A plugin edit that lands without the version bump + marketplace sync is incomplete; an edit that lands uncommitted is not shipped. The symlink keeps the Codex manifest version in lockstep automatically — `bump-plugin.sh` needs no Codex awareness. When you ADD or REMOVE a plugin (not just edit one), also run `scripts/sync-codex.sh` to rebuild the symlink + `.agents/plugins/marketplace.json`.
+- Every plugin change ships in the same pull request as its version bump: `mise run bump <plugin> [patch|minor|major]` (patch = fix or wording, minor = new behavior, new option or removed feature, major = breaking). Then run `mise run sync` and commit the plugin files together with the generated changes. A plugin edit without a bump is incomplete.
+- Work on a branch and open a pull request. Never push to main.
+- No docs inside plugins: SKILL.md is the prompt, and separate docs rot and cost context. One exception: a hook-only plugin may ship one `README.md`, since it has no SKILL.md to explain opt-in and config. Research notes, retros and experiment logs never ship; put them under `docs/` or another folder outside `plugins/`.
 
 ## Installing locally for testing
 
@@ -101,6 +105,6 @@ Some plugins ship more than `SKILL.md` + hooks. Two conventions:
 /plugin install <plugin-name>@vdsmon-skills
 ```
 
-After editing SKILL.md, reinstall or restart session — marketplace caches skill content.
+After you edit a SKILL.md, reinstall or restart the session: the marketplace caches skill content.
 
-For tight iteration without reinstalling, copy skill dir to `~/.claude/skills/<name>/` and edit in place — harness re-reads each session.
+For tight iteration without reinstalling, copy the skill dir to `~/.claude/skills/<name>/` and edit it there; the harness re-reads it each session.

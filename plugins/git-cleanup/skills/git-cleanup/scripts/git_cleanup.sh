@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
-# git_cleanup.sh — Analyze and remove merged branches + their worktrees
+# git_cleanup.sh: analyze and remove merged branches + their worktrees
 #
 # Usage:
-#   git_cleanup.sh [--dry-run]
+#   git_cleanup.sh [--dry-run] [--exclude=a,b]
 #
 # By default, removes merged branches and clean worktrees (skips dirty ones).
 # Merge detection is ancestry-based (git branch --merged) plus, on GitHub
 # remotes with gh available, squash-aware: a branch whose tip equals the head
-# SHA of a merged PR counts as merged.
+# SHA of a merged PR, or whose net diff has the same patch-id as the PR's merge
+# commit, counts as merged.
 # --dry-run: Only show what would be removed/kept, without changing anything.
+
+((BASH_VERSINFO[0] >= 4)) || { echo "git-cleanup needs bash 4+ (brew install bash)" >&2; exit 2; }
 
 set -euo pipefail
 
@@ -39,10 +42,12 @@ is_target_branch() {
   [[ "$branch" == "dev" || "$branch" == "develop" || "$branch" == "master" || "$branch" == "main" ]]
 }
 
+# substr, not $2: a worktree path with spaces must come back whole, or the
+# execute loop would act on a truncated path.
 worktree_for_branch() {
   local branch="$1"
   git worktree list --porcelain | awk -v b="$branch" '
-    /^worktree / { wt=$2 }
+    /^worktree / { wt=substr($0, 10) }
     /^branch refs\/heads\// {
       sub(/^branch refs\/heads\//, "")
       if ($0 == b) print wt
@@ -50,15 +55,38 @@ worktree_for_branch() {
   '
 }
 
+# The first entry of `git worktree list` is always the main worktree. git
+# refuses to remove it, so it must never reach the rm -rf fallback.
+main_worktree() {
+  git worktree list --porcelain | awk '/^worktree / { print substr($0, 10); exit }'
+}
+
+is_registered_worktree() {
+  git worktree list --porcelain | P="worktree $1" awk '$0 == ENVIRON["P"] { f=1 } END { exit !f }'
+}
+
+# A path that exists but where git status fails is treated as dirty: unknown
+# state is never removed.
 worktree_is_dirty() {
-  local wt_path="$1"
-  [[ -n "$(git -C "$wt_path" status --porcelain 2>/dev/null)" ]]
+  local wt_path="$1" out
+  [[ -d "$wt_path" ]] || return 1
+  out=$(git -C "$wt_path" status --porcelain 2>/dev/null) || return 0
+  [[ -n "$out" ]]
+}
+
+# git patch-id only emits an id for input that starts with a commit header.
+# diff-tree, not diff: porcelain `git diff` obeys user config (diff.external,
+# diff.noprefix, color.ui=always) that turns the output into something
+# patch-id cannot read, and every patch-id match would silently fail.
+net_patch_id() {
+  local from="$1" to="$2"
+  { echo "commit $to"; git diff-tree -p -r "$from" "$to"; } | git patch-id --stable | awk '{ print $1 }'
 }
 
 # --- Main ---
 
 echo "Fetching and pruning remotes..."
-git fetch --all --prune 2>/dev/null
+git fetch --all --prune 2>/dev/null || echo "WARN: fetch failed, using cached remote refs" >&2
 
 # Find target branches that exist on remote
 TARGETS=()
@@ -78,6 +106,7 @@ echo ""
 
 # Collect all local branches (except target branches and current branch)
 CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "")
+MAIN_WT=$(main_worktree)
 
 declare -A MERGED_INTO  # branch -> target it's merged into
 
@@ -96,16 +125,36 @@ done
 # Squash and rebase merges never make a branch tip an ancestor of the target,
 # leaving `git branch --merged` permanently blind to them. When origin is a
 # GitHub repo and gh is available, also count a branch as merged if its tip
-# equals the head SHA of a merged PR. A tip that moved past the merged PR head
-# means post-merge work, so that branch stays in KEEP.
-declare -A SQUASH_PR  # branch -> merged PR number
+# equals the head SHA of a merged PR, or, when the PR branch was rewritten
+# before merge, if the branch's net diff has the same patch-id as the PR's
+# merge commit. A tip with changes the PR never had stays in KEEP.
+declare -A SQUASH_PR     # branch -> merged PR number
+declare -A SQUASH_BY_ID  # branch -> 1 when matched by patch-id, not tip
+declare -A PR_DIFFERS    # branch -> merged PR number whose content differs
 if command -v gh >/dev/null 2>&1 && git remote get-url origin 2>/dev/null | grep -qi 'github'; then
-  while IFS=$'\t' read -r name oid num; do
+  while IFS=$'\t' read -r name oid num merge; do
     [[ -z "$name" || -z "$oid" ]] && continue
+    [[ -n "${SQUASH_PR[$name]+_}" ]] && continue
     tip=$(git rev-parse --verify --quiet "refs/heads/$name") || continue
-    [[ "$tip" == "$oid" ]] && SQUASH_PR[$name]="$num"
-  done < <(gh pr list --state merged --limit 300 --json headRefName,headRefOid,number \
-    --template '{{range .}}{{.headRefName}}{{"\t"}}{{.headRefOid}}{{"\t"}}{{.number}}{{"\n"}}{{end}}' 2>/dev/null)
+    if [[ "$tip" == "$oid" ]]; then
+      SQUASH_PR[$name]="$num"
+      unset "PR_DIFFERS[$name]"
+      continue
+    fi
+    if [[ -n "$merge" ]] && git cat-file -e "$merge^{commit}" 2>/dev/null \
+      && base=$(git merge-base "$tip" "$merge^1" 2>/dev/null); then
+      pr_id=$(net_patch_id "$merge^1" "$merge")
+      tip_id=$(net_patch_id "$base" "$tip")
+      if [[ -n "$pr_id" && "$pr_id" == "$tip_id" ]]; then
+        SQUASH_PR[$name]="$num"
+        SQUASH_BY_ID[$name]=1
+        unset "PR_DIFFERS[$name]"
+        continue
+      fi
+    fi
+    [[ -z "${PR_DIFFERS[$name]+_}" ]] && PR_DIFFERS[$name]="$num"
+  done < <(gh pr list --state merged --limit 300 --json headRefName,headRefOid,number,mergeCommit \
+    --template '{{range .}}{{.headRefName}}{{"\t"}}{{.headRefOid}}{{"\t"}}{{.number}}{{"\t"}}{{if .mergeCommit}}{{.mergeCommit.oid}}{{end}}{{"\n"}}{{end}}' 2>/dev/null)
 fi
 
 # Collect all local branches
@@ -126,6 +175,7 @@ REMOVE_WORKTREES=()   # worktree paths to remove (parallel to REMOVE_BRANCHES)
 SKIP_DIRTY=()         # merged but dirty worktree
 SKIP_DIRTY_PATHS=()
 SKIP_CURRENT=""
+SKIP_MAIN=""          # merged but checked out in the main worktree
 KEEP_UNMERGED=()      # not merged
 EXCLUDED=()           # merged but kept out by --exclude
 
@@ -136,6 +186,11 @@ for branch in "${ALL_BRANCHES[@]}"; do
     # Branch is merged
     if [[ "$branch" == "$CURRENT_BRANCH" ]]; then
       SKIP_CURRENT="$branch"
+      continue
+    fi
+
+    if [[ -n "$wt_path" && "$wt_path" == "$MAIN_WT" ]]; then
+      SKIP_MAIN="$branch"
       continue
     fi
 
@@ -172,7 +227,11 @@ if [[ ${#REMOVE_BRANCHES[@]} -gt 0 ]]; then
     branch="${REMOVE_BRANCHES[$i]}"
     wt="${REMOVE_WORKTREES[$i]}"
     via=""
-    [[ -n "${SQUASH_PR[$branch]+_}" ]] && via="  (squash-merged: PR #${SQUASH_PR[$branch]})"
+    if [[ -n "${SQUASH_BY_ID[$branch]+_}" ]]; then
+      via="  (squash-merged: PR #${SQUASH_PR[$branch]}, matched by patch-id)"
+    elif [[ -n "${SQUASH_PR[$branch]+_}" ]]; then
+      via="  (squash-merged: PR #${SQUASH_PR[$branch]})"
+    fi
     if [[ -n "$wt" ]]; then
       echo "  - $branch$via  (worktree: $wt)"
     else
@@ -196,6 +255,12 @@ if [[ -n "$SKIP_CURRENT" ]]; then
   echo ""
 fi
 
+if [[ -n "$SKIP_MAIN" ]]; then
+  echo "SKIP (checked out in main worktree):"
+  echo "  - $SKIP_MAIN  (worktree: $MAIN_WT)"
+  echo ""
+fi
+
 if [[ ${#EXCLUDED[@]} -gt 0 ]]; then
   echo "EXCLUDED (kept by request):"
   printf '  - %s\n' "${EXCLUDED[@]}"
@@ -205,11 +270,13 @@ fi
 if [[ ${#KEEP_UNMERGED[@]} -gt 0 ]]; then
   echo "KEEP (not merged):"
   for branch in "${KEEP_UNMERGED[@]}"; do
+    note=""
+    [[ -n "${PR_DIFFERS[$branch]+_}" ]] && note="  (PR #${PR_DIFFERS[$branch]} merged, but this tip differs from what was merged)"
     wt_path=$(worktree_for_branch "$branch")
     if [[ -n "$wt_path" ]]; then
-      echo "  - $branch  (worktree: $wt_path)"
+      echo "  - $branch$note  (worktree: $wt_path)"
     else
-      echo "  - $branch"
+      echo "  - $branch$note"
     fi
   done
   echo ""
@@ -223,7 +290,7 @@ fi
 # --- Execute ---
 
 if [[ "$DRY_RUN" == true ]]; then
-  echo "Dry run — no changes made. Run without --dry-run to apply."
+  echo "Dry run: no changes made. Run without --dry-run to apply."
 else
   echo "=== EXECUTING ==="
   echo ""
@@ -247,6 +314,13 @@ else
       # so plain `git worktree remove` fails with "Directory not empty". These
       # worktrees are already verified clean, so --force discards nothing of value.
       git worktree remove --force "$wt" 2>/dev/null
+      if is_registered_worktree "$wt"; then
+        # git refused (main or locked worktree): the dir is still in use, so
+        # never fall through to rm -rf.
+        FAILED+=("worktree: $wt (git refused to remove it)")
+        echo ""
+        continue
+      fi
       # git de-registers the worktree even when the dir survives: leftover
       # untracked files, or read-only files (content-addressed store blobs,
       # immutable caches) in read-only dirs that neither `git worktree remove`
@@ -264,7 +338,7 @@ else
       fi
     fi
 
-    # The branch can only be deleted after its worktree is gone — git refuses to
+    # The branch can only be deleted after its worktree is gone: git refuses to
     # delete a branch still checked out in a registered worktree.
     if git show-ref --verify --quiet "refs/heads/$branch"; then
       echo "Deleting branch: $branch"

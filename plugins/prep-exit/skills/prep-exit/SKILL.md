@@ -1,33 +1,23 @@
 ---
 name: prep-exit
 disable-model-invocation: true
-description: Audits in-flight session state before the session is killed, saves what only the conversation knows into files and persistent memory, and leaves a handoff note plus a paste-ready resume prompt for the next session.
-when_to_use: >-
-  Use when the user says "I'm closing this session", "shutting down", "kill the
-  session", "going to /exit", "prep the exit", "wrap up for today", "end of day",
-  "save everything before I close", "I'm done for now", "log off", "closing the
-  laptop", or any variant meaning the conversation ends for good with no summary
-  carried over. Not for compaction (that is prep-compact) and not for a pause the
-  same session returns from.
+description: Audits in-flight session state before the session ends, saves what only the conversation knows into files and persistent memory, and leaves a handoff note plus a paste-ready resume prompt for the next session.
 argument-hint: "[--note-only]"
 allowed-tools:
   - Bash(git status *)
   - Bash(git log *)
   - Bash(git diff *)
-  - Bash(git stash *)
+  - Bash(git rev-parse *)
+  - Bash(git stash push *)
   - Bash(git add *)
   - Bash(git commit *)
 ---
 
 # Prep-Exit
 
-A killed session keeps nothing. No summary, no queued follow-up, no background task output, no session-only cron, no task list. The next session starts from disk and from persistent memory, and from nothing else. This skill audits what the conversation still holds, saves it where the next session will look, and leaves one resume prompt.
+A fresh session (a new conversation, another machine, another host) starts only from disk and from persistent memory. Nothing of this conversation reaches it: no summary, no background task output, no session-only cron, no task list. Resuming this same conversation (`claude --continue` or `--resume` in Claude Code) brings back the history and the crons that have not expired, but never background Bash or monitor output, and the user may never resume. So save as if the next session starts fresh. This skill audits what the conversation still holds, saves it where the next session will look, and leaves one resume prompt.
 
-`prep-compact` is the sibling for compaction, where a summary survives and carries context. Here nothing survives, so every finding becomes a file or a memory entry, never a message.
-
-## When to use
-
-Whenever the user signals the session is about to end for good. Do not wait for the exact words: "I'm done for today" at a natural break means run the flow. If the user is about to compact instead, use `prep-compact`.
+`prep-compact` is the sibling for compaction, where a summary survives and carries context. Here plan for nothing surviving, so every finding becomes a file or a memory entry, never a message.
 
 ## Modes
 
@@ -54,39 +44,52 @@ Audit silently; do not dump a recap. The audit feeds step 2. Check:
 
 **Code state**
 - Uncommitted changes: which are real work and which are scratch (debug dumps, throwaway files)? Real work must land in a commit or a stash. Scratch stays out of git. Think carefully here: a wrong call on this line loses actual work or pollutes history.
+- Repo rules and standing user instructions about commits and branches (CLAUDE.md, AGENTS.md, what the user said this session): they bound step 2.
 
 **Workflow state**
 - Plan and state files the session read or wrote: do they say where the work stands now? The script's "ignored files changed after the last commit" list is the starting point. A plan file that still says "in progress" for a finished step misleads the next session.
 - A skill or agent mid-invocation: is the next step derivable from disk?
-- The host's task list or pending chips: session-local, gone at exit. List them.
+- The host's task list or pending chips: session-local, a fresh session never sees them. List them.
 
 **Background work**
 - Background tasks running or finished with unread output: read the output now. The buffer dies with the session, and a finished job nobody read is a result lost.
 - A task still running: capture what it wrote so far and say it was unfinished.
-- Crons, wake-ups, reminders scheduled inside this session: they die with it. List the ones still wanted so the next session recreates them. Only the ones with their own re-arm hook come back on their own.
+- Crons, wake-ups, reminders scheduled inside this session: a fresh session does not get them back. List the ones still wanted so the next session recreates them. Only the ones with their own re-arm hook come back on their own.
 - Messages from other sessions not yet answered: list them with what was asked.
 
 **Conversation-only knowledge**
 - Decisions and why (the approach chosen, the approach rejected and what failed), preferences the user stated, debug findings, numbers, deadlines. With compaction these ride in the summary. Here they go into the handoff and into memory, or they are gone.
 
-### 2. Raise: propose every save, once
+### 2. Save: do what needs saving, then report
 
-Output an **Action needed** list with every save, ordered by blast radius (real work first):
+Do it now, in blast-radius order (real work first). Don't propose and wait: the user may close the laptop right after sending the command. Act, then report.
 
-- **Commit or stash real work.** A WIP commit with a message that says what state the change is in, or a stash with the same message. Scratch stays out.
+Save-actions are persistence only:
+- **Commit real work** locally, or **stash** it (`git stash push -m "<what state it's in>"`) when a commit doesn't fit. Scratch stays out.
 - **Sync plan and state files** to where the work stands.
 - **Capture background output** into the handoff (and into the state file it belongs to).
 - **List session-only crons, reminders, chips, and unanswered messages** for the handoff.
-- **Write the handoff** (step 3).
-- **Write the memory entry** (step 3).
+
+Commits:
+- Follow the repo's conventions: message style, attribution rules, branch. Message says what state the change is in (WIP, tests pending).
+- Stage by path. Never `git add -A` / `git add .`: sweeps in scratch and secrets.
+- New commit only (no amend, no history rewrite), local only: never push.
+- Hook rejects the commit: don't bypass (`--no-verify`). Hold it back, say why.
+
+**Ask first.** Hold these back, never act unasked:
+- hard to reverse or outward-facing: push, force-push, merge, PR creation, sending messages, deleting or discarding changes (`git checkout --`, `git reset`, `git clean`, removing files);
+- anything a repo rule or standing user instruction forbids ("push nothing new", "never commit to main");
+- a commit that would include secrets, `.env`-like files or large generated artifacts (commit the rest; hold back those files);
+- uncommitted changes where real work vs. scratch is unclear;
+- paid, long-running or background jobs.
+
+Ask once: one question batching every held-back item, recommended choice first for each, printed with the hand-over in step 4. Nothing waits on the answer: every held-back item goes into the handoff under **Pending** as awaiting a yes, so the question survives an exit with no reply. If the user said they will not be around ("just save everything", "I won't answer"), skip the question; Pending still lists the items.
 
 Exit prep saves state; it does not advance the work. A pending fix, a next step, a question from another session: record where it stands, do not do it now. Work done in the last minute lands unreviewed and the handoff then misreports where things are. Likewise, do not judge pending items closed (a benchmark "dead", a chip "moot"): record what you observed and leave the call to the next session.
 
-End with: reply `do it` for all, a list of numbers for some, or `skip`. If the user already said they will not be around ("just save everything", "I won't answer, act on it"), treat every save as approved and go straight to step 3. Never act destructively: no reset, no checkout of paths, no clean, no force. A save that needs one of those is not a save.
+### 3. Write the handoff and the memory entry
 
-### 3. Act on the approved saves
-
-Run them. Then the handoff:
+Pick the state dir: the repository's own state directory when it has one (`.flow/`, `.sweep/`, a notes directory the project uses); else, inside a repository, `$(git rev-parse --absolute-git-dir)/handoff`, which survives a reboot and is never committed; outside one, next to the host's memory files. Never the session scratch or temp directory: the next session cannot see it, and a reboot deletes it.
 
 ```bash
 bash <skill-dir>/scripts/handoff.sh <state-dir>
@@ -97,34 +100,30 @@ It writes `<state-dir>/HANDOFF.md` with the git baseline embedded and the sectio
 - **Where we are:** the task, the branch, the stage. One paragraph.
 - **Done this session:** milestones, counts, commits.
 - **Decisions and facts that live only here:** every item from the last audit bullet.
-- **Pending:** background output captured and what it said, crons and reminders to recreate, chips still open, messages to answer.
+- **Pending:** held-back items awaiting a yes, background output captured and what it said, crons and reminders to recreate, chips still open, messages to answer.
 - **Next step:** the first action of the next session, with the file or command to touch first.
 - **Resume prompt:** the first message to paste into the next session. It names this file.
 
-The state dir is the repository's own state directory when it has one (`.flow/`, `.sweep/`, a notes directory the project uses), else the scratch directory the host names. Name the path in the memory entry.
-
-Then the memory entry, in the host's persistent memory. In Claude Code that is the memory directory named in your system prompt: one file per fact with its frontmatter, plus one pointer line in `MEMORY.md`, which the next session loads automatically. Write a `project` entry: the state of the work as of today's date, where `HANDOFF.md` is, the next step, the gotchas. A preference the user stated is a separate `user` or `feedback` entry, because it outlives this piece of work. Keep the project entry short: the handoff holds the detail; memory holds the pointer plus what must survive even if the handoff is never opened. On a host with no persistent memory, the handoff is the memory: say so, and print its path.
+Then the memory entry, in the host's persistent memory. In Claude Code that is the memory directory named in your system prompt: one file per fact with its frontmatter, plus one pointer line in `MEMORY.md`, which the next session loads automatically. Write a `project` entry: the state of the work as of today's date, where `HANDOFF.md` is (absolute path), the next step, the gotchas. A preference the user stated is a separate `user` or `feedback` entry, because it outlives this piece of work. Keep the project entry short: the handoff holds the detail; memory holds the pointer plus what must survive even if the handoff is never opened. On a host with no persistent memory, the handoff is the memory: say so, and print its path.
 
 ### 4. Hand over
 
-Print three things and nothing else: the handoff path, the memory file written, and the **resume prompt** in a code block, to paste as the first message of the next session. Then say the session can be closed. Do not start new work after this; the next thing that happens is the kill.
+Print the format below and nothing else. Do not start new work after this; the next thing that happens is the exit.
+
+If the user answers the held-back question before leaving: act on each yes, then edit the handoff (move the item from Pending to Done this session). Do not re-run `handoff.sh`, which starts a blank note. Reprint the resume prompt only if it changed.
 
 ## Format
 
-No audit recap and no step narration. Something to save:
+No audit recap and no step narration. Leave out **Saved before exit** when nothing needed saving and **Needs your yes** when nothing was held back.
 
 ```
-**Action needed**
-1. [save, with the reason]
-2. [save, with the reason]
+**Saved before exit**
+- [action taken, with evidence: commit hash and subject, file path, what the note holds]
 
-Reply `do it`, a list of numbers, or `skip`.
-```
+**Needs your yes** (also under Pending in the handoff)
+[one question covering every held-back item, recommended choice first]
 
-After the saves (or when nothing needed saving):
-
-```
-Saved: [commit or stash], [state files], handoff at `<state-dir>/HANDOFF.md`, memory entry `<file>`.
+Handoff: `<state-dir>/HANDOFF.md`. Memory: `<file>`.
 
 **Resume prompt** — paste as the first message of the next session:
 ```text
@@ -141,7 +140,7 @@ The session can be closed.
 | "git status is clean, nothing to save" | Clean status says nothing about decisions, background results, crons, or messages. The last audit bullet is the one that bites. |
 | "I'll put it in the commit message" | A commit message describes a change. The next session reads memory and the handoff first. |
 | "The user will remember" | The user's memory is not the next session's. |
-| "The cron will recreate itself" | Session-only crons die with the session. Only the ones with their own re-arm hook return. List the rest. |
+| "The cron will recreate itself" | A fresh session gets back only the crons with their own re-arm hook; a resume of this same conversation restores the unexpired rest, and the user may never resume. List every cron still wanted. |
 | "The background job is still running, I'll leave it" | Its output dies with the session. Capture what it wrote and say it was unfinished. |
 | "This is scratch, but committing it is safer" | Scratch in history is noise the next session must undo. Name it in the handoff instead. |
 | "The handoff is enough, memory is redundant" | Nothing opens the handoff unless memory points at it. |
@@ -154,6 +153,6 @@ The session can be closed.
 
 ## Notes
 
-- The saves are proposed once and run once. Do not ask a second time, and do not ask at all when the user said they will not answer.
+- The saves run without asking. What needs a yes is asked once, batched, never twice, and not at all when the user said they will not answer.
 - The resume prompt is the next session's first message, so it must stand alone: the handoff path, one sentence of state, the first action.
 - Portable: the audit, the handoff, and the resume prompt need only a shell and git. Persistent memory is used where the host has one.

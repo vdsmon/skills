@@ -1,16 +1,20 @@
 #:schema https://mise.jdx.dev/schema/mise.json
 
-# Maintainer task runner. Pure-content repo — no toolchain to pin, just thin
+# Maintainer task runner. Pure-content repo: no toolchain to pin, just thin
 # wrappers over scripts/. Consumers install plugins via the marketplaces; none
 # of this ships into a plugin. Scripts stay runnable standalone (bash scripts/*).
 
 [tasks.sync]
-description = "Rebuild Codex symlinks + .agents marketplace + README plugin table from the Claude side"
+description = "Regenerate derived files: Codex symlinks + marketplace, marketplace descriptions/versions, Codex openai.yaml, README table"
 run = "scripts/sync-codex.sh"
 
 [tasks.bump]
 description = "Bump a plugin version + marketplace entry (level: patch|minor|major)"
 run = "scripts/bump-plugin.sh {{arg(name='plugin')}} {{arg(name='level', default='patch')}}"
+
+[tasks.test]
+description = "Run every offline test suite (plugins/*/tests/test-*.sh), never the live token-spending ones"
+run = "scripts/test-offline.sh"
 
 [tasks."test:usage-guard"]
 description = "Run the cc-usage-guard hook test suite (pass --soak for the race check)"
@@ -26,23 +30,25 @@ run = "bash plugins/prep-exit/tests/test-prep-exit.sh"
 
 [tasks."test:open-pr"]
 description = "Run the open-pr body checker tests (offline)"
-run = "python3 -m unittest discover -s plugins/open-pr/tests"
+run = "bash plugins/open-pr/tests/test-open-pr.sh"
 
 [tasks."test:keepalive-live"]
-description = "Live cron-tick check for cc-cache-keepalive — spends tokens, spawns a bg session, ~5 min"
+description = "Live cron-tick check for cc-cache-keepalive: spends tokens, spawns a bg session, ~5 min"
 run = "bash plugins/cc-cache-keepalive/tests/live-gate-e2e.sh --live"
 
 [tasks."test:keepalive-directive"]
-description = "Check the SessionStart directive is still obeyed (cron actually gets created) — spends tokens"
+description = "Check the SessionStart directive is still obeyed (cron actually gets created): spends tokens"
 run = "bash plugins/cc-cache-keepalive/tests/live-directive-compliance.sh --live"
 
 [tasks.verify]
-description = "Fail if generated artifacts are stale (sync not run after a plugin change)"
+description = "Fail if derived files are stale (sync not run after a plugin change) or scripts/check.py finds a broken invariant"
 run = """
+set -- .agents .claude-plugin/marketplace.json README.md 'plugins/*/.codex-plugin' 'plugins/*/skills/*/agents/openai.yaml'
 scripts/sync-codex.sh >/dev/null
-[ -z "$(git status --porcelain -- .agents plugins/*/.codex-plugin README.md)" ] || {
-  echo 'Generated artifacts stale — run `mise run sync` and commit.' >&2
-  git --no-pager status --short -- .agents plugins/*/.codex-plugin README.md
+[ -z "$(git status --porcelain -- "$@")" ] || {
+  echo 'Derived files were stale and sync just rewrote them: review and commit.' >&2
+  git --no-pager status --short -- "$@"
   exit 1
 }
+python3 scripts/check.py
 """

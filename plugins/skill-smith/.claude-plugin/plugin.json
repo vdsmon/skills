@@ -1,7 +1,7 @@
 {
   "name": "skill-smith",
-  "version": "0.4.0",
-  "description": "Forge for Agent Skills: create, test, evaluate, optimize triggering, and package skills. Merges an empirical eval loop (run with-skill vs baseline, benchmark, iterate) with TDD-for-skills discipline (baseline-test first, close rationalization loopholes, verify before shipping). Use whenever building a skill from scratch, turning a workflow into a skill, improving or debugging an existing skill, running evals/benchmarks, or raising a skill's triggering accuracy.",
+  "version": "0.5.0",
+  "description": "Build and test Agent Skills with a baseline-first eval loop (Sonnet runs, benchmark viewer) and a skill-design vocabulary.",
   "author": {
     "name": "Victor De Simone",
     "email": "victorsmoliveira@gmail.com",
