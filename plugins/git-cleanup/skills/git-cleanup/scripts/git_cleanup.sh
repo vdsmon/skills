@@ -75,9 +75,12 @@ worktree_is_dirty() {
 }
 
 # git patch-id only emits an id for input that starts with a commit header.
+# diff-tree, not diff: porcelain `git diff` obeys user config (diff.external,
+# diff.noprefix, color.ui=always) that turns the output into something
+# patch-id cannot read, and every patch-id match would silently fail.
 net_patch_id() {
   local from="$1" to="$2"
-  { echo "commit $to"; git diff "$from" "$to"; } | git patch-id --stable | awk '{ print $1 }'
+  { echo "commit $to"; git diff-tree -p -r "$from" "$to"; } | git patch-id --stable | awk '{ print $1 }'
 }
 
 # --- Main ---

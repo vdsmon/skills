@@ -68,6 +68,12 @@ printf '%s\t%s\t%s\t%s\n' \
   feat/extra 2222222222222222222222222222222222222222 13 "$ex_merge" > "$tmp/prs.tsv"
 export PATH="$tmp/bin:$PATH"
 
+# A diff.external tool (difftastic and the like) turns porcelain `git diff` into
+# output patch-id cannot read; the patch-id match must survive it.
+printf '#!/bin/sh\necho "external diff of $1"\n' > "$tmp/bin/fake-difft" && chmod +x "$tmp/bin/fake-difft"
+git config --global diff.external "$tmp/bin/fake-difft"
+git config --global diff.noprefix true
+
 run() { (cd "$main/.wt/other" && "$BASH" "$script" "$@"); }
 
 run --dry-run > "$tmp/dry.out" 2> "$tmp/dry.err"
