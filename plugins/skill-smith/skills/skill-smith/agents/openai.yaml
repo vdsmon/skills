@@ -1,0 +1,5 @@
+interface:
+  display_name: "Skill Smith"
+  short_description: "Build and test Agent Skills, baseline first"
+policy:
+  allow_implicit_invocation: false
