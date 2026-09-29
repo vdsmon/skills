@@ -48,8 +48,8 @@
     {
       "name": "prep-compact",
       "source": "./plugins/prep-compact",
-      "description": "Audit in-flight state before any context-compacting step, save what would be lost (local commits, state files, notes), and produce a copy-paste /compact message plus a queue-able follow-up that chains the next action when compact finishes. Portable across Agent Skills hosts, since compacting is a general concept, not Claude-specific.",
-      "version": "1.9.0"
+      "description": "Audit in-flight session state before compaction truncates history, and save what would be lost. Commits real work locally, syncs stale plan and state files, and notes chat-only decisions, asking first only for risky items, then prints a paste-ready /compact message plus a queued follow-up. Portable across Agent Skills hosts, since compacting is a general concept, not Claude-specific.",
+      "version": "1.9.1"
     },
     {
       "name": "prep-exit",
