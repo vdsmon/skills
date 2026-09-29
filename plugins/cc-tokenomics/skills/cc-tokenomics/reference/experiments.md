@@ -40,4 +40,3 @@ Findings that have been verified ourselves, plus tests still pending. Only move 
 1. Add a row to **Pending tests** with a falsifiable hypothesis, a concrete how-to, and a risk estimate.
 2. Run the test; capture numbers (cache_hit %, input_tokens, cache_creation_input_tokens, 5h window delta).
 3. Move the row to **Verified findings** with the result and the data that backs it.
-4. If the finding changes an existing Optimization strategy in `economics.md`, update that file in the same edit.
