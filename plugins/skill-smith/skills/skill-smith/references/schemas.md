@@ -203,16 +203,11 @@ Wall clock timing for a run. Located at `<run-dir>/timing.json`.
 ```json
 {
   "total_tokens": 84852,
-  "duration_ms": 23332,
-  "total_duration_seconds": 23.3,
-  "executor_start": "2026-01-15T10:30:00Z",
-  "executor_end": "2026-01-15T10:32:45Z",
-  "executor_duration_seconds": 165.0,
-  "grader_start": "2026-01-15T10:32:46Z",
-  "grader_end": "2026-01-15T10:33:12Z",
-  "grader_duration_seconds": 26.0
+  "duration_ms": 23332
 }
 ```
+
+`aggregate_benchmark.py` reads this file whenever it exists: seconds from `total_duration_seconds` if present, else `duration_ms / 1000`, and tokens from `total_tokens`. It warns when a run has neither.
 
 ---
 
@@ -290,16 +285,16 @@ Output from Benchmark mode. Located at `benchmarks/<timestamp>/benchmark.json`.
   - `skill_name`: Name of the skill
   - `timestamp`: When the benchmark was run
   - `evals_run`: List of eval names or IDs
-  - `runs_per_configuration`: Number of runs per config (e.g. 3)
+  - `runs_per_configuration`: Runs per eval per config, counted from the data (a `"low-high"` string when evals differ)
 - `runs[]`: Individual run results
   - `eval_id`: Numeric eval identifier
   - `eval_name`: Human-readable eval name (used as section header in the viewer)
-  - `configuration`: Must be `"with_skill"` or `"without_skill"` (the viewer uses this exact string for grouping and color coding)
+  - `configuration`: The config dir name: `"with_skill"` plus a baseline, `"without_skill"` (new skill) or `"old_skill"` (improving a skill). The aggregator lists the baseline last, and the viewer colors the first config as the new version
   - `run_number`: Integer run number (1, 2, 3...)
   - `result`: Nested object with `pass_rate`, `passed`, `total`, `time_seconds`, `tokens`, `errors`
 - `run_summary`: Statistical aggregates per configuration
-  - `with_skill` / `without_skill`: Each contains `pass_rate`, `time_seconds`, `tokens` objects with `mean` and `stddev` fields
-  - `delta`: Difference strings like `"+0.50"`, `"+13.0"`, `"+1700"`
+  - One key per config, new version first and baseline last: each contains `pass_rate`, `time_seconds`, `tokens` objects with `mean` and `stddev` fields
+  - `delta`: New minus baseline, as strings like `"+0.50"`, `"+13.0"`, `"+1700"`. Absent when only one config ran
 - `notes`: Freeform observations from the analyzer
 
 **Important:** The viewer reads these field names exactly. Using `config` instead of `configuration`, or putting `pass_rate` at the top level of a run instead of nested under `result`, will cause the viewer to show empty/zero values. Always reference this schema when generating benchmark.json manually.
