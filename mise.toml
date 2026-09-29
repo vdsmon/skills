@@ -32,6 +32,10 @@ run = "bash plugins/prep-exit/tests/test-prep-exit.sh"
 description = "Run the open-pr body checker tests (offline)"
 run = "bash plugins/open-pr/tests/test-open-pr.sh"
 
+[tasks."test:start-work"]
+description = "Run the start-work script tests (offline)"
+run = "bash plugins/start-work/tests/test-start-work.sh"
+
 [tasks."test:keepalive-live"]
 description = "Live cron-tick check for cc-cache-keepalive: spends tokens, spawns a bg session, ~5 min"
 run = "bash plugins/cc-cache-keepalive/tests/live-gate-e2e.sh --live"
