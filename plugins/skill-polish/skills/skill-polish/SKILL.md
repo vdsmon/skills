@@ -38,6 +38,8 @@ Scan conversation history for these signals, ordered most obvious to most subtle
 
 6. **Validated surprises:** Agent did unexpected thing user *liked*. ("that's brilliant, add that to the skill"). Techniques worth codifying.
 
+7. **Recorded friction:** `MACHINERY:` or `DEVIATION` entries a pipeline's reflect stage wrote this session (flow prints them in its reflect output and stores them in `.flow/<namespace>/knowledge.jsonl`). A `MACHINERY:` entry is friction already traced to a skill file, with evidence: treat it as a found signal, and skip any the reflect stage says it already applied. A plain `DEVIATION` counts only when it is about a skill's instructions, not the task's domain.
+
 Each signal, note:
 - What happened (friction)
 - What should have happened (desired behavior)
