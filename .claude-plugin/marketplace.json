@@ -36,20 +36,20 @@
     {
       "name": "prep-compact",
       "source": "./plugins/prep-compact",
-      "description": "Audit in-flight session state before a context-compacting step truncates history. Saves what would be lost (commits real work locally, syncs stale plan and state files, captures background output, notes chat-only decisions), asking first only for anything destructive, outward-facing, or against a repo rule, then produces a copy-paste /compact message plus a queue-able follow-up that chains the next action when compact finishes. Portable across SKILL.md-native hosts.",
-      "version": "1.9.0"
+      "description": "Audit in-flight session state before compaction truncates history, and save what would be lost. Commits real work locally, syncs stale plan and state files, and notes chat-only decisions, asking first only for risky items, then prints a paste-ready /compact message plus a queued follow-up. Portable across SKILL.md-native hosts.",
+      "version": "1.9.1"
     },
     {
       "name": "prep-exit",
       "source": "./plugins/prep-exit",
-      "description": "Audit in-flight session state before the session is killed, save what only the conversation knows into files and persistent memory, and leave a handoff note plus a paste-ready resume prompt for the next session. Sibling of prep-compact: compaction keeps a summary, an exit keeps nothing, so every finding must land on disk. Portable across SKILL.md-native hosts.",
-      "version": "0.1.0"
+      "description": "Save what only the conversation knows before a session ends, so a fresh session can pick up the work. Commits real work locally, syncs state files, writes a handoff note and a memory pointer, asks once only for risky items, and prints a paste-ready resume prompt. Portable across SKILL.md-native hosts.",
+      "version": "0.2.0"
     },
     {
       "name": "prep-goal",
       "source": "./plugins/prep-goal",
-      "description": "Interrogate a rough objective into a tight, verifiable /goal completion condition before handing it to an autonomous goal loop. Grills one question at a time to pin the real end-state, the proof the evaluator can see, a scope fence, the forbidden cheat, and a turn cap, then emits a short paste-ready /goal line. Built for Claude Code's native /goal; the sharpening technique ports to any autonomous-loop host. Portable across SKILL.md-native hosts.",
-      "version": "0.4.2"
+      "description": "Interrogate a rough objective into a tight, verifiable /goal completion condition before handing it to an autonomous goal loop. Pins the end-state, a gate whose raw output the loop pastes, a scope fence, the forbidden cheat, and a turn cap. Portable across SKILL.md-native hosts.",
+      "version": "0.4.3"
     },
     {
       "name": "humanize",

@@ -66,8 +66,8 @@ Generated from each plugin's `plugin.json` by `scripts/sync-codex.sh`, so do not
 | `skill-polish` | any | Post-mortem for any skill. |
 | `cc-cache-keepalive` | CC only | Keeps Claude Code's prompt cache warm on Max plans with an opt-in silent cron, and cancels any tick that a recent real turn or an already-expired cache makes pointless. |
 | `cc-usage-guard` | CC only | Pauses Claude Code before it hits the 5-hour or weekly usage limit and auto-resumes when the window resets, on every surface including the desktop app. |
-| `prep-compact` | any | Audit in-flight session state before a context-compacting step truncates history. |
-| `prep-exit` | any | Audit in-flight session state before the session is killed, save what only the conversation knows into files and persistent memory, and leave a handoff note plus a paste-ready resume prompt for the next session. |
+| `prep-compact` | any | Audit in-flight session state before compaction truncates history, and save what would be lost. |
+| `prep-exit` | any | Save what only the conversation knows before a session ends, so a fresh session can pick up the work. |
 | `prep-goal` | any | Interrogate a rough objective into a tight, verifiable /goal completion condition before handing it to an autonomous goal loop. |
 | `humanize` | any | Strip AI-writing tells from text. Detects em-dash overuse, AI vocabulary, inflated significance, rule-of-three, sycophancy, compound coinages, and 20+ more patterns. |
 | `brainstorming` | any | Design-before-code gate. Explores intent, proposes 2-3 approaches, presents a design, and gets approval before any implementation. |
