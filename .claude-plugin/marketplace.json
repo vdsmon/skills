@@ -10,12 +10,6 @@
   },
   "plugins": [
     {
-      "name": "investigate",
-      "source": "./plugins/investigate",
-      "description": "Investigate a reported error or incident end to end across every reachable system, never inferring past a missing source and instead stopping to raise to the human for access or clarity. Builds an access ledger, batch-raises blockers up front, digs wide through logs/state/code/history (any repo), and delivers a root-cause report plus a proposed (unapplied) fix. Claude-Code-leaning (AskUserQuestion + read-only subagents + MCP access ledger), and ships a swappable environment access-map reference.",
-      "version": "0.1.7"
-    },
-    {
       "name": "slack-draft",
       "source": "./plugins/slack-draft",
       "description": "Draft a Slack message for the user to send: Slack mrkdwn, lead-with-conclusion, backticked identifiers and domain values, ASCII punctuation. Defaults to English and a plain high-level register, or pass --tech for a code-reading peer. Draft only, never posts. Portable across SKILL.md-native hosts.",
@@ -42,20 +36,26 @@
     {
       "name": "cc-cache-keepalive",
       "source": "./plugins/cc-cache-keepalive",
-      "description": "Keeps Claude Code's prompt cache warm on Max plans via a silent cron, cancelling any tick a recent real turn already refreshed. Opt-in via ~/.cc-cache-keepalive flag file. A Stop sensor records the last real turn and a UserPromptSubmit guard drops the redundant tick before it costs a request; everything fails open. Cron prompt is the sentinel 'cc-cache-keepalive', so you can gate Stop hooks on it to silence turn-end sounds. Claude Code only (hook + cron).",
-      "version": "1.5.0"
+      "description": "Keeps Claude Code's prompt cache warm on Max plans via a silent cron, cancelling any tick a recent real turn already refreshed and any tick that would land on a cache that already expired (machine slept, went offline). Opt-in via ~/.cc-cache-keepalive flag file. A Stop sensor stamps real turns and API-answered pings; a UserPromptSubmit guard drops warm and cold ticks before they cost a request; everything fails open. Cron prompt is the sentinel 'cc-cache-keepalive', so you can gate Stop hooks on it to silence turn-end sounds. Claude Code only (hook + cron).",
+      "version": "1.7.0"
     },
     {
       "name": "cc-usage-guard",
       "source": "./plugins/cc-usage-guard",
       "description": "Pause-at-limit guard for Claude Code. A hook-driven poller reads 5h + weekly rate-limit usage from the account usage endpoint, so it works in the desktop app, the terminal, and headless runs alike (an optional statusLine sensor supplies the same numbers for free where one renders). PostToolUse/UserPromptSubmit hooks watch that state in two tiers: a soft WARN nudge on approach, then a hard PARK that pauses the session, schedules a one-shot auto-resume cron for just after the window resets, and fires a push notification. Spawned agents (subagents, teammates) wind down and hand back instead of parking, and if the usage source goes dark the guard warns instead of going silently blind. Per-profile state, per-window thresholds; see the README for details. Claude Code only (hooks).",
-      "version": "0.8.2"
+      "version": "0.9.1"
     },
     {
       "name": "prep-compact",
       "source": "./plugins/prep-compact",
-      "description": "Audit in-flight state before any context-compacting step, and produce a copy-paste /compact message plus a queue-able follow-up that chains the next action when compact finishes. Portable across Agent Skills hosts, since compacting is a general concept, not Claude-specific.",
-      "version": "1.7.3"
+      "description": "Audit in-flight state before any context-compacting step, save what would be lost (local commits, state files, notes), and produce a copy-paste /compact message plus a queue-able follow-up that chains the next action when compact finishes. Portable across Agent Skills hosts, since compacting is a general concept, not Claude-specific.",
+      "version": "1.9.0"
+    },
+    {
+      "name": "prep-exit",
+      "source": "./plugins/prep-exit",
+      "description": "Audit in-flight state before the session is killed, save what only the conversation knows into files and persistent memory, and leave a handoff note plus a paste-ready resume prompt for the next session. Sibling of prep-compact for the case where nothing survives. Portable across Agent Skills hosts.",
+      "version": "0.1.0"
     },
     {
       "name": "prep-goal",
@@ -66,8 +66,8 @@
     {
       "name": "humanize",
       "source": "./plugins/humanize",
-      "description": "Strip AI-writing tells from text. Detects em-dash overuse, AI vocabulary, inflated significance, rule-of-three, sycophancy, compound coinages, and 20+ more patterns. Portable across SKILL.md-native hosts.",
-      "version": "1.4.0"
+      "description": "Strip AI-writing tells from text. Detects em-dash overuse, AI vocabulary, inflated significance, rule-of-three, sycophancy, compound coinages, and 20+ more patterns. Outputs only the corrected text; files are edited in place. Portable across SKILL.md-native hosts.",
+      "version": "1.5.0"
     },
     {
       "name": "loop-finder",
@@ -91,7 +91,7 @@
       "name": "skill-smith",
       "source": "./plugins/skill-smith",
       "description": "Forge for Agent Skills: create, test, evaluate, optimize triggering, and package skills. Merges an empirical eval loop (run with-skill vs baseline, benchmark, iterate) with TDD-for-skills discipline (baseline-test first, close rationalization loopholes). Bundles the eval harness, benchmark viewer, description-triggering optimizer, and a design-vocabulary reference (predictability, context vs cognitive load, information hierarchy, leading words, failure modes). Claude-Code-leaning (subagents + scripts).",
-      "version": "0.3.4"
+      "version": "0.4.0"
     },
     {
       "name": "git-cleanup",
@@ -128,6 +128,12 @@
       "source": "./plugins/codebase-design",
       "description": "Shared vocabulary for designing deep modules: a lot of behaviour behind a small interface, placed at a clean seam, testable through that interface. Precise glossary (module, interface, implementation, depth, seam, adapter, leverage, locality), the deletion test, the one-adapter-vs-two seam rule, and testability checks. Bundles DEEPENING.md and DESIGN-IT-TWICE.md. Portable across SKILL.md-native hosts.",
       "version": "0.1.3"
+    },
+    {
+      "name": "question",
+      "source": "./plugins/question",
+      "description": "Answer a genuine question in full, with no edits and no side effects. Treats 'why X and not Y?' as curiosity, not as a hidden request to switch to Y or an attack on X. Investigates read-only, explains the tradeoff, gives an honest verdict, and stops. Portable across SKILL.md-native hosts.",
+      "version": "0.1.0"
     }
   ]
 }

@@ -19,17 +19,39 @@ set -eu
 FLAG="${HOME}/.cc-cache-keepalive"
 [ -f "$FLAG" ] || exit 0
 
-# Only fire on fresh sessions (startup, clear). On resume the user may be
-# reopening a stale session merely to read it; injecting the instruction forces
-# a turn that re-reads the whole conversation uncached, the exact cost this
-# plugin exists to avoid. On compact the session keeps running and the cron
-# created at startup still exists, so re-emitting the instruction spawned
-# duplicate jobs. Missing or unreadable stdin fails open (keep warm).
-HOOK_INPUT=""
-[ -t 0 ] || HOOK_INPUT="$(cat 2>/dev/null || true)"
-if printf '%s' "$HOOK_INPUT" | \
-   grep -qE '"source"[[:space:]]*:[[:space:]]*"(resume|compact)"'; then
-  exit 0
+# `--now` prints the instruction on demand: the same computation, anchored to
+# the current minute, with no stdin gate. hooks/keepalive-guard.sh calls it to
+# arm a resumed session on its first real prompt, and a person (or a model asked
+# to "start the keepalive") runs it instead of guessing a cron expression.
+NOW_MODE=0
+[ "${1:-}" = "--now" ] && NOW_MODE=1
+
+# Only arm fresh sessions (startup, clear) from here. On compact the session
+# keeps running and the cron created at startup still exists, so re-emitting
+# the instruction spawned duplicate jobs. On resume the CLI process is new and
+# the in-memory cron is gone, but the user may be reopening a stale session
+# merely to read it; injecting the instruction at SessionStart forces a turn that
+# re-reads the whole conversation uncached, the exact cost this plugin exists to
+# avoid. So a resume leaves a pending marker, and hooks/keepalive-guard.sh emits
+# the instruction on the first real prompt, when the user has proven they are
+# working and that turn is paid for anyway. Missing or unreadable stdin fails
+# open (keep warm).
+if [ "$NOW_MODE" -eq 0 ]; then
+  HOOK_INPUT=""
+  [ -t 0 ] || HOOK_INPUT="$(cat 2>/dev/null || true)"
+  if printf '%s' "$HOOK_INPUT" | grep -qE '"source"[[:space:]]*:[[:space:]]*"compact"'; then
+    exit 0
+  fi
+  if printf '%s' "$HOOK_INPUT" | grep -qE '"source"[[:space:]]*:[[:space:]]*"resume"'; then
+    session_id="$(printf '%s' "$HOOK_INPUT" \
+      | grep -oE '"session_id"[[:space:]]*:[[:space:]]*"[0-9a-fA-F-]{8,}"' \
+      | head -n1 | grep -oE '[0-9a-fA-F-]{8,}' | tail -n1)"
+    if [ -n "$session_id" ]; then
+      STATE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.cc-cache-keepalive"
+      { mkdir -p "$STATE_DIR" && : > "$STATE_DIR/pending-$session_id"; } 2>/dev/null || true
+    fi
+    exit 0
+  fi
 fi
 
 # Per-invocation kill switch. The --auto intent gate below only matches sessions

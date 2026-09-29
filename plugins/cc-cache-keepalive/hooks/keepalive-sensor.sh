@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
-# Stop hook: records when the last REAL turn ended, so hooks/keepalive-guard.sh
-# can tell "you were working two minutes ago" from "you have been away an hour".
+# Stop hook: records when the last turn ended, so hooks/keepalive-guard.sh can
+# tell "you were working two minutes ago" from "you have been away an hour"
+# from "the machine slept and the cache is already gone".
+#
+# Two stamps per session, same format (epoch on line 1, uuid on line 2):
+#   last-real-turn-<id>  written after a REAL turn only. The guard cancels a
+#                        tick this stamp says is redundant.
+#   last-turn-<id>       written after ANY turn the API answered, pings
+#                        included. The guard cancels a tick this stamp says
+#                        would hit a dead cache - the newest of the two is when
+#                        the cached prefix was last touched.
 #
 # Only Stop is wired, never SubagentStop. Those are separate events and Stop
 # carries no agent_id, so declaring Stop alone gives main-agent-only stamping
@@ -45,6 +54,53 @@ LAST="$(tail -n 800 "$TRANSCRIPT" 2>/dev/null \
   | grep -v 'toolUseResult' | tail -n 1)"
 [ -n "$LAST" ] || exit 0
 
+# A turn only touched the cache if the API answered it. Offline, rate-limited,
+# or logged-out turns end in a synthetic assistant record ("API Error: Unable to
+# connect to API (ENOTFOUND)", "You've hit your session limit", ...) that never
+# left the machine; stamping one would call a dead cache warm, and the tick that
+# trusts it later pays a full uncached re-read. So a positive error signal on
+# the record that ended this turn means no stamp of either kind. A transcript
+# with no assistant record at all is left alone (Stop always follows one).
+LAST_ASSIST="$(tail -n 800 "$TRANSCRIPT" 2>/dev/null \
+  | grep '"type":"assistant"' | tail -n 1)"
+if printf '%s' "$LAST_ASSIST" | grep -qE \
+   '"isApiErrorMessage"[[:space:]]*:[[:space:]]*true|"model"[[:space:]]*:[[:space:]]*"<synthetic>"'; then
+  exit 0
+fi
+
+# Note the fail direction is inverted versus stop-sound.sh, which falls through
+# to acting when it cannot read the transcript. Here, if we cannot tell whether
+# the turn was a ping, we must NOT stamp it as real: stamping on unknown risks
+# a cold cache, not stamping costs one ping.
+
+UUID="$(printf '%s' "$LAST" \
+  | grep -oE '"uuid"[[:space:]]*:[[:space:]]*"[0-9a-fA-F-]{8,}"' \
+  | head -n1 | grep -oE '[0-9a-fA-F-]{8,}' | tail -n1)"
+
+PROFILE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+STATE_DIR="$PROFILE_DIR/.cc-cache-keepalive"
+NOW="$(date +%s)"
+
+# write_stamp <path>: atomic write of "epoch\nuuid". Line 2 holds the uuid of the
+# user line we stamped for. Re-stamping the same prompt would slide the gate
+# forward every turn without a new prompt ever arriving - the one path that
+# could hold a session's cache open until it went cold. Costs three lines,
+# removes the class.
+write_stamp() {
+  if [ -n "$UUID" ] && [ "$UUID" = "$(sed -n 2p "$1" 2>/dev/null)" ]; then
+    return 0
+  fi
+  local tmp="$STATE_DIR/.tmp.$$"
+  if printf '%s\n%s\n' "$NOW" "$UUID" > "$tmp" 2>/dev/null; then
+    mv -f "$tmp" "$1" 2>/dev/null || rm -f "$tmp" 2>/dev/null
+  else
+    rm -f "$tmp" 2>/dev/null
+  fi
+}
+
+mkdir -p "$STATE_DIR" 2>/dev/null || exit 0
+write_stamp "$STATE_DIR/last-turn-$session_id"
+
 # Loose match on purpose - the mirror image of the guard's strict one. The
 # asymmetry follows from fail-open: a guard false positive blocks a real user
 # prompt (unacceptable), while a sensor false positive just means the next tick
@@ -54,32 +110,5 @@ LAST="$(tail -n 800 "$TRANSCRIPT" 2>/dev/null \
 # autonomous-loop wakeup IS a real API turn and should stamp.
 printf '%s' "$LAST" | grep -q 'cc-cache-keepalive' && exit 0
 
-# Note the fail direction is inverted versus stop-sound.sh, which falls through
-# to acting when it cannot read the transcript. Here, if we cannot tell whether
-# the turn was a ping, we must NOT stamp: stamping on unknown risks a cold
-# cache, not stamping costs one ping.
-
-UUID="$(printf '%s' "$LAST" \
-  | grep -oE '"uuid"[[:space:]]*:[[:space:]]*"[0-9a-fA-F-]{8,}"' \
-  | head -n1 | grep -oE '[0-9a-fA-F-]{8,}' | tail -n1)"
-
-PROFILE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-STATE_DIR="$PROFILE_DIR/.cc-cache-keepalive"
-STAMP="$STATE_DIR/last-real-turn-$session_id"
-
-# Line 2 holds the uuid of the user line we stamped for. Re-stamping the same
-# prompt would slide the gate forward every turn without a new real prompt ever
-# arriving - the one path that could hold a session's cache open until it went
-# cold. Costs three lines, removes the class.
-if [ -n "$UUID" ] && [ "$UUID" = "$(sed -n 2p "$STAMP" 2>/dev/null)" ]; then
-  exit 0
-fi
-
-mkdir -p "$STATE_DIR" 2>/dev/null || exit 0
-TMP="$STATE_DIR/.tmp.$$"
-if printf '%s\n%s\n' "$(date +%s)" "$UUID" > "$TMP" 2>/dev/null; then
-  mv -f "$TMP" "$STAMP" 2>/dev/null || rm -f "$TMP" 2>/dev/null
-else
-  rm -f "$TMP" 2>/dev/null
-fi
+write_stamp "$STATE_DIR/last-real-turn-$session_id"
 exit 0

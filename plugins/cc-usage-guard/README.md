@@ -103,17 +103,27 @@ The poller records why its last fetch failed in `<state dir>/poller-last-error` 
 
 ## Fix: sign in from a terminal
 
-**The poller needs a terminal CLI login.** If the offline warning says `no OAuth token found`, this is the fix, and it is yours to run — open a terminal app (Terminal, iTerm, an IDE terminal) and start Claude Code there:
+**The poller needs a terminal CLI login.** If the offline warning says `no OAuth token found`, this is the fix, and it is yours to run — open a terminal app (Terminal, iTerm, an IDE terminal) and run:
 
 ```
-claude
+claude /login
 ```
 
-Sign in at the prompt. If a terminal session is already running, `/login` inside it does the same. It has to be a real terminal: the sign-in opens a browser and waits for you, so no session, hook, or agent can do it on your behalf. One sign-in is enough — the token then keeps refreshing on its own, and the guard works everywhere, including the desktop app.
+Sign in at the prompt. It has to be a real terminal: the sign-in opens a browser and waits for you, so no session, hook, or agent can do it on your behalf. One sign-in is enough — the token then keeps refreshing on its own, and the guard works everywhere, including the desktop app.
 
 **Why a terminal, when you are already signed in?** Two separate credential stores. The poller authenticates with the OAuth token from the keychain item `Claude Code-credentials` (or a per-profile `.credentials.json`) — the store the **terminal CLI** maintains. It cannot use the token of the session it is running inside: Claude Code strips OAuth credentials from every hook subprocess by design, and [the hooks reference](https://code.claude.com/docs/en/hooks) states plainly that no API credentials are passed to hooks. The desktop app keeps its own session state elsewhere and never populates that keychain item, so being signed into the app does not help the poller.
 
 So on a machine used **only** through the desktop app, with no terminal CLI login, the guard has no usage source at all: no statusLine renders, so the sensor cannot run, and the poller has nothing to authenticate with. It fails loud rather than pretending otherwise, and the offline warning gives you the command above instead of sending you to this README.
+
+## Checking the guard's state
+
+One command prints what the guard acts on, so nobody reads the state directory by hand:
+
+```
+bash ~/.claude/plugins/cache/vdsmon-skills/cc-usage-guard/<version>/hooks/usage-status.sh
+```
+
+It shows the state file and its age, both windows with their resets in local time, the thresholds in effect, the poller's last attempt, error, and backoff, and every park or warn marker of this profile. `--clear-markers` removes the markers; that is always safe, the next crossing then fires in full instead of as a throttled repeat. A plan upgrade or a window reset needs nothing from you: the next poll, within a minute, replaces the numbers, and a past reset already makes the guard ignore that window.
 
 ## Notes
 
@@ -124,3 +134,4 @@ So on a machine used **only** through the desktop app, with no terminal CLI logi
 - Requires `jq` and `awk` on PATH (missing jq fails loud, see above), plus `curl` for the poller.
 - State lives at `${CLAUDE_CONFIG_DIR:-~/.claude}/.usage-guard/` (created on first run), not inside the plugin dir, because the statusLine sensor gets no `${CLAUDE_PLUGIN_ROOT}` and every part must derive the same per-profile path. Stale session markers (>7 days) and orphaned tmp files are garbage-collected on prompt-submit.
 - Tests: `bash plugins/cc-usage-guard/tests/test-usage-guard.sh` (or `mise run test:usage-guard`); add `--soak` for a concurrent write/read race check.
+- The guard sees hooks, not processes. A background process the model started that calls the API on its own (an Agent SDK run, an agent fleet under `nohup`) keeps calling after the PARK, and at the limit every call fails. The PARK message therefore tells the model to stop such processes itself; the guard cannot.
