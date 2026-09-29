@@ -549,7 +549,7 @@ case "$out" in
 esac
 
 # every other fault keeps the generic remedy - the branch above must not swallow them.
-# Credentials have to be back in place or the guard's self-heal poll fails on the token
+# Credentials have to be back in place or the guard's own poll fails on the token
 # first and overwrites the fault under test with the credentials one.
 reset_state
 printf '%s' "$FAKE_CREDS" > "$TESTHOME/.claude/.credentials.json"
