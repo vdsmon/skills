@@ -96,7 +96,7 @@ Held ticks stay held: they refresh nothing, so the stamps keep ageing and every 
 
 The offline case is covered by the sensor side. A tick that fires with no network ends in a synthetic assistant record (`API Error: Unable to connect to API (ENOTFOUND)`); stamping it would call a dead cache warm, so turns that end in an API error write no stamp at all, and the age keeps counting from the last turn that really reached the API.
 
-The state directory is swept of stamps older than 7 days, so a session whose machine slept for more than a week has no stamps left: its first tick fails open and pays one cold read.
+The state directory is swept of stamps older than 7 days. So once a session has been held cold (or its machine asleep) for over a week, its next tick finds no stamps, fails open, and pays one cold read; the answered ping then restarts the warm chain.
 
 ## Measured, not assumed
 

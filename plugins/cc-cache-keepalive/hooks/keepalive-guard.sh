@@ -111,10 +111,10 @@ block() { # <reason>
 }
 
 # TTL measured, not assumed (docs/experiments.md #16): a cliff at 60 min, not a
-# slope. Safety is the margin for what the arithmetic cannot
-# see - a machine that slept, or a tick queued behind a long turn. It does NOT
-# need to cover cron jitter: that is a constant phase offset per job, so it
-# shifts every tick equally and never widens the gap between them.
+# slope. Safety is the margin for what the arithmetic cannot see - a machine
+# that slept, or a tick queued behind a long turn. It does NOT need to cover
+# cron jitter: that is a constant phase offset per job, so it shifts every tick
+# equally and never widens the gap between them.
 TTL_MIN="${CC_KEEPALIVE_TTL_MIN:-60}"
 SAFETY_MIN="${CC_KEEPALIVE_SAFETY_MIN:-10}"
 case "$TTL_MIN" in ''|*[!0-9]*) TTL_MIN=60 ;; esac
