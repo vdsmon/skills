@@ -1,7 +1,7 @@
 {
   "name": "git-cleanup",
-  "version": "0.3.1",
-  "description": "Clean up stale git branches and worktrees. Finds branches merged into dev/develop/master/main (squash-merge aware on GitHub remotes via gh PR state), checks worktrees for uncommitted changes, and removes what's safe while skipping dirty worktrees. Use for 'clean up branches', 'git housekeeping', 'remove merged branches', 'clean worktrees'. Portable across SKILL.md-native hosts.",
+  "version": "0.4.0",
+  "description": "Removes local git branches and worktrees that are safely merged into dev/develop/master/main, skipping dirty worktrees and the main checkout. Squash-merge aware on GitHub remotes, including PR branches rewritten before merge.",
   "author": {
     "name": "Victor De Simone",
     "email": "victorsmoliveira@gmail.com",
