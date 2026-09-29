@@ -96,37 +96,37 @@
     {
       "name": "git-cleanup",
       "source": "./plugins/git-cleanup",
-      "description": "Clean up stale git branches and worktrees. Finds branches merged into dev/develop/master/main (squash-merge aware on GitHub remotes via gh PR state), checks worktrees for uncommitted changes, and removes what's safe while skipping dirty worktrees. Use for 'clean up branches', 'git housekeeping', 'remove merged branches', 'clean worktrees'. Portable across SKILL.md-native hosts. Portable across SKILL.md-native hosts.",
+      "description": "Clean up stale git branches and worktrees. Finds branches merged into dev/develop/master/main (squash-merge aware on GitHub remotes via gh PR state), checks worktrees for uncommitted changes, and removes what's safe while skipping dirty worktrees. Use for 'clean up branches', 'git housekeeping', 'remove merged branches', 'clean worktrees'. Portable across SKILL.md-native hosts.",
       "version": "0.3.1"
     },
     {
       "name": "strip-migration-cruft",
       "source": "./plugins/strip-migration-cruft",
-      "description": "Scan a repo for transitional / migration / phase / wave / story / legacy-alias cruft comments that document past project history rather than current behavior, bucket hits into safe-to-strip vs keep-semantic, then propose surgical edits and execute after confirmation. Use for 'scan for migration comments', 'remove phase/wave/story refs', 'strip transitional cruft', or fatigue with project-history breadcrumbs in code and docs. Portable across SKILL.md-native hosts. Portable across SKILL.md-native hosts.",
+      "description": "Scan a repo for transitional / migration / phase / wave / story / legacy-alias cruft comments that document past project history rather than current behavior, bucket hits into safe-to-strip vs keep-semantic, then propose surgical edits and execute after confirmation. Use for 'scan for migration comments', 'remove phase/wave/story refs', 'strip transitional cruft', or fatigue with project-history breadcrumbs in code and docs. Portable across SKILL.md-native hosts.",
       "version": "0.2.2"
     },
     {
       "name": "grilling",
       "source": "./plugins/grilling",
-      "description": "Relentless one-question-at-a-time interview that stress-tests a plan or design to convergence: facts get looked up in the codebase, decisions go to the human, and nothing is enacted until shared understanding is confirmed. Bundles grilling (the engine), grill-with-docs (grill + write ADRs and a glossary as you go), and domain-modeling (sharpen a ubiquitous language, CONTEXT.md glossary, sparing ADRs). Portable across SKILL.md-native hosts. Portable across SKILL.md-native hosts.",
+      "description": "Relentless one-question-at-a-time interview that stress-tests a plan or design to convergence: facts get looked up in the codebase, decisions go to the human, and nothing is enacted until shared understanding is confirmed. Bundles grilling (the engine), grill-with-docs (grill + write ADRs and a glossary as you go), and domain-modeling (sharpen a ubiquitous language, CONTEXT.md glossary, sparing ADRs). Portable across SKILL.md-native hosts.",
       "version": "0.2.1"
     },
     {
       "name": "wayfinder",
       "source": "./plugins/wayfinder",
-      "description": "Chart work too big for one agent session as a shared map of investigation tickets on the repo's issue tracker: name the destination, sketch the fog of war, then resolve one ticket per session (grilling, research, prototype, task) until the way is clear. Plans decisions, never deliverables. Pairs with the grilling plugin. Portable across SKILL.md-native hosts. Portable across SKILL.md-native hosts.",
+      "description": "Chart work too big for one agent session as a shared map of investigation tickets on the repo's issue tracker: name the destination, sketch the fog of war, then resolve one ticket per session (grilling, research, prototype, task) until the way is clear. Plans decisions, never deliverables. Pairs with the grilling plugin. Portable across SKILL.md-native hosts.",
       "version": "0.1.1"
     },
     {
       "name": "teach",
       "source": "./plugins/teach",
-      "description": "Stateful, multi-session teaching workspace: grounds every lesson in a MISSION.md, gathers trusted RESOURCES.md, produces short self-contained HTML lessons in the learner's zone of proximal development, tracks progress via learning-records, and builds storage strength through retrieval, spacing, and interleaving. Portable across SKILL.md-native hosts. Portable across SKILL.md-native hosts.",
+      "description": "Stateful, multi-session teaching workspace: grounds every lesson in a MISSION.md, gathers trusted RESOURCES.md, produces short self-contained HTML lessons in the learner's zone of proximal development, tracks progress via learning-records, and builds storage strength through retrieval, spacing, and interleaving. Portable across SKILL.md-native hosts.",
       "version": "0.2.1"
     },
     {
       "name": "codebase-design",
       "source": "./plugins/codebase-design",
-      "description": "Shared vocabulary for designing deep modules: a lot of behaviour behind a small interface, placed at a clean seam, testable through that interface. Precise glossary (module, interface, implementation, depth, seam, adapter, leverage, locality), the deletion test, the one-adapter-vs-two seam rule, and testability checks. Bundles DEEPENING.md and DESIGN-IT-TWICE.md. Portable across SKILL.md-native hosts. Portable across SKILL.md-native hosts.",
+      "description": "Shared vocabulary for designing deep modules: a lot of behaviour behind a small interface, placed at a clean seam, testable through that interface. Precise glossary (module, interface, implementation, depth, seam, adapter, leverage, locality), the deletion test, the one-adapter-vs-two seam rule, and testability checks. Bundles DEEPENING.md and DESIGN-IT-TWICE.md. Portable across SKILL.md-native hosts.",
       "version": "0.1.3"
     },
     {

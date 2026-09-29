@@ -22,7 +22,10 @@ OPENAI_YAML = (
 
 # A host note a plugin.json description may still carry by hand. It is stripped
 # before the normalized suffix is appended, so the note never appears twice.
-_HOST_NOTE = re.compile(r"\s*(?:Portable across|Claude[- ]Code[- ]only|Claude-Code-leaning)\b[^.]*\.\s*$")
+# A period inside the note ("SKILL.md") does not end it; only one before a space or the end does.
+_HOST_NOTE = re.compile(
+    r"\s*(?:Portable across|Claude[- ]Code[- ]only|Claude-Code-leaning)\b(?:[^.]|\.(?=\S))*\.\s*$"
+)
 
 # A lowercase word after the period (as in "e.g. the") does not start a sentence.
 _SENTENCE_BREAK = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9`'\"(\[])")
