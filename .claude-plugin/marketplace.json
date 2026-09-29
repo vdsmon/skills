@@ -102,8 +102,8 @@
     {
       "name": "strip-migration-cruft",
       "source": "./plugins/strip-migration-cruft",
-      "description": "Scan a repo for transitional / migration / phase / wave / story / legacy-alias cruft comments, bucket into safe-to-strip vs keep-semantic, propose surgical edits and execute after confirmation. Use for 'scan for migration comments', 'remove phase/wave/story refs', 'strip transitional cruft'. Portable across SKILL.md-native hosts.",
-      "version": "0.2.2"
+      "description": "Finds comments and docs that narrate past project history (phase, wave, story, migration notes), sorts cruft from live meaning, and strips the cruft after confirmation. Portable across SKILL.md-native hosts.",
+      "version": "0.3.0"
     },
     {
       "name": "grilling",
