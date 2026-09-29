@@ -54,8 +54,8 @@
     {
       "name": "prep-exit",
       "source": "./plugins/prep-exit",
-      "description": "Audit in-flight state before the session is killed, save what only the conversation knows into files and persistent memory, and leave a handoff note plus a paste-ready resume prompt for the next session. Sibling of prep-compact for the case where nothing survives. Portable across Agent Skills hosts.",
-      "version": "0.1.0"
+      "description": "Save what only the conversation knows before a session ends, so a fresh session can pick up the work. Commits real work locally, syncs state files, writes a handoff note and a memory pointer, asks once only for risky items, and prints a paste-ready resume prompt. Portable across Agent Skills hosts.",
+      "version": "0.2.0"
     },
     {
       "name": "prep-goal",

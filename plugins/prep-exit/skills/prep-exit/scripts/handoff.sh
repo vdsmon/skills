@@ -26,8 +26,8 @@ repo_abs=$(cd "$repo_dir" 2>/dev/null && pwd -P || printf '%s' "$repo_dir")
 {
   echo "# Handoff, $stamp"
   echo
-  echo "Written by prep-exit before the session ended. The next session starts from this file"
-  echo "and from persistent memory; nothing else of that session survives."
+  echo "Written by prep-exit before the session ended. A fresh session starts from this file"
+  echo "and from persistent memory; nothing else of that session reaches it."
   echo
   echo "Repository: \`$repo_abs\`"
   echo
@@ -49,7 +49,7 @@ repo_abs=$(cd "$repo_dir" 2>/dev/null && pwd -P || printf '%s' "$repo_dir")
   echo
   echo "## Pending"
   echo
-  echo "(fill: background output captured and what it said; session-only crons and reminders to recreate; chips or spawned tasks still open; messages from other sessions not yet answered)"
+  echo "(fill: held-back items awaiting a yes; background output captured and what it said; session-only crons and reminders to recreate; chips or spawned tasks still open; messages from other sessions not yet answered)"
   echo
   echo "## Next step"
   echo
