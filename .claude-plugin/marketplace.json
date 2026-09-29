@@ -13,7 +13,7 @@
       "name": "slack-draft",
       "source": "./plugins/slack-draft",
       "description": "Draft a Slack message for the user to send: Slack mrkdwn, lead-with-conclusion, backticked identifiers and domain values, ASCII punctuation. Defaults to English and a plain high-level register, or pass --tech for a code-reading peer. Draft only, never posts. Portable across SKILL.md-native hosts.",
-      "version": "0.3.3"
+      "version": "0.3.4"
     },
     {
       "name": "skill-polish",
