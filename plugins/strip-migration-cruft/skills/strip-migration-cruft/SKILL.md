@@ -17,7 +17,7 @@ The skill runs in four phases. Stop after each and report, do not chain.
 
 ### 1. Scan
 
-Run `scripts/scan.sh <repo-root>` from this skill's directory. It holds the full pattern catalog and prints `path:line: <matched_text>` rows grouped by bucket, plus a Borderline group of raw hits no bucket claimed.
+Run `bash <skill-dir>/scripts/scan.sh <repo-root>`, where `<skill-dir>` is this skill's base directory and `<repo-root>` is the absolute path of the repo to scan. The script holds the full pattern catalog and prints `path:line: <matched_text>` rows grouped by bucket, plus a Borderline group of raw hits no bucket claimed.
 
 Default excludes:
 - `.git/`
