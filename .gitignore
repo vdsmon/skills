@@ -3,15 +3,9 @@
 .idea/
 .vscode/
 
-# Claude Code local/transient state (commit settings.json, skills/, commands/, agents/, rules/)
+# Claude Code project-local state (commit settings.json, skills/, commands/, agents/, rules/)
 .claude/settings.local.json
 .claude/scheduled_tasks.*
-.claude/shell-snapshots/
-.claude/todos/
-.claude/history/
-.claude/statsig/
-.claude/projects/
+.claude/worktrees/
 
-# /caveman:compress backups
-*.original.md
 __pycache__/

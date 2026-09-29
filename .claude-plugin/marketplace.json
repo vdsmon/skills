@@ -12,55 +12,55 @@
     {
       "name": "slack-draft",
       "source": "./plugins/slack-draft",
-      "description": "Draft a Slack message for the user to send: Slack mrkdwn, lead-with-conclusion, backticked identifiers and domain values, ASCII punctuation. Defaults to English and a plain high-level register, or pass --tech for a code-reading peer. Draft only, never posts. Portable across SKILL.md-native hosts.",
+      "description": "Draft a Slack message for the user to send: Slack mrkdwn, lead-with-conclusion, backticked identifiers and domain values, ASCII punctuation. Defaults to English and a plain high-level register; pass --tech for a code-reading peer. Draft only, never posts. Portable across SKILL.md-native hosts.",
       "version": "0.3.3"
     },
     {
       "name": "skill-polish",
       "source": "./plugins/skill-polish",
-      "description": "Post-mortem for any skill: scans a session for friction and applies concrete edits to the responsible skill file. Portable across SKILL.md-native hosts.",
+      "description": "Post-mortem for any skill. Scans a conversation for friction (corrections, skipped steps, rejected tool calls), traces each to the responsible skill file, and applies concrete edits. Portable across SKILL.md-native hosts.",
       "version": "1.3.3"
     },
     {
       "name": "cc-caveman",
       "source": "./plugins/cc-caveman",
-      "description": "Always-on caveman full mode: drops articles, filler, and tool-call narration while keeping every technical fact exact. Installing is the opt-in — a SessionStart hook injects the ruleset and a per-prompt one-liner keeps it anchored (CC_CAVEMAN_OFF=1 skips a session). Ships /caveman-compress to shrink memory files the same way. Extracted (full mode only) from JuliusBrussee/caveman, MIT. Claude Code only (hooks).",
+      "description": "Always-on caveman full mode: drops articles, filler, and tool-call narration while keeping every technical fact exact. Installing is the opt-in — a SessionStart hook injects the ruleset and a per-prompt one-liner keeps it anchored (CC_CAVEMAN_OFF=1 skips a session). Ships /caveman-compress to shrink memory files the same way. Extracted (full mode only) from JuliusBrussee/caveman, MIT. Claude Code only.",
       "version": "0.1.0"
     },
     {
       "name": "cc-tokenomics",
       "source": "./plugins/cc-tokenomics",
-      "description": "Token usage, cache hit rates, and Max plan consumption analyzer. /cc-tokenomics dashboard + reference docs on rate limits, cache lifecycle, and empirical billing experiments. Claude Code only.",
+      "description": "Analyzes Claude Code token usage, cache hit rates, and Max plan consumption. Ships a /tokenomics dashboard plus a reference library on rate limits, cache lifecycle, and empirical billing experiments. Analysis and education only — for cache warmup install the cc-cache-keepalive plugin. Claude Code only.",
       "version": "2.1.4"
     },
     {
       "name": "cc-cache-keepalive",
       "source": "./plugins/cc-cache-keepalive",
-      "description": "Keeps Claude Code's prompt cache warm on Max plans via a silent cron, cancelling any tick a recent real turn already refreshed and any tick that would land on a cache that already expired (machine slept, went offline). Opt-in via ~/.cc-cache-keepalive flag file. A Stop sensor stamps real turns and API-answered pings; a UserPromptSubmit guard drops warm and cold ticks before they cost a request; everything fails open. Cron prompt is the sentinel 'cc-cache-keepalive', so you can gate Stop hooks on it to silence turn-end sounds. Claude Code only (hook + cron).",
+      "description": "Keeps Claude Code's prompt cache warm on Max plans via a silent cron, cancelling any tick a recent real turn already refreshed and any tick that would land on a cache that already expired (machine slept, went offline). Opt-in via ~/.cc-cache-keepalive flag file. A Stop sensor stamps real turns and API-answered pings; a UserPromptSubmit guard drops warm and cold ticks before they cost a request; everything fails open. Cron prompt is the sentinel 'cc-cache-keepalive', so you can gate Stop hooks on it to silence turn-end sounds. Claude Code only.",
       "version": "1.7.0"
     },
     {
       "name": "cc-usage-guard",
       "source": "./plugins/cc-usage-guard",
-      "description": "Pause-at-limit guard for Claude Code. A hook-driven poller reads 5h + weekly rate-limit usage from the account usage endpoint, so it works in the desktop app, the terminal, and headless runs alike (an optional statusLine sensor supplies the same numbers for free where one renders). PostToolUse/UserPromptSubmit hooks watch that state in two tiers: a soft WARN nudge on approach, then a hard PARK that pauses the session, schedules a one-shot auto-resume cron for just after the window resets, and fires a push notification. Spawned agents (subagents, teammates) wind down and hand back instead of parking, and if the usage source goes dark the guard warns instead of going silently blind. Per-profile state, per-window thresholds; see the README for details. Claude Code only (hooks).",
+      "description": "Pause-at-limit guard for Claude Code. A hook-driven poller reads 5h + weekly rate-limit usage from the account usage endpoint (works in the desktop app, terminal, and headless runs alike; an optional statusLine sensor supplies the same numbers for free where one renders); PostToolUse/UserPromptSubmit hooks watch it in two tiers: a soft WARN nudge on approach, then a hard PARK that pauses the session, schedules a one-shot auto-resume cron for just after the window resets, and fires a push notification. Spawned agents (subagents, teammates) wind down and hand back instead of parking, and if the usage source goes dark the guard warns instead of going silently blind. Per-profile state, per-window thresholds; see the README for details. Claude Code only.",
       "version": "0.9.1"
     },
     {
       "name": "prep-compact",
       "source": "./plugins/prep-compact",
-      "description": "Audit in-flight state before any context-compacting step, save what would be lost (local commits, state files, notes), and produce a copy-paste /compact message plus a queue-able follow-up that chains the next action when compact finishes. Portable across Agent Skills hosts, since compacting is a general concept, not Claude-specific.",
+      "description": "Audit in-flight session state before a context-compacting step truncates history. Saves what would be lost (commits real work locally, syncs stale plan and state files, captures background output, notes chat-only decisions), asking first only for anything destructive, outward-facing, or against a repo rule, then produces a copy-paste /compact message plus a queue-able follow-up that chains the next action when compact finishes. Portable across SKILL.md-native hosts.",
       "version": "1.9.0"
     },
     {
       "name": "prep-exit",
       "source": "./plugins/prep-exit",
-      "description": "Audit in-flight state before the session is killed, save what only the conversation knows into files and persistent memory, and leave a handoff note plus a paste-ready resume prompt for the next session. Sibling of prep-compact for the case where nothing survives. Portable across Agent Skills hosts.",
+      "description": "Audit in-flight session state before the session is killed, save what only the conversation knows into files and persistent memory, and leave a handoff note plus a paste-ready resume prompt for the next session. Sibling of prep-compact: compaction keeps a summary, an exit keeps nothing, so every finding must land on disk. Portable across SKILL.md-native hosts.",
       "version": "0.1.0"
     },
     {
       "name": "prep-goal",
       "source": "./plugins/prep-goal",
-      "description": "Interrogate a rough objective into a tight, verifiable /goal completion condition before handing it to an autonomous goal loop. Grills one question at a time to pin the real end-state, the gate (a runnable check whose raw output the loop pastes), a scope fence, the forbidden cheat, and guardrails (turn cap + credential liveness), then emits a short paste-ready /goal line. Pass --delegate to emit a goal that runs each iteration in a fresh implement subagent so a long run's context grows slowly. Built for Claude Code's native /goal; the technique ports to any autonomous-loop host.",
+      "description": "Interrogate a rough objective into a tight, verifiable /goal completion condition before handing it to an autonomous goal loop. Grills one question at a time to pin the real end-state, the proof the evaluator can see, a scope fence, the forbidden cheat, and a turn cap, then emits a short paste-ready /goal line. Built for Claude Code's native /goal; the sharpening technique ports to any autonomous-loop host. Portable across SKILL.md-native hosts.",
       "version": "0.4.2"
     },
     {
@@ -72,7 +72,7 @@
     {
       "name": "loop-finder",
       "source": "./plugins/loop-finder",
-      "description": "Loop discovery + race + feature-driven iteration. Two skills: loop-finder (engineers a self-verifiable gate for a task class, races parallel variants, converges on the best loop config, with HITL concentrated at permission boundaries) and feature-cycle (outer queued-fix chain that ships features against the converged gate, retros pain, queues one harness fix per cycle: Karpathy autoresearch discipline applied to dev experience).",
+      "description": "Loop discovery + race + feature-driven iteration. Two skills: loop-finder (engineers a self-verifiable gate for a task class, races parallel variants, converges on the best loop config; HITL concentrated at permission boundaries) and feature-cycle (outer queued-fix chain that ships features against the converged gate, retros pain, queues one harness fix per cycle — Karpathy autoresearch discipline applied to dev experience). Portable across SKILL.md-native hosts.",
       "version": "0.3.2"
     },
     {
@@ -90,19 +90,19 @@
     {
       "name": "skill-smith",
       "source": "./plugins/skill-smith",
-      "description": "Forge for Agent Skills: create, test, evaluate, optimize triggering, and package skills. Merges an empirical eval loop (run with-skill vs baseline, benchmark, iterate) with TDD-for-skills discipline (baseline-test first, close rationalization loopholes). Bundles the eval harness, benchmark viewer, description-triggering optimizer, and a design-vocabulary reference (predictability, context vs cognitive load, information hierarchy, leading words, failure modes). Claude-Code-leaning (subagents + scripts).",
+      "description": "Forge for Agent Skills: create, test, evaluate, optimize triggering, and package skills. Merges an empirical eval loop (run with-skill vs baseline, benchmark, iterate) with TDD-for-skills discipline (baseline-test first, close rationalization loopholes, verify before shipping). Use whenever building a skill from scratch, turning a workflow into a skill, improving or debugging an existing skill, running evals/benchmarks, or raising a skill's triggering accuracy. Portable across SKILL.md-native hosts.",
       "version": "0.4.0"
     },
     {
       "name": "git-cleanup",
       "source": "./plugins/git-cleanup",
-      "description": "Clean up stale git branches and worktrees. Finds branches merged into dev/develop/master/main (squash-merge aware on GitHub remotes via gh PR state), checks worktrees for uncommitted changes, removes what's safe while skipping dirty worktrees. Use for 'clean up branches', 'git housekeeping', 'remove merged branches', 'clean worktrees'. Portable across SKILL.md-native hosts.",
+      "description": "Clean up stale git branches and worktrees. Finds branches merged into dev/develop/master/main (squash-merge aware on GitHub remotes via gh PR state), checks worktrees for uncommitted changes, and removes what's safe while skipping dirty worktrees. Use for 'clean up branches', 'git housekeeping', 'remove merged branches', 'clean worktrees'. Portable across SKILL.md-native hosts.",
       "version": "0.3.1"
     },
     {
       "name": "strip-migration-cruft",
       "source": "./plugins/strip-migration-cruft",
-      "description": "Scan a repo for transitional / migration / phase / wave / story / legacy-alias cruft comments, bucket into safe-to-strip vs keep-semantic, propose surgical edits and execute after confirmation. Use for 'scan for migration comments', 'remove phase/wave/story refs', 'strip transitional cruft'. Portable across SKILL.md-native hosts.",
+      "description": "Scan a repo for transitional / migration / phase / wave / story / legacy-alias cruft comments that document past project history rather than current behavior, bucket hits into safe-to-strip vs keep-semantic, then propose surgical edits and execute after confirmation. Use for 'scan for migration comments', 'remove phase/wave/story refs', 'strip transitional cruft', or fatigue with project-history breadcrumbs in code and docs. Portable across SKILL.md-native hosts.",
       "version": "0.2.2"
     },
     {
