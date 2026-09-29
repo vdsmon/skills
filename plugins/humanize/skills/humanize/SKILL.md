@@ -210,3 +210,7 @@ The corrected text, and nothing else. No draft, no residual-tells list, no chang
 - Input is a file: edit the file in place and confirm in one short line. Do not reproduce the text in chat.
 - Input is text destined for a file or another surface (a PR body, a commit message, a doc): write it where it is going, and the chat shows at most one short line.
 - Input is chat text with nowhere else to land: reply with the final rewrite alone.
+
+## Source
+
+Pattern taxonomy adapted from [Wikipedia: Signs of AI writing](https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing) (WikiProject AI Cleanup, CC BY-SA 4.0).
