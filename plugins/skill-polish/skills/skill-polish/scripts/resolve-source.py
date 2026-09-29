@@ -163,17 +163,17 @@ def marketplace_source(mkt, clone_dir):
     return None, None
 
 
+def is_install(d, installs):
+    d = d.resolve()
+    return any(d == i or i in d.parents for i in installs)
+
+
 def find_checkout(remote, installs):
     """Look for a local git checkout whose remote matches. The cwd's repo wins."""
-
-    def is_install(d):
-        d = d.resolve()
-        return any(d == i or i in d.parents for i in installs)
-
     cwd = Path.cwd().resolve()
     for d in [cwd, *cwd.parents]:
         if (d / ".git").exists():
-            if remote in remotes_of(d) and not is_install(d):
+            if remote in remotes_of(d) and not is_install(d, installs):
                 return d
             break
     for name in SEARCH_ROOTS + [""]:
@@ -185,7 +185,7 @@ def find_checkout(remote, installs):
             here = Path(dirpath)
             depth = len(here.relative_to(root).parts)
             if (here / ".git").is_dir():
-                if remote in remotes_of(here) and not is_install(here):
+                if remote in remotes_of(here) and not is_install(here, installs):
                     return here
                 dirnames[:] = []
                 continue
@@ -250,12 +250,21 @@ def main(argv):
         return 3
 
     remote, local_dir = marketplace_source(mkt, clone_dir)
-    if checkout is None and local_dir:
-        checkout = Path(local_dir).expanduser().resolve()
+    # Hosts register their bundled marketplaces as "local" sources that point
+    # into their own managed dirs; those are install copies, not checkouts.
     installs = [
         d.resolve()
-        for d in (CLAUDE_DIR / "plugins", CODEX_DIR / "plugins", CODEX_DIR / ".tmp")
+        for d in (
+            CLAUDE_DIR / "plugins",
+            CODEX_DIR / "plugins",
+            CODEX_DIR / ".tmp",
+            HOME / ".cache",
+        )
     ]
+    if checkout is None and local_dir:
+        local = Path(local_dir).expanduser().resolve()
+        if not is_install(local, installs):
+            checkout = local
     if checkout is None and remote:
         checkout = find_checkout(remote, installs)
     if checkout is None or not checkout.is_dir():
