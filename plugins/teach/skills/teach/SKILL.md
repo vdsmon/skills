@@ -12,12 +12,13 @@ The user has asked you to teach them something. This is a stateful request - the
 Treat the current directory as a teaching workspace. The state of their learning is captured in this directory in several files:
 
 - `MISSION.md`: A document capturing the _reason_ the user is interested in the topic. This should be used to ground all teaching. Use the format in [MISSION-FORMAT.md](./MISSION-FORMAT.md).
-- `./reference/*.html`: A directory of reference materials. These are the compressed learnings from the lessons - cheat sheets, reference algorithms, syntax, yoga poses, glossaries. They are the raw units of learning. They should be beautiful documents which print out well, and are designed for quick reference.
+- `GLOSSARY.md`: The canonical terms for the topic. Once it exists, every lesson, exercise, and learning record uses its terms. Use the format in [GLOSSARY-FORMAT.md](./GLOSSARY-FORMAT.md).
+- `./reference/*.html`: A directory of reference materials. These are the compressed learnings from the lessons - cheat sheets, reference algorithms, syntax, yoga poses. They are the raw units of learning. Create them as you write lessons: lessons are rarely revisited, reference docs are. They should be beautiful documents which print out well, and are designed for quick reference.
 - `RESOURCES.md`: A list of resources which can be explored to ground your teaching in contextual knowledge, or to acquire knowledge and wisdom. Use the format in [RESOURCES-FORMAT.md](./RESOURCES-FORMAT.md).
 - `./learning-records/*.md`: A directory of learning records, which capture what the user has learned. These are loosely equivalent to architectural decision records in software development - they capture non-obvious lessons and key insights that may need to be revised later, or drive future sessions. These should be used to calculate the zone of proximal development. They are titled `0001-<dash-case-name>.md`, where the number increments each time. Use the format in [LEARNING-RECORD-FORMAT.md](./LEARNING-RECORD-FORMAT.md).
 - `./lessons/*.html`: A directory of lessons. A **lesson** is a single, self-contained HTML output that teaches one tightly-scoped thing tied to the mission. This is the primary unit of teaching in this workspace.
 - `./assets/*`: Reusable **components** shared across lessons. See [Assets](#assets).
-- `NOTES.md`: A scratchpad for you to jot down user preferences, or working notes.
+- `NOTES.md`: A scratchpad for you: the user's preferences for how they want to be taught, and your working notes. Check it before designing a lesson.
 
 ## Philosophy
 
@@ -64,7 +65,7 @@ Each lesson should contain a reminder to ask followup questions to the agent. Th
 
 A lesson is HTML + CSS + JS, and "beautiful" (above) is a claim about the *rendered* page, not the source. Layout bugs (overlap, clipping, a broken breakpoint), dead interactivity, and 404'd assets are all invisible when you only read the file. **You MUST render every lesson you create or change in a real browser and look at it before declaring the work done.** This includes edits to shared `./assets/` components: one component change touches every lesson.
 
-Use a browser MCP (Playwright or chrome-devtools). They block the `file://` protocol, so first serve the workspace over a local static server and open the `http://` URL:
+Use any browser tool you have. Browser tools often block the `file://` protocol, so first serve the workspace over a local static server and open the `http://` URL:
 
 ```
 python3 -m http.server 8000   # from the workspace root, in the background
@@ -86,13 +87,7 @@ A shared stylesheet is the first component every workspace earns: every lesson l
 
 ## The Mission
 
-Every lesson should be tied into the mission - the reason that the user is interested in learning about the topic.
-
-If the user is unclear about the mission, or the `MISSION.md` is not populated, your first job should be to question the user on why they want to learn this.
-
-Failing to understand the mission will mean knowledge acquisition is not grounded in real-world goals. Lessons will feel too abstract. You will have no way of judging what the user should do next.
-
-Missions may change as the user develops more skills and knowledge. This is normal - make sure to update the `MISSION.md` and add a learning record to capture the change. Confirm with the user before changing the mission.
+Every lesson should be tied into the mission - the reason that the user is interested in learning about the topic. If `MISSION.md` is missing or vague, your first job is to interview the user on why they want to learn this. [MISSION-FORMAT.md](./MISSION-FORMAT.md) says how to write it and when to revise it.
 
 ## Zone Of Proximal Development
 
@@ -146,23 +141,3 @@ When the user asks a question that appears to require wisdom, your default postu
 A community is a place (online or offline) where the user can test their skills in the real world. This might be a forum, a subreddit, a real-world class (budget permitting) or a local interest group.
 
 You should attempt to find high-reputation communities the user can join. If the user expresses a preference that they don't want to join a community, respect it.
-
-## Reference Documents
-
-While creating lessons, you should also create reference documents. Lessons can reference these documents - they are useful for tracking raw units of knowledge useful across lessons.
-
-Lessons will rarely be revisited later - reference documents will be. They should be the compressed essence of the lesson, in a format designed for quick reference.
-
-Some learning topics lend themselves to reference:
-
-- Syntax and code snippets for programming
-- Algorithms and flowcharts for processes
-- Yoga poses and sequences for yoga
-- Exercises and routines for fitness
-- Glossaries for any topic with its own nomenclature
-
-Glossaries, in particular, are an essential reference. Once one is created, it should be adhered to in every lesson.
-
-## `NOTES.md`
-
-The user will sometimes express preferences of how they want to be taught, or things you should keep in mind. This is the place to record those preferences, so you can refer back to them when designing lessons or working with the user.
