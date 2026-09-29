@@ -25,7 +25,7 @@ A `/goal` run is a loop (reason -> act -> observe -> **verify**) and the verify 
 
 ## Method: grill first, emit last
 
-Pin the goal by interrogation, grilling-style: **one question at a time, each with your recommended answer**, so a confident user just says "yes, yes, go." Explore the codebase to answer your own questions instead of asking (find the test command, the entry file, the call sites). Stop grilling the moment these five are nailed; don't pad.
+Pin the goal by interrogation: **one question at a time, each with your recommended answer**, so a confident user just says "yes, yes, go." Explore the codebase to answer your own questions instead of asking (find the test command, the entry file, the call sites). Stop grilling the moment these five are nailed; don't pad.
 
 Ground first (silent, no recap):
 
