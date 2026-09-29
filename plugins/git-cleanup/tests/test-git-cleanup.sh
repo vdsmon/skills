@@ -59,6 +59,12 @@ git worktree add -q .wt/done feat/done
 mkdir -p .wt/done/store/ro && echo blob > .wt/done/store/ro/blob && chmod a-w .wt/done/store/ro
 git worktree add -q .wt/locked feat/locked && git worktree lock .wt/locked
 git worktree add -q .wt/dirty feat/dirty && echo wip > .wt/dirty/wip.txt
+# Detached worktrees (an experiment at a fixed commit): one clean at a commit a
+# branch holds, one dirty, one with a commit no ref has, one whose folder is gone.
+git worktree add -q --detach .wt/det-clean "$pre_squash"
+git worktree add -q --detach .wt/det-dirty "$pre_squash" && echo wip > .wt/det-dirty/wip.txt
+git worktree add -q --detach .wt/det-own "$pre_squash" && (cd .wt/det-own && commit own.txt only-here)
+git worktree add -q --detach .wt/det-gone "$pre_squash" && rm -rf .wt/det-gone
 
 mkdir -p "$tmp/bin"
 printf '#!/bin/sh\ncat "%s"\n' "$tmp/prs.tsv" > "$tmp/bin/gh" && chmod +x "$tmp/bin/gh"
@@ -84,6 +90,10 @@ check "dry run: tip-equal squash in REMOVE" 'grep -q "feat/sq  (squash-merged: P
 check "dry run: rewritten branch matched by patch-id" 'grep -q "feat/rewritten  (squash-merged: PR #12, matched by patch-id)" <<< "$plan"'
 check "dry run: extra commit stays in KEEP with the reason" 'grep -q "feat/extra  (PR #13 merged, but this tip differs" "$tmp/dry.out"'
 check "dry run: dirty worktree skipped" 'grep -A1 "^SKIP (merged but dirty" "$tmp/dry.out" | grep -q "feat/dirty"'
+check "dry run: clean detached worktree in REMOVE" 'sed -n "/^REMOVE (detached/,/^$/p" "$tmp/dry.out" | grep -q "det-clean"'
+check "dry run: dirty detached worktree skipped" 'sed -n "/^SKIP (detached worktree, dirty/,/^$/p" "$tmp/dry.out" | grep -q "det-dirty"'
+check "dry run: detached worktree with its own commit kept" 'sed -n "/^KEEP (detached/,/^$/p" "$tmp/dry.out" | grep -q "det-own.*1 commit on no branch"'
+check "dry run: worktree with a missing folder listed for prune" 'sed -n "/^PRUNE/,/^$/p" "$tmp/dry.out" | grep -q "det-gone"'
 check "dry run: nothing removed" '[ -d "$main/.wt/done" ] && git show-ref --verify -q refs/heads/feat/sq'
 
 run > "$tmp/run.out" 2>&1; rc=$?
@@ -94,6 +104,10 @@ check "execute: locked worktree left in place" '[ -d "$main/.wt/locked" ] && git
 check "execute: locked worktree reported as FAILED, exit 1" '[ $rc -eq 1 ] && grep -q "worktree: .*locked (git refused" "$tmp/run.out"'
 check "execute: squash-merged branches deleted" '! git show-ref --verify -q refs/heads/feat/sq && ! git show-ref --verify -q refs/heads/feat/rewritten'
 check "execute: unmerged and dirty kept" 'git show-ref --verify -q refs/heads/feat/extra && [ -f "$main/.wt/dirty/wip.txt" ]'
+
+check "execute: clean detached worktree removed" '[ ! -e "$main/.wt/det-clean" ] && ! git -C "$main" worktree list | grep -q det-clean'
+check "execute: dirty and own-commit detached worktrees kept" '[ -f "$main/.wt/det-dirty/wip.txt" ] && [ -f "$main/.wt/det-own/own.txt" ]'
+check "execute: missing-folder worktree pruned" '! git -C "$main" worktree list | grep -q det-gone'
 
 git -C "$main" remote add broken "$tmp/missing.git"
 run --dry-run > /dev/null 2> "$tmp/fetch.err"; rc=$?

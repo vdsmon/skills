@@ -1,7 +1,7 @@
 {
   "name": "git-cleanup",
-  "version": "0.4.0",
-  "description": "Removes local git branches and worktrees that are safely merged into dev/develop/master/main, skipping dirty worktrees and the main checkout. Squash-merge aware on GitHub remotes, including PR branches rewritten before merge.",
+  "version": "0.5.0",
+  "description": "Removes local git branches and worktrees that are safely merged into dev/develop/master/main, skipping dirty worktrees and the main checkout. Squash-merge aware on GitHub remotes. Also clears clean detached worktrees whose commits are on a branch, and prunes worktrees whose folder is gone.",
   "author": {
     "name": "Victor De Simone",
     "email": "victorsmoliveira@gmail.com",

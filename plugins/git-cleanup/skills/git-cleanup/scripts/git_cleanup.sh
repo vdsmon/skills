@@ -8,7 +8,8 @@
 # Merge detection is ancestry-based (git branch --merged) plus, on GitHub
 # remotes with gh available, squash-aware: a branch whose tip equals the head
 # SHA of a merged PR, or whose net diff has the same patch-id as the PR's merge
-# commit, counts as merged.
+# commit, counts as merged. Detached worktrees are removed when clean and when
+# every commit in them is also on a branch, a remote branch or a tag.
 # --dry-run: Only show what would be removed/kept, without changing anything.
 
 ((BASH_VERSINFO[0] >= 4)) || { echo "git-cleanup needs bash 4+ (brew install bash)" >&2; exit 2; }
@@ -72,6 +73,44 @@ worktree_is_dirty() {
   [[ -d "$wt_path" ]] || return 1
   out=$(git -C "$wt_path" status --porcelain 2>/dev/null) || return 0
   [[ -n "$out" ]]
+}
+
+# Removes one clean, non-main worktree. Returns 0 when it is gone, 1 when git
+# refused (main or locked worktree: the dir is still in use, so never rm -rf it),
+# 2 when files survived.
+remove_worktree_dir() {
+  local wt="$1"
+  # --force is required on macOS: Finder drops .DS_Store into worktree dirs,
+  # so plain `git worktree remove` fails with "Directory not empty". These
+  # worktrees are already verified clean, so --force discards nothing of value.
+  git worktree remove --force "$wt" 2>/dev/null
+  is_registered_worktree "$wt" && return 1
+  # git de-registers the worktree even when the dir survives: leftover
+  # untracked files, or read-only files (content-addressed store blobs,
+  # immutable caches) in read-only dirs that neither `git worktree remove`
+  # nor plain `rm` can unlink. Restore write perms across the tree first,
+  # then nuke it; retry once for nested copies.
+  if [[ -d "$wt" ]]; then
+    chmod -R u+w "$wt" 2>/dev/null
+    rm -rf "$wt" 2>/dev/null
+    rm -rf "$wt" 2>/dev/null
+  fi
+  [[ -d "$wt" ]] && return 2
+  return 0
+}
+
+# Detached worktrees as "path<TAB>HEAD<TAB>state", state being locked, prunable
+# (its folder is gone) or "-". Branch worktrees are left to the branch loop.
+detached_worktrees() {
+  git worktree list --porcelain | awk '
+    function emit() { if (d) printf "%s\t%s\t%s\n", p, h, (l ? "locked" : (pr ? "prunable" : "-")) }
+    /^worktree / { if (p != "") emit(); p = substr($0, 10); h = ""; d = 0; l = 0; pr = 0; next }
+    /^HEAD / { h = substr($0, 6) }
+    /^detached$/ { d = 1 }
+    /^locked/ { l = 1 }
+    /^prunable/ { pr = 1 }
+    END { if (p != "") emit() }
+  '
 }
 
 # git patch-id only emits an id for input that starts with a commit header.
@@ -216,6 +255,39 @@ for branch in "${ALL_BRANCHES[@]}"; do
   fi
 done
 
+# Detached worktrees have no branch, so the loop above never sees them.
+REMOVE_DETACHED=()       # clean, and every commit is also on a branch, remote branch or tag
+REMOVE_DETACHED_INFO=()
+SKIP_DETACHED=()         # "path  (reason)": dirty, locked or current
+KEEP_DETACHED=()         # "path  (info)": commits that exist only here
+PRUNABLE=()              # registered, but the folder is gone
+CUR_WT=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+
+while IFS=$'\t' read -r wt_path sha state; do
+  [[ -z "$wt_path" || "$wt_path" == "$MAIN_WT" ]] && continue
+  info="HEAD ${sha:0:7}, $(git log -1 --format=%cr "$sha" 2>/dev/null || echo "unknown date")"
+  if [[ "$state" == "locked" ]]; then
+    SKIP_DETACHED+=("$wt_path  (locked)")
+  elif [[ "$state" == "prunable" ]]; then
+    PRUNABLE+=("$wt_path")
+  elif [[ "$wt_path" == "$CUR_WT" ]]; then
+    SKIP_DETACHED+=("$wt_path  (current worktree)")
+  elif [[ -n "${EXCLUDE_SET[$wt_path]+_}" ]]; then
+    EXCLUDED+=("$wt_path")
+  elif worktree_is_dirty "$wt_path"; then
+    SKIP_DETACHED+=("$wt_path  (dirty, $info)")
+  else
+    only=$(git rev-list --count "$sha" --not --branches --remotes --tags 2>/dev/null) || only="?"
+    if [[ "$only" == "0" ]]; then
+      REMOVE_DETACHED+=("$wt_path")
+      REMOVE_DETACHED_INFO+=("$info")
+    else
+      [[ "$only" == "1" ]] && n="1 commit" || n="$only commits"
+      KEEP_DETACHED+=("$wt_path  ($info, $n on no branch)")
+    fi
+  fi
+done < <(detached_worktrees)
+
 # --- Output ---
 
 echo "=== PLAN ==="
@@ -237,6 +309,14 @@ if [[ ${#REMOVE_BRANCHES[@]} -gt 0 ]]; then
     else
       echo "  - $branch$via"
     fi
+  done
+  echo ""
+fi
+
+if [[ ${#REMOVE_DETACHED[@]} -gt 0 ]]; then
+  echo "REMOVE (detached worktree, clean, every commit is also on a branch):"
+  for i in "${!REMOVE_DETACHED[@]}"; do
+    echo "  - ${REMOVE_DETACHED[$i]}  (${REMOVE_DETACHED_INFO[$i]})"
   done
   echo ""
 fi
@@ -282,7 +362,25 @@ if [[ ${#KEEP_UNMERGED[@]} -gt 0 ]]; then
   echo ""
 fi
 
-if [[ ${#REMOVE_BRANCHES[@]} -eq 0 ]]; then
+if [[ ${#SKIP_DETACHED[@]} -gt 0 ]]; then
+  echo "SKIP (detached worktree, dirty, locked or current):"
+  printf '  - %s\n' "${SKIP_DETACHED[@]}"
+  echo ""
+fi
+
+if [[ ${#KEEP_DETACHED[@]} -gt 0 ]]; then
+  echo "KEEP (detached worktree, commits only here):"
+  printf '  - %s\n' "${KEEP_DETACHED[@]}"
+  echo ""
+fi
+
+if [[ ${#PRUNABLE[@]} -gt 0 ]]; then
+  echo "PRUNE (worktree folder is gone, only the registration is left):"
+  printf '  - %s\n' "${PRUNABLE[@]}"
+  echo ""
+fi
+
+if [[ ${#REMOVE_BRANCHES[@]} -eq 0 && ${#REMOVE_DETACHED[@]} -eq 0 && ${#PRUNABLE[@]} -eq 0 ]]; then
   echo "Nothing to clean up!"
   exit 0
 fi
@@ -310,31 +408,16 @@ else
 
     if [[ -n "$wt" ]]; then
       echo "Removing worktree: $wt"
-      # --force is required on macOS: Finder drops .DS_Store into worktree dirs,
-      # so plain `git worktree remove` fails with "Directory not empty". These
-      # worktrees are already verified clean, so --force discards nothing of value.
-      git worktree remove --force "$wt" 2>/dev/null
-      if is_registered_worktree "$wt"; then
-        # git refused (main or locked worktree): the dir is still in use, so
-        # never fall through to rm -rf.
+      remove_worktree_dir "$wt"; rc=$?
+      if [[ $rc -eq 1 ]]; then
         FAILED+=("worktree: $wt (git refused to remove it)")
         echo ""
         continue
       fi
-      # git de-registers the worktree even when the dir survives: leftover
-      # untracked files, or read-only files (content-addressed store blobs,
-      # immutable caches) in read-only dirs that neither `git worktree remove`
-      # nor plain `rm` can unlink. Restore write perms across the tree first,
-      # then nuke it; retry once for nested copies.
-      if [[ -d "$wt" ]]; then
-        chmod -R u+w "$wt" 2>/dev/null
-        rm -rf "$wt" 2>/dev/null
-        rm -rf "$wt" 2>/dev/null
-      fi
-      if [[ -d "$wt" ]]; then
-        FAILED+=("worktree: $wt")
-      else
+      if [[ $rc -eq 0 ]]; then
         removed_wt=$((removed_wt + 1))
+      else
+        FAILED+=("worktree: $wt")
       fi
     fi
 
@@ -356,10 +439,22 @@ else
     echo ""
   done
 
+  for i in "${!REMOVE_DETACHED[@]}"; do
+    wt="${REMOVE_DETACHED[$i]}"
+    echo "Removing detached worktree: $wt"
+    remove_worktree_dir "$wt"; rc=$?
+    case $rc in
+      0) removed_wt=$((removed_wt + 1)) ;;
+      1) FAILED+=("worktree: $wt (git refused to remove it)") ;;
+      *) FAILED+=("worktree: $wt") ;;
+    esac
+    echo ""
+  done
+
   set -euo pipefail
 
   git worktree prune
-  echo "Done! Deleted $deleted_br branch(es), removed $removed_wt worktree(s)."
+  echo "Done! Deleted $deleted_br branch(es), removed $removed_wt worktree(s), pruned ${#PRUNABLE[@]} missing worktree(s)."
   if [[ ${#FAILED[@]} -gt 0 ]]; then
     echo ""
     echo "FAILED (needs manual cleanup):"
