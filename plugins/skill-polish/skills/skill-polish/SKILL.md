@@ -11,6 +11,7 @@ allowed-tools:
   - Grep
   - Glob
   - AskUserQuestion
+  - Bash(python3 *resolve-source.py *)
 ---
 
 <!-- $ARGUMENTS holds raw flags. `--auto-approve` or `-a` = skip Step 4 picker, apply every proposed edit. -->
@@ -54,7 +55,15 @@ Each signal, note:
    - `references/<stage>.md`: detailed stage instructions
    - Frontmatter `description`: triggering issues
 
-3. **Read the current text:** Always re-read file with `Read` tool before proposing edits. Skill files may have changed since loaded earlier (by user, another session, or prior `/skill-polish` run this conversation). Never rely on memory, since file on disk is source of truth. Read exact passage that led to incorrect behavior. Understand *why* agent misinterpreted. Common root causes:
+3. **Resolve the source:** A loaded skill often lives in an install copy: a plugin cache (`~/.claude/plugins/cache/`, `~/.codex/plugins/cache/`) or a marketplace clone (`~/.claude/plugins/marketplaces/`, `~/.codex/.tmp/marketplaces/`). The next plugin update overwrites those, so an edit there is lost and never reaches the repo. For every file you plan to edit, run the resolver from this skill's directory (the base directory announced when the skill loaded):
+   ```bash
+   python3 <skill-dir>/scripts/resolve-source.py <file-you-would-edit>
+   ```
+   - `status: source`: not an install copy. Edit it where it is.
+   - `status: mapped`: edit the `edit:` path in the local checkout instead, never the install copy. After the edits, follow the `release:` line (for example a version bump script), then commit on a branch in that checkout.
+   - `status: no-checkout`: ask the user once where their clone of `remote:` is, and rerun with `--checkout DIR`. If there is none (a third-party plugin), do not edit the install copy. Say an edit there would be local-only and lost on the next update, and offer upstream issue text instead (friction, evidence, proposed change).
+
+4. **Read the current text:** Always re-read file with `Read` tool before proposing edits. Skill files may have changed since loaded earlier (by user, another session, or prior `/skill-polish` run this conversation). Never rely on memory, since file on disk is source of truth. Read exact passage that led to incorrect behavior. Understand *why* agent misinterpreted. Common root causes:
    - **Too vague:** "check the project docs" instead of "run `npm test` before committing"
    - **Too soft:** "auto-advance" when needed "immediately continue, no pause"
    - **Missing entirely:** Desired behavior not mentioned at all
@@ -93,7 +102,7 @@ Label each with a short kind, e.g. SKIPPED STEP, WRONG ORDER, PREMATURE STOP, WA
 ### Step 3: Propose edits
 
 Each friction signal, show:
-- File path
+- File path (the resolved source path from "How to trace", step 3)
 - Current text (quoted)
 - Proposed replacement
 - Why this fixes issue
@@ -108,6 +117,8 @@ Otherwise, use `AskUserQuestion` to present picker with these options:
 - **"Apply all":** apply every proposed edit
 - **"Apply selected":** let user specify which numbered edits to apply (follow up asking which)
 - **"Skip":** don't apply, note for later
+
+Apply edits only to resolved source paths. Then run the `release:` step for each touched plugin and commit in its checkout.
 
 After applying, also save relevant learnings as feedback memories if contain insights that generalize beyond specific skill.
 
