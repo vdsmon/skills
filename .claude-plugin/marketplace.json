@@ -78,8 +78,8 @@
     {
       "name": "git-cleanup",
       "source": "./plugins/git-cleanup",
-      "description": "Removes local git branches and worktrees that are safely merged into dev/develop/master/main, skipping dirty worktrees and the main checkout. Squash-merge aware on GitHub remotes, including PR branches rewritten before merge. Portable across SKILL.md-native hosts.",
-      "version": "0.4.0"
+      "description": "Removes local git branches and worktrees that are safely merged into dev/develop/master/main, skipping dirty worktrees and the main checkout. Squash-merge aware on GitHub remotes. Also clears clean detached worktrees whose commits are on a branch, and prunes worktrees whose folder is gone. Portable across SKILL.md-native hosts.",
+      "version": "0.5.0"
     },
     {
       "name": "strip-migration-cruft",

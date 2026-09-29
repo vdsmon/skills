@@ -2,12 +2,14 @@
 name: git-cleanup
 argument-hint: "[--dry-run]"
 disable-model-invocation: true
-description: Removes stale git branches and worktrees that are safely merged, skipping anything dirty. Squash-merge aware on GitHub remotes.
+description: Removes stale git branches and worktrees that are safely merged, skipping anything dirty. Squash-merge aware on GitHub remotes. Also clears clean detached worktrees whose commits are on a branch.
 ---
 
 # Git Cleanup
 
 Removes local branches that have been merged into target branches (dev/develop/master/main), along with their associated worktrees. Worktrees with uncommitted or untracked changes are never removed, and neither is the main checkout.
+
+Detached worktrees (made for an experiment at a fixed commit) have no branch, so merge detection cannot see them. The script removes one when it is clean and every commit in it is also on a branch, a remote branch or a tag, so nothing is lost. It also prunes worktrees whose folder is already gone.
 
 Merge detection is ancestry-based (`git branch --merged`) plus squash-aware on GitHub remotes: when `gh` is available, a branch also counts as merged if its tip equals the head SHA of a merged PR, or if its net diff has the same patch-id as the PR's merge commit (a PR branch rewritten before merge). A branch with changes the PR never had stays in KEEP, with the PR number shown.
 
@@ -33,6 +35,10 @@ Present the output to the user. The script categorizes branches into:
 - **SKIP (current):** merged but currently checked out
 - **SKIP (main worktree):** merged but checked out in the main checkout; the user must switch it to a target branch first
 - **KEEP:** not merged into any target branch
+- **REMOVE (detached worktree):** clean, and every commit is also on a branch; shown with its HEAD and age
+- **SKIP (detached worktree):** dirty, locked, or the worktree the script runs in
+- **KEEP (detached worktree):** has commits no branch holds; the count is shown
+- **PRUNE:** the folder is gone, so only git's registration of it is removed
 
 A `WARN: fetch failed` line means the plan uses cached remote refs; say so when you present it.
 
@@ -50,7 +56,7 @@ bash "<skill-base-dir>/scripts/git_cleanup.sh"
 
 If the script prints `FAILED`, show that list to the user.
 
-**Excluding branches:** if the user wants to keep specific branches out of the REMOVE set, pass them with `--exclude` (comma-separated) rather than hand-rolling git commands:
+**Excluding branches or worktrees:** if the user wants to keep specific branches or detached worktrees out of the REMOVE set, pass the branch names or the worktree paths with `--exclude` (comma-separated) rather than hand-rolling git commands:
 
 ```bash
 bash "<skill-base-dir>/scripts/git_cleanup.sh" --exclude=feature/keep-me,fix/also-keep
