@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# PostToolUse + UserPromptSubmit hook. Reads usage state written by usage-poller.sh
-# (primary, every surface) or usage-sensor.sh (statusLine, terminal only).
+# PostToolUse + UserPromptSubmit hook, the plugin's only one. Runs usage-poller.sh first,
+# then reads the usage state it (every surface) or usage-sensor.sh (statusLine, terminal
+# only) wrote.
 # When a usage window crosses a threshold, injects a pause+auto-resume (PARK) or
 # heads-up (WARN) instruction via hookSpecificOutput.additionalContext. Fires once in
 # full per (window:level:reset), then throttled short-form repeats until the level
@@ -33,19 +34,32 @@ input=$(cat)
 # (missing jq is machine-level, not per-session) with hand-rolled JSON; safe because the
 # message is fully static. hook_event_name comes from a sed scrape with a fallback.
 if ! command -v jq >/dev/null 2>&1; then
+  hook_event=$(printf '%s' "$input" | sed -n 's/.*"hook_event_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+  [ -n "$hook_event" ] || hook_event="PostToolUse"
+  # keep the one-time notice for a prompt that can relay it (keepalive ticks: see below)
+  [ "$hook_event" = "UserPromptSubmit" ] &&
+    printf '%s' "$input" | grep -qE '"prompt"[[:space:]]*:[[:space:]]*"cc-cache-keepalive"' && exit 0
   jq_marker="$STATE_DIR/jq-missing-warn-marker"
   [ -f "$jq_marker" ] && exit 0
   mkdir -p "$STATE_DIR"
   : > "$jq_marker"
-  hook_event=$(printf '%s' "$input" | sed -n 's/.*"hook_event_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
-  [ -n "$hook_event" ] || hook_event="PostToolUse"
   printf '{"hookSpecificOutput":{"hookEventName":"%s","additionalContext":"cc-usage-guard USAGE SOURCE OFFLINE - jq is not on PATH, so the guard cannot read usage state. The guard is blind: WARN/PARK will NOT fire even if the account hits a rate limit. Fix: install jq (brew install jq). Relay this to the user in one short line in your next reply, then continue normally."}}\n' "$hook_event"
   exit 0
 fi
 rm -f "$STATE_DIR/jq-missing-warn-marker" 2>/dev/null
 
-hook_event=$(printf '%s' "$input" | jq -r '.hook_event_name // "PostToolUse"' 2>/dev/null)
-if [ -z "$hook_event" ] || [ "$hook_event" = "null" ]; then hook_event="PostToolUse"; fi
+# one jq pass over the payload; the last line is true only for a cc-cache-keepalive tick
+{ read -r hook_event; read -r session_id; read -r agent_id; read -r keepalive_tick; } <<< "$(
+  printf '%s' "$input" | jq -r '(.hook_event_name // "PostToolUse"), (.session_id // ""),
+    (.agent_id // ""), (.hook_event_name == "UserPromptSubmit" and .prompt == "cc-cache-keepalive")' 2>/dev/null)"
+case "$hook_event" in ''|null) hook_event="PostToolUse" ;; esac
+
+# A cc-cache-keepalive cron tick cannot act on anything this guard says: the keepalive guard
+# blocks most ticks, which drops every sibling hook's context with the prompt, and the ticks
+# it lets through are told to call no tool. A marker written here would spend the full
+# WARN/PARK (auto-resume cron, push) on a turn that throws it away and leave the next real
+# prompt only the one-line repeat. Nothing to poll for either.
+[ "$keepalive_tick" = "true" ] && exit 0
 
 # GC: markers from sessions that ended while over-threshold or mid-fault are never
 # cleaned by the in-session paths, and a crash between tmp write and rename can orphan
@@ -66,18 +80,21 @@ fi
 # with an empty agent_id, so it would misclassify a main session. keying the marker
 # by session_id AND agent_id lets the main session and each spawned agent fire
 # independently (once per window-reset each, then throttled repeats).
-session_id=$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null)
-agent_id=$(printf '%s' "$input" | jq -r '.agent_id // empty' 2>/dev/null)
 marker="$STATE_DIR/usage-park-marker${session_id:+-$session_id}${agent_id:+-$agent_id}"
+
+# Poll first, in this process rather than as a sibling hook: hooks on one event run in no
+# fixed order, so a separate poller hook let the guard read state the poller was about to
+# replace and fire a false "offline" warning on a session's first turn. The poller
+# throttles itself (one fetch a minute, longer after a failure), so most calls return at once.
+bash "$(dirname "${BASH_SOURCE[0]}")/usage-poller.sh" </dev/null >/dev/null 2>&1
 
 # source liveness gate. a dead usage source used to mean a silently blind guard: no state
 # file, a stale file, or a schema from a different plugin version all made every threshold
-# read as "fine". warn the root session once per session instead; spawned agents stay
-# silent because their parent gets the same warning. usage-poller.sh (hook, every surface)
-# is the primary writer and usage-sensor.sh (statusLine, terminal only) an optional
-# supplement, so a fault here means the poller is failing - it leaves its reason in
-# poller-last-error, which the message below quotes.
-compute_fault() {
+# read as "fine". warn the root session once per session instead (a rate-limit outage:
+# once per outage); spawned agents stay silent because their parent gets the same warning.
+# The poller (run above, every surface) is the primary writer and usage-sensor.sh
+# (statusLine, terminal only) an optional supplement, so a fault here means the poller is
+# failing - it leaves its reason in poller-last-error, which the message below quotes.
 fault=""
 if [ ! -f "$state" ]; then
   fault="state file missing (no usage source has written yet)"
@@ -108,31 +125,32 @@ else
     fault="state is $((state_age / 60)) min old, max ${SENSOR_MAX_AGE_MIN} (nothing is refreshing usage state)"
   fi
 fi
-}
-compute_fault
 
-# self-heal before crying offline. The poller is a sibling hook, and hooks on the same
-# event are not ordered relative to each other, so on a session's first turn the guard can
-# read state the poller is about to replace - which fired a one-time-per-session "offline"
-# warning that was already false by the time the user read it. Fetching once here, with
-# the poller's own throttle bypassed, removes the dependency on ordering entirely: after
-# this, a fault means the poller really cannot produce state, not that it hadn't run yet.
-poller="$(dirname "${BASH_SOURCE[0]}")/usage-poller.sh"
-if [ -n "$fault" ] && [ -z "$agent_id" ] && [ -f "$poller" ]; then
-  CLAUDE_USAGE_POLL_INTERVAL_SEC=0 bash "$poller" </dev/null >/dev/null 2>&1
-  compute_fault
-fi
 warn_marker="$STATE_DIR/sensor-warn-marker${session_id:+-$session_id}"
 if [ -n "$fault" ]; then
   [ -n "$agent_id" ] && exit 0
-  [ -f "$warn_marker" ] && exit 0
-  mkdir -p "$STATE_DIR"
-  printf '%s' "$fault" > "$warn_marker"
   # the poller records why its last fetch failed; quoting it turns a generic "offline"
   # into the actual cause (expired token, no curl, endpoint error) instead of sending
   # the user to check wiring that is already correct.
   poller_err=""
   [ -f "$STATE_DIR/poller-last-error" ] && poller_err=$(head -c 300 "$STATE_DIR/poller-last-error" 2>/dev/null)
+  poller_err=${poller_err%.}  # the sentence below adds its own
+  case "$poller_err" in
+    *"rate-limited (HTTP 429)"*)
+      # A 429 is machine-wide and ends on its own, so it is told once per outage, not once
+      # per session; the poller deletes this marker on its next good fetch. Once, but never
+      # zero times: a guard that is blind and says nothing is what this gate exists to stop.
+      outage_marker="$STATE_DIR/rate-limit-warn-marker"
+      [ -f "$outage_marker" ] && exit 0
+      mkdir -p "$STATE_DIR"
+      printf '%s' "$fault" > "$outage_marker"
+      msg="cc-usage-guard USAGE SOURCE OFFLINE - $fault. The guard is blind: WARN/PARK will NOT fire even if the account hits a rate limit. Last poller error: $poller_err. This notice shows once per outage, not in every session. Mention it to the user in one short line (there is nothing for them to fix), then continue normally."
+      jq -nc --arg hook_event "$hook_event" --arg ctx "$msg" '{hookSpecificOutput:{hookEventName:$hook_event,additionalContext:$ctx}}'
+      exit 0 ;;
+  esac
+  [ -f "$warn_marker" ] && exit 0
+  mkdir -p "$STATE_DIR"
+  printf '%s' "$fault" > "$warn_marker"
   remedy="Fix per the plugin README; state lives in $STATE_DIR."
   relay="Relay this to the user in one short line in your next reply, then continue normally."
   if [ -n "$poller_err" ]; then
@@ -155,7 +173,7 @@ if [ -n "$fault" ]; then
         relay="Tell the user this in your next reply, before anything else: the guard is blind until they run \`claude /login\` in a terminal. Give exactly that command in a shell code block, nothing else in the block. Do not paraphrase it into steps and do not run it yourself." ;;
     esac
   else
-    cause="No poller error was recorded, so usage-poller.sh is probably not running at all - check that the cc-usage-guard plugin's hooks are enabled."
+    cause="No poller error was recorded, so either the poller's last fetch worked and something else wrote or aged this state, or the poller could not run at all."
   fi
   msg="cc-usage-guard USAGE SOURCE OFFLINE - $fault. The guard is blind: WARN/PARK will NOT fire even if the account hits a rate limit. $cause $remedy $relay"
   jq -nc --arg hook_event "$hook_event" --arg ctx "$msg" '{hookSpecificOutput:{hookEventName:$hook_event,additionalContext:$ctx}}'

@@ -9,7 +9,8 @@
 # poll, within a minute; the markers only throttle repeat reminders.)
 #
 # --clear-markers removes the park and warn markers. That is always safe: the next
-# threshold crossing then fires in full again instead of as a throttled repeat.
+# threshold crossing (or rate-limit outage) then fires in full again instead of as a
+# throttled repeat or not at all.
 # Everything else is read-only. macOS/BSD date/stat, like the hooks.
 export PATH="/opt/homebrew/bin:$HOME/.local/share/mise/shims:/bin:/usr/bin:$PATH"
 
@@ -33,9 +34,9 @@ echo "cc-usage-guard state dir: $STATE_DIR"
 
 if [ "${1:-}" = "--clear-markers" ]; then
   count=$(find "$STATE_DIR" -maxdepth 1 -type f \
-    \( -name 'usage-park-marker*' -o -name 'sensor-warn-marker*' \) 2>/dev/null | wc -l | tr -d ' ')
+    \( -name 'usage-park-marker*' -o -name 'sensor-warn-marker*' -o -name 'rate-limit-warn-marker' \) 2>/dev/null | wc -l | tr -d ' ')
   find "$STATE_DIR" -maxdepth 1 -type f \
-    \( -name 'usage-park-marker*' -o -name 'sensor-warn-marker*' \) -delete 2>/dev/null
+    \( -name 'usage-park-marker*' -o -name 'sensor-warn-marker*' -o -name 'rate-limit-warn-marker' \) -delete 2>/dev/null
   echo "cleared ${count:-0} marker(s); the next crossing fires in full"
 fi
 
@@ -77,9 +78,13 @@ if [ -f "$STATE_DIR/poller-backoff-until" ]; then
   until=$(head -n1 "$STATE_DIR/poller-backoff-until" 2>/dev/null | tr -d '[:space:]')
   echo "  backoff until: $(local_time "$until")"
 fi
+if [ -s "$STATE_DIR/poller-failures.log" ]; then
+  echo "  recent failed fetches, newest last (all in poller-failures.log):"
+  tail -n 5 "$STATE_DIR/poller-failures.log" 2>/dev/null | sed 's/^/    /'
+fi
 
 markers=$(find "$STATE_DIR" -maxdepth 1 -type f \
-  \( -name 'usage-park-marker*' -o -name 'sensor-warn-marker*' \) 2>/dev/null | sort)
+  \( -name 'usage-park-marker*' -o -name 'sensor-warn-marker*' -o -name 'rate-limit-warn-marker' \) 2>/dev/null | sort)
 if [ -z "$markers" ]; then
   echo "markers: none (no session is parked or warned in this profile)"
 else

@@ -14,7 +14,11 @@
 # The cron prompt is the sentinel "cc-cache-keepalive". The model replies
 # with "🔄 cache-keepalive" — no tool call, no thinking. That bare API turn
 # refreshes the cached-prefix TTL, which is the only thing we need.
-set -eu
+#
+# `set -u`, never `set -eu`, and an explicit exit 0 on every path: keepalive-guard.sh
+# runs this with --now and reads a non-zero exit as a crash (it keeps the resume
+# marker and retries), so only a deliberate decline may exit 0 with no output.
+set -u
 
 FLAG="${HOME}/.cc-cache-keepalive"
 [ -f "$FLAG" ] || exit 0
@@ -77,11 +81,11 @@ fi
 DEFAULT_INTERVAL="30m"
 INTERVAL="$(head -n1 "$FLAG" 2>/dev/null | tr -d '[:space:]')"
 # The zero check is not cosmetic: `0m` passes the regex and then divides by zero
-# in the `60 % N` below, which under `set -eu` kills the hook with no cron, no
-# output, and no visible error. Same for the `10#` below - `08m` and `09s` are
-# decimal to a user but octal to $(( )), and die the same silent way. (Only line
-# 1 is read here; hooks/keepalive-guard.sh reads line 2 for the cancel window,
-# where zero IS meaningful and means "never skip".)
+# in the `60 % N` below, and bash aborts a script on an arithmetic error even
+# without `set -e`: no cron, no output, no visible error. Same for the `10#`
+# below - `08m` and `09s` are decimal to a user but octal to $(( )), and die the
+# same silent way. (Only line 1 is read here; hooks/keepalive-guard.sh reads
+# line 2 for the cancel window, where zero IS meaningful and means "never skip".)
 if [[ ! "$INTERVAL" =~ ^[0-9]+[smhd]$ ]] || [ "$((10#${INTERVAL%[smhd]}))" -eq 0 ]; then
   INTERVAL="$DEFAULT_INTERVAL"
 fi
@@ -165,7 +169,8 @@ Step 3. Then answer the user normally, and do not mention any of this.
 
 That is two tool calls and takes a second. Do not skip it, do not defer it to later in the session, and do not ask permission. Skipping it fails silently and costs the user money for the rest of the session.
 
-The prompt is the literal sentinel string "${CMD}" (flag: ${FLAG}, interval: ${INTERVAL}, anchored). When the cron later fires, do NOT call any tool, do NOT think, do NOT narrate — reply with exactly "🔄 cache-keepalive" and end the turn. The API turn alone refreshes the cached-prefix TTL. Stop-hook gates can match on the sentinel to suppress turn-end side effects (sounds, notifications).
+The prompt is the literal sentinel string "${CMD}". When the cron later fires, do NOT call any tool, do NOT think, do NOT narrate — reply with exactly "🔄 cache-keepalive" and end the turn. The API turn alone refreshes the cached-prefix TTL.
 Do NOT invoke /loop — its Nm→*/N rewrite lands on fleet-peak minutes (:00/:30).
 </cc-cache-keepalive>
 EOF
+exit 0
