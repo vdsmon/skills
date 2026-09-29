@@ -3,14 +3,6 @@ name: slack-draft
 argument-hint: "[what to say or thread context] [--tech|--plain]"
 disable-model-invocation: true
 description: Drafts a copy-paste Slack message in mrkdwn, conclusion first, AI tells stripped. Pass --tech for a peer who reads code. Never posts.
-when_to_use: >-
-  Use when the user wants to send something on Slack and asks you to write
-  it: "draft a Slack message", "write a reply for this thread", "what should
-  I post", "reply to Nicolas", "responde no Slack", "escreve uma mensagem
-  pro time", "manda no canal". Also when the user shares a Slack thread/link
-  and asks you to answer it, or asks you to translate or restyle a message
-  they intend to post. Triggers even when "Slack" is not named but the target
-  is clearly a chat message to a colleague or channel.
 ---
 
 # slack-draft
@@ -53,7 +45,7 @@ Caveat: if the message itself must contain a fenced code block, the outer copy-f
 
 ## Backtick every technical identifier
 
-In Slack, raw identifiers get lost in prose and sometimes auto-linkified. Wrap them in inline backticks: table/column names (`Company.externalId`), field names (`owner_id`, `owner_external_id`), record/registro codes (`D200`, `D990`), config keys, file paths, CLI flags, and literal values being discussed (`0001`, `BR13`). This includes the specific domain value or category the message is about, not only code-shaped identifiers: a tax category (`Monotributista`, `Responsable Inscripto`), a status (`blocked`, `in_review`), an enum value. Backticking sets the exact term apart from the prose, so it reads as "this specific value" rather than a passing word, and it applies even in plain mode, which drops the schema identifiers (`filing_company.regime`) but still backticks the category it is discussing. Plain numbers that are just quantities (load ids, counts) can stay bare; values that are being matched/compared read better backticked.
+Wrap identifiers in inline backticks, because raw ones get lost in prose or auto-linkified: table/column and field names (`Company.externalId`, `owner_id`), record codes (`D200`), config keys, file paths, CLI flags, and the specific domain value the message is about (a tax category like `Monotributista`, a status like `in_review`, an enum value), even in plain mode. Plain numbers that are just quantities (load ids, counts) can stay bare, while values being matched or compared read better backticked.
 
 ## Use structure for clarity (sparingly)
 
@@ -62,7 +54,6 @@ Reach for formatting when it makes the message scan faster, not as decoration. T
 - Bullets for 2+ parallel items (options, steps, findings, asks). Three things read faster as a list than as a comma-spliced sentence; one or two items stay inline.
 - Bold and italics emphasize a *word or two mid-sentence*, the pivotal value or the one caveat, and only rarely. NOT as a label or header (`*What I need:*`), not on a whole sentence, not once per line. If everything is bold, nothing is. Most messages use neither.
 - Fenced blocks for anything literal and multi-line: logs, a command to run, a short list of ids, a stack trace (mind the outer copy-fence collision noted above).
-- Backticks for every identifier (see the section above), and lean ON them: a bare column or field name in prose reads like a typo, so prefer `Company.externalId` over spelling it out.
 
 Do NOT over-format. A one or two sentence message needs none of this, and a wall of bold + bullets is as hard to read as a wall of prose. Structure earns its place only when the message has distinct parts; when in doubt, plain sentences win.
 
@@ -96,40 +87,34 @@ This section applies only after the user explicitly requested Portuguese (see st
 - Prepositions follow the loanword's gender as your team says it (e.g. `no deploy`, `na branch`).
 - Still correct grammar and accents; casual is not sloppy.
 
-Confirm the register if the audience is unknown (a message to leadership or a client reads more formal than one to a squad channel).
+Confirm the register if the audience is unknown (a message to leadership or a client reads more formal than one to a squad channel). A short heads-up in this register:
+
+```
+Subi o fix do `owner_id` da `X100` pra review: PR #123. Roda local com o `Bloco D` populado agora. Quando der, dá uma olhada.
+```
 
 ## Message shapes
 
-Pick the shape that fits; adapt freely. Each is one finding/ask, lead-first.
+Pick the shape that fits; adapt freely. Each is one finding/ask, lead-first. A heads-up or an unblock request follows the same rules and is usually one or two sentences.
 
 **Plain / high-level ask** (default mode: the issue at altitude + the one input needed, no internals):
 ```
-The `Monotributista` column on the Rappi 2083 comes out empty: we have no source for each buyer's tax category, and the invoices only mark them class A. So every Monotributista buyer gets miscounted as `Responsable Inscripto`.
+The `Monotributista` column on the client's Form 2083 comes out empty: we have no source for each buyer's tax category, and the invoices only mark them class A. So every Monotributista buyer gets miscounted as `Responsable Inscripto`.
 
-To fix it I need a short list from Rappi of which counterpart CUITs are Monotributistas, then the split works. The only alternative is an ARCA padron lookup, a much bigger lift with nothing built for it today. Can you get that list, or point me to who owns the relationship?
+To fix it I need a short list from the client of which counterpart tax IDs are Monotributistas, then the split works. The only alternative is a lookup against the tax authority's registry, a much bigger lift with nothing built for it today. Can you get that list, or point me to who owns the relationship?
 ```
 
 **Investigation finding** (technical mode: root cause, evidence, action):
 ```
-Achei. O `Bloco D` da BR13 sai vazio em produção por uma divergência no cadastro, não no código.
+Found it. `Block D` for `X100` comes out empty in production because of a registry mismatch, not the code.
 
-A diferença tá na resolução do owner: as notas vêm com `owner_external_id` = `0001` e o `owner_id` em branco, então o mapping casa esse valor com `Company.externalId`. Em dev bate (`externalId` `0001`), em prod não (`externalId` `BR13`), e o owner sai nulo em todas as notas.
+The difference is in owner resolution: invoices arrive with `owner_external_id` = `0001` and a blank `owner_id`, so the mapping matches that value against `Company.externalId`. Dev matches (`externalId` `0001`), prod does not (`externalId` `X100`), so the owner comes out null on every invoice.
 
-Evidências (04-2026):
-- load dev 912403: `owner_id` = 9993657, form com `D200`
-- load prod 14184: `owner_id` vazio, só `D001` + `D990`
+Evidence (04-2026):
+- load dev 456: `owner_id` = 789, form has `D200`
+- load prod 123: `owner_id` empty, only `D001` + `D990`
 
-Temos que setar `externalId` = `0001` na `Company` 5534880 no core de prod e reprocessar.
-```
-
-**Heads-up / status** (short, no evidence dump):
-```
-Subi o fix do `owner_id` da BR13 pra review: PR #2731. Roda local com `Bloco D` populado agora. Quando der, dá uma olhada.
-```
-
-**Ask / unblock** (what you need, why, by when if it matters):
-```
-Preciso de uma mão: o reprocesso da BR13 04-2026 depende de mudar `Company.externalId` no core de prod, e eu não tenho write lá. Consegue rodar, ou me passa o acesso? Tá segurando o fechamento do mês.
+We need to set `externalId` = `0001` on `Company` 123 in the prod core and reprocess.
 ```
 
 ## Quick checklist before handing it over
@@ -139,5 +124,5 @@ Preciso de uma mão: o reprocesso da BR13 04-2026 depende de mudar `Company.exte
 - Identifiers backticked?
 - ASCII punctuation, accents intact?
 - One line per paragraph, copy-fenced?
-- Language and register match the thread?
+- English, unless the user asked for another language? Register matches the thread?
 - You did not post anything?

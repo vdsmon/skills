@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# PostToolUse + UserPromptSubmit hook: refresh usage state from the account usage
-# endpoint, so the guard has a source that works on every surface.
+# Refresh usage state from the account usage endpoint, so the guard has a source that
+# works on every surface. usage-guard.sh runs this first on every hook call; it is not
+# registered as a hook of its own.
 #
 # The statusLine sensor (usage-sensor.sh) can only run where a statusLine renders, and
 # the Claude desktop app renders none (session `entrypoint: "claude-desktop"`), so a
@@ -9,8 +10,7 @@
 # OAuth token from the login keychain - and hooks fire on every surface, attended or not.
 #
 # Writes the same schema-2 state file the sensor writes, so usage-guard.sh reads either
-# source unchanged. Prints nothing: a UserPromptSubmit hook's stdout is injected into the
-# model's context, and this half has nothing to say.
+# source unchanged. Prints nothing; the guard owns every message.
 export PATH="/opt/homebrew/bin:$HOME/.local/share/mise/shims:/bin:/usr/bin:$PATH"
 
 PROFILE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
@@ -41,8 +41,8 @@ cat >/dev/null 2>&1  # drain the hook payload; nothing in it is needed
 
 fail() { mkdir -p "$STATE_DIR" 2>/dev/null; printf '%s\n' "$1" > "$err_file" 2>/dev/null; exit 0; }
 
-# every state write goes tmp-then-rename: this hook runs on PostToolUse *and*
-# UserPromptSubmit, and the guard invokes it too, so concurrent writers are the norm here
+# every state write goes tmp-then-rename: every hook call in every session runs this,
+# so concurrent writers are the norm here
 write_atomic() { # <path> <contents>; empty contents just stamps mtime
   _t="$1.tmp.$$"
   if [ -n "$2" ]; then printf '%s\n' "$2" > "$_t" 2>/dev/null; else : > "$_t" 2>/dev/null; fi
@@ -50,14 +50,12 @@ write_atomic() { # <path> <contents>; empty contents just stamps mtime
 }
 
 command -v jq >/dev/null 2>&1 || exit 0   # guard's own jq gate reports this one
-command -v curl >/dev/null 2>&1 || fail "curl is not on PATH"
 mkdir -p "$STATE_DIR" 2>/dev/null
 
 now=$(date +%s)
 
 # Backoff gate, deliberately ahead of the interval gate and never reading POLL_MIN_AGE_SEC:
-# usage-guard.sh self-heals by calling this script with CLAUDE_USAGE_POLL_INTERVAL_SEC=0,
-# and that bypass must not be able to override a limit the server itself asked us to respect.
+# no interval override, not even 0, may skip a wait the server itself asked for.
 if [ -f "$backoff_file" ]; then
   until_ts=$(head -c 32 "$backoff_file" 2>/dev/null | tr -dc '0-9')
   [ -n "$until_ts" ] && [ "$now" -lt "$until_ts" ] && exit 0
@@ -67,6 +65,13 @@ if [ -f "$attempt_file" ]; then
   age=$(( now - $(stat -f %m "$attempt_file" 2>/dev/null || echo 0) ))
   [ "$age" -lt "$POLL_MIN_AGE_SEC" ] && exit 0
 fi
+
+# stamp the attempt BEFORE anything that can fail (no curl, no token, a failed fetch), so
+# every failure still moves the throttle clock. Stamping after the credential lookup let
+# the no-token path read the keychain on every tool call.
+write_atomic "$attempt_file" ""
+
+command -v curl >/dev/null 2>&1 || fail "curl is not on PATH"
 
 # credentials: a per-profile .credentials.json wins when present (multi-profile installs
 # and Linux keep the token there), otherwise the login keychain item. The token is read
@@ -79,8 +84,8 @@ creds=""
 # keep this short: the guard truncates the quoted cause, and it supplies the remedy itself
 [ -n "$token" ] || fail "no OAuth token found (keychain item '$KEYCHAIN_SERVICE' and $PROFILE_DIR/.credentials.json both unusable, or present but blank) - subscription login required, API-key sessions have no plan limits to read"
 
-# back off on EVERY failed fetch, not just 429: a timeout or a 5xx left unthrottled would
-# be hammered by the guard's INTERVAL=0 self-heal exactly like the 429 was
+# back off on EVERY failed fetch, not just 429, so a CLAUDE_USAGE_POLL_INTERVAL_SEC
+# override cannot turn a failing endpoint into a per-tool-call retry loop
 set_backoff() { # <seconds>
   # a blank or non-numeric override must not silently mean "no backoff at all" - that is
   # the exact failure this whole mechanism exists to prevent
@@ -90,9 +95,15 @@ set_backoff() { # <seconds>
   write_atomic "$backoff_file" "$(( now + _s ))"
 }
 
-# stamp the attempt BEFORE the fetch - a failure that never reaches the success path must
-# still move the throttle clock forward
-write_atomic "$attempt_file" ""
+# One line per failed fetch (time, HTTP code, raw Retry-After), so a 429 that keeps coming
+# back can be traced instead of guessed at. Capped: past 100 lines it keeps the newest 50.
+fail_log="$STATE_DIR/poller-failures.log"
+log_failure() {
+  printf '%s http=%s retry_after=%s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" \
+    "${http_code:-none}" "${retry_raw:--}" >> "$fail_log" 2>/dev/null
+  [ "$(wc -l < "$fail_log" 2>/dev/null | tr -d ' ')" -gt 100 ] 2>/dev/null &&
+    write_atomic "$fail_log" "$(tail -n 50 "$fail_log" 2>/dev/null)"
+}
 
 http_code=""
 hdr_file="$STATE_DIR/poller-headers.tmp.$$"
@@ -125,13 +136,14 @@ retry_seconds() { # <raw value> -> seconds on stdout, empty when unusable
 retry_after=$(retry_seconds "$retry_raw")
 
 if [ "$http_code" != "200" ]; then
+  log_failure
   if [ "$http_code" = "429" ]; then
     # honour retry-after when it is a plain delta-seconds; the HTTP-date form and a missing
     # header both fall back, because a 429 that sets no backoff resurrects the hammer loop
     wait_sec=${retry_after:-$BACKOFF_429_SEC}
     set_backoff "$wait_sec"
     resume=$(date -r "$(( now + wait_sec ))" +%H:%M 2>/dev/null)
-    fail "usage endpoint rate-limited (HTTP 429) - polling is paused until ~${resume:-later} local, as the endpoint asked. Nothing to fix; the guard is blind until then."
+    fail "usage endpoint rate-limited (HTTP 429) - polling is paused until ~${resume:-later} local, as the endpoint asked. Nothing to fix; it clears on its own."
   fi
   set_backoff "$BACKOFF_FAIL_SEC"
   fail "usage endpoint returned HTTP ${http_code:-none} (401 means the stored token expired - run any Claude Code session to refresh it)"
@@ -159,7 +171,8 @@ usage=$(printf '%s' "$resp" | jq -c '
 # staleness gate faults loud instead of reading nulls. $$ keeps concurrent hooks distinct.
 tmp="$STATE_DIR/usage.json.tmp.$$"
 if { printf '%s\n' "$usage" > "$tmp" && mv -f "$tmp" "$state"; } 2>/dev/null; then
-  rm -f "$err_file" "$backoff_file" 2>/dev/null
+  # a good poll ends any rate-limit outage, so the guard's once-per-outage notice re-arms
+  rm -f "$err_file" "$backoff_file" "$STATE_DIR/rate-limit-warn-marker" 2>/dev/null
 else
   rm -f "$tmp" 2>/dev/null
   fail "could not write $state"

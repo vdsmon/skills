@@ -2,11 +2,8 @@
 name: skill-polish
 description: Post-mortem for any installed skill. Scans the conversation for friction (corrections, skipped steps, rejected calls), traces each to the responsible skill file, and applies fixes.
 when_to_use: >-
-  Use when the user says "skill-polish", "polish the skill", "improve
-  the skill", "that should have been automatic", "you skipped X", "close
-  the gaps", "why did you not use the skill here", or signals that a
-  skill's flow felt rough this session. Invoked proactively after a
-  noticeably clumsy run of any skill to lock in a fix.
+  Use when the user says "skill-polish", "polish the skill", or "improve
+  the skill", or proactively after a noticeably clumsy run of any skill.
 argument-hint: "[--auto-approve|-a]"
 allowed-tools:
   - Read
@@ -14,6 +11,7 @@ allowed-tools:
   - Grep
   - Glob
   - AskUserQuestion
+  - Bash(python3 *resolve-source.py *)
 ---
 
 <!-- $ARGUMENTS holds raw flags. `--auto-approve` or `-a` = skip Step 4 picker, apply every proposed edit. -->
@@ -24,10 +22,6 @@ ARGUMENTS: $ARGUMENTS
 Just watched skill execute this conversation. Something not smooth. Job: find what wrong, trace to skill's instructions, fix instructions so not happen again. ultrathink when scanning, because the friction signals are often subtle and buried across many turns.
 
 Not about code written, but about *skill itself*. Skill's reference files, SKILL.md, workflow descriptions. Improve tool, not output.
-
-## Why this matters
-
-Skills invoked thousands of times. Small friction (vague instruction misinterpreted, missing mandatory step, "should" that needed "must") compounds across every future invocation. Fix skill file = high-leverage: one edit prevents same mistake every future conversation.
 
 ## How to find friction
 
@@ -45,6 +39,8 @@ Scan conversation history for these signals, ordered most obvious to most subtle
 
 6. **Validated surprises:** Agent did unexpected thing user *liked*. ("that's brilliant, add that to the skill"). Techniques worth codifying.
 
+7. **Recorded friction:** `MACHINERY:` or `DEVIATION` entries a pipeline's reflect stage wrote this session (flow prints them in its reflect output and appends them to its `knowledge.jsonl` memory store under `.flow/`). A `MACHINERY:` entry is friction already traced to a skill file, with evidence: treat it as a found signal, and skip any the reflect stage says it already applied. A plain `DEVIATION` counts only when it is about a skill's instructions, not the task's domain.
+
 Each signal, note:
 - What happened (friction)
 - What should have happened (desired behavior)
@@ -59,8 +55,16 @@ Each signal, note:
    - `references/<stage>.md`: detailed stage instructions
    - Frontmatter `description`: triggering issues
 
-3. **Read the current text:** Always re-read file with `Read` tool before proposing edits. Skill files may have changed since loaded earlier (by user, another session, or prior `/skill-polish` run this conversation). Never rely on memory, since file on disk is source of truth. Read exact passage that led to incorrect behavior. Understand *why* agent misinterpreted. Common root causes:
-   - **Too vague:** "check the project docs" instead of "run /test-form"
+3. **Resolve the source:** A loaded skill often lives in an install copy: a plugin cache (`~/.claude/plugins/cache/`, `~/.codex/plugins/cache/`) or a marketplace clone (`~/.claude/plugins/marketplaces/`, `~/.codex/.tmp/marketplaces/`). The next plugin update overwrites those, so an edit there is lost and never reaches the repo. For every file you plan to edit, run the resolver that ships in this skill's directory (the base directory announced when the skill loaded). Run it from the session's working directory, not after a `cd`, because a checkout that contains the working directory wins:
+   ```bash
+   python3 <skill-dir>/scripts/resolve-source.py <file-you-would-edit>
+   ```
+   - `status: source`: not an install copy. Edit it where it is.
+   - `status: mapped`: edit the `edit:` path in the local checkout instead, never the install copy. After the edits, follow the `release:` line (for example a version bump script), then commit on a branch in that checkout.
+   - `status: no-checkout`: ask the user once where their clone of `remote:` is, and rerun with `--checkout DIR`. If there is none (a third-party plugin), do not edit the install copy. Say an edit there would be local-only and lost on the next update, and offer upstream issue text instead (friction, evidence, proposed change).
+
+4. **Read the current text:** Always re-read file with `Read` tool before proposing edits. Skill files may have changed since loaded earlier (by user, another session, or prior `/skill-polish` run this conversation). Never rely on memory, since file on disk is source of truth. Read exact passage that led to incorrect behavior. Understand *why* agent misinterpreted. Common root causes:
+   - **Too vague:** "check the project docs" instead of "run `npm test` before committing"
    - **Too soft:** "auto-advance" when needed "immediately continue, no pause"
    - **Missing entirely:** Desired behavior not mentioned at all
    - **Wrong default:** Fallback behavior wrong for this case
@@ -71,7 +75,7 @@ Each signal, note:
 Each friction point, produce concrete edit, not suggestion, actual change to file. Follow these principles:
 
 - **Scripts over instructions.** Everything COULD be script SHOULD be script. If skill describes deterministic sequence (check X, then run Y, then verify Z), sequence belongs in shell script or mise task, not prose agent interprets at runtime. Scripts reproducible, testable, eliminate entire class of agent misinterpretation. Find inline command sequences in skill, propose extracting into scripts and have skill reference script instead. Single highest-leverage improvement.
-- **Be specific over general.** "Run `/test-form` for form task types" beats "consider running task-type-specific tests."
+- **Be specific over general.** "Run `npm run test:e2e` when a route changes" beats "consider running relevant tests."
 - **Explain the why.** Don't just add rule, explain why matters. Agent reading skill is smart; understand reasoning = handle edge cases rule doesn't cover.
 - **Match the weight to the risk.** Skipped step that silently produces wrong output = bold formatting + explicit "do NOT skip" language. Minor sequence preference = gentle note.
 - **Don't over-correct.** Skill worked 90% and failed on one edge case = add handling for edge case. Don't rewrite whole section.
@@ -88,22 +92,17 @@ List which skills invoked this conversation. If user specified one, focus that. 
 Scan conversation systematically. Present findings as numbered list:
 
 ```
-1. SKIPPED STEP — Form testing was skipped, went straight to commit
-   Should have: Run /test-form or fake-data Spark test
-   Responsible: references/testing.md, Step 4.2
-
-2. PREMATURE STOP — Stopped after PR instead of auto-advancing to feedback
-   Should have: Immediately continued to Stage 9
-   Responsible: references/pr.md "Next" section + SKILL.md Stage 8 summary
-
-3. VALIDATED TECHNIQUE — Fake-data Spark test was improvised and worked well
-   Should be: Documented as a named technique in references/testing.md
+1. SKIPPED STEP: went straight to commit without running tests
+   Should have: run the test command before committing
+   Responsible: references/verify.md, step 2 (says only "consider testing")
 ```
+
+Label each with a short kind, e.g. SKIPPED STEP, WRONG ORDER, PREMATURE STOP, WASTED WORK, VALIDATED TECHNIQUE, RECORDED.
 
 ### Step 3: Propose edits
 
 Each friction signal, show:
-- File path
+- File path (the resolved source path from "How to trace", step 3)
 - Current text (quoted)
 - Proposed replacement
 - Why this fixes issue
@@ -118,6 +117,8 @@ Otherwise, use `AskUserQuestion` to present picker with these options:
 - **"Apply all":** apply every proposed edit
 - **"Apply selected":** let user specify which numbered edits to apply (follow up asking which)
 - **"Skip":** don't apply, note for later
+
+Apply edits only to resolved source paths. Then run the `release:` step for each touched plugin and commit in its checkout.
 
 After applying, also save relevant learnings as feedback memories if contain insights that generalize beyond specific skill.
 

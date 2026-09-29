@@ -45,9 +45,9 @@ await execFileAsync('git', ['init'], { cwd: projectDir });
 ### 3. Ask: What Called This?
 ```typescript
 WorktreeManager.createSessionWorktree(projectDir, sessionId)
-  → called by Session.initializeWorkspace()
-  → called by Session.create()
-  → called by test at Project.create()
+  -> called by Session.initializeWorkspace()
+  -> called by Session.create()
+  -> called by test at Project.create()
 ```
 
 ### 4. Keep Tracing Up
@@ -98,13 +98,13 @@ npm test 2>&1 | grep 'DEBUG git init'
 
 If something appears during tests but you don't know which test:
 
-Use the bisection script `find-polluter.sh` in this directory:
+Use the bisection script `find-polluter.sh` in this skill's directory. Run it from the directory where the unwanted path appears; the path and the test pattern are relative to it. For the example below (a stray `.git` in `packages/core/`):
 
 ```bash
-./find-polluter.sh '.git' 'src/**/*.test.ts'
+cd packages/core && bash <this-skill-dir>/find-polluter.sh '.git' 'src/**/*.test.ts' 'npx vitest run'
 ```
 
-Runs tests one-by-one, stops at first polluter. See script for usage.
+It runs each matching test file alone and stops at the first polluter. The third argument is the command that runs one test file (default `npm test`). Exit 2 means nothing was tested (no matching files, or the path already exists), so it is never a clean result.
 
 ## Real Example: Empty projectDir
 
@@ -159,11 +159,3 @@ digraph principle {
 **Before operation:** Log before the dangerous operation, not after it fails
 **Include context:** Directory, cwd, environment variables, timestamps
 **Capture stack:** `new Error().stack` shows complete call chain
-
-## Real-World Impact
-
-From debugging session (2025-10-03):
-- Found root cause through 5-level trace
-- Fixed at source (getter validation)
-- Added 4 layers of defense
-- 1847 tests passed, zero pollution

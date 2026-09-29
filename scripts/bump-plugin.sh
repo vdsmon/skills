@@ -5,12 +5,11 @@
 # published version lie. This keeps them equal with a surgical line edit, so
 # no other plugin's entry is reformatted or touched.
 #
-# It does NOT commit. Review the diff, update the description in BOTH files if
-# behavior changed (they differ: marketplace adds a portability suffix), then
-# commit the plugin's files + the marketplace.json hunk and push (or open a PR).
+# It does NOT commit. Descriptions live only in plugin.json: scripts/sync-codex.sh
+# regenerates the marketplace description (plus its host suffix) and the README row.
 #
 # Usage: scripts/bump-plugin.sh <plugin-name> [patch|minor|major]   (default: patch)
-#   patch = bug/wording fix   minor = new behavior or arg   major = breaking change
+#   patch = bug/wording fix   minor = new behavior, option, or removed feature   major = breaking change
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -62,6 +61,6 @@ print(f"{plugin}: {cur} -> {new}")
 PY
 
 echo
-echo "Synced version in plugin.json + marketplace.json (descriptions NOT touched)."
-echo "If behavior changed, update the description in BOTH files, then commit the"
-echo "plugin's files + the marketplace.json hunk and push (or open a PR)."
+echo "Synced version in plugin.json + marketplace.json."
+echo "If behavior changed, edit the description in plugin.json only."
+echo "Then run scripts/sync-codex.sh and commit the plugin with the generated changes."
