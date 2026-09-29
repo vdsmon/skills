@@ -66,8 +66,8 @@
     {
       "name": "humanize",
       "source": "./plugins/humanize",
-      "description": "Strip AI-writing tells from text. Detects em-dash overuse, AI vocabulary, inflated significance, rule-of-three, sycophancy, compound coinages, and 20+ more patterns. `--casual` also adds the small inconsistencies real writers have. Outputs only the corrected text; files are edited in place. Portable across SKILL.md-native hosts.",
-      "version": "1.6.0"
+      "description": "Strip AI-writing tells from text. Detects em-dash overuse, AI vocabulary, inflated significance, rule-of-three, sycophancy, compound coinages, and 20+ more patterns. `--casual` also adds the small inconsistencies real writers have. Outputs only the corrected text and edits files in place. Portable across SKILL.md-native hosts.",
+      "version": "1.6.1"
     },
     {
       "name": "loop-finder",
