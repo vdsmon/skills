@@ -89,7 +89,6 @@ Generated from `.claude-plugin/marketplace.json` (the source of truth) by `scrip
 |---|---|---|
 | `slack-draft` | any | Draft a Slack message for the user to send: Slack mrkdwn, lead-with-conclusion, backticked identifiers and domain values, ASCII punctuation. |
 | `skill-polish` | any | Post-mortem for any skill: scans a session for friction and applies concrete edits to the responsible skill file. Portable across SKILL.md-native hosts. |
-| `cc-caveman` | CC only | Always-on caveman full mode: drops articles, filler, and tool-call narration while keeping every technical fact exact. |
 | `cc-cache-keepalive` | CC only | Keeps Claude Code's prompt cache warm on Max plans via a silent cron, cancelling any tick a recent real turn already refreshed and any tick that would land on a cache that already expired (machine slept, went offline). |
 | `cc-usage-guard` | CC only | Pause-at-limit guard for Claude Code. |
 | `prep-compact` | any | Audit in-flight state before any context-compacting step, save what would be lost (local commits, state files, notes), and produce a copy-paste /compact message plus a queue-able follow-up that chains the next action when compact finishes. |
