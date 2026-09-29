@@ -1,7 +1,7 @@
 {
   "name": "humanize",
-  "version": "1.5.0",
-  "description": "Strip AI-writing tells from text. Detects em-dash overuse, AI vocabulary, inflated significance, rule-of-three, sycophancy, compound coinages, and 20+ more patterns. Outputs only the corrected text; files are edited in place.",
+  "version": "1.6.0",
+  "description": "Strip AI-writing tells from text. Detects em-dash overuse, AI vocabulary, inflated significance, rule-of-three, sycophancy, compound coinages, and 20+ more patterns. `--casual` also adds the small inconsistencies real writers have. Outputs only the corrected text; files are edited in place.",
   "author": {
     "name": "Victor De Simone",
     "email": "victorsmoliveira@gmail.com",

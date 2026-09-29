@@ -1,12 +1,14 @@
 ---
 name: humanize
-argument-hint: "[text or file to humanize]"
-description: Rewrites text to strip AI-writing tells (em-dash overuse, AI vocabulary, inflated significance, sycophancy) and restore a human voice. Outputs only the corrected text; files are edited in place.
+argument-hint: "[--casual] [text or file to humanize]"
+description: Rewrites text to strip AI-writing tells (em-dash overuse, AI vocabulary, inflated significance, sycophancy) and restore a human voice. `--casual` also adds the small inconsistencies real writers have. Outputs only the corrected text; files are edited in place.
 when_to_use: >-
   Use when the user says "humanize this", "remove AI tells", "edit for
   voice", "sounds too AI", "make this more human", or pastes text for a
   humanization pass. Also triggers when editing or reviewing prose in
   Markdown or plain text files where AI-ness is the target to strip.
+  Pass "--casual" for the inconsistency pass on top, or ask for it in
+  conversation ("now loosen it up").
 paths: "*.md, *.mdx, *.txt, *.rst"
 allowed-tools:
   - Read
@@ -20,6 +22,17 @@ allowed-tools:
 # humanize
 
 Rewrite text to sound human. Identify AI tells, fix them, inject voice.
+
+## Modes
+
+Raw input: `$ARGUMENTS`
+
+- `$ARGUMENTS` contains `--casual` or `--loose` -> **casual mode**: everything below, plus the Inconsistency pass.
+- Otherwise -> **default mode**: everything below, and the Inconsistency pass does not run. Output stays internally consistent, which is what you want for an ADR, a README, or anything a stranger reads under pressure.
+
+Match the dashed flags only, never a bare word. `$ARGUMENTS` here holds the prose being rewritten, so matching `casual` on its own would turn the pass on for any paragraph that happens to discuss tone, and that failure is silent. Leading dashes don't show up in prose.
+
+Strip the flag from `$ARGUMENTS` before treating the rest as the text or the file path. A spoken switch is fine and needs no flag: "now loosen it up" mid-conversation flips the mode without re-running the whole pass.
 
 ## Task
 
@@ -182,6 +195,38 @@ Audience reminder: most prose you produce will be read by non-native English spe
 
 Same test as #27: if the literal words do not give a non-native reader the meaning, say the plain thing. *Load-bearing* -> *essential* or *other code depends on it*. *Hand-rolled* -> *written from scratch* or *custom*. *Battle-tested* -> *proven in production* (it is also on the military list in #27). *First-class* -> *fully supported* or *built in*. *An API-shaped problem* -> name what the problem actually is. *Lisp-flavored* -> *Lisp-like*. *Crypto-adjacent* -> *related to crypto*. Literal compounds that mean exactly what they say (*read-only*, *case-sensitive*, *built-in*) are fine: this rule is about metaphor packed into a hyphen, not hyphens themselves (for plain hyphenated pairs, see #26).
 
+## Inconsistency (casual mode only)
+
+Everything above removes a tell. This section adds something instead, so it runs only when `--casual` is set.
+
+Real writers are not sloppy, they're inconsistent. They pick differently on the same question in paragraph 2 and paragraph 9, because the local sentence pulled them a different way. An LLM picks once and holds it for the whole document, and that unbroken consistency is itself a signature.
+
+**The test: two valid forms means inconsistency, and that reads human. One valid form means error, and that reads sloppy.** Never cross into the second. Typos are not on this list and never will be, they're the one edit a reader can spot and blame.
+
+Ten axes:
+
+1. **Contractions track emphasis.** `don't` normally, `do not` when you actually mean it. Driven by the sentence, not by a coin flip.
+2. **Oxford comma optional.** Keep it where it prevents ambiguity, drop it where it doesn't. Humans hold no policy here.
+3. **Bullet terminal periods mixed.** Full-sentence bullets get one, fragments don't, and the boundary is fuzzy. LLMs go all-or-nothing.
+4. **Uneven bullet shape.** One bullet three words, the next three lines. Mix a verb-led bullet with a noun-led one. LLMs match length and part of speech across every item in a list.
+5. **Backtick fatigue.** Backtick an identifier on first use, then write it plain. LLMs backtick every occurrence forever.
+6. **Second-reference shortening.** `the authentication service` -> `auth service` -> `auth`. Direction is the test: shorter is human, a sideways synonym is #11 and stays banned.
+7. **Number-style drift.** `3 million lines` in one sentence, `two or three times` in the next. LLMs apply "spell out under ten" with no exceptions.
+8. **Sentence-initial `And` / `But` / `So`.** LLMs avoid these. Humans start sentences this way constantly.
+9. **Lowercase after a colon,** even when the clause is independent. LLMs capitalize by rule.
+10. **Dropped optional `that`, dropped intro comma.** `the thing I built` over `the thing that I built`, `In 2023 we shipped` over `In 2023, we shipped`. Not every time, which is the entire point.
+
+Guard, still binding in casual mode:
+
+- **Never vary anything with one canonical form.** API names, CLI flags, file paths, env vars, error strings, function names, anything inside a code fence. #27 already requires the system's actual name and casual mode does not relax it.
+- **Never introduce an error.** Misspellings, `its`/`it's`, `their`/`there`, subject-verb disagreement, broken Markdown. Those are wrong, not loose. If only one form is valid there is nothing to vary.
+- **No alternating on a schedule.** `ABABAB` is just a different machine pattern. Each variation needs a local reason.
+- **Accents stay fully correct** (#18). Casual is about register, never about the language itself.
+- **Skip it entirely** in commit messages, error text, API docs, legal or compliance text, and migration steps.
+- **Ceiling: a handful per page.** If the reader can count them, there are too many.
+
+#26 stays always-on and is not part of this section: dropping hyphens removes a tell, while these axes add variance. The Soul section already covers emotional variance, so don't duplicate it here.
+
 ## Process
 
 1. Read the input.
@@ -195,7 +240,8 @@ Same test as #27: if the literal words do not give a non-native reader the meani
 5. Produce a draft (internally; never show it).
 6. Ask yourself: *"What still sounds AI?"* Note the residue (internally).
 7. Revise against that list.
-8. Deliver the final rewrite only.
+8. Casual mode only: apply the Inconsistency axes now, once every tell is stripped and never before. Varying text you're about to rewrite throws the variance away.
+9. Deliver the final rewrite only.
 
 ## Output
 
@@ -204,6 +250,8 @@ The corrected text, and nothing else. No draft, no residual-tells list, no chang
 - Input is a file: edit the file in place and confirm in one short line. Do not reproduce the text in chat.
 - Input is text destined for a file or another surface (a PR body, a commit message, a doc): write it where it is going; the chat shows at most one short line.
 - Input is chat text with nowhere else to land: reply with the final rewrite alone.
+
+Casual mode: name the Inconsistency axes you applied in that one short confirmation line, since skipping the pass is otherwise invisible. A bare chat reply stays the rewrite alone.
 
 ## Source
 
