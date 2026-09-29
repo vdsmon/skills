@@ -51,6 +51,7 @@ Separate `CLAUDE_CONFIG_DIR` dirs (e.g. personal + work subscriptions): every pa
 
 | Var | Default | Effect |
 | --- | --- | --- |
+| `CC_USAGE_GUARD_OFF` | unset | set to `1` to turn the guard off without uninstalling (no poll, no warnings) |
 | `CLAUDE_USAGE_THRESHOLD_5H` (or `CLAUDE_USAGE_THRESHOLD`) | `97` | 5-hour window % that trips the hard PARK (STOP) |
 | `CLAUDE_USAGE_THRESHOLD_WEEKLY` | `99` | weekly window % that trips the hard PARK (STOP) |
 | `CLAUDE_USAGE_WARN_5H` | `90` | 5-hour window % that trips the soft WARN nudge |

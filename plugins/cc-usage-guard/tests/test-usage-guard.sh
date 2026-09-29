@@ -14,7 +14,7 @@ GUARD="$HERE/../hooks/usage-guard.sh"
 SENSOR="$HERE/../hooks/usage-sensor.sh"
 POLLER="$HERE/../hooks/usage-poller.sh"
 
-unset CLAUDE_USAGE_THRESHOLD CLAUDE_USAGE_THRESHOLD_5H CLAUDE_USAGE_THRESHOLD_WEEKLY \
+unset CC_USAGE_GUARD_OFF CLAUDE_USAGE_THRESHOLD CLAUDE_USAGE_THRESHOLD_5H CLAUDE_USAGE_THRESHOLD_WEEKLY \
   CLAUDE_USAGE_WARN_5H CLAUDE_USAGE_WARN_WEEKLY CLAUDE_USAGE_RESUME_BUFFER_MIN \
   CLAUDE_USAGE_REMIND_PARK_MIN CLAUDE_USAGE_REMIND_WARN_MIN \
   CLAUDE_USAGE_SENSOR_MAX_AGE_MIN CLAUDE_USAGE_RENDER_CMD CLAUDE_CONFIG_DIR \
@@ -155,6 +155,14 @@ reset_state
 fresh_state 98
 out=$(run_guard "$(stdin_json s-park)")
 assert_contains "park threshold emits STOP" "$out" "STOP - usage at"
+
+reset_state
+fresh_state 98
+out=$(printf '%s' "$(stdin_json s-off)" | env HOME="$TESTHOME" CC_USAGE_GUARD_OFF=1 \
+  CLAUDE_USAGE_KEYCHAIN_SERVICE="$NO_KEYCHAIN" CLAUDE_USAGE_ENDPOINT="$DEAD_ENDPOINT" bash "$GUARD")
+assert_silent "CC_USAGE_GUARD_OFF=1 silences the guard even at the park threshold" "$out"
+[ -z "$(ls "$STATE_DIR" | grep -v "^usage.json$")" ] && PASS=$((PASS + 1)) || {
+  FAIL=$((FAIL + 1)); echo "FAIL: CC_USAGE_GUARD_OFF=1 writes no markers or poll stamps"; }
 
 reset_state
 fresh_state 98

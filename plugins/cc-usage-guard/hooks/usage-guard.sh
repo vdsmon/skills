@@ -11,6 +11,9 @@
 # `date -d @epoch` / `stat -c %Y`.
 export PATH="/opt/homebrew/bin:$HOME/.local/share/mise/shims:/bin:/usr/bin:$PATH"
 
+# installing is the opt-in; this is the way out without uninstalling (no poll, no state writes)
+[ "${CC_USAGE_GUARD_OFF:-}" = 1 ] && exit 0
+
 # hard PARK thresholds (stop + auto-resume) and soft WARN thresholds (one nudge), per window
 FIVE_HOUR_THRESHOLD="${CLAUDE_USAGE_THRESHOLD_5H:-${CLAUDE_USAGE_THRESHOLD:-97}}"
 WEEKLY_THRESHOLD="${CLAUDE_USAGE_THRESHOLD_WEEKLY:-99}"
