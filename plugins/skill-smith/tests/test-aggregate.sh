@@ -36,6 +36,7 @@ check "improve: tokens read when grading.json has timing" '[ "$(jget "$bj" "int(
 check "improve: seconds from duration_ms" '[ "$(jget "$bj" "d[\"run_summary\"][\"old_skill\"][\"time_seconds\"][\"mean\"]")" = "5.0" ]'
 check "improve: markdown columns in order" 'grep -q "| Metric | With Skill | Old Skill | Delta |" "$a/benchmark.md"'
 check "improve: runs per configuration counted" '[ "$(jget "$bj" "d[\"metadata\"][\"runs_per_configuration\"]")" = "1" ]'
+check "improve: eval_name carried to runs for the viewer" '[ "$(jget "$bj" "d[\"runs\"][0][\"eval_name\"]")" = "fix-typo" ]'
 
 # New-skill case: two evals, two runs each, timing.json carries only total_tokens + duration_ms.
 b="$tmp/new/iteration-1"
