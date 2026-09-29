@@ -39,7 +39,7 @@ Scan conversation history for these signals, ordered most obvious to most subtle
 
 6. **Validated surprises:** Agent did unexpected thing user *liked*. ("that's brilliant, add that to the skill"). Techniques worth codifying.
 
-7. **Recorded friction:** `MACHINERY:` or `DEVIATION` entries a pipeline's reflect stage wrote this session (flow prints them in its reflect output and stores them in `.flow/<namespace>/knowledge.jsonl`). A `MACHINERY:` entry is friction already traced to a skill file, with evidence: treat it as a found signal, and skip any the reflect stage says it already applied. A plain `DEVIATION` counts only when it is about a skill's instructions, not the task's domain.
+7. **Recorded friction:** `MACHINERY:` or `DEVIATION` entries a pipeline's reflect stage wrote this session (flow prints them in its reflect output and appends them to its `knowledge.jsonl` memory store under `.flow/`). A `MACHINERY:` entry is friction already traced to a skill file, with evidence: treat it as a found signal, and skip any the reflect stage says it already applied. A plain `DEVIATION` counts only when it is about a skill's instructions, not the task's domain.
 
 Each signal, note:
 - What happened (friction)
@@ -55,7 +55,7 @@ Each signal, note:
    - `references/<stage>.md`: detailed stage instructions
    - Frontmatter `description`: triggering issues
 
-3. **Resolve the source:** A loaded skill often lives in an install copy: a plugin cache (`~/.claude/plugins/cache/`, `~/.codex/plugins/cache/`) or a marketplace clone (`~/.claude/plugins/marketplaces/`, `~/.codex/.tmp/marketplaces/`). The next plugin update overwrites those, so an edit there is lost and never reaches the repo. For every file you plan to edit, run the resolver from this skill's directory (the base directory announced when the skill loaded):
+3. **Resolve the source:** A loaded skill often lives in an install copy: a plugin cache (`~/.claude/plugins/cache/`, `~/.codex/plugins/cache/`) or a marketplace clone (`~/.claude/plugins/marketplaces/`, `~/.codex/.tmp/marketplaces/`). The next plugin update overwrites those, so an edit there is lost and never reaches the repo. For every file you plan to edit, run the resolver that ships in this skill's directory (the base directory announced when the skill loaded). Run it from the session's working directory, not after a `cd`, because a checkout that contains the working directory wins:
    ```bash
    python3 <skill-dir>/scripts/resolve-source.py <file-you-would-edit>
    ```
