@@ -164,8 +164,9 @@ assert_silent "exact sentinel passes when the last real turn is stale" \
 reset_state; set_flag "30m"; stamp "$SA" 1200
 assert_silent "boundary: age == window fires (strict <)" \
   "$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")"
-reset_state; set_flag "30m"; stamp "$SA" 1199
-assert_contains "boundary: age == window - 1 blocks" \
+# 1198, not 1199: a second can tick between writing the stamp and the guard reading the clock
+reset_state; set_flag "30m"; stamp "$SA" 1198
+assert_contains "boundary: age just under the window blocks" \
   "$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")" '"decision":"block"'
 
 # The false-positive cases that matter: a user talking ABOUT the plugin.
