@@ -44,45 +44,20 @@ Then browse and install from the interactive picker:
 
 Select a plugin and choose **Install plugin** (Space toggles enabled state).
 
+Skills that only run on a `/slash` call in Claude Code stay manual on Codex too: Codex never picks them on its own, so call them with `$<skill>`.
+
 ## Install on other hosts (portable plugins only)
 
-Each host discovers skills in its own directory. Clone this repo, then drop the skill folder into the target path.
+Clone this repo and copy the skill folder into the host's skills directory. Each host's path is listed at [agentskills.io/clients](https://agentskills.io/clients).
 
 ```bash
 git clone https://github.com/vdsmon/skills
-cd skills
+cp -r skills/plugins/<plugin>/skills/<skill> <host-skills-dir>/
 ```
-
-### Gemini CLI
-
-```bash
-mkdir -p ~/.gemini/skills
-cp -r plugins/humanize/skills/humanize        ~/.gemini/skills/
-# ... etc
-```
-
-### Cursor
-
-```bash
-# Cursor reads skills from its configured skills directory; see Cursor docs.
-cp -r plugins/humanize/skills/humanize <cursor-skills-dir>/
-```
-
-### Goose, OpenCode, Roo Code, Copilot, Amp, etc.
-
-Same pattern: `cp -r plugins/<name>/skills/<name>` into the host's skills directory. Per-host paths: [agentskills.io/clients](https://agentskills.io/clients).
-
-### Universal installers
-
-For one-command multi-host install:
-
-- [`skillport`](https://github.com/gotalab/skillport): `pip install skillport`, targets many hosts via CLI or MCP.
-- [`openskills`](https://github.com/numman-ali/openskills): `npm i -g openskills`.
-- [`agent-skill-creator`](https://github.com/FrancyJGLisboa/agent-skill-creator): auto-converts SKILL.md to host-specific formats (`.mdc`, `.md rules`, etc.) for Cursor/Windsurf/Cline.
 
 ## Plugins
 
-Generated from `.claude-plugin/marketplace.json` (the source of truth) by `scripts/sync-codex.sh`, so do not hand-edit between the markers. `Host: any` is portable, `Host: CC only` needs Claude Code. Run `/plugins` for the full descriptions and triggers.
+Generated from each plugin's `plugin.json` by `scripts/sync-codex.sh`, so do not hand-edit between the markers. `Host: any` is portable, `Host: CC only` needs Claude Code. Run `/plugins` for the full descriptions and triggers.
 
 <!-- BEGIN PLUGINS (generated) -->
 | Plugin | Host | What it does |
@@ -113,38 +88,17 @@ Generated from `.claude-plugin/marketplace.json` (the source of truth) by `scrip
 ## Layout
 
 ```
-.claude-plugin/
-  marketplace.json                       # Claude Code marketplace (source of truth)
-.agents/plugins/
-  marketplace.json                       # Codex CLI marketplace (generated, non-cc- only)
-mise.toml                                 # Maintainer task runner: mise run sync | bump | verify
-scripts/
-  bump-plugin.sh                          # Version bump + marketplace sync
-  sync-codex.sh                           # Rebuild Codex symlinks + marketplace + README table from the Claude side
-plugins/
-  skill-polish/                           # portable
-    .claude-plugin/plugin.json
-    .codex-plugin -> .claude-plugin       # symlink; Codex reads .codex-plugin/plugin.json
-    skills/skill-polish/SKILL.md
-  cc-tokenomics/                          # cc- = Claude Code only, NO .codex-plugin symlink
-    .claude-plugin/plugin.json
-    skills/cc-tokenomics/
-      SKILL.md
-      scripts/token-report.py
-      reference/{economics,experiments,keepalive}.md
-  cc-cache-keepalive/                     # cc- = Claude Code only, NO .codex-plugin symlink
-    .claude-plugin/plugin.json           # Declares SessionStart + Stop + UserPromptSubmit hooks
-    hooks/keepalive.sh                   # Opt-in, flag-gated; schedules the cron
-    hooks/keepalive-sensor.sh            # Stop: stamps the last real turn
-    hooks/keepalive-guard.sh             # UserPromptSubmit: cancels a redundant tick
-    tests/
-  humanize/                               # portable
-    .claude-plugin/plugin.json
-    .codex-plugin -> .claude-plugin
-    skills/humanize/SKILL.md
+.claude-plugin/marketplace.json     # Claude Code marketplace: one entry per plugin
+.agents/plugins/marketplace.json    # Codex marketplace (generated, portable plugins only)
+plugins/<plugin>/
+  .claude-plugin/plugin.json        # manifest: name, version, description, hooks
+  .codex-plugin -> .claude-plugin   # symlink, portable plugins only (generated)
+  skills/<skill>/SKILL.md           # the skill itself
+  hooks/                            # cc- plugins only
+scripts/                            # sync-codex.sh, bump-plugin.sh, check.py
 ```
 
-Both marketplaces share one source of truth: you author `.claude-plugin/*`, then run `scripts/sync-codex.sh` to regenerate the `.codex-plugin` symlinks, the Codex marketplace, and the [Plugins](#plugins) table above. The symlink means each plugin has exactly one `plugin.json`, so versions never drift between hosts.
+You write `plugin.json` and the skills. `scripts/sync-codex.sh` generates the rest: the Codex marketplace and symlinks, each marketplace entry's description and version, and the [Plugins](#plugins) table above. CI fails a pull request that did not run it.
 
 ## License
 
