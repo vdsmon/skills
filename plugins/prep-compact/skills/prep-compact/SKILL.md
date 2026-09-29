@@ -1,38 +1,40 @@
 ---
 name: prep-compact
 disable-model-invocation: true
-description: Audits in-flight session state before compaction truncates history, then emits a paste-ready focus message for the next session.
+description: Audits in-flight session state before compaction truncates history, saves what would be lost (local commits, state files, notes), then emits a paste-ready focus message for the next session.
 when_to_use: >-
   Use when the user says "compact", "let's compact", "ready to compact?",
   "prep for compact", "suggest a compact message", "what should I put in
   /compact?", "shrink the context", "summarise and continue", or any
   variant signalling they're about to hit a context-truncating step.
   Also covers a natural break plus "context feels full" or "can we compact?".
-argument-hint: "[--message-only]"
+argument-hint: "[--message-only | --propose]"
 allowed-tools:
   - Bash(git status *)
   - Bash(git log *)
   - Bash(git diff *)
-  - Bash(git stash *)
-  - Bash(git checkout *)
+  - Bash(git add *)
+  - Bash(git commit *)
+  - Bash(git stash push *)
 ---
 
 # Prep-Compact
 
-the compact step drop conversation history, keep only short summary you provide. Anything not persisted outside chat (half-written plan, unsaved inline snippet, background task name) gone. Skill audit so that no bite next session.
+the compact step drop conversation history, keep only short summary you provide. Anything not persisted outside chat (half-written plan, unsaved inline snippet, background task name) gone. Skill audit, save what would be lost, so that no bite next session.
 
 ## When to use
 
-Description covers most phrases. Whenever user about to run the compact step or asking whether should. Don't wait for explicit ask: natural break + "context feels full" or "can we compact?" = run flow.
+Whenever user about to run the compact step or asking whether should. This skill acts (commits, writes files), so it runs on the user's ask. Loaded on your own read of a natural break, without the user asking: use propose mode.
 
 ## Modes
 
 Raw input: `$ARGUMENTS`
 
-- `$ARGUMENTS` contains `--message-only` (or `-m`, `message only`, `just the message`, `skip audit`) -> **message-only mode**: skip steps 1-2, jump straight to step 3. Still run `scripts/baseline.sh` (or the two git commands it wraps) so the message can cite branch + recent commits accurately, but no audit summary, no action list.
-- Otherwise -> **full mode**: all three steps in order.
+- `$ARGUMENTS` contains `--message-only` (or `-m`, `message only`, `just the message`, `skip audit`) -> **message-only mode**: skip steps 1-2, jump straight to step 3. Still run `scripts/baseline.sh` (or the two git commands it wraps) so the message can cite branch + recent commits accurately, but no audit summary, no saves.
+- `$ARGUMENTS` contains `--propose` (or `-p`, `propose only`, `don't act`, `just list`) -> **propose mode**: step 2 lists the save-actions under **Action needed** instead of doing them, then the message as usual. Do nothing until the user answers; on a go-ahead, run the approved saves, re-run the baseline, reissue the message if what it cites changed.
+- Otherwise -> **full mode**: all three steps in order, saves carried out.
 
-Also honour natural language overrides mid-conversation: if the user says "skip audit, just give me the message" after invocation, switch to message-only without re-running.
+Also honour natural language overrides mid-conversation: "skip audit, just give me the message" -> message-only without re-running; "don't do anything, just list it" before the saves ran -> propose.
 
 ## The three steps
 
@@ -50,12 +52,13 @@ bash <skill-dir>/scripts/baseline.sh
 
 It prints the branch and upstream, `git status --short` with counts, the last five commits, the stash count, and the gitignored plan or state files modified after the last commit: the files a compact message must point at and that `git status` never shows (a `.sweep/plan.md`, a `.flow/` record, a scratch note). Deterministic work belongs in the script, not in your memory of what to check. The script asks for one Bash approval per session on hosts that pre-approve only the `git` prefixes below; if the host refuses it, fall back to `git status --short` and `git log -5 --oneline`.
 
-Audit silently, and **do not** dump a summary recap. The recap is noise; the user knows their own session. Audit feeds step 2 (surface save-actions) and step 3 (the compact message). Check:
+Audit silently, and **do not** dump a summary recap. The recap is noise; the user knows their own session. Audit feeds step 2 (the saves) and step 3 (the compact message). Check:
 
 **Code state**
 - Start from the status output (and the last 5 commits). Unstaged/untracked files? Which matter (real work) vs. ignorable (temp/scratch)?
 - Files edited this session user hasn't reviewed or uncommitted?
-- ultrathink about which uncommitted changes represent real work vs experimental cruft: the call is subtle and wrong-side-of-the-line loses actual work.
+- ultrathink about which uncommitted changes represent real work vs experimental cruft: the call is subtle and wrong-side-of-the-line loses actual work. Still unclear after thinking = ask (step 2), don't guess.
+- Repo rules and standing user instructions about commits and branches (CLAUDE.md, AGENTS.md, what the user said this session): they bound step 2.
 
 **Workflow / task state**
 - State files, plan files, scratch notes session read/write: reflect current progress? The "ignored files changed after the last commit" list from the script is the starting point: each entry either reflects the current state or needs a sync before compacting.
@@ -67,19 +70,38 @@ Audit silently, and **do not** dump a summary recap. The recap is noise; the use
 - Scheduled crons or wake-ups user should know about.
 
 **Conversation-only knowledge**
-- Verbal decisions not in any file: chosen approach, user preference, debug breakthrough. Not in code/note = goes in compact message (step 3), not an action.
+- Verbal decisions not in any file: chosen approach, user preference, debug breakthrough. Always goes in compact message (step 3). Also a save (step 2) when the project keeps a plan / note / diary it belongs in, or it outlives the task (memory).
 
-### 2. Raise: only what needs saving
+### 2. Save: do what needs saving
 
-Output the **Action needed** section *only if* something must persist to disk before compacting: uncommitted real work, stale state file, unread background output. These are things the compact message can't preserve; they need a save first. Propose; don't do silently: user chance to say "skip" or "do first".
+Something must persist to disk before compacting (uncommitted real work, stale state file, unread background output, a decision only chat holds): the compact message can't preserve it. Do it now, in blast-radius order (risk of losing real work first). Don't propose and wait: act, then report.
 
-Typical actions:
-- **Commit WIP:** uncommitted real work land in commit (or stash) before context lost.
-- **Update state / plan file:** stale progress file -> sync so next session resume from it.
-- **Write a note:** chat-only decisions/context -> drop into relevant plan/note/readme.
-- **Capture background output:** read result of completed background task before buffer useless.
+Save-actions are persistence only:
+- **Commit real work** locally, or **stash** (`git stash push -m "<what state it's in>"`) when a commit doesn't fit.
+- **Sync a stale state / plan file** so next session resumes from it.
+- **Write a note or diary entry** for chat-only decisions, in the file the project already keeps for them. Don't invent a new doc.
+- **Capture background output:** read a finished task, summarize it into the note or the compact message before the buffer is useless.
+- **Save a memory**, where the host has persistent memory, for what outlives this task (a stated preference, a standing rule).
 
-Order by blast radius: risk of losing real work first.
+Not a save, never done here: fixing a bug, relaunching a job, a long or paid run, any next step of the work. It goes into the compact message as an open thread and into the follow-up as the next move. Compact prep saves state; it doesn't advance the work.
+
+Commits:
+- Follow the repo's conventions: message style, attribution rules, branch. Message says what state the change is in (WIP, tests pending).
+- Stage by path. Never `git add -A` / `git add .`: sweeps in scratch and secrets.
+- New commit only: no amend, no history rewrite.
+- Local only. Never push.
+- Hook rejects the commit: don't bypass (`--no-verify`). Hold it back, say why.
+
+**Ask first.** Hold these back, never act unasked:
+- hard to reverse or outward-facing: push, force-push, merge, PR creation, sending messages, deleting or discarding changes (`git checkout --`, `git reset`, removing files);
+- anything a repo rule or standing user instruction forbids ("push nothing new", "never commit to main");
+- a commit that would include secrets, `.env`-like files or large generated artifacts (commit the rest; hold back those files);
+- uncommitted changes where real work vs. experimental cruft is unclear;
+- paid, long-running or background jobs.
+
+Ask once: one question batching every held-back item, recommended choice first for each. Do everything else in the meantime; the saves never wait on the answer. On a yes, act, re-run the baseline, reissue the message only if what it cites changed.
+
+After the saves, re-run `scripts/baseline.sh` so the compact message cites the state after them: new commit hashes, updated paths.
 
 **Nothing needs saving -> emit nothing here. Go straight to the compact message.** No "state is clean" line, no recap (that's noise).
 
@@ -93,8 +115,8 @@ Output **two** code blocks:
 Compact message holds **context**:
 
 - **Where we are:** current task / branch / stage if applicable
-- **What's done:** key milestones, test counts, decisions locked in
-- **Any gotchas:** open debug threads, things to skip or redo, non-obvious state
+- **What's done:** key milestones, test counts, decisions locked in, commits made in step 2 (local, unpushed)
+- **Any gotchas:** open debug threads, things to skip or redo, non-obvious state, every held-back item still awaiting a yes (so the question survives an unanswered compact)
 - **Pointers to persisted state:** "plan at X, state file at Y, branch Z"
 
 Follow-up holds **the next move**:
@@ -108,7 +130,7 @@ Tell the user plainly: send the compact block, then immediately paste the follow
 
 ## Format
 
-No audit recap. If something needs saving, lead with the **Action needed** block; otherwise omit it and go straight to the message.
+No audit recap. Saves done -> lead with **Saved before compacting**, one line per action with its evidence (commit hash and subject, file path, what the note holds). Something held back -> **Needs your yes** with the single batched question. Neither when nothing needed saving.
 
 Clean state (the common case):
 
@@ -124,11 +146,14 @@ Clean state (the common case):
 ```
 ```
 
-Something needs saving first, so prepend only the action block:
+Saves done, something held back:
 
 ```
-**Action needed**
-- [save-action with rationale]
+**Saved before compacting**
+- [action taken, with evidence]
+
+**Needs your yes**
+[one question covering every held-back item, recommended choice first]
 
 **Compact message** — paste and send:
 ```text
@@ -141,7 +166,9 @@ Something needs saving first, so prepend only the action block:
 ```
 ```
 
-No "Step 1 / Step 2 / Step 3" narration, no audit bullets (ceremony). Actions only if needed, then the two blocks.
+Propose mode: **Action needed** (one line per save-action, with rationale) in place of **Saved before compacting**, then the message.
+
+No "Step 1 / Step 2 / Step 3" narration, no audit bullets (ceremony).
 
 ## Examples
 
@@ -159,27 +186,49 @@ Continue the tokenizer refactor: wire the new tokenizer into the parser entrypoi
 ```
 ```
 
-**Example: uncommitted experimental changes** (real work at risk -> surface the save-action, then the message):
+**Example: real work at risk** (saves done, then the message citing the new state):
 
 ```
-**Action needed**
-- Revert `.env` before compact so next session doesn't commit it unknowingly: `git checkout -- .env`.
-- Read output of `bash_3` now — it will still be running but its earlier stdout is what you'll want to summarize.
+**Saved before compacting**
+- Committed `4e1a9c2` wip(limiter): jittered backoff on token refresh, regression test pending.
+- Read `bash_3` (repro harness, finished): 12 traces, every 503 within 40 ms of a token refresh. Summary under Findings in `.flow/hotfix-503/plan.md`.
+- Synced `.flow/hotfix-503/plan.md`: root cause done, fix in progress, regression test next.
 
 **Compact message** — paste and send:
 ```text
-/compact Hotfix for rate-limit 503 on hotfix/rate-limit-503. Root cause: thundering-herd on token refresh. Fix in progress: jittered backoff in src/limiter.ts (uncommitted, intentional). Repro harness still running as background task capturing traces. Skip rerunning the repro, we already have enough traces.
+/compact Hotfix for rate-limit 503 on hotfix/rate-limit-503. Root cause: thundering-herd on token refresh (traces summarized in .flow/hotfix-503/plan.md, Findings). Fix committed locally as 4e1a9c2 (jittered backoff in src/limiter.ts), not pushed. Skip rerunning the repro; the traces are enough.
 ```
 
 **Follow-up** — queue while compact runs; fires on finish, chains the work:
 ```text
-Resume the 503 hotfix: add a regression test for the jittered backoff in src/limiter.ts, then commit and open the PR.
+Resume the 503 hotfix: add a regression test for the jittered backoff in src/limiter.ts, run the limiter suite, then commit.
+```
+```
+
+**Example: a save held back** (branch rule "push nothing new"; commit locally, ask before anything else):
+
+```
+**Saved before compacting**
+- Committed `b7d03e5` sampler: stratify by tenant before downsampling (local only, per the branch rule).
+- Wrote `diary/2026-09-29.md`: why stratify (per-tenant skew hid the regression), and the rejected option (reservoir sampling, too slow at 40M rows).
+
+**Needs your yes**
+Held back two things: `results/raw/` (1.2 GB generated parquet) — leave it untracked (recommended), or delete it? `scratch/try_kde.py` — leave it untracked as an experiment (recommended), or commit it with the sampler?
+
+**Compact message** — paste and send:
+```text
+/compact Sampler fix on bench/q3-rerun; branch rule: push nothing new. Committed locally as b7d03e5, reasoning in diary/2026-09-29.md. Open: results/raw/ and scratch/try_kde.py untracked, awaiting the user's call. The q3 benchmark still needs a rerun with the fix (paid, ~2 h); not launched.
+```
+
+**Follow-up** — queue while compact runs; fires on finish, chains the work:
+```text
+Ask whether to launch the q3 benchmark rerun with the stratified sampler (paid, ~2 h); on a yes, run `make bench-q3` and compare against results/baseline-q2.csv.
 ```
 ```
 
 ## Message-only format
 
-In message-only mode, drop the Audit/Action sections. Still output both blocks:
+In message-only mode, no Saved / Needs-your-yes / Action blocks. Still output both blocks:
 
 ```
 **Compact message** — paste and send:
@@ -200,5 +249,5 @@ Keep the focus message grounded in the baseline output so branch, uncommitted wo
 - Compact message is *yours*, so don't parrot user in-session. They compact because they trust you preserve what matters.
 - The follow-up only chains if queued *before* compact finishes. That's why the user sends the `/compact` block first, then immediately pastes the follow-up. The host holds queued input and fires it the instant compact returns.
 - Keep the two blocks non-overlapping: context in the compact message, next action in the follow-up. Duplicating the next step in both wastes the summary.
-- Default = full audit. `--message-only` (or natural-language equivalents) skips straight to the message.
-- State genuinely chaotic (many unfinished threads, half-implementations): say so, recommend *against* compacting until sorted, even in message-only mode. Losing one session context cheap; losing track of in-flight work not.
+- Default = full audit, saves carried out; the user reviews them in the Saved block, after the fact. What needs a yes is asked once, batched, never twice. `--propose` restores list-and-wait for every save; `--message-only` skips straight to the message.
+- State genuinely chaotic (many unfinished threads, half-implementations): say so, recommend *against* compacting until sorted, even in message-only mode. Save what's clearly real work anyway. Losing one session context cheap; losing track of in-flight work not.
