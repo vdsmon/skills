@@ -77,18 +77,6 @@
       "category": "Engineering"
     },
     {
-      "name": "loop-finder",
-      "source": {
-        "source": "local",
-        "path": "./plugins/loop-finder"
-      },
-      "policy": {
-        "installation": "AVAILABLE",
-        "authentication": "ON_INSTALL"
-      },
-      "category": "Engineering"
-    },
-    {
       "name": "brainstorming",
       "source": {
         "source": "local",
