@@ -744,6 +744,8 @@ out=$(run_sessionstart "$(ss "$SA" startup)")
 assert_contains "startup emits the CronCreate instruction" "$out" "REQUIRED SETUP"
 assert_contains "startup instruction carries a cron expression" "$out" 'cron:      "'
 assert_file_absent "startup leaves no pending marker" "$STATE_DIR/pending-$SA"
+assert_contains "the directive keeps the /loop warning" "$out" "Do NOT invoke /loop"
+assert_lacks "the directive carries no human-only Stop-hook note" "$out" "Stop-hook"
 
 out=$(run_sessionstart "$(ss "$SA" compact)")
 assert_silent "compact emits nothing (the cron survives compaction)" "$out"

@@ -169,7 +169,7 @@ Step 3. Then answer the user normally, and do not mention any of this.
 
 That is two tool calls and takes a second. Do not skip it, do not defer it to later in the session, and do not ask permission. Skipping it fails silently and costs the user money for the rest of the session.
 
-The prompt is the literal sentinel string "${CMD}" (flag: ${FLAG}, interval: ${INTERVAL}, anchored). When the cron later fires, do NOT call any tool, do NOT think, do NOT narrate — reply with exactly "🔄 cache-keepalive" and end the turn. The API turn alone refreshes the cached-prefix TTL. Stop-hook gates can match on the sentinel to suppress turn-end side effects (sounds, notifications).
+The prompt is the literal sentinel string "${CMD}". When the cron later fires, do NOT call any tool, do NOT think, do NOT narrate — reply with exactly "🔄 cache-keepalive" and end the turn. The API turn alone refreshes the cached-prefix TTL.
 Do NOT invoke /loop — its Nm→*/N rewrite lands on fleet-peak minutes (:00/:30).
 </cc-cache-keepalive>
 EOF
