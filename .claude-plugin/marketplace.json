@@ -22,18 +22,6 @@
       "version": "1.3.3"
     },
     {
-      "name": "cc-caveman",
-      "source": "./plugins/cc-caveman",
-      "description": "Always-on caveman full mode: drops articles, filler, and tool-call narration while keeping every technical fact exact. Installing is the opt-in — a SessionStart hook injects the ruleset and a per-prompt one-liner keeps it anchored (CC_CAVEMAN_OFF=1 skips a session). Ships /caveman-compress to shrink memory files the same way. Extracted (full mode only) from JuliusBrussee/caveman, MIT. Claude Code only.",
-      "version": "0.1.0"
-    },
-    {
-      "name": "cc-tokenomics",
-      "source": "./plugins/cc-tokenomics",
-      "description": "Analyzes Claude Code token usage, cache hit rates, and Max plan consumption. Ships a /tokenomics dashboard plus a reference library on rate limits, cache lifecycle, and empirical billing experiments. Analysis and education only — for cache warmup install the cc-cache-keepalive plugin. Claude Code only.",
-      "version": "2.1.4"
-    },
-    {
       "name": "cc-cache-keepalive",
       "source": "./plugins/cc-cache-keepalive",
       "description": "Keeps Claude Code's prompt cache warm on Max plans via a silent cron, cancelling any tick a recent real turn already refreshed and any tick that would land on a cache that already expired (machine slept, went offline). Opt-in via ~/.cc-cache-keepalive flag file. A Stop sensor stamps real turns and API-answered pings; a UserPromptSubmit guard drops warm and cold ticks before they cost a request; everything fails open. Cron prompt is the sentinel 'cc-cache-keepalive', so you can gate Stop hooks on it to silence turn-end sounds. Claude Code only.",
@@ -70,12 +58,6 @@
       "version": "1.6.0"
     },
     {
-      "name": "loop-finder",
-      "source": "./plugins/loop-finder",
-      "description": "Loop discovery + race + feature-driven iteration. Two skills: loop-finder (engineers a self-verifiable gate for a task class, races parallel variants, converges on the best loop config; HITL concentrated at permission boundaries) and feature-cycle (outer queued-fix chain that ships features against the converged gate, retros pain, queues one harness fix per cycle — Karpathy autoresearch discipline applied to dev experience). Portable across SKILL.md-native hosts.",
-      "version": "0.3.2"
-    },
-    {
       "name": "brainstorming",
       "source": "./plugins/brainstorming",
       "description": "Design-before-code gate. Explores intent, proposes 2-3 approaches, presents a design, and gets approval before any implementation. Use before creating features, building components, adding functionality, or changing behavior. Portable across SKILL.md-native hosts.",
@@ -110,12 +92,6 @@
       "source": "./plugins/grilling",
       "description": "Relentless one-question-at-a-time interview that stress-tests a plan or design to convergence: facts get looked up in the codebase, decisions go to the human, and nothing is enacted until shared understanding is confirmed. Bundles grilling (the engine), grill-with-docs (grill + write ADRs and a glossary as you go), and domain-modeling (sharpen a ubiquitous language, CONTEXT.md glossary, sparing ADRs). Portable across SKILL.md-native hosts.",
       "version": "0.2.1"
-    },
-    {
-      "name": "wayfinder",
-      "source": "./plugins/wayfinder",
-      "description": "Chart work too big for one agent session as a shared map of investigation tickets on the repo's issue tracker: name the destination, sketch the fog of war, then resolve one ticket per session (grilling, research, prototype, task) until the way is clear. Plans decisions, never deliverables. Pairs with the grilling plugin. Portable across SKILL.md-native hosts.",
-      "version": "0.1.1"
     },
     {
       "name": "teach",
