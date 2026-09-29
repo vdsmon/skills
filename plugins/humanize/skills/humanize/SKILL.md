@@ -1,7 +1,7 @@
 ---
 name: humanize
 argument-hint: "[--casual] [text or file to humanize]"
-description: Rewrites text to strip AI-writing tells (em-dash overuse, AI vocabulary, inflated significance, sycophancy) and restore a human voice. `--casual` also adds the small inconsistencies real writers have. Returns the rewrite plus any residual tells.
+description: Rewrites text to strip AI-writing tells (em-dash overuse, AI vocabulary, inflated significance, sycophancy) and restore a human voice. `--casual` also adds the small inconsistencies real writers have. Outputs only the corrected text; files are edited in place.
 when_to_use: >-
   Use when the user says "humanize this", "remove AI tells", "edit for
   voice", "sounds too AI", "make this more human", or pastes text for a
@@ -188,6 +188,13 @@ Use the system's actual verb when describing an action the system performs. If a
 
 Audience reminder: most prose you produce will be read by non-native English speakers, often a majority. The word a teenager would use is the right default. If the plain word makes the sentence shorter, even better. US-cultural idioms (sports, military, business-casual Americana) are a hard stop, treated like the em-dash rule, not a stylistic nicety. When in doubt about a phrase, say the literal thing.
 
+**28. Compound coinages.** AI mints hyphenated compounds that read fluent to a native English speaker and force everyone else to decode a metaphor mid-sentence. Two families:
+
+- Productive suffixes, where AI coins fresh compounds on the fly: *X-bearing* (*load-bearing*, *quote-bearing*), *X-shaped* (*an API-shaped problem*), *X-flavored* (*a Lisp-flavored syntax*), *X-adjacent* (*crypto-adjacent*).
+- Fixed pairs it reuses constantly: *hand-rolled, battle-tested, first-class* (figurative, as in *a first-class concept*).
+
+Same test as #27: if the literal words do not give a non-native reader the meaning, say the plain thing. *Load-bearing* -> *essential* or *other code depends on it*. *Hand-rolled* -> *written from scratch* or *custom*. *Battle-tested* -> *proven in production* (it is also on the military list in #27). *First-class* -> *fully supported* or *built in*. *An API-shaped problem* -> name what the problem actually is. *Lisp-flavored* -> *Lisp-like*. *Crypto-adjacent* -> *related to crypto*. Literal compounds that mean exactly what they say (*read-only*, *case-sensitive*, *built-in*) are fine: this rule is about metaphor packed into a hyphen, not hyphens themselves (for plain hyphenated pairs, see #26).
+
 ## Inconsistency (casual mode only)
 
 Everything above removes a tell. This section adds something instead, so it runs only when `--casual` is set.
@@ -224,25 +231,27 @@ Guard, still binding in casual mode:
 
 1. Read the input.
 2. `grep` for `—` and ` -- `. Fix every hit first, highest-signal tell, easiest to miss by eye.
-3. Scan for the 27 patterns above.
+3. Scan for the 28 patterns above.
 4. Rewrite sections. Check the revision:
    - Sounds natural read aloud
    - Varies sentence structure naturally
    - Prefers specific over vague
    - Uses *is / are / has* where appropriate
-5. Produce a draft.
-6. Ask yourself: *"What still sounds AI?"* List the residue as bullets.
+5. Produce a draft (internally; never show it).
+6. Ask yourself: *"What still sounds AI?"* Note the residue (internally).
 7. Revise against that list.
 8. Casual mode only: apply the Inconsistency axes now, once every tell is stripped and never before. Varying text you're about to rewrite throws the variance away.
-9. Output final.
+9. Deliver the final rewrite only.
 
 ## Output
 
-1. Draft rewrite
-2. Residual-tells bullets
-3. Final rewrite
-4. Casual mode only: one line naming which Inconsistency axes you applied. Skipping the pass is otherwise invisible.
-5. (Optional) short changelog of removed patterns
+The corrected text, and nothing else. No draft, no residual-tells list, no changelog, no commentary. The draft/residue/revise loop in Process is your working method, not your deliverable.
+
+- Input is a file: edit the file in place and confirm in one short line. Do not reproduce the text in chat.
+- Input is text destined for a file or another surface (a PR body, a commit message, a doc): write it where it is going; the chat shows at most one short line.
+- Input is chat text with nowhere else to land: reply with the final rewrite alone.
+
+Casual mode: name the Inconsistency axes you applied in that one short confirmation line, since skipping the pass is otherwise invisible. A bare chat reply stays the rewrite alone.
 
 ## Source
 

@@ -37,13 +37,19 @@ mkdir -p "$STATE_DIR"
 # snapshot was observed flapping against a live one and triggering a false PARK. a
 # 5-hour reset in the past proves the snapshot predates a window rollover (a live one
 # is always at most 5h out) - keep rendering, skip the write.
+#
+# null-state rejection: a status line can arrive with no rate_limits at all (seen while
+# the poller had no OAuth token). A state with both windows null reads as "usage source
+# offline" to the guard, and being freshly written it outranks the real numbers it
+# replaced. The trailing select mirrors usage-poller.sh, so both writers share one rule:
+# no numbers, no write - keep whatever state is already there.
 usage=$(printf '%s' "$input" | jq -c '{
   schema:          2,
   five_hour:       (.rate_limits.five_hour.used_percentage // null),
   weekly:          (.rate_limits.seven_day.used_percentage // null),
   five_hour_reset: (.rate_limits.five_hour.resets_at // null),
   weekly_reset:    (.rate_limits.seven_day.resets_at // null)
-}' 2>/dev/null)
+} | select((.five_hour != null) or (.weekly != null))' 2>/dev/null)
 reset_epoch=$(printf '%s' "$usage" | jq -r '.five_hour_reset // empty' 2>/dev/null)
 reset_epoch=${reset_epoch%%.*}
 if [ -n "$reset_epoch" ] && [ "$reset_epoch" -lt "$(date +%s)" ] 2>/dev/null; then

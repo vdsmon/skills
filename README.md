@@ -87,15 +87,16 @@ Generated from `.claude-plugin/marketplace.json` (the source of truth) by `scrip
 <!-- BEGIN PLUGINS (generated) -->
 | Plugin | Host | What it does |
 |---|---|---|
-| `investigate` | any | Investigate a reported error or incident end to end across every reachable system, never inferring past a missing source and instead stopping to raise to the human for access or clarity. |
 | `slack-draft` | any | Draft a Slack message for the user to send: Slack mrkdwn, lead-with-conclusion, backticked identifiers and domain values, ASCII punctuation. |
 | `skill-polish` | any | Post-mortem for any skill: scans a session for friction and applies concrete edits to the responsible skill file. Portable across SKILL.md-native hosts. |
+| `cc-caveman` | CC only | Always-on caveman full mode: drops articles, filler, and tool-call narration while keeping every technical fact exact. |
 | `cc-tokenomics` | CC only | Token usage, cache hit rates, and Max plan consumption analyzer. |
-| `cc-cache-keepalive` | CC only | Keeps Claude Code's prompt cache warm on Max plans via a silent cron, cancelling any tick a recent real turn already refreshed. |
+| `cc-cache-keepalive` | CC only | Keeps Claude Code's prompt cache warm on Max plans via a silent cron, cancelling any tick a recent real turn already refreshed and any tick that would land on a cache that already expired (machine slept, went offline). |
 | `cc-usage-guard` | CC only | Pause-at-limit guard for Claude Code. |
-| `prep-compact` | any | Audit in-flight state before any context-compacting step, and produce a copy-paste /compact message plus a queue-able follow-up that chains the next action when compact finishes. |
+| `prep-compact` | any | Audit in-flight state before any context-compacting step, save what would be lost (local commits, state files, notes), and produce a copy-paste /compact message plus a queue-able follow-up that chains the next action when compact finishes. |
+| `prep-exit` | any | Audit in-flight state before the session is killed, save what only the conversation knows into files and persistent memory, and leave a handoff note plus a paste-ready resume prompt for the next session. |
 | `prep-goal` | any | Interrogate a rough objective into a tight, verifiable /goal completion condition before handing it to an autonomous goal loop. |
-| `humanize` | any | Strip AI-writing tells from text. Detects em-dash overuse, AI vocabulary, inflated significance, rule-of-three, sycophancy, and 20+ more patterns. |
+| `humanize` | any | Strip AI-writing tells from text. Detects em-dash overuse, AI vocabulary, inflated significance, rule-of-three, sycophancy, compound coinages, and 20+ more patterns. |
 | `loop-finder` | any | Loop discovery + race + feature-driven iteration. |
 | `brainstorming` | any | Design-before-code gate. Explores intent, proposes 2-3 approaches, presents a design, and gets approval before any implementation. |
 | `systematic-debugging` | any | Four-phase debugging discipline (root-cause investigation, pattern analysis, hypothesis, single-fix implementation). |
@@ -106,6 +107,7 @@ Generated from `.claude-plugin/marketplace.json` (the source of truth) by `scrip
 | `wayfinder` | any | Chart work too big for one agent session as a shared map of investigation tickets on the repo's issue tracker: name the destination, sketch the fog of war, then resolve one ticket per session (grilling, research, prototype, task) until the way is clear. |
 | `teach` | any | Stateful, multi-session teaching workspace: grounds every lesson in a MISSION.md, gathers trusted RESOURCES.md, produces short self-contained HTML lessons in the learner's zone of proximal development, tracks progress via learning-records, and builds storage strength through retrieval, spacing, and interleaving. |
 | `codebase-design` | any | Shared vocabulary for designing deep modules: a lot of behaviour behind a small interface, placed at a clean seam, testable through that interface. |
+| `question` | any | Answer a genuine question in full, with no edits and no side effects. Treats 'why X and not Y?' as curiosity, not as a hidden request to switch to Y or an attack on X. |
 <!-- END PLUGINS -->
 
 ## Layout

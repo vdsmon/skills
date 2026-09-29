@@ -101,7 +101,7 @@ This is one continuous sequence, so don't stop partway. Put results in `<skill-n
 
 ### Step 3.1: Spawn with-skill AND baseline runs in the same turn
 
-For each test case, launch two subagents at once:
+For each test case, launch two subagents at once. **Every eval subagent runs on Sonnet: pass `model: "sonnet"` to the Agent tool for with-skill, baseline, grader, and comparator runs, always.** The skill has to work for the cheaper model that most sessions actually run, and a stronger model masks exactly the failures the baseline exists to surface. Never inherit the session model for these runs.
 
 **With-skill:**
 ```
@@ -109,13 +109,15 @@ Execute this task:
 - Skill path: <path-to-skill>
 - Task: <eval prompt>
 - Input files: <eval files, or "none">
-- Save outputs to: <workspace>/iteration-<N>/eval-<ID>/with_skill/outputs/
+- Save outputs to: <workspace>/iteration-<N>/eval-<ID>/with_skill/run-1/outputs/
 - Outputs to save: <what the user cares about>
 ```
 
 **Baseline** (this is your RED):
-- **New skill** -> no skill at all, same prompt, save to `without_skill/outputs/`.
-- **Improving a skill** -> snapshot first (`cp -r <skill-path> <workspace>/skill-snapshot/`), point the baseline at the snapshot, save to `old_skill/outputs/`.
+- **New skill** -> no skill at all, same prompt, save to `without_skill/run-1/outputs/`.
+- **Improving a skill** -> snapshot first (`cp -r <skill-path> <workspace>/skill-snapshot/`), point the baseline at the snapshot, save to `old_skill/run-1/outputs/`.
+
+The `run-<K>` level is not optional: `aggregate_benchmark` only finds `grading.json` and `timing.json` inside `<config>/run-<K>/`, and silently reports 0% when they sit one level up. Repeat runs are `run-2`, `run-3`.
 
 Write `eval_metadata.json` per case (`eval_id`, `eval_name` (descriptive, not "eval-0"), `prompt`, `assertions: []` for now).
 
@@ -129,7 +131,7 @@ Each subagent completion notification carries `total_tokens` and `duration_ms`. 
 
 ### Step 3.4: Grade, aggregate, view
 
-1. **Grade:** spawn a grader (read `agents/grader.md`) or grade inline; write `grading.json` per run using fields `text`, `passed`, `evidence` (the viewer depends on these exact names). Script anything checkable programmatically.
+1. **Grade:** spawn a grader on Sonnet (read `agents/grader.md`) or grade inline; write `grading.json` per run using fields `text`, `passed`, `evidence` (the viewer depends on these exact names). Script anything checkable programmatically.
 2. **Aggregate:** from this skill's directory: `python -m scripts.aggregate_benchmark <workspace>/iteration-N --skill-name <name>` -> `benchmark.json` + `benchmark.md` (pass_rate, time, tokens; mean ± stddev + delta).
 3. **Analyst pass:** read the benchmark for what the aggregate hides (non-discriminating assertions, high-variance/flaky evals, time/token tradeoffs); see `agents/analyzer.md`.
 4. **Launch the viewer BEFORE you start forming your own opinion**, get examples in front of the human first:
@@ -168,7 +170,7 @@ The description decides whether the skill ever fires. After the skill is in good
 3. **Run the loop in the background:**
    ```bash
    python -m scripts.run_loop --eval-set <trigger-eval.json> --skill-path <path-to-skill> \
-     --model <model-id-of-this-session> --max-iterations 5 --verbose
+     --model claude-sonnet-5 --max-iterations 5 --verbose
    ```
    It splits 60% train / 40% held-out, runs each query 3x for a reliable trigger rate, proposes description rewrites with extended thinking, and picks `best_description` by **test** score (not train) to avoid overfitting. Tail it for updates.
 4. **Apply** `best_description` to the frontmatter; show the user before/after + scores.

@@ -212,6 +212,18 @@ printf '%s' "$stale_fixture" | HOME="$TESTHOME" CLAUDE_USAGE_RENDER_CMD=cat bash
 [ ! -f "$STATE" ] && { PASS=$((PASS + 1)); echo "ok: sensor refuses to write a stale snapshot"; } \
   || { FAIL=$((FAIL + 1)); echo "FAIL: stale snapshot written to state"; }
 
+# null state: a status line with no usage numbers must not replace real ones. Both
+# windows null reads as "usage source offline" to the guard, and it would win on
+# freshness over the poller's numbers until the next successful poll.
+reset_state
+printf '{"schema":2,"five_hour":33,"weekly":44,"five_hour_reset":%s,"weekly_reset":%s}\n' \
+  "$(date -v+2H +%s)" "$(date -v+2d +%s)" > "$STATE"
+real_numbers=$(cat "$STATE")
+printf '%s' '{"session_id":"nullstate","model":{"id":"opus"}}' \
+  | HOME="$TESTHOME" CLAUDE_USAGE_SENSOR_DEFER_SEC=0 CLAUDE_USAGE_RENDER_CMD=cat bash "$SENSOR" >/dev/null
+[ "$real_numbers" = "$(cat "$STATE")" ] && { PASS=$((PASS + 1)); echo "ok: payload without usage numbers leaves state untouched"; } \
+  || { FAIL=$((FAIL + 1)); echo "FAIL: null-usage payload clobbered real numbers with $(cat "$STATE")"; }
+
 # precedence: the sensor's snapshot can be hours old yet still inside its window, so it
 # must not overwrite fresher state (the poller's live numbers) - but it must take over
 # once that state ages out
@@ -448,8 +460,8 @@ assert_contains "guard offline message quotes the poller error" "$out" "Last pol
 # Assert on the *action*, not the explanation: the remedy is worthless to a user who never
 # learns which command to run, and a reworded cause must not be able to drop it silently.
 assert_contains "no-credentials fault gets its own remedy, not 'see the README'" "$out" \
-  "REAL TERMINAL"
-assert_contains "no-credentials remedy names the command to run" "$out" '`claude`'
+  "ONE COMMAND THE USER RUNS THEMSELVES"
+assert_contains "no-credentials remedy names the command to run" "$out" '`claude /login`'
 assert_contains "no-credentials remedy forbids running it from a tool call" "$out" \
   "must not run it from a tool call"
 assert_contains "no-credentials remedy tells the model to surface the command" "$out" \
@@ -534,6 +546,32 @@ if [ "${1:-}" = "--soak" ]; then
   [ "$offline" = "0" ] && { PASS=$((PASS + 1)); echo "ok: soak - 0 offline faults in 500 reads vs 200 writes"; } \
     || { FAIL=$((FAIL + 1)); echo "FAIL: soak - $offline offline-fault emissions"; }
 fi
+# --- usage-status.sh (0.9.0) ----------------------------------------------------
+# One command shows what the guard acts on, so nobody reads the state directory by
+# hand; --clear-markers is the only write, and it never touches usage.json.
+STATUS="$HERE/../hooks/usage-status.sh"
+run_status() { HOME="$TESTHOME" bash "$STATUS" "$@" 2>&1; }
+reset_state
+out=$(run_status)
+assert_contains "status reports a missing state file" "$out" "usage.json: missing"
+assert_contains "status reports no markers" "$out" "markers: none"
+fresh_state 42
+printf '5-hour:2:123' > "$STATE_DIR/usage-park-marker-sess-a"
+printf 'state file missing' > "$STATE_DIR/sensor-warn-marker-sess-a"
+printf 'usage endpoint returned HTTP 500' > "$STATE_DIR/poller-last-error"
+out=$(run_status)
+assert_contains "status prints the 5-hour percentage" "$out" "5-hour: 42% used"
+assert_contains "status prints the weekly percentage" "$out" "weekly: 10% used"
+assert_contains "status prints the thresholds in effect" "$out" "park 97%"
+assert_contains "status lists the park marker with its key" "$out" "park-marker-sess-a = 5-hour:2:123"
+assert_contains "status quotes the poller error" "$out" "usage endpoint returned HTTP 500"
+out=$(run_status --clear-markers)
+assert_contains "--clear-markers reports the count" "$out" "cleared 2 marker(s)"
+assert_contains "--clear-markers leaves none" "$out" "markers: none"
+if [ -f "$STATE" ]; then PASS=$((PASS + 1)); echo "ok: --clear-markers keeps usage.json"
+else FAIL=$((FAIL + 1)); echo "FAIL: --clear-markers removed usage.json"; fi
+rm -f "$STATE_DIR/poller-last-error"
+
 
 # ------------------------------------------------------------------------------
 
