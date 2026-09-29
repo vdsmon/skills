@@ -149,18 +149,6 @@
       "category": "Engineering"
     },
     {
-      "name": "wayfinder",
-      "source": {
-        "source": "local",
-        "path": "./plugins/wayfinder"
-      },
-      "policy": {
-        "installation": "AVAILABLE",
-        "authentication": "ON_INSTALL"
-      },
-      "category": "Engineering"
-    },
-    {
       "name": "teach",
       "source": {
         "source": "local",
