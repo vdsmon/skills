@@ -84,9 +84,9 @@ The hooks fire inside spawned agents too, so the guard stays correct when work f
 
 ## Source liveness (the guard fails loud, not blind)
 
-The guard only sees what a source writes. Before acting on the state file it checks that something is actually refreshing it, and if not it injects a **one-time-per-session warning** into the root session (spawned agents stay silent; their parent gets the same warning) instead of silently doing nothing:
+The guard only sees what a source writes. Before acting on the state file it checks that something is actually refreshing it, and if not it injects a **one-time-per-session warning** (once per outage for a rate limit, see below) into the root session (spawned agents stay silent; their parent gets the same warning) instead of silently doing nothing:
 
-- **Missing state file**: no source has written yet - usually the plugin's hooks are disabled, or the very first poll has not landed.
+- **Missing state file**: no source has written yet. The guard polls before it checks, so this means the poller's first fetch failed; the warning quotes why.
 - **Stale state file** (older than `CLAUDE_USAGE_SENSOR_MAX_AGE_MIN`): nothing is refreshing usage state. With the poller in place this means its fetches are failing, which is why the warning quotes the poller's own last error.
 - **Schema mismatch**: sources stamp `schema: 2` into the state file and the guard refuses anything else, so a source and guard from different plugin versions (a drifted personal clone, a stale versioned cache path) fail loud instead of the guard reading nulls off renamed keys.
 - **Unreadable state file** (empty or invalid JSON): the guard retries once after 200ms, then decides by freshness. A *fresh* unreadable file is a torn read, skipped silently; a *stale* one means a source wrote a bad state and stopped, and faults loud like the cases above.
