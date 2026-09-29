@@ -88,7 +88,7 @@ Generated from `.claude-plugin/marketplace.json` (the source of truth) by `scrip
 | Plugin | Host | What it does |
 |---|---|---|
 | `slack-draft` | any | Draft a Slack message for the user to send: Slack mrkdwn, lead-with-conclusion, backticked identifiers and domain values, ASCII punctuation. |
-| `skill-polish` | any | Post-mortem for any skill: scans a session for friction and applies concrete edits to the responsible skill file. Portable across SKILL.md-native hosts. |
+| `skill-polish` | any | Post-mortem for any skill: finds friction in a session, traces it to the responsible skill file, and edits that file's source checkout, not the plugin install copy. |
 | `cc-caveman` | CC only | Always-on caveman full mode: drops articles, filler, and tool-call narration while keeping every technical fact exact. |
 | `cc-tokenomics` | CC only | Token usage, cache hit rates, and Max plan consumption analyzer. |
 | `cc-cache-keepalive` | CC only | Keeps Claude Code's prompt cache warm on Max plans via a silent cron, cancelling any tick a recent real turn already refreshed and any tick that would land on a cache that already expired (machine slept, went offline). |

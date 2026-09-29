@@ -18,8 +18,8 @@
     {
       "name": "skill-polish",
       "source": "./plugins/skill-polish",
-      "description": "Post-mortem for any skill: scans a session for friction and applies concrete edits to the responsible skill file. Portable across SKILL.md-native hosts.",
-      "version": "1.3.3"
+      "description": "Post-mortem for any skill: finds friction in a session, traces it to the responsible skill file, and edits that file's source checkout, not the plugin install copy. Portable across SKILL.md-native hosts.",
+      "version": "1.4.0"
     },
     {
       "name": "cc-caveman",
