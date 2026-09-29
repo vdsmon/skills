@@ -16,6 +16,12 @@ jobs:
   check:
     # macOS because the hooks and their tests use BSD stat and date.
     runs-on: macos-latest
+    # Suites commit in throwaway repos; a fixed identity keeps that from depending on the runner's hostname.
+    env:
+      GIT_AUTHOR_NAME: ci
+      GIT_AUTHOR_EMAIL: ci@example.invalid
+      GIT_COMMITTER_NAME: ci
+      GIT_COMMITTER_EMAIL: ci@example.invalid
     steps:
       - uses: actions/checkout@v7
 
