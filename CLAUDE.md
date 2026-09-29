@@ -21,6 +21,7 @@ plugins/<plugin>/
   tests/test-*.sh                   # Optional offline test suite; tests/live-*.sh spend tokens
 scripts/                            # sync-codex.sh, bump-plugin.sh, check.py, test-offline.sh
 docs/                               # Repo notes that never ship, e.g. docs/experiments.md
+evals/<skill>/                      # Eval fixtures kept out of the shipped plugin; point skill-smith at them by path
 ```
 
 You author `plugin.json` and the skills. `scripts/sync-codex.sh` (`mise run sync`) derives the rest, so never hand-edit a generated file:

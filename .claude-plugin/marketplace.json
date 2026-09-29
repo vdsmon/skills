@@ -109,7 +109,7 @@
       "name": "question",
       "source": "./plugins/question",
       "description": "Answer a genuine question in full, with no edits and no side effects. Treats 'why X and not Y?' as curiosity, not as a hidden request to switch to Y or an attack on X. Investigates read-only, explains the tradeoff, gives an honest verdict, and stops. Portable across SKILL.md-native hosts.",
-      "version": "0.1.0"
+      "version": "0.1.1"
     }
   ]
 }
