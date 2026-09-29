@@ -5,7 +5,7 @@
       "id": 0,
       "name": "mixed-homelab",
       "prompt": "scan this repo for migration / wave / phase / story / 'old box' / 'legacy alias' comments. I don't want them. categorize what's safe to nuke vs what to keep, propose a strip, then stop and wait for me to confirm before editing.",
-      "expected_output": "Skill triggers; emits 5 categorized buckets (A: Lenovo preamble + archive pointer + read-only legacy; B: '(Wave 2)' in infra/CLAUDE.md + 'Story 28' + EXECUTED-on date in RUNBOOK; C: docs/migration-matrix.md whole file; D: RUNBOOK.md Phase 1-3 step labels marked KEEP; E: lib.py 'legacy /tracks schema' + 'legacy alias' + 'legacy fields' marked KEEP with reword offer). Does NOT edit any file. Ends with selector phrases.",
+      "expected_output": "Skill triggers; emits 5 categorized buckets (A: Lenovo preamble + archive pointer + read-only legacy; B: '(Wave 2)' in infra/CLAUDE.md + 'Story 28' + EXECUTED-on date in RUNBOOK; C: docs/migration-matrix.md whole file; D: RUNBOOK.md Phase 1-3 step labels marked KEEP; E: lib.py 'legacy /tracks schema' + 'legacy alias' (live: on_disk calls _disk_tokens) + 'legacy fields' marked KEEP with reword offer). Does NOT edit any file. Ends with selector phrases.",
       "fixture": "fixture-1-mixed"
     },
     {

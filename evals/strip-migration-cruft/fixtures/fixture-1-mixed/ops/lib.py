@@ -24,6 +24,10 @@ def _disk_tokens(s: str) -> set[str]:  # legacy alias, used internally below
     return content_tokens(s)
 
 
+def on_disk(title: str, path: Path) -> bool:
+    return content_tokens(title) <= _disk_tokens(path.stem)
+
+
 def upgrade_track(entry: dict[str, Any]) -> None:
     """Idempotent v1 -> v2 in-place upgrade. Synthesizes attempts[] from
     legacy `tried_users`/`status`/`backend` so reconciler has working memory.
