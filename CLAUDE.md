@@ -74,7 +74,7 @@ The body is a prompt, not docs: second-person imperative. Keep this file and eve
 
 Hooks are cc- only. Rules for any new hook:
 
-- **Opt-in.** A hook that spends tokens or schedules work is opt-in through a flag file in `$HOME` (e.g. `~/.cc-cache-keepalive`) and exits 0 with no output when the flag is absent. Check the flag before reading stdin; it is the cheapest check. An always-on hook (e.g. cc-usage-guard) treats installing as the opt-in; give it an env kill switch such as `CC_KEEPALIVE_OFF=1`.
+- **Opt-in.** A hook that spends tokens or schedules work is opt-in through a flag file in `$HOME` (e.g. `~/.cc-cache-keepalive`) and exits 0 with no output when the flag is absent. Check the flag before reading stdin; it is the cheapest check. An always-on hook (e.g. cc-usage-guard) treats installing as the opt-in; give it an env kill switch, named like cc-cache-keepalive's `CC_KEEPALIVE_OFF=1`.
 - **Output.** Hook stdout becomes a system reminder. Wrap it in a `<name-of-hook>` XML tag.
 - **Measure directive wording.** A hook that only asks the model to do something must have its wording measured, not guessed. Given an ordinary first prompt, a model answers the user and skips the aside: the keepalive directive scored 0/8 that way, created no cron at all, and showed no error. Lead with `REQUIRED SETUP`, order the steps ahead of the user's request, and keep it terse (a "why it matters" paragraph diluted it again). Re-measure any rewording with `mise run test:keepalive-directive`.
 - **State.** Keep it under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.<plugin>/`, keyed by `session_id`. One unkeyed shared file leaks one session's state into another.
