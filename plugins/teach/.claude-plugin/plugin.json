@@ -1,7 +1,7 @@
 {
   "name": "teach",
   "version": "0.2.2",
-  "description": "Stateful, multi-session teaching workspace that turns a topic into short HTML lessons built for long-term retention. Grounds each lesson in a MISSION.md and trusted RESOURCES.md, and tracks progress in learning records and a GLOSSARY.md. Portable across SKILL.md-native hosts.",
+  "description": "Stateful, multi-session teaching workspace that turns a topic into short HTML lessons built for long-term retention. Grounds each lesson in a MISSION.md and trusted RESOURCES.md, and tracks progress in learning records and a GLOSSARY.md.",
   "author": {
     "name": "Victor De Simone",
     "email": "victorsmoliveira@gmail.com",
