@@ -100,7 +100,7 @@ Generated from `.claude-plugin/marketplace.json` (the source of truth) by `scrip
 | `loop-finder` | any | Loop discovery + race + feature-driven iteration. |
 | `brainstorming` | any | Design-before-code gate. Explores intent, proposes 2-3 approaches, presents a design, and gets approval before any implementation. |
 | `systematic-debugging` | any | Four-phase debugging discipline (root-cause investigation, pattern analysis, hypothesis, single-fix implementation). |
-| `skill-smith` | any | Forge for Agent Skills: create, test, evaluate, optimize triggering, and package skills. |
+| `skill-smith` | any | Build and test Agent Skills with a baseline-first eval loop (Sonnet runs, benchmark viewer) and a skill-design vocabulary. Claude-Code-leaning (subagents + scripts). |
 | `git-cleanup` | any | Clean up stale git branches and worktrees. |
 | `strip-migration-cruft` | any | Scan a repo for transitional / migration / phase / wave / story / legacy-alias cruft comments, bucket into safe-to-strip vs keep-semantic, propose surgical edits and execute after confirmation. |
 | `grilling` | any | Relentless one-question-at-a-time interview that stress-tests a plan or design to convergence: facts get looked up in the codebase, decisions go to the human, and nothing is enacted until shared understanding is confirmed. |
