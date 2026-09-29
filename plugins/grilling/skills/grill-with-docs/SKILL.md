@@ -5,4 +5,4 @@ description: A relentless interview to sharpen a plan or design, producing ADRs 
 disable-model-invocation: true
 ---
 
-Run a `/grilling` session, using the `/domain-modeling` skill.
+Load two skills, one Skill tool call each: `grilling`, then `domain-modeling` (on a host without a Skill tool, read each one's SKILL.md). Then run the grilling session, using domain-modeling throughout.

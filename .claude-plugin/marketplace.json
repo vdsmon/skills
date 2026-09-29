@@ -108,8 +108,8 @@
     {
       "name": "grilling",
       "source": "./plugins/grilling",
-      "description": "Relentless one-question-at-a-time interview that stress-tests a plan or design to convergence: facts get looked up in the codebase, decisions go to the human, and nothing is enacted until shared understanding is confirmed. Bundles grilling (the engine), grill-with-docs (grill + write ADRs and a glossary as you go), and domain-modeling (sharpen a ubiquitous language, CONTEXT.md glossary, sparing ADRs). Portable across SKILL.md-native hosts.",
-      "version": "0.2.1"
+      "description": "Relentless interview that stress-tests a plan, decision, or idea one round of questions at a time, until you and the agent agree. Bundles grilling, grill-with-docs (grill and write docs as you go), and domain-modeling (sharpen project terms in GLOSSARY.md). Portable across SKILL.md-native hosts.",
+      "version": "0.3.0"
     },
     {
       "name": "wayfinder",
