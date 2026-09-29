@@ -78,8 +78,8 @@
     {
       "name": "brainstorming",
       "source": "./plugins/brainstorming",
-      "description": "Design-before-code gate. Explores intent, proposes 2-3 approaches, presents a design, and gets approval before any implementation. Use before creating features, building components, adding functionality, or changing behavior. Portable across SKILL.md-native hosts.",
-      "version": "0.1.3"
+      "description": "Design-before-code gate that sizes each request as a spike, a bounded change, or architectural work, and gets approval on a design before any code. Only architectural work gets a written spec and a planning handoff. Portable across SKILL.md-native hosts.",
+      "version": "0.2.0"
     },
     {
       "name": "systematic-debugging",

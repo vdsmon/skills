@@ -98,7 +98,7 @@ Generated from `.claude-plugin/marketplace.json` (the source of truth) by `scrip
 | `prep-goal` | any | Interrogate a rough objective into a tight, verifiable /goal completion condition before handing it to an autonomous goal loop. |
 | `humanize` | any | Strip AI-writing tells from text. Detects em-dash overuse, AI vocabulary, inflated significance, rule-of-three, sycophancy, compound coinages, and 20+ more patterns. |
 | `loop-finder` | any | Loop discovery + race + feature-driven iteration. |
-| `brainstorming` | any | Design-before-code gate. Explores intent, proposes 2-3 approaches, presents a design, and gets approval before any implementation. |
+| `brainstorming` | any | Design-before-code gate that sizes each request as a spike, a bounded change, or architectural work, and gets approval on a design before any code. |
 | `systematic-debugging` | any | Four-phase debugging discipline (root-cause investigation, pattern analysis, hypothesis, single-fix implementation). |
 | `skill-smith` | any | Forge for Agent Skills: create, test, evaluate, optimize triggering, and package skills. |
 | `git-cleanup` | any | Clean up stale git branches and worktrees. |
