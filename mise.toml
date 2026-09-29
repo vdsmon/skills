@@ -24,6 +24,10 @@ run = "bash plugins/cc-cache-keepalive/tests/test-cache-keepalive.sh"
 description = "Run the prep-exit script checks (handoff.sh and baseline.sh, offline)"
 run = "bash plugins/prep-exit/tests/test-prep-exit.sh"
 
+[tasks."test:open-pr"]
+description = "Run the open-pr body checker tests (offline)"
+run = "python3 -m unittest discover -s plugins/open-pr/tests"
+
 [tasks."test:keepalive-live"]
 description = "Live cron-tick check for cc-cache-keepalive — spends tokens, spawns a bg session, ~5 min"
 run = "bash plugins/cc-cache-keepalive/tests/live-gate-e2e.sh --live"
