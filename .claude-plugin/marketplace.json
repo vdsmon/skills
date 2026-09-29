@@ -12,8 +12,8 @@
     {
       "name": "slack-draft",
       "source": "./plugins/slack-draft",
-      "description": "Draft a Slack message for the user to send: Slack mrkdwn, lead-with-conclusion, backticked identifiers and domain values, ASCII punctuation. Defaults to English and a plain high-level register; pass --tech for a code-reading peer. Draft only, never posts. Portable across SKILL.md-native hosts.",
-      "version": "0.3.3"
+      "description": "Draft a Slack message for the user to send: Slack mrkdwn, lead-with-conclusion, backticked identifiers and domain values, ASCII punctuation. Defaults to English and a plain high-level register, or pass --tech for a code-reading peer. Draft only, never posts. Portable across SKILL.md-native hosts.",
+      "version": "0.3.4"
     },
     {
       "name": "skill-polish",
@@ -54,8 +54,8 @@
     {
       "name": "humanize",
       "source": "./plugins/humanize",
-      "description": "Strip AI-writing tells from text. Detects em-dash overuse, AI vocabulary, inflated significance, rule-of-three, sycophancy, compound coinages, and 20+ more patterns. `--casual` also adds the small inconsistencies real writers have. Outputs only the corrected text; files are edited in place. Portable across SKILL.md-native hosts.",
-      "version": "1.6.0"
+      "description": "Strip AI-writing tells from text. Detects em-dash overuse, AI vocabulary, inflated significance, rule-of-three, sycophancy, compound coinages, and 20+ more patterns. `--casual` also adds the small inconsistencies real writers have. Outputs only the corrected text and edits files in place. Portable across SKILL.md-native hosts.",
+      "version": "1.6.1"
     },
     {
       "name": "brainstorming",
@@ -78,14 +78,14 @@
     {
       "name": "git-cleanup",
       "source": "./plugins/git-cleanup",
-      "description": "Clean up stale git branches and worktrees. Finds branches merged into dev/develop/master/main (squash-merge aware on GitHub remotes via gh PR state), checks worktrees for uncommitted changes, and removes what's safe while skipping dirty worktrees. Use for 'clean up branches', 'git housekeeping', 'remove merged branches', 'clean worktrees'. Portable across SKILL.md-native hosts.",
-      "version": "0.3.1"
+      "description": "Removes local git branches and worktrees that are safely merged into dev/develop/master/main, skipping dirty worktrees and the main checkout. Squash-merge aware on GitHub remotes, including PR branches rewritten before merge. Portable across SKILL.md-native hosts.",
+      "version": "0.4.0"
     },
     {
       "name": "strip-migration-cruft",
       "source": "./plugins/strip-migration-cruft",
-      "description": "Scan a repo for transitional / migration / phase / wave / story / legacy-alias cruft comments that document past project history rather than current behavior, bucket hits into safe-to-strip vs keep-semantic, then propose surgical edits and execute after confirmation. Use for 'scan for migration comments', 'remove phase/wave/story refs', 'strip transitional cruft', or fatigue with project-history breadcrumbs in code and docs. Portable across SKILL.md-native hosts.",
-      "version": "0.2.2"
+      "description": "Finds comments and docs that narrate past project history (phase, wave, story, migration notes), sorts cruft from live meaning, and strips the cruft after confirmation. Portable across SKILL.md-native hosts.",
+      "version": "0.3.0"
     },
     {
       "name": "grilling",

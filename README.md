@@ -73,8 +73,8 @@ Generated from each plugin's `plugin.json` by `scripts/sync-codex.sh`, so do not
 | `brainstorming` | any | Design-before-code gate that sizes each request as a spike, a bounded change, or architectural work, and gets approval on a design before any code. |
 | `systematic-debugging` | any | Four-phase debugging discipline (root-cause investigation, pattern analysis, hypothesis, single-fix implementation). |
 | `skill-smith` | any | Build and test Agent Skills with a baseline-first eval loop (Sonnet runs, benchmark viewer) and a skill-design vocabulary. |
-| `git-cleanup` | any | Clean up stale git branches and worktrees. |
-| `strip-migration-cruft` | any | Scan a repo for transitional / migration / phase / wave / story / legacy-alias cruft comments that document past project history rather than current behavior, bucket hits into safe-to-strip vs keep-semantic, then propose surgical edits and execute after confirmation. |
+| `git-cleanup` | any | Removes local git branches and worktrees that are safely merged into dev/develop/master/main, skipping dirty worktrees and the main checkout. |
+| `strip-migration-cruft` | any | Finds comments and docs that narrate past project history (phase, wave, story, migration notes), sorts cruft from live meaning, and strips the cruft after confirmation. |
 | `grilling` | any | Relentless interview that stress-tests a plan, decision, or idea one round of questions at a time, until you and the agent agree. |
 | `teach` | any | Stateful, multi-session teaching workspace that turns a topic into short HTML lessons built for long-term retention. |
 | `codebase-design` | any | Shared vocabulary for designing deep modules: a lot of behaviour behind a small interface, placed at a clean seam, testable through that interface. |
