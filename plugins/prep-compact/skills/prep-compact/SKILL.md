@@ -18,7 +18,7 @@ Compaction drops the conversation history and keeps only the short summary you w
 
 ## When to use
 
-Whenever user about to run the compact step or asking whether should. This skill acts (commits, writes files), so it runs on the user's ask. Loaded on your own read of a natural break, without the user asking: use propose mode.
+Use it when the user is about to compact, or asks whether they should. This skill acts (commits, writes files), so it runs only when the user asks.
 
 ## Modes
 
