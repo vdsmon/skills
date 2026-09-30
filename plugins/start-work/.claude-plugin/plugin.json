@@ -1,0 +1,14 @@
+{
+  "name": "start-work",
+  "version": "0.1.0",
+  "description": "Start each job in its own git worktree, based on a fresh fetch of the remote, without switching the main checkout. Copies ignored files listed in .worktreeinclude, keeps the worktree folder out of git status, enters it, and runs the repo's setup.",
+  "author": {
+    "name": "Victor De Simone",
+    "email": "victorsmoliveira@gmail.com",
+    "url": "https://github.com/vdsmon"
+  },
+  "homepage": "https://github.com/vdsmon/skills",
+  "repository": "https://github.com/vdsmon/skills",
+  "license": "MIT",
+  "skills": "./skills"
+}
