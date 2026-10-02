@@ -64,7 +64,7 @@ Generated from each plugin's `plugin.json` by `scripts/sync-codex.sh`, so do not
 |---|---|---|
 | `slack-draft` | any | Draft a Slack message for the user to send: Slack mrkdwn, lead-with-conclusion, backticked identifiers and domain values, ASCII punctuation. |
 | `skill-polish` | any | Post-mortem for any skill: finds friction in a session, traces it to the responsible skill file, and edits that file's source checkout, not the plugin install copy. |
-| `cc-cache-keepalive` | CC only | Keeps Claude Code's prompt cache warm on Max plans with an opt-in silent cron, and cancels any tick that a recent real turn or an already-expired cache makes pointless. |
+| `cc-cache-keepalive` | CC only | Keeps Claude Code's prompt cache warm on Max plans with a silent cron you arm per session. |
 | `cc-usage-guard` | CC only | Pauses Claude Code before it hits the 5-hour or weekly usage limit and auto-resumes when the window resets, on every surface including the desktop app. |
 | `prep-compact` | any | Audit in-flight session state before compaction truncates history, and save what would be lost. |
 | `prep-exit` | any | Save what only the conversation knows before a session ends, so a fresh session can pick up the work. |

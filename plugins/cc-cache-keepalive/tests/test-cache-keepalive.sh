@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Test suite for keepalive-guard.sh + keepalive-sensor.sh (and the two flag-file
-# parsing regressions in keepalive.sh). Plain bash, no test framework. Run:
+# parsing regressions in the arm script keepalive.sh). Plain bash, no test framework. Run:
 #   bash plugins/cc-cache-keepalive/tests/test-cache-keepalive.sh
 # Every case points HOME at a throwaway dir so real ~/.claude state is untouched.
 #
@@ -12,7 +12,7 @@ set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GUARD="$HERE/../hooks/keepalive-guard.sh"
 SENSOR="$HERE/../hooks/keepalive-sensor.sh"
-SESSIONSTART="$HERE/../hooks/keepalive.sh"
+ARM="$HERE/../skills/cc-cache-keepalive/scripts/keepalive.sh"
 
 unset CC_KEEPALIVE_OFF CC_KEEPALIVE_WINDOW_MIN CC_KEEPALIVE_TTL_MIN \
   CC_KEEPALIVE_SAFETY_MIN CLAUDE_CONFIG_DIR 2>/dev/null
@@ -686,7 +686,7 @@ while read -r iv minutes; do
   [ -n "$iv" ] || continue
   reset_state
   if [ "$iv" = "EMPTY" ]; then : > "$FLAG"; else set_flag "$iv"; fi
-  out=$(printf '{"source":"startup"}' | HOME="$TESTHOME" bash "$SESSIONSTART" 2>&1)
+  out=$(HOME="$TESTHOME" bash "$ARM" </dev/null 2>&1)
   assert_eq "keepalive.sh turns interval $iv into a cron every ${minutes}m" "$(cron_step "$out")" "$minutes"
 done <<'TABLE'
 30m 30
@@ -701,12 +701,12 @@ EMPTY 30
 TABLE
 
 reset_state; set_flag "08m"
-out=$(printf '{"source":"startup"}' | HOME="$TESTHOME" bash "$SESSIONSTART" 2>&1)
+out=$(HOME="$TESTHOME" bash "$ARM" </dev/null 2>&1)
 assert_contains "keepalive.sh survives an octal-looking interval" "$out" "<cc-cache-keepalive>"
 assert_lacks "keepalive.sh emits no shell error for 08m" "$out" "value too great"
 
 reset_state; set_flag "0m"
-out=$(printf '{"source":"startup"}' | HOME="$TESTHOME" bash "$SESSIONSTART" 2>&1)
+out=$(HOME="$TESTHOME" bash "$ARM" </dev/null 2>&1)
 assert_contains "keepalive.sh survives a zero interval" "$out" "<cc-cache-keepalive>"
 assert_lacks "keepalive.sh emits no divide-by-zero for 0m" "$out" "division by 0"
 
@@ -714,15 +714,12 @@ assert_lacks "keepalive.sh emits no divide-by-zero for 0m" "$out" "division by 0
 echo
 echo "# integration: garbage collection"
 reset_state; set_flag "30m"; stamp "$SA" 60; stamp_any "$SA" 60
-touch "$STATE_DIR/last-real-turn-old" "$STATE_DIR/last-turn-old" "$STATE_DIR/.tmp.999" "$STATE_DIR/pending-old"
-touch -t 202601010000 "$STATE_DIR/last-real-turn-old" "$STATE_DIR/last-turn-old" "$STATE_DIR/.tmp.999" "$STATE_DIR/pending-old"
-touch "$STATE_DIR/pending-$SB"
+touch "$STATE_DIR/last-real-turn-old" "$STATE_DIR/last-turn-old" "$STATE_DIR/.tmp.999"
+touch -t 202601010000 "$STATE_DIR/last-real-turn-old" "$STATE_DIR/last-turn-old" "$STATE_DIR/.tmp.999"
 run_guard "$(ups "$SA" '"cc-cache-keepalive"')" >/dev/null
 assert_file_absent "GC sweeps stale real-turn stamps" "$STATE_DIR/last-real-turn-old"
 assert_file_absent "GC sweeps stale any-turn stamps" "$STATE_DIR/last-turn-old"
 assert_file_absent "GC sweeps orphaned tmp files" "$STATE_DIR/.tmp.999"
-assert_file_absent "GC sweeps pending markers older than a week" "$STATE_DIR/pending-old"
-assert_file_present "GC keeps a recent pending marker" "$STATE_DIR/pending-$SB"
 assert_file_present "GC keeps the live session's real-turn stamp" "$STATE_DIR/last-real-turn-$SA"
 assert_file_present "GC keeps the live session's any-turn stamp" "$STATE_DIR/last-turn-$SA"
 
@@ -730,86 +727,24 @@ reset_state; set_flag "30m"; stamp "$SA" 60
 touch "$STATE_DIR/last-real-turn-old"; touch -t 202601010000 "$STATE_DIR/last-real-turn-old"
 run_guard "$(ups "$SA" '"just a normal prompt"')" >/dev/null
 assert_file_present "GC does not run on the non-sentinel hot path" "$STATE_DIR/last-real-turn-old"
-# --- resume marker and on-demand arming (1.7.0) --------------------------------
-# A resumed CLI process has no cron. SessionStart leaves a pending marker instead of
-# arming (the user may only be reading), the guard arms on the first real prompt, and
-# `--now` prints the instruction on demand so nobody guesses a cron expression.
-reset_state
-set_flag "30m"
-ss() { # <session_id> <source> -> SessionStart stdin json
-  printf '{"session_id":"%s","transcript_path":"/tmp/x.jsonl","cwd":"/w","hook_event_name":"SessionStart","source":"%s"}' "$1" "$2"
-}
-run_sessionstart() { printf '%s' "$1" | HOME="$TESTHOME" bash "$SESSIONSTART" 2>&1; }
-
-out=$(run_sessionstart "$(ss "$SA" startup)")
-assert_contains "startup emits the CronCreate instruction" "$out" "REQUIRED SETUP"
-assert_contains "startup instruction carries a cron expression" "$out" 'cron:      "'
-assert_file_absent "startup leaves no pending marker" "$STATE_DIR/pending-$SA"
-assert_contains "the directive keeps the /loop warning" "$out" "Do NOT invoke /loop"
-assert_lacks "the directive carries no human-only Stop-hook note" "$out" "Stop-hook"
-
-out=$(run_sessionstart "$(ss "$SA" compact)")
-assert_silent "compact emits nothing (the cron survives compaction)" "$out"
-assert_file_absent "compact leaves no pending marker" "$STATE_DIR/pending-$SA"
-
-out=$(run_sessionstart "$(ss "$SA" resume)")
-assert_silent "resume emits nothing at SessionStart" "$out"
-assert_file_present "resume leaves a pending marker" "$STATE_DIR/pending-$SA"
-
-out=$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")
-assert_lacks "a sentinel tick never arms" "$out" "REQUIRED SETUP"
-assert_file_present "a sentinel tick keeps the pending marker" "$STATE_DIR/pending-$SA"
-
-out=$(run_guard "$(ups "$SA" '"fix the bug"')")
-assert_contains "first real prompt after a resume arms the cron" "$out" "REQUIRED SETUP"
-assert_contains "arming rides as additionalContext" "$out" '"additionalContext"'
-assert_contains "arming names the hook event" "$out" '"hookEventName":"UserPromptSubmit"'
-assert_lacks "arming never blocks the real prompt" "$out" '"decision":"block"'
-assert_file_absent "arming clears the pending marker" "$STATE_DIR/pending-$SA"
-assert_silent "second real prompt is silent" "$(run_guard "$(ups "$SA" '"and ship it"')")"
-
-run_sessionstart "$(ss "$SB" resume)" >/dev/null
-assert_silent "another session's pending marker does not arm this one" "$(run_guard "$(ups "$SA" '"hello"')")"
-assert_file_present "the other session stays pending" "$STATE_DIR/pending-$SB"
-
-out=$(HOME="$TESTHOME" bash "$SESSIONSTART" --now </dev/null 2>&1)
-assert_contains "--now prints the instruction on demand" "$out" "REQUIRED SETUP"
-assert_contains "--now anchors a cron expression" "$out" 'cron:      "'
+# --- on-demand arming ----------------------------------------------------------
+# The /cc-cache-keepalive skill runs the arm script; nothing arms a session on its own.
+echo
+echo "# arm script"
+reset_state; set_flag "30m"
+out=$(HOME="$TESTHOME" bash "$ARM" </dev/null 2>&1)
+assert_eq "arm script exits 0" "$?" "0"
+assert_contains "arm script prints the CronCreate instruction" "$out" "CronCreate"
+assert_contains "arm script anchors a cron expression" "$out" 'cron:      "'
+assert_contains "the instruction keeps the /loop warning" "$out" "Do NOT invoke /loop"
 rm -f "$FLAG"
-assert_silent "--now without the flag prints nothing" "$(HOME="$TESTHOME" bash "$SESSIONSTART" --now </dev/null 2>&1)"
+out=$(HOME="$TESTHOME" bash "$ARM" </dev/null 2>&1)
+assert_eq "arm script exits 0 without the flag" "$?" "0"
+assert_lacks "no flag, no CronCreate instruction" "$out" "CronCreate"
+assert_contains "no flag says how to opt in" "$out" "touch ~/.cc-cache-keepalive"
 set_flag "30m"
-run_sessionstart "$(ss "$SA" resume)" >/dev/null
-assert_silent "kill switch stops the arming too" "$(CC_KEEPALIVE_OFF=1 run_guard "$(ups "$SA" '"hi"')")"
-
-# keepalive.sh exits 0 on every path it chooses, because the guard reads any
-# other exit as a crash. Crash and decline must then part ways in the guard: a
-# crash keeps the pending marker for the next prompt, a decline clears it.
-for src in startup clear compact resume; do
-  run_sessionstart "$(ss "$SA" "$src")" >/dev/null
-  assert_eq "keepalive.sh exits 0 on source=$src" "$?" "0"
-done
-HOME="$TESTHOME" bash "$SESSIONSTART" --now </dev/null >/dev/null 2>&1
-assert_eq "keepalive.sh --now exits 0" "$?" "0"
-printf '%s' "$(ss "$SA" startup)" | HOME="$TESTHOME" CC_KEEPALIVE_OFF=1 bash "$SESSIONSTART" >/dev/null 2>&1
-assert_eq "keepalive.sh exits 0 under the kill switch" "$?" "0"
-rm -f "$FLAG"
-run_sessionstart "$(ss "$SA" startup)" >/dev/null
-assert_eq "keepalive.sh exits 0 without the flag" "$?" "0"
-set_flag "30m"
-
-FAKEHOOKS="$TESTHOME/fakehooks"
-mkdir -p "$FAKEHOOKS"
-cp "$GUARD" "$FAKEHOOKS/keepalive-guard.sh"
-run_fake_guard() { printf '%s' "$1" | HOME="$TESTHOME" bash "$FAKEHOOKS/keepalive-guard.sh" 2>&1; }
-printf 'echo "<cc-cache-keepalive> partial"\nexit 3\n' > "$FAKEHOOKS/keepalive.sh"
-rm -rf "$STATE_DIR"; run_sessionstart "$(ss "$SA" resume)" >/dev/null
-assert_silent "a crashed keepalive.sh arms nothing" "$(run_fake_guard "$(ups "$SA" '"fix the bug"')")"
-assert_file_present "a crashed keepalive.sh keeps the pending marker" "$STATE_DIR/pending-$SA"
-printf 'exit 0\n' > "$FAKEHOOKS/keepalive.sh"
-assert_silent "a declining keepalive.sh arms nothing" "$(run_fake_guard "$(ups "$SA" '"fix the bug"')")"
-assert_file_absent "a deliberate decline clears the pending marker" "$STATE_DIR/pending-$SA"
+assert_silent "a real prompt gets no output from the guard" "$(run_guard "$(ups "$SA" '"fix the bug"')")"
 reset_state
-
 
 echo
 echo "$PASS passed, $FAIL failed"
