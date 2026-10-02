@@ -33,12 +33,9 @@
 # blocks a real user prompt, so the sentinel match must be exact.
 set -u
 
-FLAG="${HOME}/.cc-cache-keepalive"
-[ -f "$FLAG" ] || exit 0
+CONF="${HOME}/.cc-cache-keepalive"
 [ -n "${CC_KEEPALIVE_OFF:-}" ] && exit 0
 
-# Order matters: the two checks above are one stat(2) for anyone who has not
-# opted in.
 input=""
 [ -t 0 ] || input="$(cat 2>/dev/null || true)"
 
@@ -136,11 +133,11 @@ if [ "$COLD_MIN" -gt 0 ]; then
 fi
 
 # --- warm gate --------------------------------------------------------------
-# Interval, same contract as line 1 of the flag file in
+# Interval, same contract as line 1 of the config file in
 # skills/cc-cache-keepalive/scripts/keepalive.sh (that script is the source of
 # truth; tests/test-cache-keepalive.sh pins the two parsers to one input table). Collapsed to whole minutes, which is what the window math needs.
 DEFAULT_INTERVAL="30m"
-INTERVAL="$(head -n1 "$FLAG" 2>/dev/null | tr -d '[:space:]')"
+INTERVAL="$(head -n1 "$CONF" 2>/dev/null | tr -d '[:space:]')"
 if [[ ! "$INTERVAL" =~ ^[0-9]+[smhd]$ ]] || [ "$((10#${INTERVAL%[smhd]}))" -eq 0 ]; then
   INTERVAL="$DEFAULT_INTERVAL"
 fi
@@ -154,8 +151,8 @@ case "${INTERVAL: -1}" in
 esac
 [ "$IMIN" -lt 1 ] && IMIN=1
 
-# Cancel window, in precedence order: env, then flag-file line 2, then derived.
-# The flag file matters because a cron waking a stopped session spawns a fresh
+# Cancel window, in precedence order: env, then config-file line 2, then derived.
+# The config file matters because a cron waking a stopped session spawns a fresh
 # process that never saw your shell exports.
 WINDOW=""
 case "${CC_KEEPALIVE_WINDOW_MIN:-}" in
@@ -163,7 +160,7 @@ case "${CC_KEEPALIVE_WINDOW_MIN:-}" in
   *) WINDOW=$((10#${CC_KEEPALIVE_WINDOW_MIN})) ;;
 esac
 if [ -z "$WINDOW" ]; then
-  LINE2="$(sed -n 2p "$FLAG" 2>/dev/null | tr -d '[:space:]')"
+  LINE2="$(sed -n 2p "$CONF" 2>/dev/null | tr -d '[:space:]')"
   if [[ "$LINE2" =~ ^[0-9]+[smhd]$ ]]; then
     W=$((10#${LINE2%[smhd]}))
     case "${LINE2: -1}" in

@@ -4,7 +4,7 @@ Keeps Claude Code's prompt cache warm across idle stretches on Max plans, withou
 
 You arm it per session, only in sessions you expect to keep for a long time: type `/cc-cache-keepalive`. Nothing arms itself at session start.
 
-- **`/cc-cache-keepalive`** (skill): runs `skills/cc-cache-keepalive/scripts/keepalive.sh`, which reads the flag file, computes a cron expression anchored to the current minute, and tells the model to register it with `CronCreate` (once: it checks `CronList` first). The cron's prompt is the literal sentinel `cc-cache-keepalive`; when it fires the model replies `🔄 cache-keepalive` and stops. That bare API turn is the whole point: it reads the cached prefix, and the read resets the 1-hour TTL.
+- **`/cc-cache-keepalive`** (skill): runs `skills/cc-cache-keepalive/scripts/keepalive.sh`, which reads the optional config file, computes a cron expression anchored to the current minute, and tells the model to register it with `CronCreate` (once: it checks `CronList` first). The cron's prompt is the literal sentinel `cc-cache-keepalive`; when it fires the model replies `🔄 cache-keepalive` and stops. That bare API turn is the whole point: it reads the cached prefix, and the read resets the 1-hour TTL.
 
 Two hooks keep the armed cron cheap:
 
@@ -30,14 +30,13 @@ Net effect: while you're working, ticks are cancelled. Once you stop, ticks keep
 ```
 /plugin marketplace add vdsmon/skills
 /plugin install cc-cache-keepalive@vdsmon-skills
-touch ~/.cc-cache-keepalive
 ```
 
-The flag file turns the hooks on. Without it both hooks short-circuit on their first line (one `stat(2)`, no output, no state), and `/cc-cache-keepalive` refuses to arm, because an unguarded cron would fire into a cold cache after the machine slept.
+Installing turns the hooks on. They are cheap in a session with no keepalive: the guard passes every prompt that is not the sentinel, and the sensor writes two small stamp files per turn. `CC_KEEPALIVE_OFF=1` switches both off.
 
 ## Config
 
-`~/.cc-cache-keepalive` doubles as the config file:
+An optional config file, `~/.cc-cache-keepalive`. Without it the defaults apply.
 
 | Line | Meaning | Default |
 | --- | --- | --- |
@@ -54,7 +53,7 @@ Environment overrides, highest precedence first:
 | `CC_KEEPALIVE_COLD_MIN` | `= TTL` | age of the newest turn beyond which a tick is held as cold; `0` disables the cold gate |
 | `CC_KEEPALIVE_OFF` | unset | per-invocation kill switch; disables both hooks |
 
-Prefer line 2 of the flag file over the env vars for a permanent change: a cron waking a stopped session spawns a fresh process that never saw your shell exports.
+Prefer line 2 of the config file over the env vars for a permanent change: a cron waking a stopped session spawns a fresh process that never saw your shell exports.
 
 ## How the cancel window is chosen
 

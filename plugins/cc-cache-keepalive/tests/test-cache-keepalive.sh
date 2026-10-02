@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Test suite for keepalive-guard.sh + keepalive-sensor.sh (and the two flag-file
+# Test suite for keepalive-guard.sh + keepalive-sensor.sh (and the two config-file
 # parsing regressions in the arm script keepalive.sh). Plain bash, no test framework. Run:
 #   bash plugins/cc-cache-keepalive/tests/test-cache-keepalive.sh
 # Every case points HOME at a throwaway dir so real ~/.claude state is untouched.
@@ -23,7 +23,7 @@ if [ -z "$TESTHOME" ] || [ ! -d "$TESTHOME" ]; then
   exit 1
 fi
 trap 'rm -rf "$TESTHOME"' EXIT
-FLAG="$TESTHOME/.cc-cache-keepalive"
+CONF="$TESTHOME/.cc-cache-keepalive"
 STATE_DIR="$TESTHOME/.claude/.cc-cache-keepalive"
 TXDIR="$TESTHOME/tx"
 mkdir -p "$TXDIR"
@@ -39,12 +39,12 @@ FAIL=0
 
 reset_state() {
   rm -rf "$STATE_DIR"
-  rm -f "$FLAG"
+  rm -f "$CONF"
 }
 
-set_flag() { # <line1> [line2]
-  if [ "$#" -gt 1 ]; then printf '%s\n%s\n' "$1" "$2" > "$FLAG"
-  else printf '%s\n' "$1" > "$FLAG"; fi
+set_conf() { # <line1> [line2]
+  if [ "$#" -gt 1 ]; then printf '%s\n%s\n' "$1" "$2" > "$CONF"
+  else printf '%s\n' "$1" > "$CONF"; fi
 }
 
 stamp() { # <session_id> <age_seconds> [uuid]  -> last-real-turn
@@ -148,7 +148,7 @@ assert_file_present() { # <name> <path>
 
 echo "# guard: sentinel recognition"
 
-reset_state; set_flag "30m"; stamp "$SA" 300
+reset_state; set_conf "30m"; stamp "$SA" 300
 out=$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")
 assert_contains "exact sentinel blocks when the last real turn is fresh" "$out" '"decision":"block"'
 assert_contains "block payload carries suppressOriginalPrompt" "$out" '"suppressOriginalPrompt":true'
@@ -156,21 +156,21 @@ assert_contains "block payload names the hook event" "$out" '"hookEventName":"Us
 assert_lacks "block payload injects no additionalContext" "$out" 'additionalContext'
 assert_lacks "block payload never uses continue:false" "$out" '"continue"'
 
-reset_state; set_flag "30m"; stamp "$SA" 1800
+reset_state; set_conf "30m"; stamp "$SA" 1800
 assert_silent "exact sentinel passes when the last real turn is stale" \
   "$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")"
 
 # window at the 30m default is min(30, 60-30-10) = 20m = 1200s
-reset_state; set_flag "30m"; stamp "$SA" 1200
+reset_state; set_conf "30m"; stamp "$SA" 1200
 assert_silent "boundary: age == window fires (strict <)" \
   "$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")"
 # 1198, not 1199: a second can tick between writing the stamp and the guard reading the clock
-reset_state; set_flag "30m"; stamp "$SA" 1198
+reset_state; set_conf "30m"; stamp "$SA" 1198
 assert_contains "boundary: age just under the window blocks" \
   "$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")" '"decision":"block"'
 
 # The false-positive cases that matter: a user talking ABOUT the plugin.
-reset_state; set_flag "30m"; stamp "$SA" 60
+reset_state; set_conf "30m"; stamp "$SA" 60
 assert_silent "prompt mentioning the sentinel is not blocked" \
   "$(run_guard "$(ups "$SA" '"what does the cc-cache-keepalive plugin do?"')")"
 assert_silent "prompt with trailing text is not blocked" \
@@ -202,7 +202,7 @@ assert_eq "guard never writes the stamp" "$(cat "$STATE_DIR/last-real-turn-$SA")
 # decision/reason at the top level, and a hookSpecificOutput that carries only
 # keys the UserPromptSubmit variant declares. An unknown key is dropped
 # silently, which would turn suppressOriginalPrompt into a no-op.
-reset_state; set_flag "30m"; stamp "$SA" 300
+reset_state; set_conf "30m"; stamp "$SA" 300
 shape=$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')" | /usr/bin/python3 -c '
 import json, sys
 try:
@@ -236,18 +236,16 @@ echo
 echo "# guard: fail open"
 
 reset_state; stamp "$SA" 60
-assert_silent "flag file absent short-circuits" "$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")"
-rm -rf "$STATE_DIR"
-reset_state; set_flag "30m"
-assert_silent "flag absent leaves no state dir behind" "$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")"
+assert_contains "no config file still guards, with the default interval" \
+  "$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")" '"decision":"block"'
 
-reset_state; set_flag "30m"; mkdir -p "$STATE_DIR"
+reset_state; set_conf "30m"; mkdir -p "$STATE_DIR"
 assert_silent "missing stamp file fails open" "$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")"
 
-reset_state; set_flag "30m"
+reset_state; set_conf "30m"
 assert_silent "missing state dir fails open" "$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")"
 
-reset_state; set_flag "30m"; mkdir -p "$STATE_DIR"
+reset_state; set_conf "30m"; mkdir -p "$STATE_DIR"
 printf 'not-a-number\n' > "$STATE_DIR/last-real-turn-$SA"
 assert_silent "corrupt stamp fails open" "$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")"
 
@@ -258,12 +256,12 @@ printf 'abc\n%s\n' "$(date +%s)" > "$STATE_DIR/last-real-turn-$SA"
 assert_silent "garbage on line 1 fails open even with a valid line 2" \
   "$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")"
 
-reset_state; set_flag "30m"; stamp "$SA" -3600
+reset_state; set_conf "30m"; stamp "$SA" -3600
 assert_silent "stamp in the future (clock skew) fails open" \
   "$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")"
 
 if [ "$(id -u)" != "0" ]; then
-  reset_state; set_flag "30m"; stamp "$SA" 60
+  reset_state; set_conf "30m"; stamp "$SA" 60
   chmod 000 "$STATE_DIR/last-real-turn-$SA"
   assert_silent "unreadable stamp fails open" "$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")"
   chmod 644 "$STATE_DIR/last-real-turn-$SA"
@@ -272,37 +270,37 @@ else
 fi
 
 # The single most important line in the guard: no id, no shared-file fallback.
-reset_state; set_flag "30m"; mkdir -p "$STATE_DIR"
+reset_state; set_conf "30m"; mkdir -p "$STATE_DIR"
 printf '%s\n\n' "$(date +%s)" > "$STATE_DIR/last-real-turn-"
 assert_silent "empty session_id fails open, never uses a shared stamp" \
   "$(run_guard "$(printf '{"session_id":"","hook_event_name":"UserPromptSubmit","prompt":"cc-cache-keepalive"}')")"
 
-reset_state; set_flag "30m"; stamp "$SA" 60
+reset_state; set_conf "30m"; stamp "$SA" 60
 assert_silent "a fresh stamp for another session does not block this one" \
   "$(run_guard "$(ups "$SB" '"cc-cache-keepalive"')")"
 
-reset_state; set_flag "30m"; stamp "$SA" 60
+reset_state; set_conf "30m"; stamp "$SA" 60
 assert_silent "CC_KEEPALIVE_OFF disables the guard" \
   "$(printf '%s' "$(ups "$SA" '"cc-cache-keepalive"')" | HOME="$TESTHOME" CC_KEEPALIVE_OFF=1 bash "$GUARD" 2>&1)"
 
 assert_silent "CC_KEEPALIVE_WINDOW_MIN=0 never skips" \
   "$(printf '%s' "$(ups "$SA" '"cc-cache-keepalive"')" | HOME="$TESTHOME" CC_KEEPALIVE_WINDOW_MIN=0 bash "$GUARD" 2>&1)"
 
-reset_state; set_flag "30m" "0m"; stamp "$SA" 60
-assert_silent "flag line 2 of 0m never skips" "$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")"
+reset_state; set_conf "30m" "0m"; stamp "$SA" 60
+assert_silent "config line 2 of 0m never skips" "$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")"
 
 # --- guard: window arithmetic -------------------------------------------------
 
 echo
 echo "# guard: window arithmetic"
 
-# flag-line-1 -> expected window in minutes. 0 means "never skip".
+# config-line-1 -> expected window in minutes. 0 means "never skip".
 # 08m and 0m are the regressions for the keepalive.sh octal / divide-by-zero fixes.
 while read -r iv expect; do
   [ -n "$iv" ] || continue
   label="${iv:-<empty>}"
   reset_state
-  if [ "$iv" = "EMPTY" ]; then : > "$FLAG"; else set_flag "$iv"; fi
+  if [ "$iv" = "EMPTY" ]; then : > "$CONF"; else set_conf "$iv"; fi
   if [ "$expect" -eq 0 ]; then
     stamp "$SA" 0
     assert_silent "window($label) = never skip" "$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")"
@@ -341,35 +339,35 @@ run_guard_env() {
   printf '%s' "$(ups "$SA" '"cc-cache-keepalive"')" | HOME="$TESTHOME" env "$1" bash "$GUARD" 2>&1
 }
 
-reset_state; set_flag "30m"
+reset_state; set_conf "30m"
 assert_contains "CC_KEEPALIVE_TTL_MIN=120 widens the window to the interval" \
   "$(run_guard_env CC_KEEPALIVE_TTL_MIN=120 $(( 29 * 60 )))" '"decision":"block"'
 assert_silent "CC_KEEPALIVE_TTL_MIN=120 window stops at the interval, not beyond" \
   "$(run_guard_env CC_KEEPALIVE_TTL_MIN=120 $(( 31 * 60 )))"
 
-reset_state; set_flag "30m"
+reset_state; set_conf "30m"
 assert_contains "CC_KEEPALIVE_SAFETY_MIN=0 widens the window" \
   "$(run_guard_env CC_KEEPALIVE_SAFETY_MIN=0 $(( 29 * 60 )))" '"decision":"block"'
 assert_silent "CC_KEEPALIVE_SAFETY_MIN=0 still caps at the interval" \
   "$(run_guard_env CC_KEEPALIVE_SAFETY_MIN=0 $(( 31 * 60 )))"
 
 # an invalid safety falls back to the documented default of 10 (window 20m at 30m)
-reset_state; set_flag "30m"
+reset_state; set_conf "30m"
 assert_contains "CC_KEEPALIVE_SAFETY_MIN=banana falls back to 10, not 15" \
   "$(run_guard_env CC_KEEPALIVE_SAFETY_MIN=banana $(( 17 * 60 )))" '"decision":"block"'
 
-reset_state; set_flag "30m" "25m"; stamp "$SA" $(( 24 * 60 ))
-assert_contains "flag line 2 overrides the derived window" \
+reset_state; set_conf "30m" "25m"; stamp "$SA" $(( 24 * 60 ))
+assert_contains "config line 2 overrides the derived window" \
   "$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")" '"decision":"block"'
 stamp "$SA" $(( 26 * 60 ))
-assert_silent "flag line 2 window is respected on the far side" \
+assert_silent "config line 2 window is respected on the far side" \
   "$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")"
 
-# Silence at 6m is what proves the env value (5) won over flag line 2 (25).
-reset_state; set_flag "30m" "25m"
-assert_contains "env beats flag line 2 beats derived" \
+# Silence at 6m is what proves the env value (5) won over config line 2 (25).
+reset_state; set_conf "30m" "25m"
+assert_contains "env beats config line 2 beats derived" \
   "$(run_guard_env CC_KEEPALIVE_WINDOW_MIN=5 240)" '"decision":"block"'
-assert_silent "env window of 5m really is 5m, not the flag's 25m" \
+assert_silent "env window of 5m really is 5m, not the config's 25m" \
   "$(run_guard_env CC_KEEPALIVE_WINDOW_MIN=5 360)"
 
 # --- guard: cold gate ---------------------------------------------------------
@@ -383,7 +381,7 @@ echo "# guard: cold gate"
 
 TICK_JSON="$(ups "$SA" '"cc-cache-keepalive"')"
 
-reset_state; set_flag "30m"; stamp_any "$SA" $(( 5 * 3600 ))
+reset_state; set_conf "30m"; stamp_any "$SA" $(( 5 * 3600 ))
 out=$(run_guard "$TICK_JSON")
 assert_contains "five hours after the last turn the tick is blocked (cold)" "$out" '"decision":"block"'
 assert_contains "cold block carries suppressOriginalPrompt" "$out" '"suppressOriginalPrompt":true'
@@ -391,61 +389,61 @@ assert_contains "cold block names the hook event" "$out" '"hookEventName":"UserP
 assert_lacks "cold block injects no additionalContext" "$out" 'additionalContext'
 assert_lacks "cold block never uses continue:false" "$out" '"continue"'
 
-reset_state; set_flag "30m"; stamp_any "$SA" $(( 59 * 60 ))
+reset_state; set_conf "30m"; stamp_any "$SA" $(( 59 * 60 ))
 assert_silent "59 min after the last turn the tick still fires (cache alive)" "$(run_guard "$TICK_JSON")"
-reset_state; set_flag "30m"; stamp_any "$SA" $(( 60 * 60 ))
+reset_state; set_conf "30m"; stamp_any "$SA" $(( 60 * 60 ))
 assert_contains "boundary: age == TTL blocks (>=)" "$(run_guard "$TICK_JSON")" '"decision":"block"'
-reset_state; set_flag "30m"; stamp_any "$SA" $(( 60 * 60 - 1 ))
+reset_state; set_conf "30m"; stamp_any "$SA" $(( 60 * 60 - 1 ))
 assert_silent "boundary: age == TTL - 1s fires" "$(run_guard "$TICK_JSON")"
 
 # The newest of the two stamps is what counts.
-reset_state; set_flag "30m"; stamp_any "$SA" $(( 10 * 60 )); stamp "$SA" $(( 3 * 3600 ))
+reset_state; set_conf "30m"; stamp_any "$SA" $(( 10 * 60 )); stamp "$SA" $(( 3 * 3600 ))
 assert_silent "session kept warm only by pings (real turn 3h ago, ping 10m ago) is still pinged" \
   "$(run_guard "$TICK_JSON")"
-reset_state; set_flag "30m"; stamp_any "$SA" $(( 61 * 60 )); stamp "$SA" $(( 30 * 60 ))
+reset_state; set_conf "30m"; stamp_any "$SA" $(( 61 * 60 )); stamp "$SA" $(( 30 * 60 ))
 assert_silent "a fresher real turn overrides a stale last-turn stamp" "$(run_guard "$TICK_JSON")"
-reset_state; set_flag "30m"; stamp "$SA" $(( 61 * 60 ))
+reset_state; set_conf "30m"; stamp "$SA" $(( 61 * 60 ))
 assert_contains "no last-turn stamp yet (pre-1.6 session): the real-turn stamp alone can call it cold" \
   "$(run_guard "$TICK_JSON")" '"decision":"block"'
-reset_state; set_flag "30m"; stamp "$SA" $(( 30 * 60 ))
+reset_state; set_conf "30m"; stamp "$SA" $(( 30 * 60 ))
 assert_silent "no last-turn stamp, real turn 30m ago: fires" "$(run_guard "$TICK_JSON")"
 
 # Fail open on anything unreadable, same as the warm gate.
-reset_state; set_flag "30m"; mkdir -p "$STATE_DIR"; printf 'garbage\n' > "$STATE_DIR/last-turn-$SA"
+reset_state; set_conf "30m"; mkdir -p "$STATE_DIR"; printf 'garbage\n' > "$STATE_DIR/last-turn-$SA"
 assert_silent "corrupt last-turn stamp fails open" "$(run_guard "$TICK_JSON")"
-reset_state; set_flag "30m"; stamp_any "$SA" -7200
+reset_state; set_conf "30m"; stamp_any "$SA" -7200
 assert_silent "future-dated last-turn stamp fails open" "$(run_guard "$TICK_JSON")"
-reset_state; set_flag "30m"; stamp_any "$SA" $(( 5 * 3600 ))
+reset_state; set_conf "30m"; stamp_any "$SA" $(( 5 * 3600 ))
 assert_silent "another session's cold stamp does not block this one" \
   "$(run_guard "$(ups "$SB" '"cc-cache-keepalive"')")"
 
 # "Never cancel" configs disable the warm gate only. Re-creating a dead cache
 # was never what anyone meant by never cancel.
-reset_state; set_flag "30m" "0m"; stamp_any "$SA" $(( 5 * 3600 ))
-assert_contains "flag line 2 = 0m still blocks a cold tick" "$(run_guard "$TICK_JSON")" '"decision":"block"'
-reset_state; set_flag "1h"; stamp_any "$SA" $(( 5 * 3600 ))
+reset_state; set_conf "30m" "0m"; stamp_any "$SA" $(( 5 * 3600 ))
+assert_contains "config line 2 = 0m still blocks a cold tick" "$(run_guard "$TICK_JSON")" '"decision":"block"'
+reset_state; set_conf "1h"; stamp_any "$SA" $(( 5 * 3600 ))
 assert_contains "1h interval (window 0) still blocks a cold tick" "$(run_guard "$TICK_JSON")" '"decision":"block"'
-reset_state; set_flag "30m"; stamp_any "$SA" $(( 5 * 3600 ))
+reset_state; set_conf "30m"; stamp_any "$SA" $(( 5 * 3600 ))
 assert_contains "CC_KEEPALIVE_WINDOW_MIN=0 still blocks a cold tick" \
   "$(printf '%s' "$TICK_JSON" | HOME="$TESTHOME" CC_KEEPALIVE_WINDOW_MIN=0 bash "$GUARD" 2>&1)" '"decision":"block"'
 
 # Overrides.
-reset_state; set_flag "30m"; stamp_any "$SA" $(( 5 * 3600 ))
+reset_state; set_conf "30m"; stamp_any "$SA" $(( 5 * 3600 ))
 assert_silent "CC_KEEPALIVE_COLD_MIN=0 disables the cold gate" \
   "$(printf '%s' "$TICK_JSON" | HOME="$TESTHOME" CC_KEEPALIVE_COLD_MIN=0 bash "$GUARD" 2>&1)"
-reset_state; set_flag "30m"; stamp_any "$SA" $(( 31 * 60 ))
+reset_state; set_conf "30m"; stamp_any "$SA" $(( 31 * 60 ))
 assert_contains "CC_KEEPALIVE_COLD_MIN=30 blocks at 31m" \
   "$(printf '%s' "$TICK_JSON" | HOME="$TESTHOME" CC_KEEPALIVE_COLD_MIN=30 bash "$GUARD" 2>&1)" '"decision":"block"'
 stamp_any "$SA" $(( 29 * 60 ))
 assert_silent "CC_KEEPALIVE_COLD_MIN=30 fires at 29m" \
   "$(printf '%s' "$TICK_JSON" | HOME="$TESTHOME" CC_KEEPALIVE_COLD_MIN=30 bash "$GUARD" 2>&1)"
-reset_state; set_flag "30m"; stamp_any "$SA" $(( 90 * 60 ))
+reset_state; set_conf "30m"; stamp_any "$SA" $(( 90 * 60 ))
 assert_silent "CC_KEEPALIVE_TTL_MIN=120 moves the cold threshold too (90m fires)" \
   "$(printf '%s' "$TICK_JSON" | HOME="$TESTHOME" CC_KEEPALIVE_TTL_MIN=120 bash "$GUARD" 2>&1)"
 stamp_any "$SA" $(( 121 * 60 ))
 assert_contains "CC_KEEPALIVE_TTL_MIN=120 blocks at 121m" \
   "$(printf '%s' "$TICK_JSON" | HOME="$TESTHOME" CC_KEEPALIVE_TTL_MIN=120 bash "$GUARD" 2>&1)" '"decision":"block"'
-reset_state; set_flag "30m"; stamp_any "$SA" $(( 5 * 3600 ))
+reset_state; set_conf "30m"; stamp_any "$SA" $(( 5 * 3600 ))
 assert_contains "CC_KEEPALIVE_COLD_MIN=banana falls back to the TTL" \
   "$(printf '%s' "$TICK_JSON" | HOME="$TESTHOME" CC_KEEPALIVE_COLD_MIN=banana bash "$GUARD" 2>&1)" '"decision":"block"'
 stamp_any "$SA" $(( 9 * 60 ))
@@ -453,7 +451,7 @@ assert_contains "CC_KEEPALIVE_COLD_MIN=08 is decimal 8, not octal" \
   "$(printf '%s' "$TICK_JSON" | HOME="$TESTHOME" CC_KEEPALIVE_COLD_MIN=08 bash "$GUARD" 2>&1)" '"decision":"block"'
 
 # A cold-blocked tick must not refresh anything, or the block would undo itself.
-reset_state; set_flag "30m"; stamp_any "$SA" $(( 5 * 3600 )); stamp "$SA" $(( 6 * 3600 ))
+reset_state; set_conf "30m"; stamp_any "$SA" $(( 5 * 3600 )); stamp "$SA" $(( 6 * 3600 ))
 b1=$(cat "$STATE_DIR/last-turn-$SA"); b2=$(cat "$STATE_DIR/last-real-turn-$SA")
 run_guard "$TICK_JSON" >/dev/null
 assert_eq "cold block leaves last-turn untouched" "$(cat "$STATE_DIR/last-turn-$SA")" "$b1"
@@ -465,7 +463,7 @@ assert_eq "cold block creates no other files" "$(find "$STATE_DIR" -type f | wc 
 echo
 echo "# sensor"
 
-reset_state; set_flag "30m"
+reset_state; set_conf "30m"
 t=$(tx real "$ASSIST" "$REAL" "$ASSIST")
 assert_silent "sensor writes nothing to stdout" "$(run_sensor "$(stopj "$SA" "$t")")"
 assert_file_present "sensor stamps a real turn" "$STATE_DIR/last-real-turn-$SA"
@@ -480,7 +478,7 @@ assert_file_present "sensor stamps last-turn on a real turn too" "$STATE_DIR/las
 assert_eq "both stamps carry the same prompt uuid" \
   "$(sed -n 2p "$STATE_DIR/last-turn-$SA")" "$(sed -n 2p "$STATE_DIR/last-real-turn-$SA")"
 
-reset_state; set_flag "30m"; stamp "$SA" 9999 "old-uuid"
+reset_state; set_conf "30m"; stamp "$SA" 9999 "old-uuid"
 before=$(cat "$STATE_DIR/last-real-turn-$SA")
 t=$(tx tick "$REAL" "$ASSIST" "$TICK" "$ASSIST")
 run_sensor "$(stopj "$SA" "$t")" >/dev/null
@@ -510,7 +508,7 @@ assert_eq "sensor ignores tool-result user lines when finding the last prompt" \
   "$(cat "$STATE_DIR/last-real-turn-$SA")" "$before"
 
 # A turn the API never answered touched no cache: no stamp of either kind.
-reset_state; set_flag "30m"
+reset_state; set_conf "30m"
 t=$(tx offline "$REAL" "$ERRASSIST")
 run_sensor "$(stopj "$SA" "$t")" >/dev/null
 assert_file_absent "real turn that hit an API error is not stamped as real" "$STATE_DIR/last-real-turn-$SA"
@@ -521,39 +519,39 @@ assert_file_absent "ping that hit an API error is not stamped as a turn" "$STATE
 t=$(tx retry "$REAL" "$ERRASSIST" "$ASSIST")
 run_sensor "$(stopj "$SA" "$t")" >/dev/null
 assert_file_present "an error followed by a successful retry does stamp" "$STATE_DIR/last-real-turn-$SA"
-reset_state; set_flag "30m"
+reset_state; set_conf "30m"
 t=$(tx synth "$REAL" '{"type":"assistant","message":{"model":"<synthetic>","role":"assistant","content":[{"type":"text","text":"You have hit your session limit"}]},"uuid":"99999999-9999-9999-9999-999999999999"}')
 run_sensor "$(stopj "$SA" "$t")" >/dev/null
 assert_file_absent "a synthetic assistant record without the error flag still blocks stamping" \
   "$STATE_DIR/last-real-turn-$SA"
 
-reset_state; set_flag "30m"
+reset_state; set_conf "30m"
 t=$(tx queueop "$REAL" "$ASSIST" "$QUEUEOP")
 run_sensor "$(stopj "$SA" "$t")" >/dev/null
 assert_file_present "sensor ignores queue-operation lines carrying the sentinel" \
   "$STATE_DIR/last-real-turn-$SA"
 
-reset_state; set_flag "30m"
+reset_state; set_conf "30m"
 t=$(tx sidechain "$REAL" "$ASSIST" "$SIDECHAIN")
 run_sensor "$(stopj "$SA" "$t")" >/dev/null
 assert_file_present "sensor stamps when the last user line is a sidechain prompt" \
   "$STATE_DIR/last-real-turn-$SA"
 
-reset_state; set_flag "30m"
+reset_state; set_conf "30m"
 run_sensor "$(stopj "$SA" "$TXDIR/nope.jsonl")" >/dev/null
 assert_file_absent "missing transcript does not stamp (inverted vs stop-sound.sh)" \
   "$STATE_DIR/last-real-turn-$SA"
 
-reset_state; set_flag "30m"; : > "$TXDIR/empty.jsonl"
+reset_state; set_conf "30m"; : > "$TXDIR/empty.jsonl"
 run_sensor "$(stopj "$SA" "$TXDIR/empty.jsonl")" >/dev/null
 assert_file_absent "empty transcript does not stamp" "$STATE_DIR/last-real-turn-$SA"
 
-reset_state; set_flag "30m"; t=$(tx assistonly "$ASSIST" "$ASSIST")
+reset_state; set_conf "30m"; t=$(tx assistonly "$ASSIST" "$ASSIST")
 run_sensor "$(stopj "$SA" "$t")" >/dev/null
 assert_file_absent "transcript with no user lines does not stamp" "$STATE_DIR/last-real-turn-$SA"
 
 if [ "$(id -u)" != "0" ]; then
-  reset_state; set_flag "30m"; t=$(tx unreadable "$REAL"); chmod 000 "$t"
+  reset_state; set_conf "30m"; t=$(tx unreadable "$REAL"); chmod 000 "$t"
   run_sensor "$(stopj "$SA" "$t")" >/dev/null
   assert_file_absent "unreadable transcript does not stamp" "$STATE_DIR/last-real-turn-$SA"
   chmod 644 "$t"
@@ -561,25 +559,25 @@ else
   echo "skip: unreadable transcript (running as root)"
 fi
 
-reset_state; set_flag "30m"; t=$(tx real2 "$REAL")
+reset_state; set_conf "30m"; t=$(tx real2 "$REAL")
 run_sensor "$(printf '{"session_id":"","transcript_path":"%s","hook_event_name":"Stop"}' "$t")" >/dev/null
 n=$(find "$STATE_DIR" -type f 2>/dev/null | wc -l | tr -d ' ')
 assert_eq "empty session_id creates no stamp anywhere" "$n" "0"
 
-reset_state; set_flag "30m"; t=$(tx pers "$REAL")
+reset_state; set_conf "30m"; t=$(tx pers "$REAL")
 run_sensor "$(stopj "$SA" "$t")" >/dev/null
 run_sensor "$(stopj "$SB" "$t")" >/dev/null
 assert_file_present "per-session keying: session A stamp" "$STATE_DIR/last-real-turn-$SA"
 assert_file_present "per-session keying: session B stamp" "$STATE_DIR/last-real-turn-$SB"
 
-reset_state; set_flag "30m"
+reset_state; set_conf "30m"
 PROF="$TESTHOME/workprofile"
 t=$(tx prof "$REAL")
 printf '%s' "$(stopj "$SA" "$t")" | HOME="$TESTHOME" CLAUDE_CONFIG_DIR="$PROF" bash "$SENSOR" >/dev/null 2>&1
 assert_file_present "CLAUDE_CONFIG_DIR is honoured" "$PROF/.cc-cache-keepalive/last-real-turn-$SA"
 assert_file_absent "profile run does not touch the default state dir" "$STATE_DIR/last-real-turn-$SA"
 
-reset_state; set_flag "30m"; t=$(tx idem "$REAL")
+reset_state; set_conf "30m"; t=$(tx idem "$REAL")
 run_sensor "$(stopj "$SA" "$t")" >/dev/null
 first=$(head -n1 "$STATE_DIR/last-real-turn-$SA")
 sleep 1
@@ -597,26 +595,26 @@ fi
 n=$(find "$STATE_DIR" -name '.tmp.*' 2>/dev/null | wc -l | tr -d ' ')
 assert_eq "no tmp files leak" "$n" "0"
 
-reset_state; set_flag "30m"
+reset_state; set_conf "30m"
 { printf '%s\n' "$REAL"; for _ in $(seq 1 3000); do printf '%s\n' "$TOOLRES"; done; } > "$TXDIR/long.jsonl"
 run_sensor "$(stopj "$SA" "$TXDIR/long.jsonl")" >/dev/null
 assert_file_present "full-file fallback finds a prompt beyond the tail window" \
   "$STATE_DIR/last-real-turn-$SA"
 
-reset_state; set_flag "30m"; t=$(tx off "$REAL")
+reset_state; set_conf "30m"; t=$(tx off "$REAL")
 printf '%s' "$(stopj "$SA" "$t")" | HOME="$TESTHOME" CC_KEEPALIVE_OFF=1 bash "$SENSOR" >/dev/null 2>&1
 assert_file_absent "CC_KEEPALIVE_OFF disables the sensor" "$STATE_DIR/last-real-turn-$SA"
 
-reset_state; t=$(tx noflag "$REAL")
+reset_state; t=$(tx noconf "$REAL")
 run_sensor "$(stopj "$SA" "$t")" >/dev/null
-assert_file_absent "flag absent leaves no sensor state" "$STATE_DIR/last-real-turn-$SA"
+assert_file_present "no config file still stamps" "$STATE_DIR/last-real-turn-$SA"
 
 # --- integration --------------------------------------------------------------
 
 echo
 echo "# integration"
 
-reset_state; set_flag "30m"; t=$(tx rt "$REAL" "$ASSIST")
+reset_state; set_conf "30m"; t=$(tx rt "$REAL" "$ASSIST")
 run_sensor "$(stopj "$SA" "$t")" >/dev/null
 assert_contains "round trip: sensor stamps, guard blocks the next tick" \
   "$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")" '"decision":"block"'
@@ -627,7 +625,7 @@ stamp "$SA" $(( 61 * 60 )); stamp_any "$SA" $(( 61 * 60 ))
 assert_contains "round trip: an hour later the cache is gone and the tick is held" \
   "$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")" '"decision":"block"'
 
-reset_state; set_flag "30m"; t=$(tx rt2 "$TICK" "$ASSIST")
+reset_state; set_conf "30m"; t=$(tx rt2 "$TICK" "$ASSIST")
 run_sensor "$(stopj "$SA" "$t")" >/dev/null
 assert_silent "round trip: a ping-only turn leaves the next tick unblocked" \
   "$(run_guard "$(ups "$SA" '"cc-cache-keepalive"')")"
@@ -637,7 +635,7 @@ assert_silent "round trip: a ping-only turn leaves the next tick unblocked" \
 # leaves behind.
 echo
 echo "# integration: the machine slept"
-reset_state; set_flag "30m"
+reset_state; set_conf "30m"
 t=$(tx sleep1 "$REAL" "$ASSIST")
 run_sensor "$(stopj "$SA" "$t")" >/dev/null                        # 09:00 real turn
 stamp "$SA" $(( 30 * 60 )); stamp_any "$SA" $(( 30 * 60 ))         # 09:30
@@ -685,7 +683,7 @@ cron_step() { # <keepalive.sh output> -> minutes between consecutive ticks
 while read -r iv minutes; do
   [ -n "$iv" ] || continue
   reset_state
-  if [ "$iv" = "EMPTY" ]; then : > "$FLAG"; else set_flag "$iv"; fi
+  if [ "$iv" = "EMPTY" ]; then : > "$CONF"; else set_conf "$iv"; fi
   out=$(HOME="$TESTHOME" bash "$ARM" </dev/null 2>&1)
   assert_eq "keepalive.sh turns interval $iv into a cron every ${minutes}m" "$(cron_step "$out")" "$minutes"
 done <<'TABLE'
@@ -700,12 +698,12 @@ banana 30
 EMPTY 30
 TABLE
 
-reset_state; set_flag "08m"
+reset_state; set_conf "08m"
 out=$(HOME="$TESTHOME" bash "$ARM" </dev/null 2>&1)
 assert_contains "keepalive.sh survives an octal-looking interval" "$out" "<cc-cache-keepalive>"
 assert_lacks "keepalive.sh emits no shell error for 08m" "$out" "value too great"
 
-reset_state; set_flag "0m"
+reset_state; set_conf "0m"
 out=$(HOME="$TESTHOME" bash "$ARM" </dev/null 2>&1)
 assert_contains "keepalive.sh survives a zero interval" "$out" "<cc-cache-keepalive>"
 assert_lacks "keepalive.sh emits no divide-by-zero for 0m" "$out" "division by 0"
@@ -713,7 +711,7 @@ assert_lacks "keepalive.sh emits no divide-by-zero for 0m" "$out" "division by 0
 # GC
 echo
 echo "# integration: garbage collection"
-reset_state; set_flag "30m"; stamp "$SA" 60; stamp_any "$SA" 60
+reset_state; set_conf "30m"; stamp "$SA" 60; stamp_any "$SA" 60
 touch "$STATE_DIR/last-real-turn-old" "$STATE_DIR/last-turn-old" "$STATE_DIR/.tmp.999"
 touch -t 202601010000 "$STATE_DIR/last-real-turn-old" "$STATE_DIR/last-turn-old" "$STATE_DIR/.tmp.999"
 run_guard "$(ups "$SA" '"cc-cache-keepalive"')" >/dev/null
@@ -723,7 +721,7 @@ assert_file_absent "GC sweeps orphaned tmp files" "$STATE_DIR/.tmp.999"
 assert_file_present "GC keeps the live session's real-turn stamp" "$STATE_DIR/last-real-turn-$SA"
 assert_file_present "GC keeps the live session's any-turn stamp" "$STATE_DIR/last-turn-$SA"
 
-reset_state; set_flag "30m"; stamp "$SA" 60
+reset_state; set_conf "30m"; stamp "$SA" 60
 touch "$STATE_DIR/last-real-turn-old"; touch -t 202601010000 "$STATE_DIR/last-real-turn-old"
 run_guard "$(ups "$SA" '"just a normal prompt"')" >/dev/null
 assert_file_present "GC does not run on the non-sentinel hot path" "$STATE_DIR/last-real-turn-old"
@@ -731,18 +729,17 @@ assert_file_present "GC does not run on the non-sentinel hot path" "$STATE_DIR/l
 # The /cc-cache-keepalive skill runs the arm script; nothing arms a session on its own.
 echo
 echo "# arm script"
-reset_state; set_flag "30m"
+reset_state; set_conf "30m"
 out=$(HOME="$TESTHOME" bash "$ARM" </dev/null 2>&1)
 assert_eq "arm script exits 0" "$?" "0"
 assert_contains "arm script prints the CronCreate instruction" "$out" "CronCreate"
 assert_contains "arm script anchors a cron expression" "$out" 'cron:      "'
 assert_contains "the instruction keeps the /loop warning" "$out" "Do NOT invoke /loop"
-rm -f "$FLAG"
+rm -f "$CONF"
 out=$(HOME="$TESTHOME" bash "$ARM" </dev/null 2>&1)
-assert_eq "arm script exits 0 without the flag" "$?" "0"
-assert_lacks "no flag, no CronCreate instruction" "$out" "CronCreate"
-assert_contains "no flag says how to opt in" "$out" "touch ~/.cc-cache-keepalive"
-set_flag "30m"
+assert_eq "arm script exits 0 without a config file" "$?" "0"
+assert_eq "no config file arms the default 30m interval" "$(cron_step "$out")" "30"
+set_conf "30m"
 assert_silent "a real prompt gets no output from the guard" "$(run_guard "$(ups "$SA" '"fix the bug"')")"
 reset_state
 

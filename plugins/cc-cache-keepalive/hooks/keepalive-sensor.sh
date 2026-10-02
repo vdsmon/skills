@@ -22,8 +22,6 @@
 # `set -eu`, and an explicit exit 0 on every path.
 set -u
 
-FLAG="${HOME}/.cc-cache-keepalive"
-[ -f "$FLAG" ] || exit 0
 [ -n "${CC_KEEPALIVE_OFF:-}" ] && exit 0
 
 input=""
