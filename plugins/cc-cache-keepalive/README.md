@@ -2,23 +2,20 @@
 
 Keeps Claude Code's prompt cache warm across idle stretches on Max plans, without paying for pings you didn't need.
 
-Three hooks:
+You arm it per session, only in sessions you expect to keep for a long time: type `/cc-cache-keepalive`. Nothing arms itself at session start.
 
-- **`hooks/keepalive.sh`** (`SessionStart`): reads the opt-in flag file, computes a cron expression anchored to the session-start minute, and tells the model to register it with `CronCreate`. The cron's prompt is the literal sentinel `cc-cache-keepalive`; when it fires the model replies `🔄 cache-keepalive` and stops. That bare API turn is the whole point: it reads the cached prefix, and the read resets the 1-hour TTL. On `--resume` it leaves a pending marker instead (see [After a resume, or by hand](#after-a-resume-or-by-hand)); `bash hooks/keepalive.sh --now` prints the same instruction on demand.
+- **`/cc-cache-keepalive`** (skill): runs `skills/cc-cache-keepalive/scripts/keepalive.sh`, which reads the flag file, computes a cron expression anchored to the current minute, and tells the model to register it with `CronCreate` (once: it checks `CronList` first). The cron's prompt is the literal sentinel `cc-cache-keepalive`; when it fires the model replies `🔄 cache-keepalive` and stops. That bare API turn is the whole point: it reads the cached prefix, and the read resets the 1-hour TTL.
+
+Two hooks keep the armed cron cheap:
+
 - **`hooks/keepalive-sensor.sh`** (`Stop`): records when the last turn ended, under `${CLAUDE_CONFIG_DIR:-~/.claude}/.cc-cache-keepalive/`. Two stamps per session: `last-real-turn-<session_id>` for turns you typed, and `last-turn-<session_id>` for any turn the API answered, pings included. A turn that ended in an API error (offline, rate-limited, logged out) writes neither, because it never touched the cache.
-- **`hooks/keepalive-guard.sh`** (`UserPromptSubmit`): when the incoming prompt is exactly the sentinel, cancels it if the real-turn stamp is recent (the cache is already warm) **or** if the newest stamp of either kind is older than the TTL (the cache is already gone - see [When the machine slept](#when-the-machine-slept)). When the prompt is a real one and a pending marker exists for the session, it emits the `CronCreate` instruction as `additionalContext` and clears the marker.
+- **`hooks/keepalive-guard.sh`** (`UserPromptSubmit`): when the incoming prompt is exactly the sentinel, cancels it if the real-turn stamp is recent (the cache is already warm) **or** if the newest stamp of either kind is older than the TTL (the cache is already gone - see [When the machine slept](#when-the-machine-slept)). Any other prompt passes untouched.
 
-## After a resume, or by hand
+## After a resume
 
-Cron jobs live in the CLI process, so `claude --resume` (or a restart after a usage-limit stop) comes back without the keepalive. The SessionStart hook does not arm it there on purpose: you may be reopening a stale session only to read it, and an injected instruction would force a turn that re-reads the whole conversation uncached. Instead it writes `${CLAUDE_CONFIG_DIR:-~/.claude}/.cc-cache-keepalive/pending-<session_id>`, and the guard arms the cron on your first real prompt, when that turn is being paid for anyway. Nothing to do on your side.
+Cron jobs live in the CLI process, so `claude --resume` (or a restart after a usage-limit stop) comes back without the keepalive. Run `/cc-cache-keepalive` again if you still want it.
 
-To arm it by hand (or when a model is asked to "start the keepalive"), run the hook in on-demand mode and follow what it prints; it computes the cron expression the same way SessionStart does, anchored to the current minute:
-
-```
-bash ~/.claude/plugins/marketplaces/vdsmon-skills/plugins/cc-cache-keepalive/hooks/keepalive.sh --now
-```
-
-A model must never guess the expression from memory or from old transcripts: the anchor minute is what keeps the ticks off the fleet peaks.
+A model must never guess the cron expression from memory or from old transcripts: the anchor minute is what keeps the ticks off the fleet peaks. The skill always computes it fresh.
 
 ## Why cancelling matters
 
@@ -36,7 +33,7 @@ Net effect: while you're working, ticks are cancelled. Once you stop, ticks keep
 touch ~/.cc-cache-keepalive
 ```
 
-The flag file is the opt-in. Without it all three hooks short-circuit on their first line: one `stat(2)`, no output, no state, no side effects.
+The flag file turns the hooks on. Without it both hooks short-circuit on their first line (one `stat(2)`, no output, no state), and `/cc-cache-keepalive` refuses to arm, because an unguarded cron would fire into a cold cache after the machine slept.
 
 ## Config
 
@@ -55,7 +52,7 @@ Environment overrides, highest precedence first:
 | `CC_KEEPALIVE_TTL_MIN` | `60` | assumed prompt-cache TTL; also the default cold threshold |
 | `CC_KEEPALIVE_SAFETY_MIN` | `10` | margin subtracted from the TTL when deriving the cancel window |
 | `CC_KEEPALIVE_COLD_MIN` | `= TTL` | age of the newest turn beyond which a tick is held as cold; `0` disables the cold gate |
-| `CC_KEEPALIVE_OFF` | unset | per-invocation kill switch; disables all three hooks |
+| `CC_KEEPALIVE_OFF` | unset | per-invocation kill switch; disables both hooks |
 
 Prefer line 2 of the flag file over the env vars for a permanent change: a cron waking a stopped session spawns a fresh process that never saw your shell exports.
 
@@ -100,11 +97,10 @@ The state directory is swept of stamps older than 7 days. So once a session has 
 
 ## Measured, not assumed
 
-The three facts this plugin rests on are measured, and the data lives in [docs/experiments.md](https://github.com/vdsmon/skills/blob/main/docs/experiments.md):
+The two facts this plugin rests on are measured, and the data lives in [docs/experiments.md](https://github.com/vdsmon/skills/blob/main/docs/experiments.md):
 
 - **#16**: the cache TTL is a 60-minute cliff, not a slope. The window math and the cold gate hang off it.
 - **#17**: a `decision: block` on a cron tick really skips the API request (0 tokens). `tests/live-gate-e2e.sh` measures it.
-- **#18**: the wording of the `SessionStart` directive decides whether the cron is created at all. `tests/live-directive-compliance.sh` measures it. If you reword that block, re-measure it.
 
 ## Notes
 
@@ -119,5 +115,5 @@ The three facts this plugin rests on are measured, and the data lives in [docs/e
 - **Silencing turn-end sounds on pings.** The cron prompt is always exactly `cc-cache-keepalive`, so your own `Stop` hooks (sounds, notifications) can match on it and skip ping turns.
 - **`Stop` only, never `SubagentStop`.** They are separate events and `Stop` carries no `agent_id`, so wiring `Stop` alone gives main-agent-only stamping for free. A subagent's or teammate's turn does not refresh the main session's cached prefix, so stamping on one would suppress a ping the main session actually needs.
 - **The guard matches strictly, the sensor loosely.** A guard false positive would block a real user prompt, so it matches the whole prompt against the sentinel - and since the payload is JSON, a prompt that merely *mentions* the sentinel arrives with escaped quotes and cannot match. A sensor false positive only wastes one ping, so it matches loosely, which also covers pre-1.3.0 crons whose prompt carried a `[Silent ...]` prefix.
-- State is per session, keyed by `session_id`, under the profile dir so multiple accounts (`CLAUDE_CONFIG_DIR`) never share stamps. Stale stamps, week-old pending markers, and orphaned temp files are swept during a tick, not on the every-prompt path.
-- Tests: `mise run test:cache-keepalive` (offline, no session). Two live tests spend tokens and are worth re-running after a Claude Code upgrade, since a break in either is silent and only shows up on the bill: `mise run test:keepalive-live` drives a real background session with a 1-minute cron to confirm the CLI still honours the block, and `mise run test:keepalive-directive` confirms the directive still gets obeyed.
+- State is per session, keyed by `session_id`, under the profile dir so multiple accounts (`CLAUDE_CONFIG_DIR`) never share stamps. Stale stamps and orphaned temp files are swept during a tick, not on the every-prompt path.
+- Tests: `mise run test:cache-keepalive` (offline, no session). One live test spends tokens and is worth re-running after a Claude Code upgrade, since a break is silent and only shows up on the bill: `mise run test:keepalive-live` drives a real background session with a 1-minute cron to confirm the CLI still honours the block.

@@ -48,42 +48,7 @@ input=""
 # backslash where this pattern needs a quote, and cannot match. The trailing
 # quote makes it whole-prompt, since a JSON string ends at the first unescaped
 # quote. Someone asking a question about this plugin must never be blocked.
-#
-# Anything else is a real prompt. A resumed session has no cron: jobs live in
-# the CLI process that ended, and hooks/keepalive.sh left a pending marker
-# instead of arming at SessionStart. The first real prompt is the moment to arm.
-# The user is working, the turn is paid for anyway, and the instruction rides
-# along as additionalContext at no extra cost. The sentinel never arms: a tick
-# from nowhere is not a real prompt. This is the one place the plugin emits
-# additionalContext; the block path below still does not. JSON escaping needs
-# jq or python3; with neither, the marker stays for the next prompt (fail
-# toward trying again, not toward a malformed payload).
 if ! printf '%s' "$input" | grep -qE '"prompt"[[:space:]]*:[[:space:]]*"cc-cache-keepalive"'; then
-  pending_session="$(printf '%s' "$input" \
-    | grep -oE '"session_id"[[:space:]]*:[[:space:]]*"[0-9a-fA-F-]{8,}"' \
-    | head -n1 | grep -oE '[0-9a-fA-F-]{8,}' | tail -n1)"
-  pending="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.cc-cache-keepalive/pending-${pending_session:-none}"
-  if [ -n "$pending_session" ] && [ -f "$pending" ]; then
-    instruction="$(bash "$(dirname "${BASH_SOURCE[0]}")/keepalive.sh" --now 2>/dev/null)"
-    # a non-zero exit is a crash, not a decline: keep the marker so the next
-    # prompt tries again, and emit nothing (the output may be partial)
-    [ $? -eq 0 ] || exit 0
-    if [ -z "$instruction" ]; then
-      rm -f "$pending"  # keepalive.sh declined (flag gone, kill switch): nothing to arm
-      exit 0
-    fi
-    payload=""
-    if command -v jq >/dev/null 2>&1; then
-      payload="$(jq -nc --arg ctx "$instruction" \
-        '{hookSpecificOutput:{hookEventName:"UserPromptSubmit",additionalContext:$ctx}}' 2>/dev/null)"
-    elif command -v python3 >/dev/null 2>&1; then
-      payload="$(printf '%s' "$instruction" | python3 -c 'import json,sys; print(json.dumps({"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":sys.stdin.read()}}))' 2>/dev/null)"
-    fi
-    if [ -n "$payload" ]; then
-      rm -f "$pending"
-      printf '%s\n' "$payload"
-    fi
-  fi
   exit 0
 fi
 
@@ -129,10 +94,9 @@ NOW="$(date +%s)"
 # GC inside the sentinel branch only - at most twice an hour per session, and it
 # keeps the every-prompt hot path free of find(1). (cc-usage-guard sweeps on
 # every UserPromptSubmit; it has no equally cheap branch to hide the sweep in.)
-# A pending marker older than a week belongs to a session resumed only to be read.
 [ -d "$STATE_DIR" ] && find "$STATE_DIR" -maxdepth 1 -type f \
   \( \( -name 'last-real-turn-*' -mtime +7 \) -o \( -name 'last-turn-*' -mtime +7 \) \
-     -o \( -name 'pending-*' -mtime +7 \) -o \( -name '.tmp.*' -mmin +60 \) \) \
+     -o \( -name '.tmp.*' -mmin +60 \) \) \
   -delete 2>/dev/null
 
 # read_stamp <path>: epoch from line 1, or nothing when the file is absent,
@@ -172,9 +136,9 @@ if [ "$COLD_MIN" -gt 0 ]; then
 fi
 
 # --- warm gate --------------------------------------------------------------
-# Interval, same contract as keepalive.sh line 1 of the flag file (that file is
-# the source of truth; tests/test-cache-keepalive.sh pins the two parsers to one
-# input table). Collapsed to whole minutes, which is what the window math needs.
+# Interval, same contract as line 1 of the flag file in
+# skills/cc-cache-keepalive/scripts/keepalive.sh (that script is the source of
+# truth; tests/test-cache-keepalive.sh pins the two parsers to one input table). Collapsed to whole minutes, which is what the window math needs.
 DEFAULT_INTERVAL="30m"
 INTERVAL="$(head -n1 "$FLAG" 2>/dev/null | tr -d '[:space:]')"
 if [[ ! "$INTERVAL" =~ ^[0-9]+[smhd]$ ]] || [ "$((10#${INTERVAL%[smhd]}))" -eq 0 ]; then
