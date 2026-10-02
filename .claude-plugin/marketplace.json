@@ -115,7 +115,7 @@
       "name": "open-pr",
       "source": "./plugins/open-pr",
       "description": "Write a short, plain pull request description a teammate reads in a minute: what changes, why now, what they must do. A script checks length, file-list bullets, AI tells, local paths and attribution. The user approves the text before any push or PR. Use for 'open a PR' or 'update the PR body'. Portable across SKILL.md-native hosts.",
-      "version": "0.1.0"
+      "version": "0.2.0"
     },
     {
       "name": "start-work",
