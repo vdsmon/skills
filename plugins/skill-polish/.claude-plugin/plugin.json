@@ -1,6 +1,6 @@
 {
   "name": "skill-polish",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Post-mortem for any skill: finds friction in a session, traces it to the responsible skill file, and edits that file's source checkout, not the plugin install copy.",
   "author": {
     "name": "Victor De Simone",

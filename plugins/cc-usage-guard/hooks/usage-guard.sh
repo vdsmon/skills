@@ -23,10 +23,7 @@ BUFFER_MIN="${CLAUDE_USAGE_RESUME_BUFFER_MIN:-1}"
 REMIND_PARK_MIN="${CLAUDE_USAGE_REMIND_PARK_MIN:-1}"
 REMIND_WARN_MIN="${CLAUDE_USAGE_REMIND_WARN_MIN:-5}"
 SENSOR_MAX_AGE_MIN="${CLAUDE_USAGE_SENSOR_MAX_AGE_MIN:-15}"
-# profile dir (CLAUDE_CONFIG_DIR, inherited from the CLI process): state isolates per
-# profile so multi-account machines never guard one account against another's usage
-PROFILE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-STATE_DIR="$PROFILE_DIR/.usage-guard"
+STATE_DIR="$HOME/.claude/.usage-guard"
 state="$STATE_DIR/usage.json"
 
 input=$(cat)

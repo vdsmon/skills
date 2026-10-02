@@ -22,7 +22,7 @@ import sys
 from pathlib import Path
 
 HOME = Path.home()
-CLAUDE_DIR = Path(os.environ.get("CLAUDE_CONFIG_DIR") or HOME / ".claude")
+CLAUDE_DIR = HOME / ".claude"
 CODEX_DIR = Path(os.environ.get("CODEX_HOME") or HOME / ".codex")
 SEARCH_ROOTS = [
     "repos",

@@ -13,8 +13,8 @@
 # source unchanged. Prints nothing; the guard owns every message.
 export PATH="/opt/homebrew/bin:$HOME/.local/share/mise/shims:/bin:/usr/bin:$PATH"
 
-PROFILE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-STATE_DIR="$PROFILE_DIR/.usage-guard"
+CLAUDE_DIR="$HOME/.claude"
+STATE_DIR="$CLAUDE_DIR/.usage-guard"
 state="$STATE_DIR/usage.json"
 err_file="$STATE_DIR/poller-last-error"
 # Throttling is keyed on the last *attempt*, not the last success. Gating on usage.json's
@@ -73,16 +73,16 @@ write_atomic "$attempt_file" ""
 
 command -v curl >/dev/null 2>&1 || fail "curl is not on PATH"
 
-# credentials: a per-profile .credentials.json wins when present (multi-profile installs
-# and Linux keep the token there), otherwise the login keychain item. The token is read
+# credentials: ~/.claude/.credentials.json wins when present (Linux keeps the token
+# there), otherwise the login keychain item. The token is read
 # into a variable, sent only to the usage endpoint, and never written to disk or stdout.
 creds=""
-[ -f "$PROFILE_DIR/.credentials.json" ] && creds=$(cat "$PROFILE_DIR/.credentials.json" 2>/dev/null)
+[ -f "$CLAUDE_DIR/.credentials.json" ] && creds=$(cat "$CLAUDE_DIR/.credentials.json" 2>/dev/null)
 [ -n "$creds" ] || creds=$(security find-generic-password -s "$KEYCHAIN_SERVICE" -w 2>/dev/null)
 token=$(printf '%s' "$creds" | jq -r '.claudeAiOauth.accessToken // empty' 2>/dev/null)
 creds=""
 # keep this short: the guard truncates the quoted cause, and it supplies the remedy itself
-[ -n "$token" ] || fail "no OAuth token found (keychain item '$KEYCHAIN_SERVICE' and $PROFILE_DIR/.credentials.json both unusable, or present but blank) - subscription login required, API-key sessions have no plan limits to read"
+[ -n "$token" ] || fail "no OAuth token found (keychain item '$KEYCHAIN_SERVICE' and $CLAUDE_DIR/.credentials.json both unusable, or present but blank) - subscription login required, API-key sessions have no plan limits to read"
 
 # back off on EVERY failed fetch, not just 429, so a CLAUDE_USAGE_POLL_INTERVAL_SEC
 # override cannot turn a failing endpoint into a per-tool-call retry loop

@@ -15,7 +15,7 @@ SENSOR="$HERE/../hooks/keepalive-sensor.sh"
 ARM="$HERE/../skills/cc-cache-keepalive/scripts/keepalive.sh"
 
 unset CC_KEEPALIVE_OFF CC_KEEPALIVE_TTL_MIN \
-  CC_KEEPALIVE_SAFETY_MIN CLAUDE_CONFIG_DIR 2>/dev/null
+  CC_KEEPALIVE_SAFETY_MIN 2>/dev/null
 
 TESTHOME=$(mktemp -d "${TMPDIR:-/tmp}/cache-keepalive-test.XXXXXX")
 if [ -z "$TESTHOME" ] || [ ! -d "$TESTHOME" ]; then
@@ -555,13 +555,6 @@ run_sensor "$(stopj "$SA" "$t")" >/dev/null
 run_sensor "$(stopj "$SB" "$t")" >/dev/null
 assert_file_present "per-session keying: session A stamp" "$STATE_DIR/last-real-turn-$SA"
 assert_file_present "per-session keying: session B stamp" "$STATE_DIR/last-real-turn-$SB"
-
-reset_state; set_args "30m"
-PROF="$TESTHOME/workprofile"
-t=$(tx prof "$REAL")
-printf '%s' "$(stopj "$SA" "$t")" | HOME="$TESTHOME" CLAUDE_CONFIG_DIR="$PROF" bash "$SENSOR" >/dev/null 2>&1
-assert_file_present "CLAUDE_CONFIG_DIR is honoured" "$PROF/.cc-cache-keepalive/last-real-turn-$SA"
-assert_file_absent "profile run does not touch the default state dir" "$STATE_DIR/last-real-turn-$SA"
 
 reset_state; set_args "30m"; t=$(tx idem "$REAL")
 run_sensor "$(stopj "$SA" "$t")" >/dev/null

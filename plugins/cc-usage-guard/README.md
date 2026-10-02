@@ -4,7 +4,7 @@ Pause Claude Code cleanly when you're about to hit a usage limit, then auto-resu
 
 Three parts - one reader, one optional reader, one actor:
 
-- **`hooks/usage-poller.sh`** (primary source): fetches 5-hour + weekly usage from `GET /api/oauth/usage` - the same endpoint the CLI's own `/usage` view uses - and records it to `${CLAUDE_CONFIG_DIR:-~/.claude}/.usage-guard/usage.json`. The guard runs it first on every hook call, so it works on **every surface**: terminal, the Claude desktop app, headless `-p` runs, background sessions, subagents. Throttled to one fetch per minute; prints nothing.
+- **`hooks/usage-poller.sh`** (primary source): fetches 5-hour + weekly usage from `GET /api/oauth/usage` - the same endpoint the CLI's own `/usage` view uses - and records it to `~/.claude/.usage-guard/usage.json`. The guard runs it first on every hook call, so it works on **every surface**: terminal, the Claude desktop app, headless `-p` runs, background sessions, subagents. Throttled to one fetch per minute; prints nothing.
 - **`hooks/usage-sensor.sh`** (optional supplement): a `statusLine` wrapper. `rate_limits` rides along on statusLine stdin (Pro/Max), so where a statusLine renders this refreshes the same state file for free, no network call of its own. Not required, and it cannot run in the desktop app - see [Why the poller exists](#why-the-poller-exists).
 - **`hooks/usage-guard.sh`**: the plugin's one hook, on `PostToolUse` + `UserPromptSubmit`. It runs the poller, reads the state, and acts in two tiers, per window:
   - **WARN** (soft, lower threshold): a one-time heads-up nudging the model to land the current thread and reach a clean stopping point. No pause, no cron.
@@ -21,7 +21,7 @@ Three parts - one reader, one optional reader, one actor:
 
 That wires the guard (and with it the poller) automatically - nothing else is needed, on any surface.
 
-The poller authenticates as you: it reads your Claude subscription OAuth token from the login keychain (item `Claude Code-credentials`), or from `${CLAUDE_CONFIG_DIR:-~/.claude}/.credentials.json` when that file exists, and sends it to `api.anthropic.com` only. The token is never written to disk or printed. API-key and Bedrock/Vertex sessions have no plan limits to read, so the poller records that and stays quiet.
+The poller authenticates as you: it reads your Claude subscription OAuth token from the login keychain (item `Claude Code-credentials`), or from `~/.claude/.credentials.json` when that file exists, and sends it to `api.anthropic.com` only. The token is never written to disk or printed. API-key and Bedrock/Vertex sessions have no plan limits to read, so the poller records that and stays quiet.
 
 **That token comes from a terminal login, and only from there** - signing into the desktop app does not create it. If you have never run `claude` in a terminal on this machine, do it once now, or the guard starts blind: see [the fix](#fix-sign-in-from-a-terminal).
 
@@ -42,10 +42,6 @@ Point the path at the **marketplace checkout** (`~/.claude/plugins/marketplaces/
 ## Why the poller exists
 
 The desktop app (session `entrypoint: "claude-desktop"`) and background or headless sessions (`claude --bg`, cron runners, subagent fleets) never render a `statusLine`, so the sensor cannot run there. Hooks fire on every surface, so the poller is the only usage source those sessions have.
-
-## Multiple profiles
-
-Separate `CLAUDE_CONFIG_DIR` dirs (e.g. personal + work subscriptions): every part derives its state dir from `CLAUDE_CONFIG_DIR` (falling back to `~/.claude`), which hooks and the statusLine command inherit from the CLI process, so each profile tracks its own usage in its own `<profile>/.usage-guard/`. Credentials follow the same rule *when the profile has its own `.credentials.json`*; profiles that share the login keychain item share one token, so point each profile at its own account with `CLAUDE_USAGE_KEYCHAIN_SERVICE` if the keychain holds separate items. If you also wire the optional sensor, wire it into **each** profile's `settings.json` (for a directory-sourced marketplace the local path *is* the marketplace checkout - point that profile's statusLine there).
 
 ## Config (env vars)
 
@@ -109,7 +105,7 @@ claude /login
 
 Sign in at the prompt. It has to be a real terminal: the sign-in opens a browser and waits for you, so no session, hook, or agent can do it on your behalf. One sign-in is enough - the token then keeps refreshing on its own, and the guard works everywhere, including the desktop app.
 
-**Why a terminal, when you are already signed in?** Two separate credential stores. The poller authenticates with the OAuth token from the keychain item `Claude Code-credentials` (or a per-profile `.credentials.json`) - the store the **terminal CLI** maintains. It cannot use the token of the session it is running inside: Claude Code strips OAuth credentials from every hook subprocess by design, and [the hooks reference](https://code.claude.com/docs/en/hooks) states plainly that no API credentials are passed to hooks. The desktop app keeps its own session state elsewhere and never populates that keychain item, so being signed into the app does not help the poller.
+**Why a terminal, when you are already signed in?** Two separate credential stores. The poller authenticates with the OAuth token from the keychain item `Claude Code-credentials` (or `~/.claude/.credentials.json`) - the store the **terminal CLI** maintains. It cannot use the token of the session it is running inside: Claude Code strips OAuth credentials from every hook subprocess by design, and [the hooks reference](https://code.claude.com/docs/en/hooks) states plainly that no API credentials are passed to hooks. The desktop app keeps its own session state elsewhere and never populates that keychain item, so being signed into the app does not help the poller.
 
 So on a machine used **only** through the desktop app, with no terminal CLI login, the guard has no usage source at all: no statusLine renders, so the sensor cannot run, and the poller has nothing to authenticate with. It fails loud rather than pretending otherwise, and the offline warning gives you the command above instead of sending you to this README.
 
@@ -121,7 +117,7 @@ One command prints what the guard acts on, so nobody reads the state directory b
 bash ~/.claude/plugins/marketplaces/vdsmon-skills/plugins/cc-usage-guard/hooks/usage-status.sh
 ```
 
-It shows the state file and its age, both windows with their resets in local time, the thresholds in effect, the poller's last attempt, error, backoff, and recent failed fetches, and every park or warn marker of this profile. `--clear-markers` removes the markers; that is always safe, the next crossing then fires in full instead of as a throttled repeat. A plan upgrade or a window reset needs nothing from you: the next poll, within a minute, replaces the numbers, and a past reset already makes the guard ignore that window.
+It shows the state file and its age, both windows with their resets in local time, the thresholds in effect, the poller's last attempt, error, backoff, and recent failed fetches, and every park or warn marker. `--clear-markers` removes the markers; that is always safe, the next crossing then fires in full instead of as a throttled repeat. A plan upgrade or a window reset needs nothing from you: the next poll, within a minute, replaces the numbers, and a past reset already makes the guard ignore that window.
 
 ## Notes
 
@@ -129,6 +125,6 @@ It shows the state file and its age, both windows with their resets in local tim
 - The poller costs one small authenticated GET per minute at most, only on turns where a hook fires, with a 3-second timeout so a slow network can never hang a tool call.
 - macOS/BSD: the guard uses `date -r <epoch>` for reset-time math and `stat -f %m` for the repeat-throttle clock; the poller uses `stat -f %m` and the login keychain via `security`. On Linux that would need `date -d @<epoch>`, `stat -c %Y`, and a `.credentials.json` for the token.
 - Requires `jq` and `awk` on PATH (missing jq fails loud, see above), plus `curl` for the poller.
-- State lives at `${CLAUDE_CONFIG_DIR:-~/.claude}/.usage-guard/` (created on first run), not inside the plugin dir, because the statusLine sensor gets no `${CLAUDE_PLUGIN_ROOT}` and every part must derive the same per-profile path. Stale session markers (>7 days) and orphaned tmp files are garbage-collected on prompt-submit.
+- State lives at `~/.claude/.usage-guard/` (created on first run), not inside the plugin dir, because the statusLine sensor gets no `${CLAUDE_PLUGIN_ROOT}` and every part must use the same path. Stale session markers (>7 days) and orphaned tmp files are garbage-collected on prompt-submit.
 - Tests: `bash plugins/cc-usage-guard/tests/test-usage-guard.sh` (or `mise run test:usage-guard`); add `--soak` for a concurrent write/read race check.
 - The guard sees hooks, not processes. A background process the model started that calls the API on its own (an Agent SDK run, an agent fleet under `nohup`) keeps calling after the PARK, and at the limit every call fails. The PARK message therefore tells the model to stop such processes itself; the guard cannot.
