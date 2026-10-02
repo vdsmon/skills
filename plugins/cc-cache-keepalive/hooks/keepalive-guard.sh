@@ -33,7 +33,6 @@
 # blocks a real user prompt, so the sentinel match must be exact.
 set -u
 
-CONF="${HOME}/.cc-cache-keepalive"
 [ -n "${CC_KEEPALIVE_OFF:-}" ] && exit 0
 
 input=""
@@ -45,9 +44,13 @@ input=""
 # backslash where this pattern needs a quote, and cannot match. The trailing
 # quote makes it whole-prompt, since a JSON string ends at the first unescaped
 # quote. Someone asking a question about this plugin must never be blocked.
-if ! printf '%s' "$input" | grep -qE '"prompt"[[:space:]]*:[[:space:]]*"cc-cache-keepalive"'; then
-  exit 0
-fi
+# The optional interval and window the skill was given ride in the tick:
+# "cc-cache-keepalive 15m 10m".
+tick="$(printf '%s' "$input" \
+  | grep -oE '"prompt"[[:space:]]*:[[:space:]]*"cc-cache-keepalive( [0-9]+[smhd])?( [0-9]+[smhd]?)?"' \
+  | head -n1)"
+[ -n "$tick" ] || exit 0
+read -r TICK_INTERVAL TICK_WINDOW <<< "$(printf '%s' "$tick" | sed 's/^.*"cc-cache-keepalive//; s/"$//')"
 
 # Both the prompt cache and the stamp are per-session, so the stamp is keyed by
 # session. An absent id fails open rather than falling back to a shared file:
@@ -133,11 +136,12 @@ if [ "$COLD_MIN" -gt 0 ]; then
 fi
 
 # --- warm gate --------------------------------------------------------------
-# Interval, same contract as line 1 of the config file in
-# skills/cc-cache-keepalive/scripts/keepalive.sh (that script is the source of
-# truth; tests/test-cache-keepalive.sh pins the two parsers to one input table). Collapsed to whole minutes, which is what the window math needs.
+# Interval from the tick, same contract as the skill's keepalive.sh (the source
+# of truth; tests/test-cache-keepalive.sh pins the two parsers to one input
+# table). A hand-written bad value falls back to the default. Collapsed to whole
+# minutes, which is what the window math needs.
 DEFAULT_INTERVAL="30m"
-INTERVAL="$(head -n1 "$CONF" 2>/dev/null | tr -d '[:space:]')"
+INTERVAL="${TICK_INTERVAL:-}"
 if [[ ! "$INTERVAL" =~ ^[0-9]+[smhd]$ ]] || [ "$((10#${INTERVAL%[smhd]}))" -eq 0 ]; then
   INTERVAL="$DEFAULT_INTERVAL"
 fi
@@ -151,27 +155,19 @@ case "${INTERVAL: -1}" in
 esac
 [ "$IMIN" -lt 1 ] && IMIN=1
 
-# Cancel window, in precedence order: env, then config-file line 2, then derived.
-# The config file matters because a cron waking a stopped session spawns a fresh
-# process that never saw your shell exports.
+# Cancel window: the one the skill was given, else derived.
 WINDOW=""
-case "${CC_KEEPALIVE_WINDOW_MIN:-}" in
-  ''|*[!0-9]*) : ;;
-  *) WINDOW=$((10#${CC_KEEPALIVE_WINDOW_MIN})) ;;
-esac
-if [ -z "$WINDOW" ]; then
-  LINE2="$(sed -n 2p "$CONF" 2>/dev/null | tr -d '[:space:]')"
-  if [[ "$LINE2" =~ ^[0-9]+[smhd]$ ]]; then
-    W=$((10#${LINE2%[smhd]}))
-    case "${LINE2: -1}" in
-      s) WINDOW=$(( (W + 59) / 60 )) ;;
-      m) WINDOW=$W ;;
-      h) WINDOW=$((W * 60)) ;;
-      d) WINDOW=$((W * 1440)) ;;
-    esac
-  elif [[ "$LINE2" =~ ^[0-9]+$ ]]; then
-    WINDOW=$((10#$LINE2))
-  fi
+W_ARG="${TICK_WINDOW:-}"
+if [[ "$W_ARG" =~ ^[0-9]+[smhd]$ ]]; then
+  W=$((10#${W_ARG%[smhd]}))
+  case "${W_ARG: -1}" in
+    s) WINDOW=$(( (W + 59) / 60 )) ;;
+    m) WINDOW=$W ;;
+    h) WINDOW=$((W * 60)) ;;
+    d) WINDOW=$((W * 1440)) ;;
+  esac
+elif [[ "$W_ARG" =~ ^[0-9]+$ ]]; then
+  WINDOW=$((10#$W_ARG))
 fi
 if [ -z "$WINDOW" ]; then
   # window = min(interval, TTL - interval - safety). The min is what bounds the

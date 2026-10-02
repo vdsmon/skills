@@ -25,7 +25,7 @@
       "name": "cc-cache-keepalive",
       "source": "./plugins/cc-cache-keepalive",
       "description": "Keeps Claude Code's prompt cache warm on Max plans with a silent cron you arm per session. It cancels any tick that a recent real turn or an already-expired cache makes pointless. Claude Code only.",
-      "version": "2.1.0"
+      "version": "2.2.0"
     },
     {
       "name": "cc-usage-guard",

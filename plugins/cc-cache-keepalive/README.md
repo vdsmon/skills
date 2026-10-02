@@ -4,12 +4,12 @@ Keeps Claude Code's prompt cache warm across idle stretches on Max plans, withou
 
 You arm it per session, only in sessions you expect to keep for a long time: type `/cc-cache-keepalive`. Nothing arms itself at session start.
 
-- **`/cc-cache-keepalive`** (skill): runs `skills/cc-cache-keepalive/scripts/keepalive.sh`, which reads the optional config file, computes a cron expression anchored to the current minute, and tells the model to register it with `CronCreate` (once: it checks `CronList` first). The cron's prompt is the literal sentinel `cc-cache-keepalive`; when it fires the model replies `🔄 cache-keepalive` and stops. That bare API turn is the whole point: it reads the cached prefix, and the read resets the 1-hour TTL.
+- **`/cc-cache-keepalive`** (skill): runs `skills/cc-cache-keepalive/scripts/keepalive.sh`, which computes a cron expression anchored to the current minute, and tells the model to register it with `CronCreate` (once: it checks `CronList` first). The cron's prompt is the sentinel `cc-cache-keepalive`, followed by the arguments you gave (see [Config](#config)); when it fires the model replies `🔄 cache-keepalive` and stops. That bare API turn is the whole point: it reads the cached prefix, and the read resets the 1-hour TTL.
 
 Two hooks keep the armed cron cheap:
 
 - **`hooks/keepalive-sensor.sh`** (`Stop`): records when the last turn ended, under `${CLAUDE_CONFIG_DIR:-~/.claude}/.cc-cache-keepalive/`. Two stamps per session: `last-real-turn-<session_id>` for turns you typed, and `last-turn-<session_id>` for any turn the API answered, pings included. A turn that ended in an API error (offline, rate-limited, logged out) writes neither, because it never touched the cache.
-- **`hooks/keepalive-guard.sh`** (`UserPromptSubmit`): when the incoming prompt is exactly the sentinel, cancels it if the real-turn stamp is recent (the cache is already warm) **or** if the newest stamp of either kind is older than the TTL (the cache is already gone - see [When the machine slept](#when-the-machine-slept)). Any other prompt passes untouched.
+- **`hooks/keepalive-guard.sh`** (`UserPromptSubmit`): when the incoming prompt is exactly a tick (the sentinel plus its optional arguments), cancels it if the real-turn stamp is recent (the cache is already warm) **or** if the newest stamp of either kind is older than the TTL (the cache is already gone - see [When the machine slept](#when-the-machine-slept)). Any other prompt passes untouched.
 
 ## After a resume
 
@@ -36,24 +36,31 @@ Installing turns the hooks on. They are cheap in a session with no keepalive: th
 
 ## Config
 
-An optional config file, `~/.cc-cache-keepalive`. Without it the defaults apply.
+Pass settings as arguments when you arm it. They ride in the cron prompt, so the guard reads them from each tick and there is no config file.
 
-| Line | Meaning | Default |
+```
+/cc-cache-keepalive               # every 30m, derived cancel window
+/cc-cache-keepalive 15m           # every 15m
+/cc-cache-keepalive 30m 0         # every 30m, never cancel a warm tick
+```
+
+| Arg | Meaning | Default |
 | --- | --- | --- |
 | 1 | Cron interval, `<digits><s\|m\|h\|d>` (e.g. `15m`, `1h`) | `30m` |
 | 2 | Cancel window, same format, or bare minutes; `0` = never cancel | derived (below) |
 
-Environment overrides, highest precedence first:
+A bad argument arms nothing and says why. Running the command again with other arguments replaces the old cron.
+
+Advanced environment overrides for the guard:
 
 | Var | Default | Effect |
 | --- | --- | --- |
-| `CC_KEEPALIVE_WINDOW_MIN` | derived | cancel window in minutes; `0` disables cancelling |
 | `CC_KEEPALIVE_TTL_MIN` | `60` | assumed prompt-cache TTL; also the default cold threshold |
 | `CC_KEEPALIVE_SAFETY_MIN` | `10` | margin subtracted from the TTL when deriving the cancel window |
 | `CC_KEEPALIVE_COLD_MIN` | `= TTL` | age of the newest turn beyond which a tick is held as cold; `0` disables the cold gate |
 | `CC_KEEPALIVE_OFF` | unset | per-invocation kill switch; disables both hooks |
 
-Prefer line 2 of the config file over the env vars for a permanent change: a cron waking a stopped session spawns a fresh process that never saw your shell exports.
+A cron that wakes a stopped session spawns a fresh process that never saw your shell exports, so set these in your Claude Code `env` settings, not only in the shell.
 
 ## How the cancel window is chosen
 
@@ -111,7 +118,7 @@ The two facts this plugin rests on are measured, and the data lives in [docs/exp
   ```
 
   (or `cc-cache-keepalive: cache cold, holding for a real turn` for the cold gate). Claude Code prepends that first line to every block and pushes the message unconditionally - `suppressOutput` only hides a hook's stdout, not this. `suppressOutput: true` was tested and changes nothing. [anthropics/claude-code#39499](https://github.com/anthropics/claude-code/issues/39499) asked for a quiet block and was closed by the inactivity bot with no maintainer reply; [#81818](https://github.com/anthropics/claude-code/issues/81818) re-raises it with a repro. Since only the second line is ours, it is kept to one short string; that is also why the tests assert the block/pass boundary rather than the wording. The notice never reaches the API, so it costs no tokens and no context - it is just visible, a few times an hour, in an attended session.
-- **Silencing turn-end sounds on pings.** The cron prompt is always exactly `cc-cache-keepalive`, so your own `Stop` hooks (sounds, notifications) can match on it and skip ping turns.
+- **Silencing turn-end sounds on pings.** The cron prompt always starts with `cc-cache-keepalive`, so your own `Stop` hooks (sounds, notifications) can match on it and skip ping turns.
 - **`Stop` only, never `SubagentStop`.** They are separate events and `Stop` carries no `agent_id`, so wiring `Stop` alone gives main-agent-only stamping for free. A subagent's or teammate's turn does not refresh the main session's cached prefix, so stamping on one would suppress a ping the main session actually needs.
 - **The guard matches strictly, the sensor loosely.** A guard false positive would block a real user prompt, so it matches the whole prompt against the sentinel - and since the payload is JSON, a prompt that merely *mentions* the sentinel arrives with escaped quotes and cannot match. A sensor false positive only wastes one ping, so it matches loosely, which also covers pre-1.3.0 crons whose prompt carried a `[Silent ...]` prefix.
 - State is per session, keyed by `session_id`, under the profile dir so multiple accounts (`CLAUDE_CONFIG_DIR`) never share stamps. Stale stamps and orphaned temp files are swept during a tick, not on the every-prompt path.

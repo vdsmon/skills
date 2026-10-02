@@ -3,33 +3,39 @@
 # (1h TTL). The /cc-cache-keepalive skill runs this on demand, so only sessions
 # the user chose get a keepalive.
 #
-# Optional config file: ~/.cc-cache-keepalive
-#   Absent or empty → default interval (30m)
-#   Line 1     → interval override, e.g. `4m`, `1h`, `90s`
-#                Format: <digits><s|m|h|d>. Invalid values fall back to default.
+# Usage: keepalive.sh [interval] [window]
+#   interval  <digits><s|m|h|d>, e.g. `15m`, `1h`, `90s`. Default 30m.
+#   window    cancel window for hooks/keepalive-guard.sh, same format or bare
+#             minutes; `0` = never cancel a warm tick. Default: derived.
+# Both ride in the cron prompt ("cc-cache-keepalive 15m 10m"), so the guard
+# reads them from the tick itself and no config file or state is needed.
 #
 # We compute the cron expression ourselves (anchored to the current minute)
 # instead of delegating to /loop, because /loop's `Nm` → `*/N * * * *` rewrite
 # lands every user on the :00/:30 fleet peak.
 #
-# The cron prompt is the sentinel "cc-cache-keepalive". The model replies
-# with "🔄 cache-keepalive" — no tool call, no thinking. That bare API turn
-# refreshes the cached-prefix TTL, which is the only thing we need.
+# The model replies to a tick with "🔄 cache-keepalive" — no tool call, no
+# thinking. That bare API turn refreshes the cached-prefix TTL, which is the
+# only thing we need.
 set -u
 
-CONF="${HOME}/.cc-cache-keepalive"
-
-DEFAULT_INTERVAL="30m"
-INTERVAL="$(head -n1 "$CONF" 2>/dev/null | tr -d '[:space:]')"
+INTERVAL="${1:-}"
+WINDOW="${2:-}"
 # The zero check is not cosmetic: `0m` passes the regex and then divides by zero
 # in the `60 % N` below, and bash aborts a script on an arithmetic error even
 # without `set -e`: no cron, no output, no visible error. Same for the `10#`
 # below - `08m` and `09s` are decimal to a user but octal to $(( )), and die the
-# same silent way. (Only line 1 is read here; hooks/keepalive-guard.sh reads
-# line 2 for the cancel window, where zero IS meaningful and means "never skip".)
-if [[ ! "$INTERVAL" =~ ^[0-9]+[smhd]$ ]] || [ "$((10#${INTERVAL%[smhd]}))" -eq 0 ]; then
-  INTERVAL="$DEFAULT_INTERVAL"
+# same silent way. A window of zero IS meaningful: it means "never skip".
+if [ -n "$INTERVAL" ] && { [[ ! "$INTERVAL" =~ ^[0-9]+[smhd]$ ]] || [ "$((10#${INTERVAL%[smhd]}))" -eq 0 ]; }; then
+  echo "cc-cache-keepalive: bad interval '$INTERVAL'. Use a number and a unit, e.g. 15m, 1h, 90s."
+  exit 0
 fi
+if [ -n "$WINDOW" ] && [[ ! "$WINDOW" =~ ^[0-9]+[smhd]?$ ]]; then
+  echo "cc-cache-keepalive: bad window '$WINDOW'. Use e.g. 10m, or 0 to never cancel."
+  exit 0
+fi
+CMD="cc-cache-keepalive${INTERVAL:+ $INTERVAL}${WINDOW:+ $WINDOW}"
+INTERVAL="${INTERVAL:-30m}"
 
 N=$((10#${INTERVAL%[smhd]}))
 UNIT="${INTERVAL: -1}"
@@ -86,18 +92,17 @@ case "$UNIT" in
     ;;
 esac
 
-CMD="cc-cache-keepalive"
 
 cat <<EOF
 <cc-cache-keepalive>
 Step 1. Call the CronList tool.
-Step 2. If any job with prompt "${CMD}" already exists, stop: never create a second keepalive. Otherwise call the CronCreate tool with:
+Step 2. If a job with prompt "${CMD}" already exists, stop: it is already on. If a job whose prompt starts with "cc-cache-keepalive" has other settings, delete it with the CronDelete tool, so there is never a second keepalive. Then call the CronCreate tool with:
   cron:      "${CRON}"
   prompt:    "${CMD}"
   recurring: true
 Step 3. Tell the user in one line that the keepalive is on (or was already on), with the cron expression.
 
-The prompt is the literal sentinel string "${CMD}". When the cron later fires, do NOT call any tool, do NOT think, do NOT narrate — reply with exactly "🔄 cache-keepalive" and end the turn. The API turn alone refreshes the cached-prefix TTL.
+The prompt is the literal string "${CMD}". When the cron later fires, do NOT call any tool, do NOT think, do NOT narrate — reply with exactly "🔄 cache-keepalive" and end the turn. The API turn alone refreshes the cached-prefix TTL.
 Do NOT invoke /loop — its Nm→*/N rewrite lands on fleet-peak minutes (:00/:30).
 </cc-cache-keepalive>
 EOF
