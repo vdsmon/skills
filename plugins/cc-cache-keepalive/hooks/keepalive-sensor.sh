@@ -75,8 +75,7 @@ UUID="$(printf '%s' "$LAST" \
   | grep -oE '"uuid"[[:space:]]*:[[:space:]]*"[0-9a-fA-F-]{8,}"' \
   | head -n1 | grep -oE '[0-9a-fA-F-]{8,}' | tail -n1)"
 
-PROFILE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-STATE_DIR="$PROFILE_DIR/.cc-cache-keepalive"
+STATE_DIR="$HOME/.claude/.cc-cache-keepalive"
 NOW="$(date +%s)"
 
 # write_stamp <path>: atomic write of "epoch\nuuid". Line 2 holds the uuid of the

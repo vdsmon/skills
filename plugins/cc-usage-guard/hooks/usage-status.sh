@@ -3,7 +3,7 @@
 #
 # Prints exactly what usage-guard.sh acts on - the state file with its age, the
 # window percentages and their resets in local time, the thresholds in effect, the
-# poller's last error and backoff, and this profile's session markers - so nobody
+# poller's last error and backoff, and the session markers - so nobody
 # reads the state directory by hand to answer "is the guard right?" or "did it notice
 # the plan change?". (It did: a plan change or a window reset shows up on the next
 # poll, within a minute; the markers only throttle repeat reminders.)
@@ -14,8 +14,7 @@
 # Everything else is read-only. macOS/BSD date/stat, like the hooks.
 export PATH="/opt/homebrew/bin:$HOME/.local/share/mise/shims:/bin:/usr/bin:$PATH"
 
-PROFILE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-STATE_DIR="$PROFILE_DIR/.usage-guard"
+STATE_DIR="$HOME/.claude/.usage-guard"
 state="$STATE_DIR/usage.json"
 now=$(date +%s)
 
@@ -69,7 +68,7 @@ echo "thresholds: 5-hour warn ${CLAUDE_USAGE_WARN_5H:-90}% / park ${CLAUDE_USAGE
 if [ -f "$STATE_DIR/poller-last-attempt" ]; then
   echo "poller: last attempt $(age_min "$STATE_DIR/poller-last-attempt") min ago"
 else
-  echo "poller: never ran in this profile"
+  echo "poller: never ran"
 fi
 if [ -f "$STATE_DIR/poller-last-error" ]; then
   echo "  last error: $(head -c 300 "$STATE_DIR/poller-last-error" 2>/dev/null)"
@@ -86,7 +85,7 @@ fi
 markers=$(find "$STATE_DIR" -maxdepth 1 -type f \
   \( -name 'usage-park-marker*' -o -name 'sensor-warn-marker*' -o -name 'rate-limit-warn-marker' \) 2>/dev/null | sort)
 if [ -z "$markers" ]; then
-  echo "markers: none (no session is parked or warned in this profile)"
+  echo "markers: none (no session is parked or warned)"
 else
   echo "markers (window:level:reset, level 2 = parked, 1 = warned; they throttle repeats only):"
   while IFS= read -r marker; do

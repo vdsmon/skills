@@ -8,7 +8,7 @@ You arm it per session, only in sessions you expect to keep for a long time: typ
 
 Two hooks keep the armed cron cheap:
 
-- **`hooks/keepalive-sensor.sh`** (`Stop`): records when the last turn ended, under `${CLAUDE_CONFIG_DIR:-~/.claude}/.cc-cache-keepalive/`. Two stamps per session: `last-real-turn-<session_id>` for turns you typed, and `last-turn-<session_id>` for any turn the API answered, pings included. A turn that ended in an API error (offline, rate-limited, logged out) writes neither, because it never touched the cache.
+- **`hooks/keepalive-sensor.sh`** (`Stop`): records when the last turn ended, under `~/.claude/.cc-cache-keepalive/`. Two stamps per session: `last-real-turn-<session_id>` for turns you typed, and `last-turn-<session_id>` for any turn the API answered, pings included. A turn that ended in an API error (offline, rate-limited, logged out) writes neither, because it never touched the cache.
 - **`hooks/keepalive-guard.sh`** (`UserPromptSubmit`): when the incoming prompt is exactly a tick (the sentinel plus its optional arguments), cancels it if the real-turn stamp is recent (the cache is already warm) **or** if the newest stamp of either kind is older than the TTL (the cache is already gone - see [When the machine slept](#when-the-machine-slept)). Any other prompt passes untouched.
 
 ## After a resume
@@ -121,5 +121,5 @@ The two facts this plugin rests on are measured, and the data lives in [docs/exp
 - **Silencing turn-end sounds on pings.** The cron prompt always starts with `cc-cache-keepalive`, so your own `Stop` hooks (sounds, notifications) can match on it and skip ping turns.
 - **`Stop` only, never `SubagentStop`.** They are separate events and `Stop` carries no `agent_id`, so wiring `Stop` alone gives main-agent-only stamping for free. A subagent's or teammate's turn does not refresh the main session's cached prefix, so stamping on one would suppress a ping the main session actually needs.
 - **The guard matches strictly, the sensor loosely.** A guard false positive would block a real user prompt, so it matches the whole prompt against the sentinel - and since the payload is JSON, a prompt that merely *mentions* the sentinel arrives with escaped quotes and cannot match. A sensor false positive only wastes one ping, so it matches loosely, which also covers pre-1.3.0 crons whose prompt carried a `[Silent ...]` prefix.
-- State is per session, keyed by `session_id`, under the profile dir so multiple accounts (`CLAUDE_CONFIG_DIR`) never share stamps. Stale stamps and orphaned temp files are swept during a tick, not on the every-prompt path.
+- State is per session, keyed by `session_id`, under `~/.claude/.cc-cache-keepalive/`. Stale stamps and orphaned temp files are swept during a tick, not on the every-prompt path.
 - Tests: `mise run test:cache-keepalive` (offline, no session). One live test spends tokens and is worth re-running after a Claude Code upgrade, since a break is silent and only shows up on the bill: `mise run test:keepalive-live` drives a real background session with a 1-minute cron to confirm the CLI still honours the block.

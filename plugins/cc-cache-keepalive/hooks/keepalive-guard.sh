@@ -85,8 +85,7 @@ SAFETY_MIN="${CC_KEEPALIVE_SAFETY_MIN:-10}"
 case "$TTL_MIN" in ''|*[!0-9]*) TTL_MIN=60 ;; esac
 case "$SAFETY_MIN" in ''|*[!0-9]*) SAFETY_MIN=10 ;; esac
 
-PROFILE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-STATE_DIR="$PROFILE_DIR/.cc-cache-keepalive"
+STATE_DIR="$HOME/.claude/.cc-cache-keepalive"
 STAMP="$STATE_DIR/last-real-turn-$session_id"
 STAMP_ANY="$STATE_DIR/last-turn-$session_id"
 NOW="$(date +%s)"

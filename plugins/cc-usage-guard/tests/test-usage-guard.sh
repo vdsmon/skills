@@ -17,7 +17,7 @@ POLLER="$HERE/../hooks/usage-poller.sh"
 unset CC_USAGE_GUARD_OFF CLAUDE_USAGE_THRESHOLD CLAUDE_USAGE_THRESHOLD_5H CLAUDE_USAGE_THRESHOLD_WEEKLY \
   CLAUDE_USAGE_WARN_5H CLAUDE_USAGE_WARN_WEEKLY CLAUDE_USAGE_RESUME_BUFFER_MIN \
   CLAUDE_USAGE_REMIND_PARK_MIN CLAUDE_USAGE_REMIND_WARN_MIN \
-  CLAUDE_USAGE_SENSOR_MAX_AGE_MIN CLAUDE_USAGE_RENDER_CMD CLAUDE_CONFIG_DIR \
+  CLAUDE_USAGE_SENSOR_MAX_AGE_MIN CLAUDE_USAGE_RENDER_CMD \
   CLAUDE_USAGE_POLL_INTERVAL_SEC CLAUDE_USAGE_POLL_TIMEOUT_SEC \
   CLAUDE_USAGE_KEYCHAIN_SERVICE CLAUDE_USAGE_ENDPOINT CLAUDE_USAGE_SENSOR_DEFER_SEC 2>/dev/null
 
@@ -272,7 +272,7 @@ printf '%s' "$sensor_fixture" | HOME="$TESTHOME" CLAUDE_USAGE_SENSOR_DEFER_SEC=0
 # --- poller ------------------------------------------------------------------
 # Never touches the real account: the keychain service name is forced to a nonexistent
 # one (a real `security` lookup ignores HOME, so this is the only way to isolate it), the
-# token comes from a fake per-profile .credentials.json, and the endpoint is a local
+# token comes from a fake ~/.claude/.credentials.json, and the endpoint is a local
 # fixture server. NO_TOKEN also proves the poller does not fall back to the login item.
 FAKE_CREDS='{"claudeAiOauth":{"accessToken":"test-token-not-real"}}'
 POLLER_ERR="$STATE_DIR/poller-last-error"
@@ -498,7 +498,7 @@ if [ -n "${PORT:-}" ]; then
   out=$(run_guard_ep "$EP429" "$(stdin_json s-429-c)")
   assert_contains "the next outage is reported again" "$out" "rate-limited (HTTP 429)"
 
-  # credentials precedence: a per-profile .credentials.json must win over the keychain -
+  # credentials precedence: ~/.claude/.credentials.json must win over the keychain -
   # that is what lets two profiles poll two different accounts. Point the keychain name at
   # the REAL login item, so only genuine precedence (not a keychain miss) can produce the
   # profile's token; the fixture server records which bearer it received.
@@ -506,7 +506,7 @@ if [ -n "${PORT:-}" ]; then
   printf '{"claudeAiOauth":{"accessToken":"from-credentials-file"}}' > "$TESTHOME/.claude/.credentials.json"
   env HOME="$TESTHOME" CLAUDE_USAGE_KEYCHAIN_SERVICE="Claude Code-credentials" \
     CLAUDE_USAGE_ENDPOINT="$EP" bash "$POLLER" </dev/null >/dev/null 2>&1
-  assert_contains "per-profile .credentials.json is preferred over the keychain" \
+  assert_contains ".credentials.json is preferred over the keychain" \
     "$(cat "$SEEN_AUTH" 2>/dev/null)" "Bearer from-credentials-file"
   printf '%s' "$FAKE_CREDS" > "$TESTHOME/.claude/.credentials.json"
 else
@@ -567,32 +567,6 @@ out=$(run_guard "$(stdin_json s-other-fault)")
 assert_contains "other faults still point at the README" "$out" "Fix per the plugin README"
 assert_contains "other faults quote the endpoint cause" "$out" "usage endpoint returned HTTP"
 
-# --- multi-profile (CLAUDE_CONFIG_DIR) ----------------------------------------
-
-WORKPROF="$TESTHOME/profile-work"
-reset_state
-printf '%s' "$sensor_fixture" | HOME="$TESTHOME" CLAUDE_CONFIG_DIR="$WORKPROF" CLAUDE_USAGE_RENDER_CMD=cat bash "$SENSOR" >/dev/null
-prof_ok=1
-[ -f "$WORKPROF/.usage-guard/usage.json" ] || prof_ok=0
-[ -f "$STATE" ] && prof_ok=0
-[ "$prof_ok" = "1" ] && { PASS=$((PASS + 1)); echo "ok: sensor writes to the CLAUDE_CONFIG_DIR profile, not the default"; } \
-  || { FAIL=$((FAIL + 1)); echo "FAIL: profile-scoped sensor write landed in the wrong dir"; }
-
-printf '{"schema":2,"five_hour":98,"weekly":10,"five_hour_reset":%s,"weekly_reset":%s}\n' \
-  "$(date -v+2H +%s)" "$(date -v+2d +%s)" > "$WORKPROF/.usage-guard/usage.json"
-run_guard_prof() { # <stdin-json>; same poller isolation as run_guard
-  printf '%s' "$1" | env HOME="$TESTHOME" CLAUDE_CONFIG_DIR="$WORKPROF" \
-    CLAUDE_USAGE_KEYCHAIN_SERVICE="$NO_KEYCHAIN" CLAUDE_USAGE_ENDPOINT="$DEAD_ENDPOINT" \
-    CLAUDE_USAGE_POLL_TIMEOUT_SEC=1 bash "$GUARD"
-}
-out=$(run_guard_prof "$(stdin_json s-prof)")
-assert_contains "guard reads state from the CLAUDE_CONFIG_DIR profile" "$out" "STOP - usage at"
-out=$(run_guard "$(stdin_json s-prof-default)")
-assert_contains "default profile is independent (missing state faults)" "$out" "state file missing"
-
-rm -rf "$WORKPROF"
-out=$(run_guard_prof "$(stdin_json s-prof-missing)")
-assert_contains "offline message names the profile state dir" "$out" "$WORKPROF/.usage-guard"
 
 # --- marker GC ---------------------------------------------------------------
 
