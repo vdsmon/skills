@@ -1,6 +1,6 @@
 {
   "name": "cc-cache-keepalive",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Keeps Claude Code's prompt cache warm on Max plans with a silent cron you arm per session. It cancels any tick that a recent real turn or an already-expired cache makes pointless.",
   "author": {
     "name": "Victor De Simone",

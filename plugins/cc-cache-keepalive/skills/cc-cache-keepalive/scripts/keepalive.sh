@@ -3,8 +3,8 @@
 # (1h TTL). The /cc-cache-keepalive skill runs this on demand, so only sessions
 # the user chose get a keepalive.
 #
-# Flag file: ~/.cc-cache-keepalive (the guard and sensor hooks need it too)
-#   Empty      → default interval (30m)
+# Optional config file: ~/.cc-cache-keepalive
+#   Absent or empty → default interval (30m)
 #   Line 1     → interval override, e.g. `4m`, `1h`, `90s`
 #                Format: <digits><s|m|h|d>. Invalid values fall back to default.
 #
@@ -17,16 +17,10 @@
 # refreshes the cached-prefix TTL, which is the only thing we need.
 set -u
 
-FLAG="${HOME}/.cc-cache-keepalive"
-# Without the flag the guard and sensor hooks are off, so nothing would cancel a
-# tick into a cold cache after the machine slept. Refuse rather than arm blind.
-if [ ! -f "$FLAG" ]; then
-  echo "cc-cache-keepalive: not armed. Run \`touch ~/.cc-cache-keepalive\` first, so the guard can cancel pointless ticks."
-  exit 0
-fi
+CONF="${HOME}/.cc-cache-keepalive"
 
 DEFAULT_INTERVAL="30m"
-INTERVAL="$(head -n1 "$FLAG" 2>/dev/null | tr -d '[:space:]')"
+INTERVAL="$(head -n1 "$CONF" 2>/dev/null | tr -d '[:space:]')"
 # The zero check is not cosmetic: `0m` passes the regex and then divides by zero
 # in the `60 % N` below, and bash aborts a script on an arithmetic error even
 # without `set -e`: no cron, no output, no visible error. Same for the `10#`
