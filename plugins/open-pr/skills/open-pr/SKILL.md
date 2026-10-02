@@ -36,7 +36,7 @@ Read `references/pr-template.md` (under this skill's base directory) and follow 
 ## 4. Run the check
 
 ```bash
-python3 "<skill-base-dir>/scripts/pr_body_check.py" <body-file> --base <base>
+python3 "<skill-base-dir>/scripts/pr_body_check.py" <body-file> --base <base> --author "$(gh api user -q .login)"
 ```
 
 `<skill-base-dir>` is this skill's base directory. Run it from the repo. Fix every FAIL and run it again until it passes. Read each WARN and fix the ones that are right. A WARN can be wrong, for example a path that exists only at run time.
@@ -49,7 +49,7 @@ python3 "<skill-base-dir>/scripts/pr_body_check.py" <body-file> --base <base>
 
 ## 6. Show it, then publish
 
-Show the user the title and the body exactly as they will appear. List every `@mention` separately: a mention notifies that person as soon as the PR is visible, drafts included. Write names without `@` unless the user wants the ping.
+Show the user the title and the body exactly as they will appear. List every `@mention` separately: a mention notifies that person as soon as the PR is visible, drafts included.
 
 Wait for a clear yes. That yes covers this push and this PR, nothing more.
 

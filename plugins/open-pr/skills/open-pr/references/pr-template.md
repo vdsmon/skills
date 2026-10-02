@@ -42,7 +42,7 @@ Leave out a section that would be empty. A small fix gets the opening and "Teste
 6. No labels in bold, no em or en dashes, no curly quotes or arrows, no semicolons in prose, and no lines wrapped by hand. [checked]
 7. No local paths (`/Users/...`, `/home/...`, `~/...`, temp folders) and no attribution footer. [checked]
 8. Backticked repo paths exist at HEAD or in the diff. [warned]
-9. "I" for your own work, "we" for team decisions.
+9. "I" for your own work, "we" for team decisions. Name a person by their `@handle`, so the ask reaches them (commit authors give the handles: `gh api repos/<owner>/<repo>/commits --jq '.[].author.login'`). Never tag the PR author. [checked: tagging the author fails]
 10. Test counts add nothing: "`<check command>` passes" is enough.
 
 ## Variants

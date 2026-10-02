@@ -94,6 +94,12 @@ class Shape(unittest.TestCase):
         self.assertIn("ask-late", warned)
         self.assertNotIn("mention", rules("Mail me at a@example.com or see `@decorator`."))
 
+    def test_tagging_the_author_fails(self):
+        body = "Intro.\n\n@dana handed this over to @sam.\n"
+        failed = [r for lv, r, _, _ in checker.check(body, author="Sam")[0] if lv == "FAIL"]
+        self.assertEqual(failed, ["self-mention"])
+        self.assertNotIn("self-mention", rules(body))
+
 
 class Paths(unittest.TestCase):
     def setUp(self):
