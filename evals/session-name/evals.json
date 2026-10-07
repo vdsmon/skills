@@ -1,0 +1,32 @@
+{
+  "skill_name": "session-name",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "suggest a good name for this session, i'll paste it into /rename",
+      "expected_output": "One line: /rename with a kebab name about the feed cursor fix / PR #31, not about ruff",
+      "files": [
+        "fixtures/drift.md"
+      ],
+      "name": "drift"
+    },
+    {
+      "id": 2,
+      "prompt": "suggest a good name for this session, i'll paste it into /rename",
+      "expected_output": "Two options: one for the batch 88 vs 90 cost comparison, one for the QA rubric v3 Slack post",
+      "files": [
+        "fixtures/split.md"
+      ],
+      "name": "split"
+    },
+    {
+      "id": 3,
+      "prompt": "suggest a good name for this session, i'll paste it into /rename",
+      "expected_output": "One line in English kebab case that keeps the ticket key rev-2210 and mentions the uv pin",
+      "files": [
+        "fixtures/portuguese.md"
+      ],
+      "name": "portuguese"
+    }
+  ]
+}

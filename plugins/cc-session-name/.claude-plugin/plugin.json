@@ -1,0 +1,14 @@
+{
+  "name": "cc-session-name",
+  "version": "0.1.0",
+  "description": "Suggests a name for the current Claude Code session as one paste-ready /rename line, picked from the whole session instead of the last few messages. Opinionated: one kebab-case name, with options only when the session split into separate threads.",
+  "author": {
+    "name": "Victor De Simone",
+    "email": "victorsmoliveira@gmail.com",
+    "url": "https://github.com/vdsmon"
+  },
+  "homepage": "https://github.com/vdsmon/skills",
+  "repository": "https://github.com/vdsmon/skills",
+  "license": "MIT",
+  "skills": "./skills"
+}
