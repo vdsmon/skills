@@ -122,6 +122,12 @@
       "source": "./plugins/start-work",
       "description": "Start each job in its own git worktree, based on a fresh fetch of the remote, without switching the main checkout. Copies ignored files listed in .worktreeinclude, keeps the worktree folder out of git status, enters it, and runs the repo's setup. Portable across SKILL.md-native hosts.",
       "version": "0.1.0"
+    },
+    {
+      "name": "cc-session-name",
+      "source": "./plugins/cc-session-name",
+      "description": "Suggests a name for the current Claude Code session as one paste-ready /rename line, picked from the whole session instead of the last few messages. Opinionated: one kebab-case name, with options only when the session split into separate threads. Claude Code only.",
+      "version": "0.1.0"
     }
   ]
 }

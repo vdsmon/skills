@@ -81,6 +81,7 @@ Generated from each plugin's `plugin.json` by `scripts/sync-codex.sh`, so do not
 | `question` | any | Answer a genuine question in full, with no edits and no side effects. Treats 'why X and not Y?' as curiosity, not as a hidden request to switch to Y or an attack on X. |
 | `open-pr` | any | Write a short, plain pull request description a teammate reads in a minute: what changes, why now, what they must do. |
 | `start-work` | any | Start each job in its own git worktree, based on a fresh fetch of the remote, without switching the main checkout. |
+| `cc-session-name` | CC only | Suggests a name for the current Claude Code session as one paste-ready /rename line, picked from the whole session instead of the last few messages. |
 <!-- END PLUGINS -->
 
 ## Layout
