@@ -174,7 +174,7 @@ def path_findings(own, base):
     return out
 
 
-def check(text, base=None, author=None):
+def check(text, base=None):
     """Return (findings, prose_word_count). A finding is (level, rule, line, message)."""
     own, bot_lines = classify(text)
     f = []
@@ -263,10 +263,7 @@ def check(text, base=None, author=None):
     for i, para in enumerate(paras):
         for n, _, t in para:
             for m in MENTION.finditer(INLINE_CODE.sub("", t)):
-                if author and m.group(1).lower() == author.lower():
-                    f.append(("FAIL", "self-mention", n, f"@{m.group(1)} is the PR author: write \"I\" instead"))
-                else:
-                    f.append(("WARN", "mention", n, f"@{m.group(1)} is notified as soon as the PR is visible: confirm it with the user"))
+                f.append(("FAIL", "mention", n, f"@{m.group(1)}: nobody acts on a GitHub ping here, write the name without @"))
             if i >= 2 and ASK.search(t):
                 f.append(("WARN", "ask-late", n, "an ask to the reader sits low in the body: move it to the line after the opening"))
 
@@ -280,10 +277,9 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="Check a PR body against the open-pr template rules.")
     ap.add_argument("body", help="body file, or - for stdin")
     ap.add_argument("--base", help="base ref: also check backticked repo paths against HEAD and the diff")
-    ap.add_argument("--author", help="the PR author's GitHub login: fail when the body tags them")
     args = ap.parse_args(argv)
     text = sys.stdin.read() if args.body == "-" else open(args.body, encoding="utf-8").read()
-    findings, prose_words = check(text, args.base, args.author)
+    findings, prose_words = check(text, args.base)
     for level, rule, line, msg in findings:
         where = f"line {line}: " if line else ""
         print(f"{level} {rule}: {where}{msg}")
