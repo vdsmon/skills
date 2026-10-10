@@ -36,6 +36,10 @@ run = "claude plugin validate plugins/cc-pitstop && claude plugin test plugins/c
 description = "Run the cc-keepwarm mod tests (needs the claude CLI, so CI does not run them)"
 run = "claude plugin validate plugins/cc-keepwarm && claude plugin test plugins/cc-keepwarm"
 
+[tasks."test:timeline"]
+description = "Run the cc-timeline mod tests (needs the claude CLI, so CI does not run them)"
+run = "claude plugin validate plugins/cc-timeline && claude plugin test plugins/cc-timeline"
+
 [tasks."test:autotitle"]
 description = "Run the cc-autotitle mod tests (needs the claude CLI, so CI does not run them)"
 run = "claude plugin validate plugins/cc-autotitle && claude plugin test plugins/cc-autotitle"
