@@ -28,6 +28,12 @@
       "version": "1.0.0"
     },
     {
+      "name": "cc-wrap-up",
+      "source": "./plugins/cc-wrap-up",
+      "description": "Cues a wrap-up at a natural break in a long session, then compacts with prep-compact's message or hands off with prep-exit's resume prompt, with no copy-paste. Reads the context size at no cost and acts only when you press. Claude Code only.",
+      "version": "1.0.0"
+    },
+    {
       "name": "cc-usage-guard",
       "source": "./plugins/cc-usage-guard",
       "description": "Pauses Claude Code before it hits the 5-hour or weekly usage limit and auto-resumes when the window resets, on every surface including the desktop app. Claude Code only.",
