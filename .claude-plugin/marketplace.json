@@ -22,16 +22,16 @@
       "version": "1.5.0"
     },
     {
-      "name": "cc-cache-keepalive",
-      "source": "./plugins/cc-cache-keepalive",
-      "description": "Keeps Claude Code's prompt cache warm on Max plans with a silent cron you arm per session. It cancels any tick that a recent real turn or an already-expired cache makes pointless. Claude Code only.",
-      "version": "2.3.0"
+      "name": "cc-keepwarm",
+      "source": "./plugins/cc-keepwarm",
+      "description": "Keeps Claude Code's prompt cache warm in every session with a silent background ping timed from your last request, and skips the ping once the cache is already gone. Claude Code only.",
+      "version": "3.0.0"
     },
     {
       "name": "cc-usage-guard",
       "source": "./plugins/cc-usage-guard",
       "description": "Pauses Claude Code before it hits the 5-hour or weekly usage limit and auto-resumes when the window resets, on every surface including the desktop app. Claude Code only.",
-      "version": "0.11.0"
+      "version": "0.11.1"
     },
     {
       "name": "prep-compact",

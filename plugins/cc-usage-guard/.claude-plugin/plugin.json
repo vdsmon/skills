@@ -1,6 +1,6 @@
 {
   "name": "cc-usage-guard",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "description": "Pauses Claude Code before it hits the 5-hour or weekly usage limit and auto-resumes when the window resets, on every surface including the desktop app.",
   "author": {
     "name": "Victor De Simone",

@@ -173,29 +173,6 @@ fresh_state 92
 out=$(run_guard "$(stdin_json s-warn-agent a1)")
 assert_silent "spawned agent at warn stays silent" "$out"
 
-# a cc-cache-keepalive cron tick can act on nothing (blocked, or told to call no tool), so
-# it must not use up the full WARN/PARK message the next real prompt needs
-TICK='{"hook_event_name":"UserPromptSubmit","session_id":"s-tick","prompt":"cc-cache-keepalive"}'
-reset_state
-fresh_state 98
-out=$(run_guard "$TICK")
-assert_silent "keepalive tick gets no WARN/PARK" "$out"
-[ ! -f "$STATE_DIR/usage-park-marker-s-tick" ] && { PASS=$((PASS + 1)); echo "ok: keepalive tick writes no marker"; } \
-  || { FAIL=$((FAIL + 1)); echo "FAIL: keepalive tick wrote a park marker"; }
-out=$(run_guard "$(stdin_json s-tick '' UserPromptSubmit)")
-assert_contains "the next real prompt still gets the full STOP" "$out" "STOP - usage at"
-assert_contains "the full STOP still carries the auto-resume step" "$out" "CronCreate"
-out=$(run_guard '{"hook_event_name":"PostToolUse","session_id":"s-cron","tool_input":{"prompt":"cc-cache-keepalive"}}')
-assert_contains "a tool call carrying the sentinel is not a tick" "$out" "STOP - usage at"
-out=$(run_guard '{"hook_event_name":"UserPromptSubmit","session_id":"s-mention","prompt":"what does cc-cache-keepalive do?"}')
-assert_contains "a prompt that only mentions the sentinel is not a tick" "$out" "STOP - usage at"
-rm -rf "$STATE_DIR"
-out=$(run_guard "$TICK")
-assert_silent "keepalive tick gets no offline notice either" "$out"
-[ ! -e "$STATE_DIR/poller-last-attempt" ] && [ ! -e "$STATE_DIR/sensor-warn-marker-s-tick" ] \
-  && { PASS=$((PASS + 1)); echo "ok: keepalive tick neither polls nor writes a warn marker"; } \
-  || { FAIL=$((FAIL + 1)); echo "FAIL: keepalive tick polled or wrote a warn marker"; }
-
 # --- stale snapshots (window reset already past) -------------------------------
 
 reset_state

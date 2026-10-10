@@ -1,0 +1,40 @@
+{
+  "name": "cc-keepwarm",
+  "version": "3.0.0",
+  "description": "Keeps Claude Code's prompt cache warm in every session with a silent background ping timed from your last request, and skips the ping once the cache is already gone.",
+  "author": {
+    "name": "Victor De Simone",
+    "email": "victorsmoliveira@gmail.com",
+    "url": "https://github.com/vdsmon"
+  },
+  "homepage": "https://github.com/vdsmon/skills",
+  "repository": "https://github.com/vdsmon/skills",
+  "license": "MIT",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "pingAfterMinutes": {
+      "type": "number",
+      "title": "Ping after (minutes)",
+      "description": "Minutes after the last request that touched the cache before the ping goes out. Keep it under the cache lifetime with a few minutes to spare.",
+      "default": 55,
+      "min": 1,
+      "max": 59
+    },
+    "ttlMinutes": {
+      "type": "number",
+      "title": "Cache lifetime (minutes)",
+      "description": "How long the prompt cache lives after a request touches it. Claude Code writes 1-hour entries; past this age the cache is treated as gone and no ping is sent.",
+      "default": 60,
+      "min": 5,
+      "max": 60
+    },
+    "maxIdleHours": {
+      "type": "number",
+      "title": "Idle cap (hours)",
+      "description": "Stop pinging after this many hours without a request of your own. 0 keeps pinging until the session closes (cache reads do not count toward Max plan quota).",
+      "default": 0,
+      "min": 0,
+      "max": 168
+    }
+  }
+}

@@ -36,9 +36,6 @@ input=$(cat)
 if ! command -v jq >/dev/null 2>&1; then
   hook_event=$(printf '%s' "$input" | sed -n 's/.*"hook_event_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
   [ -n "$hook_event" ] || hook_event="PostToolUse"
-  # keep the one-time notice for a prompt that can relay it (keepalive ticks: see below)
-  [ "$hook_event" = "UserPromptSubmit" ] &&
-    printf '%s' "$input" | grep -qE '"prompt"[[:space:]]*:[[:space:]]*"cc-cache-keepalive"' && exit 0
   jq_marker="$STATE_DIR/jq-missing-warn-marker"
   [ -f "$jq_marker" ] && exit 0
   mkdir -p "$STATE_DIR"
@@ -48,18 +45,11 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 rm -f "$STATE_DIR/jq-missing-warn-marker" 2>/dev/null
 
-# one jq pass over the payload; the last line is true only for a cc-cache-keepalive tick
-{ read -r hook_event; read -r session_id; read -r agent_id; read -r keepalive_tick; } <<< "$(
+# one jq pass over the payload
+{ read -r hook_event; read -r session_id; read -r agent_id; } <<< "$(
   printf '%s' "$input" | jq -r '(.hook_event_name // "PostToolUse"), (.session_id // ""),
-    (.agent_id // ""), (.hook_event_name == "UserPromptSubmit" and .prompt == "cc-cache-keepalive")' 2>/dev/null)"
+    (.agent_id // "")' 2>/dev/null)"
 case "$hook_event" in ''|null) hook_event="PostToolUse" ;; esac
-
-# A cc-cache-keepalive cron tick cannot act on anything this guard says: the keepalive guard
-# blocks most ticks, which drops every sibling hook's context with the prompt, and the ticks
-# it lets through are told to call no tool. A marker written here would spend the full
-# WARN/PARK (auto-resume cron, push) on a turn that throws it away and leave the next real
-# prompt only the one-line repeat. Nothing to poll for either.
-[ "$keepalive_tick" = "true" ] && exit 0
 
 # GC: markers from sessions that ended while over-threshold or mid-fault are never
 # cleaned by the in-session paths, and a crash between tmp write and rename can orphan

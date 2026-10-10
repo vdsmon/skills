@@ -20,9 +20,9 @@ run = "scripts/test-offline.sh"
 description = "Run the cc-usage-guard hook test suite (pass --soak for the race check)"
 run = "bash plugins/cc-usage-guard/tests/test-usage-guard.sh"
 
-[tasks."test:cache-keepalive"]
-description = "Run the cc-cache-keepalive hook test suite (guard + sensor, offline)"
-run = "bash plugins/cc-cache-keepalive/tests/test-cache-keepalive.sh"
+[tasks."test:keepwarm"]
+description = "Run the cc-keepwarm mod tests (needs the claude CLI, so CI does not run them)"
+run = "claude plugin validate plugins/cc-keepwarm && claude plugin test plugins/cc-keepwarm"
 
 [tasks."test:prep-exit"]
 description = "Run the prep-exit script checks (handoff.sh and baseline.sh, offline)"
@@ -35,10 +35,6 @@ run = "bash plugins/open-pr/tests/test-open-pr.sh"
 [tasks."test:start-work"]
 description = "Run the start-work script tests (offline)"
 run = "bash plugins/start-work/tests/test-start-work.sh"
-
-[tasks."test:keepalive-live"]
-description = "Live cron-tick check for cc-cache-keepalive: spends tokens, spawns a bg session, ~5 min"
-run = "bash plugins/cc-cache-keepalive/tests/live-gate-e2e.sh --live"
 
 [tasks.verify]
 description = "Fail if derived files are stale (sync not run after a plugin change) or scripts/check.py finds a broken invariant"
