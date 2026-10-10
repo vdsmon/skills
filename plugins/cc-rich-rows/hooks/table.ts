@@ -113,9 +113,3 @@ export function markdown(table: Table): string {
   const line = (cells: readonly string[]) => `| ${cells.map(escape).join(' | ')} |`
   return [line(table.header), `|${table.header.map(() => '---').join('|')}|`, ...table.rows.map(line)].join('\n')
 }
-
-/** Whether the table, boxed as a reply draws one, fits in `columns` with no cell wrapped. */
-export function fits(table: Table, columns: number): boolean {
-  const widths = table.header.map((cell, i) => Math.max(cell.length, ...table.rows.map(row => row[i]?.length ?? 0)))
-  return widths.reduce((sum, width) => sum + width + 3, 1) <= columns
-}

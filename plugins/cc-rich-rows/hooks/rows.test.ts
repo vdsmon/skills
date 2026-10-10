@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { fits, markdown, outputText, tableOf } from './table'
+import { markdown, outputText, tableOf } from './table'
 
 const VIEWPORT = { columns: 100, rows: 40, isFullscreen: true }
 const JSON_ROWS = JSON.stringify([
@@ -48,6 +48,12 @@ test('a Bash JSON array of objects draws as a table, with rows and time in the f
   expect((await ui.find({ type: 'Text' }))?.text).toBe('2 rows · 1.2s')
 })
 
+test('a table wider than the transcript still draws, its cells left to wrap', async ($, on) => {
+  world(on)
+  const ui = await mount($, 'Bash', bash(JSON.stringify([{ text: 'x'.repeat(120) }])), { columns: 40 })
+  expect((await ui.find({ type: 'Markdown' }))?.props.text).toContain('x'.repeat(120))
+})
+
 test('an MCP text block holding CSV draws as a table', async ($, on) => {
   world(on)
   const ui = await mount($, 'mcp__db__query', [{ type: 'text', text: 'id,name\n1,"Smith, Ann"\n2,Bo\n' }])
@@ -58,11 +64,8 @@ test('an MCP text block holding CSV draws as a table', async ($, on) => {
 test('output that would not show whole, or is not a table, keeps the engine drawing', async ($, on) => {
   world(on)
   const many = JSON.stringify(Array.from({ length: 21 }, (_, n) => ({ n })))
-  const wide = JSON.stringify([{ text: 'x'.repeat(120) }])
   const cases: [string, unknown, { isErrored?: boolean; columns?: number }?][] = [
     ['Bash', bash(many)],
-    ['Bash', bash(wide)],
-    ['Bash', bash(JSON_ROWS), { columns: 40 }],
     ['Bash', bash(JSON_ROWS), { isErrored: true }],
     ['Bash', bash(JSON_ROWS, { stderr: 'warning: x' })],
     ['Bash', bash(JSON_ROWS, { backgroundTaskId: 'b1' })],
@@ -141,8 +144,6 @@ test('table helpers', async () => {
   expect(tableOf('Hello, world\nHow are, you')).toBeNull()
   expect(tableOf('name,name\n1,2')).toBeNull()
   expect(markdown({ header: ['a|b'], rows: [['x\ny']] })).toBe('| a\\|b |\n|---|\n| x y |')
-  expect(fits({ header: ['ab'], rows: [['abcd']] }, 8)).toBe(true)
-  expect(fits({ header: ['ab'], rows: [['abcd']] }, 7)).toBe(false)
   expect(outputText('mcp__x__y', { content: [{ type: 'text', text: 'a' }, { type: 'image', data: '' }] })).toBeNull()
   expect(outputText('mcp__x__y', 'plain')).toBe('plain')
   expect(outputText('Bash', bash('out', { returnCodeInterpretation: 'No matches found' }))).toBeNull()

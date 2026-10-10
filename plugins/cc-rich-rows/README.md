@@ -31,14 +31,12 @@ Claude Code folds read-only calls, which make most of this output (`gh`, `curl`,
 
 ## Nothing is hidden
 
-The mod draws a table only when all of it fits: 20 rows or fewer, 10 columns or fewer, and as wide as the transcript. Any other output keeps Claude Code's own drawing, so no row or cell is ever cut away. Claude Code does not tell a mod when ctrl+o expands a row, so a table that hid rows would hide them there too.
+The mod draws a table only when it holds every row: 20 rows or fewer, and 10 columns or fewer. Any other output keeps Claude Code's own drawing, so no row is ever cut away. A table wider than the transcript wraps its cells, as a table in a reply does. Claude Code does not tell a mod when ctrl+o expands a row, so a table that hid rows would hide them there too.
 
 It also leaves alone:
 
 - an errored call, and Bash output with anything beside stdout (stderr, an interrupt, a background task, a note such as "No matches found")
 - CSV whose first line does not look like a header (short names that start with a letter, none twice) or reads like prose (`, `), such as `gh pr list` without `--json`
-
-The width check uses the whole terminal. Beside a docked pane the transcript is narrower, so a wide table may wrap there.
 
 ## Tests
 

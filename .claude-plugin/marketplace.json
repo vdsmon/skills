@@ -144,7 +144,7 @@
     {
       "name": "cc-rich-rows",
       "source": "./plugins/cc-rich-rows",
-      "description": "Draws Bash and MCP tool output that is a JSON array of objects, or CSV or TSV with a header, as a table in the Claude Code transcript. Output that would not fit whole keeps its usual drawing. Claude Code only.",
+      "description": "Draws Bash and MCP tool output that is a JSON array of objects, or CSV or TSV with a header, as a table in the Claude Code transcript. Output too long to show whole keeps its usual drawing. Claude Code only.",
       "version": "1.0.0"
     }
   ]
