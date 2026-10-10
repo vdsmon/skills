@@ -52,6 +52,12 @@
       "version": "1.0.0"
     },
     {
+      "name": "cc-changes",
+      "source": "./plugins/cc-changes",
+      "description": "A side pane that lists every file the Claude Code session created, edited or deleted, with net line counts, and shows a file's diff when you press it. Claude Code only.",
+      "version": "1.0.0"
+    },
+    {
       "name": "prep-compact",
       "source": "./plugins/prep-compact",
       "description": "Audit in-flight session state before compaction truncates history, and save what would be lost. Commits real work locally, syncs stale plan and state files, and notes chat-only decisions, asking first only for risky items, then prints a paste-ready /compact message plus a queued follow-up. Portable across SKILL.md-native hosts.",

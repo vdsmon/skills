@@ -24,6 +24,10 @@ run = "claude plugin validate plugins/cc-quiet-watch && claude plugin test plugi
 description = "Run the cc-turn-review mod tests (needs the claude CLI, so CI does not run them)"
 run = "claude plugin validate plugins/cc-turn-review && claude plugin test plugins/cc-turn-review"
 
+[tasks."test:changes"]
+description = "Run the cc-changes mod tests (needs the claude CLI, so CI does not run them)"
+run = "claude plugin validate plugins/cc-changes && claude plugin test plugins/cc-changes"
+
 [tasks."test:pitstop"]
 description = "Run the cc-pitstop mod tests (needs the claude CLI, so CI does not run them)"
 run = "claude plugin validate plugins/cc-pitstop && claude plugin test plugins/cc-pitstop"
