@@ -22,7 +22,7 @@ It replaces `cc-session-name`, which is gone. Uninstall that one if you still ha
 
 When it leaves the name alone:
 
-- **You named the session.** A `/rename`, a rename from another surface, or a name the session already had is yours: the mod stops naming that session. `/autotitle on` lets it follow the work again from that name.
+- **You named the session.** A `/rename` the mod did not run, a kebab-case name it did not set (say, a job renamed from the jobs list), any rename after the mod's own name, or a name a resumed session already had: the mod stops naming that session. `/autotitle on` lets it follow the work again from that name. A sentence-case title the host gave before the mod's first name, such as the desktop app's own, is replaced.
 - **Not interactive.** `claude -p` and SDK runs are never named.
 - **Subagents.** Their turns do not count.
 

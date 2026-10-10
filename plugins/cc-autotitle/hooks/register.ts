@@ -70,6 +70,10 @@ function parse(text: string) {
   return t.length <= MAX_CHARS && NAME.test(t) ? t : undefined
 }
 
+// Only a kebab-case name is offered back to keep; a host title such as the
+// desktop app's sentence-case one would be echoed and then dropped as not a name.
+const keepable = (name: string | null) => (name && parse(name) ? name : null)
+
 type Pick = { isNamed: true; name: string } | { isNamed: false; reason: string }
 
 async function pick($: EngineInterface, current: string | null, hint?: string): Promise<Pick> {
@@ -87,9 +91,9 @@ async function save($: EngineInterface) {
 }
 
 // Loads the session's saved name on its first prompt, after a resume, or
-// when /clear moved to a new session id.
+// when /clear moved to a new session id. Returns whether the plugin knew the session.
 async function ensure($: EngineInterface, id: string) {
-  if ((await read($, state)).sessionId === id) return
+  if ((await read($, state)).sessionId === id) return true
   const saved = (await $.store.get(`s:${id}`)) as Partial<Saved> | undefined
   const lastSet = typeof saved?.lastSet === 'string' ? saved.lastSet : null
   await update($, state, cur => ({
@@ -101,6 +105,12 @@ async function ensure($: EngineInterface, id: string) {
     pinned: saved?.pinned === true,
     nextAt: lastSet ? later(0) : cfg.first,
   }))
+  return saved !== undefined
+}
+
+async function pin($: EngineInterface) {
+  await update($, state, s => ({ ...s, pinned: true, pending: null, pinOnApply: false }))
+  await save($)
 }
 
 async function prune($: EngineInterface) {
@@ -118,7 +128,7 @@ async function check($: EngineInterface) {
   try {
     const s = await read($, state)
     if (!due(s)) return
-    const current = s.lastSeen ?? s.lastSet
+    const current = keepable(s.lastSet)
     const r = await pick($, current)
     await update($, state, cur => {
       if (cur.sessionId !== s.sessionId) return cur
@@ -154,9 +164,11 @@ async function apply($: EngineInterface, title: string | null) {
     }
     // After /autotitle on, whatever the session is called becomes the base.
     if (s.adopt) return { ...seen, adopt: false, lastSet: title, nextAt: title ? later(s.turns) : cfg.first }
-    // Someone else named the session (/rename, another surface, an old name):
-    // it is theirs from now on.
-    if (title && title !== s.lastSet) return { ...seen, pinned: true, pending: null }
+    // A name this plugin did not set is yours when it replaced one the plugin
+    // set, or when it is kebab-case like the names people type (a job renamed
+    // from the jobs list). Any other, such as the desktop app's own
+    // sentence-case title, is the host's and gets replaced.
+    if (title && title !== s.lastSet && (s.lastSet || parse(title))) return { ...seen, pinned: true, pending: null }
     if (!s.pending || s.pinned || s.isOff || s.pending === title) return seen
     name = s.pending
     return {
@@ -174,7 +186,7 @@ async function apply($: EngineInterface, title: string | null) {
 
 async function nameNow($: EngineInterface, hint?: string) {
   const s = await read($, state)
-  const r = await pick($, s.lastSeen ?? s.lastSet, hint)
+  const r = await pick($, keepable(s.lastSeen ?? s.lastSet), hint)
   if (!r.isNamed) {
     await update($, state, cur => ({ ...cur, stats: { ...cur.stats, checks: cur.stats.checks + 1, failures: cur.stats.failures + 1 } }))
     return r.reason === 'nothing-to-fork' ? 'Nothing to name yet.' : `No name this time (${r.reason}). Try again.`
@@ -259,6 +271,32 @@ export const register: Register = (on, options) => {
     }
     if (word === 'status') return { text: await report($) }
     return { text: await nameNow($, arg || undefined) }
+  })
+
+  // A /rename this plugin did not run is the clearest sign the name is yours.
+  on('command.run', { command: 'rename' }, async ($, e, next) => {
+    if (e.origin.kind !== 'plugin') {
+      try {
+        await ensure($, await $.session.id())
+        await pin($)
+      } catch {
+        // Never let bookkeeping break the rename it rides on.
+      }
+    }
+    return next(e)
+  })
+
+  // A session resumed or forked with a name the plugin has no record of
+  // predates it: that name may be yours, so it stays.
+  on('classic.SessionStart', async ($, e, next) => {
+    if ((e.source === 'resume' || e.source === 'fork') && e.session_title) {
+      try {
+        if (!(await ensure($, e.session_id))) await pin($)
+      } catch {
+        // Never let bookkeeping break the session start it rides on.
+      }
+    }
+    return next(e)
   })
 
   on('turn.complete', async ($, e, next) => {

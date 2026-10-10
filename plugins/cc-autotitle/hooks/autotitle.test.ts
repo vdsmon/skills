@@ -51,6 +51,7 @@ function world(on: On, entries: Record<string, unknown> = {}) {
     return { text: `Session renamed to: ${e.args}` }
   })
   on('classic.UserPromptSubmit', async () => ({}))
+  on('classic.SessionStart', async () => ({}))
   on('classic.PostCompact', async () => ({}))
   on('turn.complete', async (_$, e) => ({ text: e.answer }))
 
@@ -82,6 +83,16 @@ function world(on: On, entries: Record<string, unknown> = {}) {
   }
 
   return { clock, store, seen, start, prompt, turn, turns }
+}
+
+// A /rename typed at the prompt.
+function rename($: Engine, name: string) {
+  return $.command.run({
+    command: 'rename',
+    args: name,
+    origin: { kind: 'composer' },
+    presentation: { isFullscreen: true, columns: 120 },
+  })
 }
 
 function autotitle($: Engine, args = '') {
@@ -179,15 +190,39 @@ test('a failed fork counts as a failure; nothing to fork starts the count again'
   expect((await autotitle($, 'status')).text).toContain('3 checks, 1 renames, 1 failures')
 })
 
-test('a name set by hand pins the session', async ($, on) => {
+test('a /rename typed by hand pins the session', async ($, on) => {
   const w = world(on)
   await w.start($)
   await w.turns($, 1)
-  expect(await w.prompt($, 'my-own-name')).toBeUndefined()
-  await w.turn($)
-  await w.turns($, 30, 'my-own-name')
-  expect(w.seen.forks).toBe(0)
+  await rename($, 'My Own Name')
   expect(w.store.get(`s:${SID}`)).toMatchObject({ lastSet: null, pinned: true })
+  await w.turns($, 30, 'My Own Name')
+  expect(w.seen.forks).toBe(0)
+})
+
+test('a kebab-case name the plugin did not set pins (a job renamed from the jobs list)', async ($, on) => {
+  const w = world(on)
+  await w.start($)
+  await w.turns($, 1)
+  await w.turns($, 30, 'my-job-name')
+  expect(w.seen.forks).toBe(0)
+})
+
+test("the desktop app's own sentence-case title is replaced at the first check", async ($, on) => {
+  const w = world(on)
+  await w.start($)
+  await w.turns($, 3, 'Open PRs and marketplace update')
+  expect(w.seen.forks).toBe(1)
+  expect(w.seen.prompts[0]).not.toContain('The session is now named')
+  expect(await w.prompt($, 'Open PRs and marketplace update')).toBe('pr-17-review-fixes')
+})
+
+test('a resumed session with a name the plugin has no record of stays pinned', async ($, on) => {
+  const w = world(on)
+  await w.start($)
+  await $.classic.SessionStart({ source: 'resume', session_title: 'Old Desktop Title', session_id: SID })
+  await w.turns($, 30, 'Old Desktop Title')
+  expect(w.seen.forks).toBe(0)
 })
 
 test('a name set by hand after an automatic one pins too', async ($, on) => {

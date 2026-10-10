@@ -54,8 +54,12 @@ A good reply that differs from the current name becomes `pending`.
 
 On the next `classic.UserPromptSubmit` the mod stores `e.session_title` as `lastSeen`, then:
 
-1. If `e.session_title` is set and is not `lastSet`, someone else named the session: you with `/rename`, another surface, or a session resumed with a name. Set `pinned`, drop `pending`, apply nothing.
+1. If `e.session_title` is set, is not `lastSet`, and either `lastSet` is set or the title is kebab-case, someone else named the session: you with `/rename`, a job renamed from the jobs list, or a rename after the mod's name on any surface. Set `pinned`, drop `pending`, apply nothing. A sentence-case title before the mod's first name is the host's own (the desktop app writes one at the first prompt) and is replaced.
 2. Else, if `pending` is set and differs from `e.session_title`, return `{ ...await next(e), sessionTitle: pending }` and store it as `lastSet`.
+
+Two more signals pin the session: a `/rename` the mod did not run (a `command.run` hook on `rename` reads `origin`), and a session resumed or forked with a name the mod has no record of (`classic.SessionStart`), since that name predates the mod.
+
+Why these rules: in 30 days of transcripts, all 34 desktop sessions with a saved name got the app's own sentence-case title at the first prompt, with no `/rename`, and all 9 CLI names were kebab-case names you chose. Auto-named background jobs write no `custom-title` (experiments #24). A desktop rename done by hand before the mod's first name is replaced; that happened 0 times in those 30 days.
 
 So the name lands with your next prompt. A check after the last turn of a session never lands; that is fine, since a session that ended does not drift.
 
