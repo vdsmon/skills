@@ -1,6 +1,6 @@
 # cc-wrap-up: design
 
-Status: approved in conversation on 2026-10-10. This spec is waiting for review.
+Status: approved on 2026-10-10. Updated the same day with the probe results (`docs/experiments.md` #21 to #25) and the decision to assume a fixed 1M window.
 
 ## Goal
 
@@ -14,6 +14,8 @@ Today the user does this by hand: watch the token count, run the skill, copy the
 ### Why the numbers
 
 An earlier analysis of the user's transcripts found 28 compactions (25 manual, 3 auto) in 13 sessions. The median size before a compaction was about 780k tokens, but the range was 146k to 968k. So 780k describes a habit. It is not the right moment. The right moment is a seam in the work, so a token line only starts the search for a seam. The user chose a start line of 500k and a step of 100k.
+
+The mod assumes a 1M window, the window the user works in. Auto-compaction runs at 967k there (experiment #24). Fixed numbers keep the mod simple: it reads no threshold and does not scale for other windows.
 
 ### Success criteria
 
@@ -37,32 +39,30 @@ An earlier analysis of the user's transcripts found 28 compactions (25 manual, 3
 
 The mod works from main-thread turns only: a `turn.complete` with no `agentId` and with `reason: 'answer'`. It never draws or acts during a running turn, in a `claude -p` or SDK run, or in a subagent.
 
-**Inputs, read after each answered turn:**
-
-- `tokens`: `(await $.session.usage()).context.tokens`. The plain call costs nothing.
-- `threshold`: the auto-compact threshold, from `$.session.usage({ breakdown: 'summary' })`, field `breakdown.autoCompactThreshold`. When auto-compaction is off, use `context.window`. The start line depends on it, so read it at the first answered turn and cache it for each model. Read it again after a compaction or a model switch. The `summary` breakdown estimates locally and makes no API call.
+**Input:** `tokens`, read after each answered turn as `(await $.session.usage()).context.tokens`. The plain call costs nothing. It is null until a session's first response (experiment #24); then the turn is skipped.
 
 **Lines** (each one is a setting, see "Settings"):
 
-- `start = min(startTokens, threshold / 2)`. With the defaults on a 1M window this is 500k. On a 200k-window model it becomes half the threshold, so the cue still fires.
-- `urgent = threshold - urgentMarginTokens`.
-- `line` begins at `start`. **Later** sets it to the current token count plus `stepTokens`: Later at 530k moves the line to 630k.
+- `line` begins at `startTokens` (500k). **Later** sets it to the current token count plus `stepTokens` (100k): Later at 530k moves the line to 630k.
+- `urgentTokens` (920k) is a fixed line about 50k below where auto-compaction runs.
 
 **A seam** is an answered turn that ended with either of these:
 
-- a commit made during the turn: a `tool.call` on `Bash` whose command runs `git commit` and whose result is not an error; or
-- a clean tree: `git status --porcelain` through `$.process.run` gives no output. Run this only when `tokens >= line`, and at most once per turn.
+- a commit made during the turn: a `tool.call` on `Bash` whose command runs `git commit` and whose result has no `isError` and no `deny`; or
+- a clean tree: `git status --porcelain` through `$.process.run` gives no output with exit code 0. Run this only when `tokens >= line`, and at most once per turn.
 
 Outside a git repository there are no seams, so the step fallback below decides.
 
 **Rules, checked in order after each answered turn:**
 
 1. The mod is off for this session, or the phase is `prepping`, `ready-compact` or `ready-handoff`: do nothing.
-2. `tokens >= urgent` and the phase is not `urgent`: set the phase to `urgent`. Send `$.ui.notify` only on the first urgent turn after each crossing. A compaction that brings the tokens below `urgent` resets this.
+2. `tokens >= urgentTokens` and the phase is not `urgent`: set the phase to `urgent`. Send `$.ui.notify` only on the first urgent turn after each crossing. A compaction that brings the tokens below `urgentTokens` resets this.
 3. The phase is `cue` or `urgent`: keep it.
 4. `tokens >= line + stepTokens`: set the phase to `cue`. No seam came inside the step.
 5. `tokens >= line` and this turn is a seam: set the phase to `cue`.
 6. `tokens >= line`: set the phase to `armed` (watching for a seam). Nothing is drawn.
+
+After a compaction or a `/clear`, the tokens drop below every line. The phase goes back to `idle` and `line` back to `startTokens`.
 
 ## The band
 
@@ -70,28 +70,30 @@ The band is an `AbovePrompt` `ui.render` hook, built with `Box`, `Text` and `But
 
 | Phase | Shows | Buttons |
 | --- | --- | --- |
-| `cue` | `612k of 967k · good moment to wrap up` | [Compact] [Hand off] [Later] |
-| `urgent` | `948k of 967k · auto-compact is close, and it runs with no audit` | [Compact] [Hand off] [Later] |
+| `cue` | `612k tokens · good moment to wrap up` | [Compact] [Hand off] [Later] |
+| `urgent` | `948k tokens · auto-compact runs at 967k, with no audit` | [Compact] [Hand off] [Later] |
 | `prepping` | `Preparing to compact…` or `Preparing the handoff…` | none |
 | `ready-compact` | The first line of the compact message, plus `1 question still open` when the skill held something back | [Compact now] [Edit] [Not now] |
 | `ready-handoff` | `Handoff at <path>`, plus the open-question note | [Fresh session here] [Copy prompt] [Done] |
 
+**Skill commands.** A plugin skill's command is namespaced (`prep-compact:prep-compact`, experiment #24). The mod finds each one in `$.command.list()` as the entry named `prep-compact` (or `prep-exit`) or ending in `:prep-compact` (or `:prep-exit`).
+
 **Button actions:**
 
-- **Compact:** `$.command.run({ command: 'prep-compact' })`, then the phase becomes `prepping`. When prep-compact is not installed (not in `$.command.list()`), the button changes to plain **Compact now**, which compacts without a message.
-- **Hand off:** `$.command.run({ command: 'prep-exit' })`, then the phase becomes `prepping`. When prep-exit is not installed, the button is not shown.
+- **Compact:** `$.command.run` with the prep-compact command, then the phase becomes `prepping`. When prep-compact is not installed, the button changes to plain **Compact now**, which compacts without a message.
+- **Hand off:** `$.command.run` with the prep-exit command, then the phase becomes `prepping`. When prep-exit is not installed, the button is not shown.
 - **Later:** move `line` as described above, and set the phase to `idle`. In the urgent state, Later hides the band until the next answered turn.
-- **Compact now:** `$.session.compact({ instructions: message })`. When it resolves without `skip`, send the follow-up with `$.prompt.submit({ text: followUp, asUser: true })` and reset to `idle`, then read the threshold again. On `skip`, show its reason with `$.ui.toast` and keep the `ready-compact` phase.
+- **Compact now:** `$.session.compact({ instructions: message })` (experiment #22). The mod's own `session.compact` hook does not see this call, so the mod acts on the call's result. When it resolves without `skip`, send the follow-up with `$.prompt.submit({ text: followUp, asUser: true })` and reset. On `skip`, show its reason with `$.ui.toast` and keep the `ready-compact` phase.
 - **Edit:** `$.prompt.fill({ text: '/compact ' + message })` keeps the follow-up pending. The mod's `session.compact` hook (see below) sends it after the user's own `/compact`.
 - **Not now** and **Done:** set the phase to `idle`. Done means the handoff already sits in `HANDOFF.md` and memory, for another machine or a later day.
-- **Fresh session here:** keep the resume prompt in a module variable, run `$.command.run({ command: 'clear' })`, then call `$.prompt.submit({ text: resumePrompt, asUser: true })`. A `/clear` keeps the process and the module, starts a new session id, and fires no `session.start`. So the module variable carries the prompt across, and the new session's `$.state` starts empty.
+- **Fresh session here:** keep the resume prompt in a module variable, run `$.command.run({ command: 'clear' })`, then call `$.prompt.submit({ text: resumePrompt, asUser: true })`. Experiment #21 confirmed this: the module lives across `/clear`, no `session.start` fires, and the submit runs as the new session's first turn. The new session's `$.state` starts empty.
 - **Copy prompt:** `$.ui.copy({ text: resumePrompt, surface: e.surface })`. When it gives `isCopied: false`, toast the reason and keep the band, because the prompt is also printed in the transcript.
 
-**A stale payload:** a `ready-*` payload describes the session at the moment the skill ran. On the next `prompt.submit` from the composer (the user's own words, not the mod's follow-up), drop the payload and set the phase to `idle`. A slash command such as the user's `/compact` after Edit does not count as a new prompt.
+**A stale payload:** a `ready-*` payload describes the session at the moment the skill ran. When the user sends a prompt of their own (a `prompt.submit` with origin `composer` or `bridge`), drop the payload and set the phase to `idle`. The mod's own submits never reach its own hook, and a slash command such as `/compact` arrives as `command.run`, not as a prompt (experiments #22 and #24), so neither one drops it.
 
 ## The tool: how a skill hands its result to the mod
 
-In `session.start`, the mod registers one tool with `$.tool.register`. The model sees it as `mcp__cc-wrap-up__ready`. It is deferred (`isDeferred: true`), so it costs nothing in the prompt until it is used. The mod answers it in a `tool.call` hook with the matcher `{ tool: 'mcp__cc-wrap-up__ready' }`.
+In `session.start`, the mod registers one tool with `$.tool.register`. The model sees it as `mcp__cc-wrap-up__ready`. It is deferred (`isDeferred: true`), so it costs nothing in the prompt until it is used; a deferred plugin tool is listed by name, and the model loads and calls it (experiment #23). The mod answers it in a `tool.call` hook with the matcher `{ tool: 'mcp__cc-wrap-up__ready' }`. The input fields arrive as properties of `e` (`e.kind`, `e.message`, and so on).
 
 Input schema:
 
@@ -110,18 +112,17 @@ Input schema:
 }
 ```
 
-The hook checks the fields for the given `kind`. On success, it stores the payload, sets the phase to `ready-compact` or `ready-handoff`, and returns a one-line result: "The wrap-up band now offers this to the user. Print your usual blocks too." With a missing field, it returns an error that names the field.
+The hook checks the fields for the given `kind`. On success, it stores the payload, sets the phase to `ready-compact` or `ready-handoff`, and returns `{ result }` with one line: "The wrap-up band now offers this to the user. Print your usual blocks too." With a missing field, it returns `{ deny }` with a text that names the field.
 
 If a `prepping` turn ends without a tool call (an old skill version, or the model skipped the call), the mod sets the phase to `idle` and shows the toast `prep finished without handing its result to wrap-up; use the printed blocks`.
 
 ## The session.compact hook
 
-The hook uses the matcher `{ trigger: 'manual' }` and runs only for the main loop (no `agentId`):
+The hook runs only for the main loop (no `agentId`). The mod's own `$.session.compact` never reaches it.
 
-- A `ready-compact` payload is pending, and `e.instructions` is empty: call `next({ ...e, instructions: message })`.
-- A follow-up is pending: after `next(e)` resolves without `skip`, send it with `$.prompt.submit({ text: followUp, asUser: true })`, then reset to `idle`.
-
-For any other trigger, the hook only passes the event on with `next(e)`.
+- **`manual`** (the user's own `/compact`): when a `ready-compact` payload is pending and `e.instructions` is empty, call `next({ ...e, instructions: message })`. When the result is not a `skip` and a follow-up is pending, send the follow-up with `$.prompt.submit({ text: followUp, asUser: true })`, then reset.
+- **`precompute`**: while the phase is `prepping` or `ready-compact`, return `{ skip: 'cc-wrap-up: a prep result is pending' }`. This keeps a summary computed without the prep's instructions from standing in for the real one. The probe could not make a precompute fire, so this guard is a precaution (experiment #25).
+- **Any other trigger:** pass it on with `next(e)`. After an `auto` compaction that is not skipped, reset the cue (see "When the cue shows").
 
 ## Commands
 
@@ -137,9 +138,9 @@ The settings are `userConfig` values in `plugin.json`, read in `register` the wa
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `startTokens` | 500000 | The context size where the mod starts watching for a seam. It is capped at half the auto-compact threshold. |
+| `startTokens` | 500000 | The context size where the mod starts watching for a seam. |
 | `stepTokens` | 100000 | How far Later moves the line, and how long the mod waits for a seam before it shows the cue anyway. |
-| `urgentMarginTokens` | 50000 | How far below the auto-compact threshold the cue becomes urgent. |
+| `urgentTokens` | 920000 | The context size where the cue becomes urgent. Auto-compaction runs at 967k on a 1M window. |
 
 ## State
 
@@ -150,28 +151,20 @@ These are `$.state` atoms for each session, declared in `types/index.d.ts`:
 - `payload`: the last tool input, or null.
 - `prepKind`: `'compact' | 'handoff'` while prepping, or null.
 - `isOff`: boolean.
+- `isNotified`: boolean, true after the urgent notify of the current crossing.
 
-Module variables hold only what the mod needs for one turn or across a `/clear`: the commit seen in this turn, the threshold cached for each model, and the resume prompt during Fresh session here.
+Module variables hold only what the mod needs for one turn or across a `/clear`: the commit seen in this turn, and the resume prompt during Fresh session here.
 
 ## Failure direction
 
-- **When unsure, the cue stays silent.** A band with wrong numbers is noise. When `$.session.usage()` gives no `tokens` (a new session, or just after a compaction) or a call fails, skip that turn. The next answered turn checks again.
-- **Only the user acts.** The mod compacts, clears, submits or sends only after a button press or a `/wrap-up` command. A failed compaction or a failed copy keeps the payload and the band, so the user can try again or use the printed blocks.
-- **Urgent fails toward showing.** If the cached threshold is missing, use `context.window` as the threshold. A wrong urgent cue costs a dismissal. A missed one lets auto-compaction run with no audit.
+- **When unsure, the cue stays silent.** A band with wrong numbers is noise. When `$.session.usage()` gives no `tokens` or a call fails, skip that turn. The next answered turn checks again.
+- **Only the user acts.** The mod compacts, clears, submits or sends only after a button press, a `/wrap-up` command, or the user's own `/compact`. A failed compaction or a failed copy keeps the payload and the band, so the user can try again or use the printed blocks.
+- **Hooks fail open.** Every hook that can block (`tool.call`, `prompt.submit`, `session.compact`, `command.run`) gets a `.catch` that calls `next(e)` when `next` has not run yet. A bug in the mod must never block a tool call, a prompt or a compaction.
 
 ## Interactions
 
 - **cc-keepwarm:** a compaction or a `/clear` ends the old cache prefix, and keepwarm already plans again from the next request. Compact now runs right after the prep turn, while the cache is still warm, so the summary request reads the long history from cache.
-- **Precomputed compaction:** the user has `precomputeCompactionEnabled: true`. The engine may already hold a summary computed without instructions. See check 2.
-
-## Checks before implementation
-
-Each check is a short probe in a scratch session. Record the results as rows in `docs/experiments.md`.
-
-1. Can `$.command.run({ command: 'clear' })` run `/clear` from a button press? Does `$.prompt.submit` then start the first turn of the new session? If not, Fresh session here fills the box with `/clear` and keeps the resume prompt for the next `prompt.submit` from the composer.
-2. With precompute on, does `$.session.compact({ instructions })` use the instructions, or does it reuse a precomputed summary without them? If it reuses one, the mod must skip the `precompute` trigger while a `ready-compact` payload is pending, or document the limit.
-3. Does `$.command.run({ command: 'prep-compact' })` resolve the plugin skill's name (it may need `prep-compact:prep-compact`)? Use `$.command.list()` to find the exact name.
-4. Does a deferred plugin tool show in the deferred-tools list, so that the skill's rule can find it by name?
+- **Precomputed compaction:** the user has `precomputeCompactionEnabled: true`. See the `precompute` guard above.
 
 ## Skill changes
 
@@ -182,15 +175,15 @@ Add one short rule at the end of each skill's output step. Both skills stay port
 
 ## Testing
 
-- `hooks/wrap-up.test.ts`, run with `claude plugin test`. Mock `$.session.usage`, `$.process.run`, `$.command.run`, `$.session.compact`, `$.prompt.submit` and `$.ui.copy`. The tests cover:
-  - the cue rules: below the line; armed with no seam; seam by commit; seam by clean tree; the step fallback; urgent with one notify per crossing; Later moving the line; subagent and `-p` turns ignored;
+- `hooks/wrap-up.test.ts`, run with `claude plugin test`. The test's `world()` answers the engine calls the mod makes. The tests cover:
+  - the cue rules: below the line; armed with no seam; seam by commit; seam by clean tree; the step fallback; urgent with one notify per crossing; Later moving the line; reset after a compaction; subagent, aborted, `-p` and null-token turns ignored;
   - the tool: a valid compact payload, a valid handoff payload, and a missing field;
   - each button's calls, including a `skip` from compaction and a failed copy;
-  - the `session.compact` hook: it fills empty instructions and sends the follow-up only after a compaction that is not skipped;
+  - the `session.compact` hook: it fills empty instructions, sends the follow-up only after a manual compaction that is not skipped, and skips `precompute` while a prep result is pending;
   - a stale payload dropped on the user's next prompt;
-  - `/wrap-up off`, `/wrap-up on` and `/wrap-up send`.
+  - `/wrap-up`, `/wrap-up off`, `/wrap-up on` and `/wrap-up send`.
 - A `mise` task `test:wrap-up`, like `test:keepwarm`: `claude plugin validate plugins/cc-wrap-up && claude plugin test plugins/cc-wrap-up`. CI does not have the `claude` CLI, so it does not run this task.
-- A manual run in a real session past 500k, with a commit as the seam, through both the compact path and the fresh-session path.
+- A manual run in a real session, with lowered `startTokens` and `stepTokens`, through both the compact path and the fresh-session path.
 
 ## Shipping
 
@@ -200,10 +193,11 @@ The change ships as one pull request:
 - `prep-compact` and `prep-exit`, each with a minor bump.
 - `mise run sync`, so the README table and the generated files are updated.
 - The `test:wrap-up` task.
-- `docs/experiments.md` rows for the four checks.
+- `docs/experiments.md` rows #21 to #25.
 
 ## Out of scope
 
+- Windows other than 1M. A user on another window sets the three token settings.
 - Merging prep-compact and prep-exit into one skill.
 - Running an audit without a press.
 - A list for picking a peer session; `/wrap-up send <name>` takes a name.

@@ -8,6 +8,8 @@ Before writing an API call, look up its declaration in the types file that the p
 
 ## Task 0: probes (spike, throwaway)
 
+Done on 2026-10-10. Results are in `docs/experiments.md` #21 to #25, and the spec was updated with them and with the fixed 1M window.
+
 This task answers the spec's four checks before any mod code exists. The probe mod lives in `$CLAUDE_JOB_DIR/tmp/wrapup-probe/` and is never committed.
 
 1. Write a probe mod, `wrapup-probe`. It has:
@@ -57,16 +59,15 @@ This task answers the spec's four checks before any mod code exists. The probe m
 - The step fallback: past `line + step` with no seam, the phase becomes `cue`.
 - Urgent: the phase becomes `urgent`, with one notify. Later followed by another urgent turn does not notify again. After the tokens drop below urgent and cross it again, it notifies again.
 - Later sets `line` to the tokens plus the step.
-- With a 200k threshold, the start line is 100k.
+- After a compaction, the phase goes back to `idle` and the line back to the start.
 - Turns that do not count: a turn with an `agentId`, a turn with `reason: 'aborted'`, a non-interactive session, the mod switched off, and a missing `tokens`.
-- The threshold is read once for each model. It is read again after a compaction and after a model switch.
 
 **Code:**
 - Hooks:
   - `turn.complete`: the main thread with an answer runs the rules from the spec.
   - `tool.call` on `Bash`: after `next(e)`, note a commit seen in this turn.
   - `prompt.submit`: reset the commit flag at the start of each turn.
-  - `session.compact`: after a compaction that is not skipped, reset the threshold cache and the urgent-notify flag.
+  - `session.compact`: after a compaction that is not skipped, reset the phase, the line and the urgent-notify flag.
 - Write the decision as one pure function, `decide(state, inputs)`. It returns the next phase, the line and whether to notify. The hooks only gather the inputs and apply the result.
 
 Commit.
