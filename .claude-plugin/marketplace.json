@@ -43,13 +43,13 @@
       "name": "prep-compact",
       "source": "./plugins/prep-compact",
       "description": "Audit in-flight session state before compaction truncates history, and save what would be lost. Commits real work locally, syncs stale plan and state files, and notes chat-only decisions, asking first only for risky items, then prints a paste-ready /compact message plus a queued follow-up. Portable across SKILL.md-native hosts.",
-      "version": "1.9.1"
+      "version": "1.10.0"
     },
     {
       "name": "prep-exit",
       "source": "./plugins/prep-exit",
       "description": "Save what only the conversation knows before a session ends, so a fresh session can pick up the work. Commits real work locally, syncs state files, writes a handoff note and a memory pointer, asks once only for risky items, and prints a paste-ready resume prompt. Portable across SKILL.md-native hosts.",
-      "version": "0.2.0"
+      "version": "0.3.0"
     },
     {
       "name": "prep-goal",

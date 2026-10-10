@@ -110,7 +110,9 @@ Then the memory entry, in the host's persistent memory. In Claude Code that is t
 
 Print the format below and nothing else. Do not start new work after this; the next thing that happens is the exit.
 
-If the user answers the held-back question before leaving: act on each yes, then edit the handoff (move the item from Pending to Done this session). Do not re-run `handoff.sh`, which starts a blank note. Reprint the resume prompt only if it changed.
+If a tool named `mcp__cc-wrap-up__ready` is listed (load it first if it is deferred), call it before you print, with `kind: handoff`, the resume prompt as `resumePrompt`, the absolute `HANDOFF.md` path as `handoffPath`, and `openQuestion: true` when **Needs your yes** holds a question.
+
+If the user answers the held-back question before leaving: act on each yes, then edit the handoff (move the item from Pending to Done this session). Do not re-run `handoff.sh`, which starts a blank note. Reprint the resume prompt only if it changed, and then call the tool again.
 
 ## Format
 

@@ -119,6 +119,8 @@ Keep both terse and non-overlapping: context in the compact message, the next ac
 
 Tell the user plainly: send the compact block, then immediately paste the follow-up so it queues and chains.
 
+If a tool named `mcp__cc-wrap-up__ready` is listed (load it first if it is deferred), call it with `kind: compact`, the focus message without the `/compact ` prefix as `message`, the follow-up as `followUp`, and `openQuestion: true` when **Needs your yes** holds a question. Print both blocks as usual. Call it again whenever you reissue the message.
+
 ## Format
 
 No audit recap. Saves done -> lead with **Saved before compacting**, one line per action with its evidence (commit hash and subject, file path, what the note holds). Something held back -> **Needs your yes** with the single batched question. Neither when nothing needed saving (the common case).
