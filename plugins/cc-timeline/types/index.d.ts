@@ -25,6 +25,8 @@ export type Turn = {
   /** Null while it runs. */
   end: number | null
   calls: Call[]
+  /** Calls left out from the start of a very long turn. */
+  dropped?: number
 }
 
 declare module 'claude-code' {

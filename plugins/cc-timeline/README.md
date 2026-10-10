@@ -38,6 +38,7 @@ Agent Scan the repo            ████████████        71s
 
 - A subagent is matched to its Agent call by the call's description. Two agents started at once with the same description may sit under the wrong row.
 - Times are wall-clock time around each call, including the time a permission prompt waits for you.
+- A turn keeps its last 300 calls; the header says how many earlier ones it left out.
 - `/clear` starts the history over.
 
 ## Commands

@@ -134,6 +134,17 @@ test('the arrows walk back through earlier turns, and a new turn shows the lates
   expect((await ui.find({ type: 'Text', text: /^Turn/ }))?.text).toContain('Turn 3')
 })
 
+test('a very long turn keeps its last 300 calls and says how many it left out', async ($, on) => {
+  const seen = world(on)
+  await start($)
+  await $.turn.start({ text: 'big run', turnId: 't1' })
+  for (let n = 0; n < 305; n += 1) await run($, seen, { tool: 'Read', tool_use_id: `r${n}`, file_path: `/x/${n}.ts` }, 10)
+  const ui = await pane($)
+  expect((await ui.find({ type: 'Text', text: /^Turn/ }))?.text).toBe('Turn 1 · 3.0s… · 305 calls, first 5 not shown')
+  expect(await rowText(ui, 'r4')).toBeUndefined()
+  expect(await rowText(ui, 'r5')).toMatch(/^Read 5\.ts/)
+})
+
 test('/timeline opens the pane, and closes it when open', async ($, on) => {
   world(on)
   await start($)
