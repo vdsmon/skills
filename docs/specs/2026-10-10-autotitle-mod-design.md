@@ -40,7 +40,7 @@ On `turn.complete` for the main thread (`agentId` undefined, `reason: 'answer'`)
 - Re-check: `recheckEveryTurns` (default 10) turns after the last good check, or on the first turn after a compaction (`classic.PostCompact` on the main thread sets a flag).
 - Never when the name is pinned, auto-naming is off, or a check is already running.
 
-A due check starts a fork in the background (`void`, not awaited), so the turn ends at once. The fork runs right after a request, so the transcript is still in the cache.
+A due check starts a fork from `$.clock.after(0, …)`, so the turn ends at once and the fork is not tied to that turn. The fork runs right after a request, so the transcript is still in the cache.
 
 ### How it picks
 
@@ -94,6 +94,8 @@ The rule: when unsure, keep the current name. A wrong name is worse than an old 
 
 Atoms under the plugin key, as in cc-keepwarm: `turns`, `lastCheckTurn`, `compacted`, `pending`, `lastSet`, `lastSeen`, `pinned`, `isOff`, `failures`, `stats`. One in-flight flag lives in module memory.
 
+Atoms are lost on resume, so `lastSet` and `pinned` are also saved in `$.store` under `s:<session id>` with a timestamp, and loaded on `session.start`. A resumed session then keeps following drift, and a pinned one stays pinned. Entries older than 60 days are pruned on `session.start`.
+
 ## What it costs
 
 One fork per check: the cached prefix plus the prompt, and about 10 output tokens. On Max, cache reads do not count toward quota (experiment #1). On API billing a fork on a 480k-token session reads about $0.10 of cache. A 30-turn session has about 3 checks.
@@ -118,5 +120,4 @@ One fork per check: the cached prefix plus the prompt, and about 10 output token
 
 ## Checks during the build
 
-- Whether atoms survive a resume. If not, a resumed session with a name counts as pinned, and one without a name starts counting again. Both are safe.
 - Whether `$.model.fork` and `$.command.run` are allowed inside a `command.run` hook. If `$.command.run` is refused there, `/autotitle` sets `pending` and answers "Renames to x with your next message".
