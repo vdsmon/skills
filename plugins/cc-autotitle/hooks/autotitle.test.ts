@@ -147,7 +147,7 @@ test('a reply equal to the current name applies nothing', async ($, on) => {
 test('a reply that is not a name applies nothing and the next turn tries again', async ($, on) => {
   const w = world(on)
   await w.start($)
-  for (const bad of ['Sure! pr-17-fixes', 'fixes', 'one-two-three-four-five-six-seven', 'a-very-long-session-name-that-runs-past-40', 'PR-17-fixes']) {
+  for (const bad of ['Sure! pr-17-fixes', 'fixes', 'a-b-c-d-e-f-g-h-i-j-k', 'a-very-long-session-name-that-runs-past-40', 'PR-17-fixes']) {
     w.seen.replies.push(named(bad))
   }
   await w.turns($, 3)

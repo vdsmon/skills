@@ -30,7 +30,7 @@ Cases (each fails before step 3):
 2. Re-check at turn 13 and not before; with `recheckEveryTurns: 0`, never.
 3. A compaction makes the next turn check.
 4. A reply equal to the current name applies nothing.
-5. Bad replies (`Sure! pr-17-fixes`, one word, 7 words, 41 chars, upper case) apply nothing, and the next turn forks again; after 3 failures in a row, no fork until the next scheduled check.
+5. Bad replies (`Sure! pr-17-fixes`, one word, 11 parts, 41 chars, upper case) apply nothing, and the next turn forks again; after 3 failures in a row, no fork until the next scheduled check.
 6. `api-error`, `empty-reply`, `aborted` count as failures; `nothing-to-fork` resets the count.
 7. A prompt whose `session_title` is not `lastSet` pins: no later fork, no `sessionTitle`.
 8. `/autotitle` forks at once, runs `rename` with the name and pins; `/autotitle focus on the PR` puts the hint in the fork prompt; with nothing to fork it answers "Nothing to name yet."
@@ -50,7 +50,7 @@ In cc-keepwarm's style: atoms plus `read`/`update`, `cfg` set from options in `r
 - `turn.complete`: skip unless main thread, `reason === 'answer'`, interactive. Count the turn. If `due()` and not `inFlight`, `$.clock.after(0, () => void check($))`. Wrap the bookkeeping in try/catch and always `return next(e)`.
 - `due()`: not off, not pinned; `failures < 3`; and either (no `lastSet` and `turns >= firstAfterTurns`) or `compacted` or (`recheckEveryTurns > 0` and `turns - lastCheckTurn >= recheckEveryTurns`). After 3 failures, set `lastCheckTurn = turns` and reset `failures`, so the next try is the next scheduled check.
 - `check($, hint?)`: fork with `prompt(current, hint)`; parse; on success set `pending` (if it differs from the current name), `lastCheckTurn = turns`, `compacted = false`, `failures = 0`; on failure `failures += 1`; on `nothing-to-fork` reset `turns` to 0. Returns the name or a reason, for the command.
-- `parse(text)`: trim, strip one pair of backticks, no case folding (a capital letter fails), match `^[a-z0-9]+(-[a-z0-9]+){1,5}$`, 40 characters at most.
+- `parse(text)`: trim, strip one pair of backticks, no case folding (a capital letter fails), match `^[a-z0-9]+(-[a-z0-9]+){1,9}$`, 40 characters at most.
 - `classic.UserPromptSubmit`: store `lastSeen = e.session_title`. If `e.session_title` is set and is not `lastSet`: set `pinned`, save, drop `pending`, return `next(e)`. Else, if `pending` differs from `e.session_title`: set `lastSet = pending`, save, clear `pending`, return `{ ...(await next(e)), sessionTitle: name }`.
 - `classic.PostCompact` (main thread): set `compacted`.
 - `session.end` with `reason: 'clear'`: reset `turns`, `lastCheckTurn`, `pending`.

@@ -46,7 +46,7 @@ A due check starts a fork from `$.clock.after(0, …)`, so the turn ends at once
 
 The fork prompt carries the rules from today's skill: lead with the subject, then the action or result; keep searchable handles; drop filler words and the repo name; lowercase English; 2 to 6 words; under about 40 characters; weigh where the work went, not the last turn. It names the current name, if any, and asks for that same name back when it still fits, so a session keeps its name unless the main work moved. It asks for the name alone, at once, without thinking (the same wording cut a keepwarm ping from about 85 to 4 output tokens, experiment #20).
 
-The reply is trimmed and checked against `^[a-z0-9]+(-[a-z0-9]+){1,5}$`, 40 characters at most. Anything else is thrown away.
+The reply is trimmed and checked against `^[a-z0-9]+(-[a-z0-9]+){1,9}$`, 40 characters at most: the prompt asks for 2 to 6 words, but a handle like `pr-31` is two parts, and the eval showed good names of 7 parts. Anything else is thrown away.
 
 A good reply that differs from the current name becomes `pending`.
 

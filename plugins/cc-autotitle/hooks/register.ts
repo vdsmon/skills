@@ -4,7 +4,8 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { Saved, State } from '../types'
 
 const COMMAND = 'autotitle'
-const NAME = /^[a-z0-9]+(?:-[a-z0-9]+){1,5}$/
+// 2 to 10 parts: the prompt asks for 2 to 6 words, and a handle like pr-31 is two parts.
+const NAME = /^[a-z0-9]+(?:-[a-z0-9]+){1,9}$/
 const MAX_CHARS = 40
 // Three failed checks in a row wait for the next scheduled check instead of forking every turn.
 const MAX_FAILURES = 3
