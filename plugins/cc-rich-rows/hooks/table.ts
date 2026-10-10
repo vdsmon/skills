@@ -1,8 +1,8 @@
 export type Table = { header: string[]; rows: string[][] }
 
-/** Past this many rows the output keeps its own drawing, so a table never hides a row. */
-export const MAX_ROWS = 20
 const MAX_COLUMNS = 10
+/** Output past this many characters keeps its own drawing: a render runs again on each scroll. */
+const MAX_TEXT = 1_000_000
 const SCALAR_WIDTH = 60
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -44,7 +44,7 @@ function fromJson(text: string): Table | null {
   } catch {
     return null
   }
-  if (!Array.isArray(parsed) || parsed.length === 0 || parsed.length > MAX_ROWS || !parsed.every(isRecord)) return null
+  if (!Array.isArray(parsed) || parsed.length === 0 || !parsed.every(isRecord)) return null
   const header = [...new Set(parsed.flatMap(row => Object.keys(row)))]
   if (header.length === 0 || header.length > MAX_COLUMNS) return null
   const rows: string[][] = []
@@ -87,7 +87,7 @@ const isHeader = (cells: readonly string[]) =>
 function fromDelimited(text: string): Table | null {
   const lines = text.split('\n').map(line => line.replace(/\r$/, ''))
   while (lines.length > 0 && lines[lines.length - 1]?.trim() === '') lines.pop()
-  if (lines.length < 2 || lines.length > MAX_ROWS + 1) return null
+  if (lines.length < 2) return null
   const delimiter = lines[0]?.includes('\t') ? '\t' : ','
   // A comma and a space is how prose lists things; a CSV header packs its names.
   if (delimiter === ',' && lines[0]?.includes(', ')) return null
@@ -103,7 +103,7 @@ function fromDelimited(text: string): Table | null {
 /** The output as a table: a JSON array of objects, or CSV or TSV under a header line. */
 export function tableOf(text: string): Table | null {
   const trimmed = text.trim()
-  if (trimmed === '') return null
+  if (trimmed === '' || trimmed.length > MAX_TEXT) return null
   return trimmed.startsWith('[') ? fromJson(trimmed) : fromDelimited(trimmed)
 }
 

@@ -1,7 +1,7 @@
 {
   "name": "cc-rich-rows",
   "version": "1.0.0",
-  "description": "Draws Bash and MCP tool output that is a JSON array of objects, or CSV or TSV with a header, as a table in the Claude Code transcript. Output too long to show whole keeps its usual drawing.",
+  "description": "Draws Bash and MCP tool output that is a JSON array of objects, or CSV or TSV with a header, as a table in the Claude Code transcript. A folded row shows the first 20 rows, and ctrl+o shows the rest.",
   "author": {
     "name": "Victor De Simone",
     "email": "victorsmoliveira@gmail.com",

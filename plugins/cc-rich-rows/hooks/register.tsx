@@ -11,6 +11,14 @@ function took(ms: number) {
   return `${Math.floor(ms / 60_000)}m${String(Math.round((ms % 60_000) / 1000)).padStart(2, '0')}s`
 }
 
+/**
+ * A row of its own shows the whole table or none: no event says when ctrl+o
+ * expands it, so a cut table would stay cut there. A folded group shows the
+ * first rows only, since ctrl+o unfolds it to the raw output.
+ */
+const MAX_ROWS = 20
+const PREVIEW_ROWS = 20
+
 const isTabular = (tool: string) => tool === 'Bash' || tool.startsWith('mcp__')
 
 /** A finished call's output as a table, else null. A table wider than the transcript wraps its cells, as a reply's does. */
@@ -30,7 +38,10 @@ function captionOf(tool: string, input: unknown) {
 async function block($: EngineInterface, e: RenderInput, table: Table, id: string | undefined, caption?: string) {
   const { Box, Markdown, Text } = $.ui.resolve(e)
   const ms = id === undefined ? undefined : (await $.state.get({ plugin: 'cc-rich-rows', key: 'took', id })).value
-  const footer = [plural(table.rows.length, 'row'), ...(ms === undefined ? [] : [took(ms)])].join(' · ')
+  const total = table.rows.length
+  const shown = Math.min(total, PREVIEW_ROWS)
+  const count = shown < total ? `${shown} of ${plural(total, 'row')}` : plural(total, 'row')
+  const footer = [count, ...(ms === undefined ? [] : [took(ms)]), ...(shown < total ? ['ctrl+o shows all'] : [])].join(' · ')
   return (
     <Box key={`table-${id ?? caption ?? ''}`} flexDirection="column">
       {caption !== undefined && (
@@ -38,7 +49,7 @@ async function block($: EngineInterface, e: RenderInput, table: Table, id: strin
           {caption}
         </Text>
       )}
-      <Markdown text={markdown(table)} />
+      <Markdown text={markdown({ header: table.header, rows: table.rows.slice(0, shown) })} />
       <Text dimColor>{footer}</Text>
     </Box>
   )
@@ -62,7 +73,7 @@ export const register: Register = on => {
   on('ui.render', { component: 'ToolResult' }, async ($, e, next) => {
     if (e.props.isErrored) return next(e)
     const table = tableFor(e.props.tool, e.props.output)
-    return table === null ? next(e) : block($, e, table, e.props.tool_use_id)
+    return table === null || table.rows.length > MAX_ROWS ? next(e) : block($, e, table, e.props.tool_use_id)
   })
 
   // The transcript folds read-only calls (most `gh`, `curl` and `jq` runs) into one count line,

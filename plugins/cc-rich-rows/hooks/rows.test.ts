@@ -110,6 +110,16 @@ test('a folded group keeps its count line and draws its table under it', async (
   expect((await ui.findAll({ type: 'Text' })).map(one => one.text)).toEqual(['2 rows'])
 })
 
+test('a folded group shows the first 20 rows of a longer table, since ctrl+o unfolds the rest', async ($, on) => {
+  world(on)
+  const long = JSON.stringify(Array.from({ length: 143 }, (_, n) => ({ n, name: `item ${n}` })))
+  const ui = await group($, [groupCall('g1', 'gh issue list --json number,title --limit 200', long)])
+  const lines = String((await ui.find({ type: 'Markdown' }))?.props.text).split('\n')
+  expect(lines.length).toBe(22)
+  expect(lines[21]).toBe('| 19 | item 19 |')
+  expect((await ui.findAll({ type: 'Text' })).map(one => one.text)).toEqual(['20 of 143 rows · ctrl+o shows all'])
+})
+
 test('a folded group of several calls captions each table with its command', async ($, on) => {
   world(on)
   const ui = await group($, [

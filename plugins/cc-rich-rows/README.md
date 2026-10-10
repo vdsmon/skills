@@ -27,11 +27,13 @@ It is a mod: a hooks module Claude Code runs inside each interactive session.
 
 The footer gives the row count and how long the call ran. Claude reads the tool's output as it always did: only the drawing changes.
 
-Claude Code folds read-only calls, which make most of this output (`gh`, `curl`, `jq`), into one count line such as `Ran 1 shell command`. The mod keeps that line and draws the table under it. When the group holds several calls, each table gets its command as a caption. ctrl+o unfolds the group and shows the raw output.
+Claude Code folds read-only calls, which make most of this output (`gh`, `curl`, `jq`), into one count line such as `Ran 1 shell command`. The mod keeps that line and draws the table under it. When the group holds several calls, each table gets its command as a caption.
 
 ## Nothing is hidden
 
-The mod draws a table only when it holds every row: 20 rows or fewer, and 10 columns or fewer. Any other output keeps Claude Code's own drawing, so no row is ever cut away. A table wider than the transcript wraps its cells, as a table in a reply does. Claude Code does not tell a mod when ctrl+o expands a row, so a table that hid rows would hide them there too.
+- **A folded row** shows the first 20 rows of a longer table, and its footer says so: `20 of 143 rows · 1.2s · ctrl+o shows all`. ctrl+o unfolds the group, and the mod leaves the unfolded rows alone, so the raw output shows in full there.
+- **A row of its own** shows the whole table or none: 20 rows at most. Claude Code does not tell a mod when ctrl+o expands such a row, so a cut table would stay cut there. Longer output keeps Claude Code's own drawing.
+- A table has 10 columns at most. A table wider than the transcript wraps its cells, as a table in a reply does.
 
 It also leaves alone:
 
