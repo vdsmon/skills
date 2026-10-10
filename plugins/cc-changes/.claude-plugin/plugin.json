@@ -1,0 +1,14 @@
+{
+  "name": "cc-changes",
+  "version": "1.0.0",
+  "description": "A side pane that lists every file the Claude Code session created, edited or deleted, with net line counts, and shows a file's diff when you press it.",
+  "author": {
+    "name": "Victor De Simone",
+    "email": "victorsmoliveira@gmail.com",
+    "url": "https://github.com/vdsmon"
+  },
+  "homepage": "https://github.com/vdsmon/skills",
+  "repository": "https://github.com/vdsmon/skills",
+  "license": "MIT",
+  "types": "./types/index.d.ts"
+}
