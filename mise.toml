@@ -16,9 +16,9 @@ run = "scripts/bump-plugin.sh {{arg(name='plugin')}} {{arg(name='level', default
 description = "Run every offline test suite (plugins/*/tests/test-*.sh), never the live token-spending ones"
 run = "scripts/test-offline.sh"
 
-[tasks."test:usage-guard"]
-description = "Run the cc-usage-guard hook test suite (pass --soak for the race check)"
-run = "bash plugins/cc-usage-guard/tests/test-usage-guard.sh"
+[tasks."test:pitstop"]
+description = "Run the cc-pitstop mod tests (needs the claude CLI, so CI does not run them)"
+run = "claude plugin validate plugins/cc-pitstop && claude plugin test plugins/cc-pitstop"
 
 [tasks."test:keepwarm"]
 description = "Run the cc-keepwarm mod tests (needs the claude CLI, so CI does not run them)"

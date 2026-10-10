@@ -28,10 +28,10 @@
       "version": "1.0.0"
     },
     {
-      "name": "cc-usage-guard",
-      "source": "./plugins/cc-usage-guard",
-      "description": "Pauses Claude Code before it hits the 5-hour or weekly usage limit and auto-resumes when the window resets, on every surface including the desktop app. Claude Code only.",
-      "version": "0.11.1"
+      "name": "cc-pitstop",
+      "source": "./plugins/cc-pitstop",
+      "description": "Pauses Claude Code before the 5-hour or weekly usage limit, across every session on the machine, and resumes the paused work on its own when the window resets. Claude Code only.",
+      "version": "1.0.0"
     },
     {
       "name": "prep-compact",
