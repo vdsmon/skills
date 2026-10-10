@@ -68,6 +68,7 @@ Generated from each plugin's `plugin.json` by `scripts/sync-codex.sh`, so do not
 | `cc-wrap-up` | CC only | Cues a wrap-up at a natural break in a long session, then compacts with prep-compact's message or hands off with prep-exit's resume prompt, with no copy-paste. |
 | `cc-pitstop` | CC only | Pauses Claude Code before the 5-hour or weekly usage limit, across every session on the machine, and resumes the paused work on its own when the window resets. |
 | `cc-quiet-watch` | CC only | Watches long jobs on a timer and asks Haiku only when the output changed. It wakes the session only when the job is done, failed, stuck or needs you. |
+| `cc-turn-review` | CC only | After each turn that changes files in a git repo, Haiku checks the diff for over-design and for comment and prose rules, and a band offers to fix what it finds. |
 | `prep-compact` | any | Audit in-flight session state before compaction truncates history, and save what would be lost. |
 | `prep-exit` | any | Save what only the conversation knows before a session ends, so a fresh session can pick up the work. |
 | `prep-goal` | any | Interrogate a rough objective into a tight, verifiable /goal completion condition before handing it to an autonomous goal loop. |

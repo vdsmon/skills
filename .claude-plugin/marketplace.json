@@ -46,6 +46,12 @@
       "version": "1.0.0"
     },
     {
+      "name": "cc-turn-review",
+      "source": "./plugins/cc-turn-review",
+      "description": "After each turn that changes files in a git repo, Haiku checks the diff for over-design and for comment and prose rules, and a band offers to fix what it finds. Claude Code only.",
+      "version": "1.0.0"
+    },
+    {
       "name": "prep-compact",
       "source": "./plugins/prep-compact",
       "description": "Audit in-flight session state before compaction truncates history, and save what would be lost. Commits real work locally, syncs stale plan and state files, and notes chat-only decisions, asking first only for risky items, then prints a paste-ready /compact message plus a queued follow-up. Portable across SKILL.md-native hosts.",

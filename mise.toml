@@ -20,6 +20,10 @@ run = "scripts/test-offline.sh"
 description = "Run the cc-quiet-watch mod tests (needs the claude CLI, so CI does not run them)"
 run = "claude plugin validate plugins/cc-quiet-watch && claude plugin test plugins/cc-quiet-watch"
 
+[tasks."test:turn-review"]
+description = "Run the cc-turn-review mod tests (needs the claude CLI, so CI does not run them)"
+run = "claude plugin validate plugins/cc-turn-review && claude plugin test plugins/cc-turn-review"
+
 [tasks."test:pitstop"]
 description = "Run the cc-pitstop mod tests (needs the claude CLI, so CI does not run them)"
 run = "claude plugin validate plugins/cc-pitstop && claude plugin test plugins/cc-pitstop"
