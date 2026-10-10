@@ -140,6 +140,12 @@
       "source": "./plugins/cc-autotitle",
       "description": "Names each Claude Code session on its own: after a few turns it picks a short kebab-case name from the whole session, and renames it again when the work moves on. It never touches a name you set by hand. Claude Code only.",
       "version": "1.0.0"
+    },
+    {
+      "name": "cc-rich-rows",
+      "source": "./plugins/cc-rich-rows",
+      "description": "Draws Bash and MCP tool output that is a JSON array of objects, or CSV or TSV with a header, as a table in the Claude Code transcript. Output that would not fit whole keeps its usual drawing. Claude Code only.",
+      "version": "1.0.0"
     }
   ]
 }
