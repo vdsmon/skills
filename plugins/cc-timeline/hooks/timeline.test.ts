@@ -15,18 +15,26 @@ const PANE = {
 
 let clock: MockClock
 
-type Seen = { took: Map<string, number>; fails: Set<string>; agents: { id: string; description: string }[] }
+type Seen = { took: Map<string, number>; fails: Set<string>; agents: { id: string; description: string }[]; open: Set<string> }
 
 // Tools that take the time the test gives each call id, and fail when told to.
 function world(on: On): Seen {
   clock = mock.clock(on, { now: Date.parse('2026-10-10T12:00:00Z') })
-  const seen: Seen = { took: new Map(), fails: new Set(), agents: [] }
+  const seen: Seen = { took: new Map(), fails: new Set(), agents: [], open: new Set() }
   on('session.start', async (_$, e) => ({ cwd: e.cwd }))
   on('session.end', async (_$, e) => ({ sessionId: e.sessionId }))
   on('command.register', async (_$, e) => ({ value: { command: e.name } }))
   on('ui.log', async () => ({ value: undefined }))
-  on('ui.open', async () => ({ value: { isPlaced: true } }) as never)
-  on('ui.close', async () => ({ value: undefined }) as never)
+  const open = seen.open
+  on('ui.open', async (_$, e) => {
+    open.add(e.id)
+    return { value: { isPlaced: true } } as never
+  })
+  on('ui.close', async (_$, e) => {
+    open.delete(e.id)
+    return { value: undefined } as never
+  })
+  on('ui.panes', async () => ({ value: [...open].map(id => ({ id, title: id, isShown: true, isFocused: false, isPlaced: true })) }))
   on('ui.render', async ($, e) => $.ui.resolve(e).Box({}))
   on('agent.list', async () => ({ value: seen.agents.map(one => ({ ...one, type: 'general-purpose', status: 'running' })) }) as never)
   on('tool.call', async (_$, e) => {
@@ -146,9 +154,12 @@ test('a very long turn keeps its last 300 calls and says how many it left out', 
 })
 
 test('/timeline opens the pane, and closes it when open', async ($, on) => {
-  world(on)
+  const seen = world(on)
   await start($)
   expect((await slash($)).text).toBe('Timeline pane opened.')
+  expect((await slash($)).text).toBe('Timeline pane closed.')
+  // A pane the engine kept up across a reload is still closed by the next /timeline.
+  seen.open.add('cc-timeline')
   expect((await slash($)).text).toBe('Timeline pane closed.')
 })
 

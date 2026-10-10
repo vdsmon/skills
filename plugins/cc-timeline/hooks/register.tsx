@@ -14,7 +14,6 @@ const TICK_MS = 1_000
 const turnsAtom = atom({ plugin: 'cc-timeline', key: 'turns' } as const, [])
 const selectedAtom = atom({ plugin: 'cc-timeline', key: 'selected' } as const, null)
 const nowAtom = atom({ plugin: 'cc-timeline', key: 'now' } as const, 0)
-const isOpenAtom = atom({ plugin: 'cc-timeline', key: 'isOpen' } as const, false)
 
 const COLOR: Record<Kind, string> = { read: 'suggestion', edit: 'success', shell: 'warning', agent: 'merged', mcp: 'planMode', other: 'inactive' }
 
@@ -66,7 +65,7 @@ async function begin($: EngineInterface, e: Readonly<Record<string, unknown>> & 
   }
   const home = parentId === undefined ? undefined : turns.find(turn => turn.calls.some(one => one.id === parentId))?.id
   await update($, turnsAtom, current => withCall(current, home, call))
-  if (await read($, isOpenAtom)) {
+  if (await isUp($)) {
     await update($, nowAtom, () => start)
     startTicker($)
   }
@@ -77,8 +76,11 @@ async function finish($: EngineInterface, id: string, isError: boolean) {
   await update($, turnsAtom, turns =>
     turns.map(turn => (turn.calls.some(call => call.id === id) ? { ...turn, calls: turn.calls.map(call => (call.id === id ? { ...call, end, isError } : call)) } : turn)),
   )
-  if (await read($, isOpenAtom)) await update($, nowAtom, () => end)
+  if (await isUp($)) await update($, nowAtom, () => end)
 }
+
+// The engine's record, not a value of the mod's: a reload closes and reopens panes behind the mod's back.
+const isUp = async ($: EngineInterface) => (await $.ui.panes()).some(pane => pane.id === PANE)
 
 const isRunning = (turns: readonly Turn[]) => turns.some(turn => turn.calls.some(call => call.end === null))
 
@@ -89,7 +91,7 @@ function startTicker($: EngineInterface) {
 }
 
 async function tick($: EngineInterface) {
-  if (!(await read($, isOpenAtom)) || !isRunning(await read($, turnsAtom))) {
+  if (!(await isUp($)) || !isRunning(await read($, turnsAtom))) {
     ticker?.cancel()
     ticker = null
     return
@@ -99,12 +101,10 @@ async function tick($: EngineInterface) {
 }
 
 async function toggle($: EngineInterface) {
-  if (await read($, isOpenAtom)) {
+  if ((await $.ui.panes()).some(pane => pane.id === PANE && pane.isShown)) {
     await $.ui.close({ id: PANE })
-    await update($, isOpenAtom, () => false)
     return 'Timeline pane closed.'
   }
-  await update($, isOpenAtom, () => true)
   const now = await $.clock.now()
   await update($, nowAtom, () => now)
   if (isRunning(await read($, turnsAtom))) startTicker($)
@@ -142,7 +142,7 @@ export const register: Register = on => {
     const start = await $.clock.now()
     await update($, turnsAtom, turns => [...turns, { id: e.turnId, n: (turns[turns.length - 1]?.n ?? 0) + 1, prompt: firstLine(e.text), start, end: null, calls: [] }].slice(-MAX_TURNS))
     await update($, selectedAtom, () => null)
-    if (await read($, isOpenAtom)) await update($, nowAtom, () => start)
+    if (await isUp($)) await update($, nowAtom, () => start)
     return next(e)
   })
 
@@ -150,7 +150,7 @@ export const register: Register = on => {
     if (e.agentId === undefined) {
       const end = await $.clock.now()
       await update($, turnsAtom, turns => turns.map(turn => (turn.id === e.turnId ? { ...turn, end } : turn)))
-      if (await read($, isOpenAtom)) await update($, nowAtom, () => end)
+      if (await isUp($)) await update($, nowAtom, () => end)
     }
     return next(e)
   })
@@ -172,11 +172,6 @@ export const register: Register = on => {
   }).catch(($, e, next) => next(e))
 
   on('command.run', { command: 'timeline' }, async $ => ({ text: await toggle($) }))
-
-  on('ui.close', { id: PANE }, async ($, e, next) => {
-    await update($, isOpenAtom, () => false)
-    return next(e)
-  }).catch(($, e, next) => next(e))
 
   on('session.end', async ($, e, next) => {
     if (e.reason === 'clear') {

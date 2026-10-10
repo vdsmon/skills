@@ -38,7 +38,6 @@ declare module 'claude-code' {
       selected: string | null
       /** The time a running bar is drawn to; a 1 s tick moves it while a call runs. */
       now: number
-      isOpen: boolean
     }
   }
 }
