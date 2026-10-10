@@ -1,0 +1,14 @@
+{
+  "name": "cc-rich-rows",
+  "version": "1.0.0",
+  "description": "Draws Bash and MCP tool output that is a JSON array of objects, or CSV or TSV with a header, as a table in the Claude Code transcript. A folded row shows the first 20 rows, and ctrl+o shows the rest.",
+  "author": {
+    "name": "Victor De Simone",
+    "email": "victorsmoliveira@gmail.com",
+    "url": "https://github.com/vdsmon"
+  },
+  "homepage": "https://github.com/vdsmon/skills",
+  "repository": "https://github.com/vdsmon/skills",
+  "license": "MIT",
+  "types": "./types/index.d.ts"
+}
