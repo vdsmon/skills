@@ -130,6 +130,18 @@ test('Write, Bash create, Bash edit and Bash delete each show with their status'
   expect(await rows(ui)).toEqual(['A made.sh +1 −0', 'A new.ts +2 −0', 'D old.md +0 −2', 'M sed.txt +2 −1'])
 })
 
+test('an Edit record with no originalFile is rebuilt from its patch', async ($, on) => {
+  const seen = world(on)
+  const path = `${ROOT}/a.ts`
+  seen.disk.set(path, 'one\ntwo\nthree\n')
+  await start($)
+  seen.disk.set(path, 'one\n2\nthree\n')
+  seen.results.set('toolu_np', { filePath: path, oldString: 'two', newString: '2', originalFile: null, structuredPatch: realHunks('one\ntwo\nthree\n', 'one\n2\nthree\n'), userModified: false, replaceAll: false })
+  await $.tool.call({ tool: 'Edit', tool_use_id: 'toolu_np', file_path: path, old_string: 'two', new_string: '2' })
+  const ui = await pane($)
+  expect(await rows(ui)).toEqual(['M a.ts +1 −1'])
+})
+
 test('a file changed back to how the session found it leaves the list', async ($, on) => {
   const seen = world(on)
   seen.disk.set(`${ROOT}/a.ts`, 'one\n')

@@ -2,6 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { BuiltinToolResults, EngineInterface, Register } from 'claude-code'
 
 import type { FileChange } from '../types'
+import type { Hunk } from './diff'
 import { counts, diffLines, linesOf, removedText, unapply, unified } from './diff'
 
 const COMMAND = 'changes'
@@ -70,6 +71,12 @@ async function track($: EngineInterface, path: string, before: string | null | u
   })
 }
 
+/** The text before an Edit or Write whose record holds no `originalFile`: rebuilt from its patch, or null for a new file. */
+function beforeFrom(after: string | undefined, hunks: readonly Hunk[], isNew: boolean) {
+  if (isNew) return null
+  return after === undefined ? undefined : unapply(after, hunks)
+}
+
 type Patch = BuiltinToolResults['Bash']['bashEditDiff']
 
 async function trackBash($: EngineInterface, diff: Patch) {
@@ -128,10 +135,13 @@ export const register: Register = on => {
       if (e.tool === 'Edit') {
         const result = ran.result as BuiltinToolResults['Edit']
         const path = absolute(result.filePath)
-        await track($, path, result.originalFile, await readText($, path))
+        const after = await readText($, path)
+        const isNew = result.oldString === ''
+        await track($, path, result.originalFile ?? beforeFrom(after, result.structuredPatch, isNew), after)
       } else if (e.tool === 'Write') {
         const result = ran.result as BuiltinToolResults['Write']
-        await track($, absolute(result.filePath), result.originalFile, result.content)
+        const isNew = result.type === 'create'
+        await track($, absolute(result.filePath), result.originalFile ?? beforeFrom(result.content, result.structuredPatch, isNew), result.content)
       } else {
         await trackBash($, (ran.result as BuiltinToolResults['Bash']).bashEditDiff)
       }
