@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, Register, RenderSurface } from 'claude-code'
 
 import type { Payload, Phase, PrepKind, Wrap } from '../types'
 
@@ -164,6 +164,26 @@ async function compactNow($: EngineInterface, message: string | undefined, follo
   if (followUp !== undefined) void $.prompt.submit({ text: followUp, asUser: true })
 }
 
+/** /clear, then the resume prompt as the new session's first message. */
+async function freshSession($: EngineInterface, resumePrompt: string) {
+  try {
+    await $.command.run({ command: 'clear' })
+  } catch (err) {
+    await $.ui.toast(`/clear did not run: ${String(err)}`)
+    return
+  }
+  // The module lives across /clear (experiment #21), so this closure still holds the prompt.
+  await reset($)
+  void $.prompt.submit({ text: resumePrompt, asUser: true })
+}
+
+async function copyPrompt($: EngineInterface, text: string, surface: RenderSurface) {
+  const r = await $.ui.copy({ text, surface })
+  await $.ui.toast(
+    r.isCopied ? 'Copied the resume prompt.' : `Copy failed (${r.reason}); the resume prompt is also in the transcript.`,
+  )
+}
+
 const TOOL_SPEC = {
   name: TOOL,
   description:
@@ -324,11 +344,12 @@ export const register: Register = (on, options) => {
       )
     }
     if (w.phase === 'ready-handoff' && w.payload?.kind === 'handoff') {
+      const { resumePrompt } = w.payload
       return row(
         `Handoff at ${w.payload.handoffPath}`,
         undefined,
-        <Button key="fresh" label="Fresh session here" variant="primary" onPress={() => undefined} />,
-        <Button key="copy" label="Copy prompt" onPress={() => undefined} />,
+        <Button key="fresh" label="Fresh session here" variant="primary" onPress={() => freshSession($, resumePrompt)} />,
+        <Button key="copy" label="Copy prompt" onPress={p => copyPrompt($, resumePrompt, p.surface)} />,
         <Button key="done" label="Done" onPress={() => later($)} />,
       )
     }

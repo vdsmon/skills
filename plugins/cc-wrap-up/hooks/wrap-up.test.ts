@@ -32,6 +32,7 @@ function world(on: On) {
     isCopyRefused: false,
     isCompactSkipped: false,
     registered: [] as { name: string; isDeferred: unknown }[],
+    order: [] as string[],
   }
   on('session.start', async (_$, e) => ({ cwd: e.cwd }))
   on('session.end', async (_$, e) => ({ sessionId: e.sessionId }))
@@ -76,10 +77,12 @@ function world(on: On) {
   })
   on('prompt.submit', async (_$, e) => {
     seen.submits.push({ text: e.text, asUser: e.origin.kind === 'plugin' ? e.origin.asUser : undefined })
+    seen.order.push('submit')
     return { text: e.text }
   })
   on('command.run', async (_$, e) => {
     seen.ran.push({ command: e.command, args: e.args })
+    seen.order.push(`run ${e.command}`)
     return { text: '' }
   })
   on('prompt.fill', async (_$, e) => {
@@ -485,4 +488,66 @@ test('while a turn runs, the band offers nothing but a running prep', async ($, 
   expect(await buttons(working)).toEqual([])
   await typed($, 'prep-compact:prep-compact')
   expect(await lineText(working)).toContain('Preparing to compact')
+})
+
+test('Hand off runs prep-exit and shows the prep as running', async ($, on) => {
+  const seen = world(on)
+  await start($)
+  const ui = await band($)
+  await turn($, seen, 520_000)
+  await ui.press({ key: 'handoff' })
+  expect(seen.ran).toEqual([{ command: 'prep-exit:prep-exit', args: '' }])
+  expect(await lineText(ui)).toContain('Preparing the handoff')
+})
+
+test('without prep-exit installed, there is no Hand off button', async ($, on) => {
+  const seen = world(on)
+  seen.commands = ['prep-compact:prep-compact', 'compact', 'clear']
+  await start($)
+  const ui = await band($)
+  await turn($, seen, 520_000)
+  expect(await buttons(ui)).toEqual(['compact', 'later'])
+})
+
+test('Fresh session here clears, then sends the resume prompt as the first message', async ($, on) => {
+  const seen = world(on)
+  await start($)
+  const ui = await band($)
+  await ready($, HANDOFF)
+  await ui.press({ key: 'fresh' })
+  expect(seen.order).toEqual(['run clear', 'submit'])
+  expect(seen.submits).toEqual([{ text: HANDOFF.resumePrompt, asUser: true }])
+  expect(await buttons(ui)).toEqual([])
+})
+
+test('Copy prompt copies the resume prompt and keeps the band', async ($, on) => {
+  const seen = world(on)
+  await start($)
+  const ui = await band($)
+  await ready($, HANDOFF)
+  await ui.press({ key: 'copy' })
+  expect(seen.copies).toEqual([HANDOFF.resumePrompt])
+  expect(seen.toasts.join('\n')).toContain('Copied')
+  expect(await buttons(ui)).toEqual(['fresh', 'copy', 'done'])
+})
+
+test('a refused copy says why and keeps the band', async ($, on) => {
+  const seen = world(on)
+  seen.isCopyRefused = true
+  await start($)
+  const ui = await band($)
+  await ready($, HANDOFF)
+  await ui.press({ key: 'copy' })
+  expect(seen.toasts.join('\n')).toContain('no-clipboard')
+  expect(await buttons(ui)).toEqual(['fresh', 'copy', 'done'])
+})
+
+test('Done closes the band', async ($, on) => {
+  const seen = world(on)
+  await start($)
+  const ui = await band($)
+  await ready($, HANDOFF)
+  await ui.press({ key: 'done' })
+  expect(await buttons(ui)).toEqual([])
+  expect(seen.submits).toEqual([])
 })
