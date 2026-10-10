@@ -34,6 +34,12 @@
       "version": "1.0.0"
     },
     {
+      "name": "cc-quiet-watch",
+      "source": "./plugins/cc-quiet-watch",
+      "description": "Watches long jobs on a timer and asks Haiku only when the output changed. It wakes the session only when the job is done, failed, stuck or needs you. Claude Code only.",
+      "version": "1.0.0"
+    },
+    {
       "name": "prep-compact",
       "source": "./plugins/prep-compact",
       "description": "Audit in-flight session state before compaction truncates history, and save what would be lost. Commits real work locally, syncs stale plan and state files, and notes chat-only decisions, asking first only for risky items, then prints a paste-ready /compact message plus a queued follow-up. Portable across SKILL.md-native hosts.",
