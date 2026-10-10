@@ -144,16 +144,17 @@ The settings are `userConfig` values in `plugin.json`, read in `register` the wa
 
 ## State
 
-These are `$.state` atoms for each session, declared in `types/index.d.ts`:
+One `$.state` atom for each session, `wrap`, declared in `types/index.d.ts`. One atom keeps every change a single write. Its fields:
 
 - `phase`: `'idle' | 'armed' | 'cue' | 'urgent' | 'prepping' | 'ready-compact' | 'ready-handoff'`.
-- `line`: number, in tokens.
+- `line`: number in tokens, or null for the start line.
+- `tokens`: the context size after the last answered main-thread turn, or null.
 - `payload`: the last tool input, or null.
 - `prepKind`: `'compact' | 'handoff'` while prepping, or null.
 - `isOff`: boolean.
 - `isNotified`: boolean, true after the urgent notify of the current crossing.
 
-Module variables hold only what the mod needs for one turn or across a `/clear`: the commit seen in this turn, and the resume prompt during Fresh session here.
+Module variables hold only what the mod needs for one turn: the commit seen in this turn. During Fresh session here, the press handler's closure holds the resume prompt across `/clear`.
 
 ## Failure direction
 
