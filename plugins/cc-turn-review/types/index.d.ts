@@ -7,6 +7,8 @@ export type Review = {
   /** Changed files, as `~/repo/path`. */
   files: string[]
   changedLines: number
+  /** Files left out because commits that came in during the turn (a pull, a rebase) changed them. */
+  leftOut: number
   findings: string[]
   inputTokens: number
   outputTokens: number

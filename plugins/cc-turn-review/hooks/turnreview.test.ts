@@ -40,6 +40,8 @@ function world(on: On) {
     submits: [] as string[],
     reply: `- ${FINDING}`,
     cwd: APP,
+    head: 'h0',
+    pulled: [] as string[],
   }
   const repoOf = (dir: string) => [APP, LIB].find(top => dir === top || dir.startsWith(`${top}/`))
   on('session.start', async (_$, e) => ({ cwd: e.cwd }))
@@ -57,6 +59,8 @@ function world(on: On) {
     const argv = e.argv
     const cwd = e.init?.cwd ?? ''
     if (argv[0] !== 'git') return ran('')
+    if (argv.includes('--verify')) return ran(`${seen.head}\n`)
+    if (argv.includes('log')) return ran(argv.some(arg => arg.endsWith(`..${seen.head}`)) ? seen.pulled.map(name => `\n${name}\0`).join('') : '')
     if (argv.includes('rev-parse')) {
       if (!FOLDERS.has(cwd)) throw new Error(`cannot start in ${cwd}`)
       const top = repoOf(cwd)
@@ -70,14 +74,20 @@ function world(on: On) {
     }
     if (argv.includes('diff-tree')) {
       const [from, to] = argv.slice(-2)
-      if (argv.includes('--name-only')) return ran('src/a.ts\0')
-      return ran(`diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1,3 @@\n+// ${top} ${from}..${to}\n+const x = 1\n`)
+      if (argv.includes('--name-only')) return ran(['src/a.ts', ...seen.pulled].map(name => `${name}\0`).join(''))
+      const label = top.replace(HOME, '~')
+      const section = (name: string, line: string) => `diff --git ${label}/${name} ${label}/${name}\n--- ${label}/${name}\n+++ ${label}/${name}\n@@ -1 +1,2 @@\n+${line}\n`
+      return ran([section('src/a.ts', `// ${top} ${from}..${to}\n+const x = 1`), ...seen.pulled.map(name => section(name, 'teammate code'))].join(''))
     }
     return ran('')
   })
   on('tool.call', async (_$, e) => {
     const command = String((e as { command?: unknown }).command ?? '')
     for (const top of [APP, LIB]) if (command.includes(`EDIT:${top}`)) seen.version.set(top, (seen.version.get(top) ?? 0) + 1)
+    if (command.includes('git pull')) {
+      seen.head = 'h1'
+      seen.pulled = ['src/b.ts']
+    }
     seen.order.push('tool')
     return { result: { stdout: '', stderr: '', interrupted: false } }
   })
@@ -154,6 +164,17 @@ test('a repo first named mid-turn is snapshotted before the command runs', async
   expect(lib).toBeGreaterThan(-1)
   expect(lib).toBeLessThan(seen.order.indexOf('tool'))
   expect(seen.prompts[0]).toContain(`${LIB} tree-0..tree-1`)
+})
+
+test('files that a pull brought in during the turn are left out of the review', async ($, on) => {
+  const seen = world(on)
+  await start($)
+  await turn($, 'pull, then add the x constant', ['git pull', heredoc(APP)])
+  expect(seen.prompts.length).toBe(1)
+  expect(seen.prompts[0]).toContain('src/a.ts')
+  expect(seen.prompts[0]).not.toContain('teammate code')
+  const r = await slash($, '')
+  expect(r.text).toContain('Left out 1 file changed by commits that came in during the turn')
 })
 
 test('a clean reply shows no band, and /turnreview says clean', async ($, on) => {

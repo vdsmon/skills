@@ -82,6 +82,18 @@ export function withoutLockfiles(patch: string): string {
     .join('')
 }
 
+/** The patch without the sections of `names` (paths under `label`), and how many sections went. */
+export function withoutFiles(patch: string, label: string, names: ReadonlySet<string>): { patch: string; dropped: number } {
+  let dropped = 0
+  const kept = patch.split(/^(?=diff --git )/m).filter(section => {
+    const header = section.split('\n')[0] ?? ''
+    const isNamed = [...names].some(name => header.startsWith(`diff --git ${label}/${name} `) || header.endsWith(` ${label}/${name}`))
+    if (isNamed) dropped += 1
+    return !isNamed
+  })
+  return { patch: kept.join(''), dropped }
+}
+
 /** Lines added or removed, headers left out. */
 export const changedLines = (patch: string) =>
   patch.split('\n').filter(line => (line.startsWith('+') && !line.startsWith('+++')) || (line.startsWith('-') && !line.startsWith('---'))).length
@@ -138,7 +150,7 @@ export const fixMessage = (findings: readonly string[]) =>
   [
     'A review of your last turn flagged these against my rules (over-design, comments and prose):',
     findings.map(finding => `- ${finding}`).join('\n'),
-    'Check each one. Fix the real ones, and say in one line why any of them is not one.',
+    'Check each one. Fix the real ones, and say in one line why any of them is not one. The review sees every change made during the turn, so leave alone any change you did not make (my own edits, or code a pull brought in).',
   ].join('\n\n')
 
 export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`

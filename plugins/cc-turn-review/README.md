@@ -30,7 +30,8 @@ A snapshot is `git add -A` into a private index, then `git write-tree`, with git
 - Only git repos are reviewed. Writes to scratch folders, `~/.claude` and other folders outside git are not.
 - A repo whose snapshot fails or takes over 10 s is skipped for the rest of the session, with a toast.
 - Untracked files that are not ignored are hashed at each snapshot, so a big data dump outside `.gitignore` slows it down.
-- Another session that edits the same worktree during the turn: its changes show as this turn's.
+- Files changed by commits that came in during the turn (a pull, or upstream commits in a rebase) are left out: a commit older than the turn start is not the turn's work. A file that Claude also edited in that turn is left out too.
+- Your own edits in the same worktree during the turn, or another session's, show as the turn's. The Fix prompt tells Claude to leave alone any change it did not make.
 - Lockfiles appear by name only, and the diff is cut at 40k characters.
 
 ## Commands

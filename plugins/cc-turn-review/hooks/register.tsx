@@ -15,6 +15,7 @@ import {
   promptFor,
   slug,
   tilde,
+  withoutFiles,
   withoutLockfiles,
 } from './review'
 
@@ -31,7 +32,7 @@ const reviewAtom = atom({ plugin: 'cc-turn-review', key: 'review' } as const, nu
 const isOffAtom = atom({ plugin: 'cc-turn-review', key: 'isOff' } as const, false)
 
 type Repo = { top: string; gitDir: string; commonDir: string }
-type Start = { repo: Repo; tree: string }
+type Start = { repo: Repo; tree: string; head: string; at: number }
 
 const cfg = { home: '', isInteractive: true }
 
@@ -101,9 +102,22 @@ async function snapshot($: EngineInterface, repo: Repo): Promise<string> {
   return written.stdout.trim()
 }
 
+async function headOf($: EngineInterface, repo: Repo): Promise<string> {
+  const r = await git($, repo, ['rev-parse', '-q', '--verify', 'HEAD'])
+  return r.exitCode === 0 ? r.stdout.trim() : ''
+}
+
+/** Files changed by commits that existed before the turn began, yet came in during it (a pull, a rebase onto upstream). */
+async function pulledFiles($: EngineInterface, start: Start, head: string): Promise<Set<string>> {
+  if (start.head === '' || head === '' || head === start.head) return new Set()
+  const r = await git($, start.repo, ['log', '--format=', '--name-only', '-z', `--until=@${Math.floor(start.at / 1000) - 1}`, `${start.head}..${head}`])
+  return new Set(r.exitCode === 0 ? r.stdout.split(/[\0\n]/).filter(name => name !== '') : [])
+}
+
 async function captureStart($: EngineInterface, repo: Repo): Promise<Start | null> {
   try {
-    return { repo, tree: await snapshot($, repo) }
+    const at = await $.clock.now()
+    return { repo, tree: await snapshot($, repo), head: await headOf($, repo), at }
   } catch (error) {
     skip($, repo, error)
     return null
@@ -128,10 +142,11 @@ async function isActive($: EngineInterface) {
 
 // --------------------------------------------------------------- review
 
-/** The turn's diff in every repo it touched, with lockfile hunks left out. */
+/** The turn's diff in every repo it touched, without lockfile hunks or files that pulled commits changed. */
 async function turnDiff($: EngineInterface, batch: ReadonlyMap<string, Promise<Start | null>>) {
   const parts: string[] = []
   const files: string[] = []
+  let leftOut = 0
   for (const pending of batch.values()) {
     const start = await pending
     if (start === null) continue
@@ -153,10 +168,13 @@ async function turnDiff($: EngineInterface, batch: ReadonlyMap<string, Promise<S
       $.ui.log(`cc-turn-review: diff-tree in ${repo.top}: ${patch.stderr.trim()}`, { to: 'debug' })
       continue
     }
-    parts.push(withoutLockfiles(patch.stdout.trim()))
-    files.push(...names.stdout.split('\0').filter(name => name !== '').map(name => `${label}/${name}`))
+    const pulled = await pulledFiles($, start, await headOf($, repo))
+    const ours = withoutFiles(patch.stdout.trim(), label, pulled)
+    leftOut += ours.dropped
+    if (ours.patch.trim() !== '') parts.push(withoutLockfiles(ours.patch.trim()))
+    files.push(...names.stdout.split('\0').filter(name => name !== '' && !pulled.has(name)).map(name => `${label}/${name}`))
   }
-  return { diff: parts.join('\n'), files }
+  return { diff: parts.join('\n'), files, leftOut }
 }
 
 const whyNot = (reply: ModelCompleteResult) => {
@@ -168,7 +186,7 @@ const whyNot = (reply: ModelCompleteResult) => {
 async function review($: EngineInterface, batch: ReadonlyMap<string, Promise<Start | null>>, turnAsks: readonly string[], atGeneration: number) {
   const id = crypto.randomUUID()
   try {
-    const { diff, files } = await turnDiff($, batch)
+    const { diff, files, leftOut } = await turnDiff($, batch)
     const changed = changedLines(diff)
     if (changed === 0) return
     const base: Review = {
@@ -176,6 +194,7 @@ async function review($: EngineInterface, batch: ReadonlyMap<string, Promise<Sta
       status: 'running',
       files,
       changedLines: changed,
+      leftOut,
       findings: [],
       inputTokens: 0,
       outputTokens: 0,
@@ -234,7 +253,8 @@ async function commandText($: EngineInterface, args: string) {
   const state = (await read($, isOffAtom)) ? 'off' : 'on'
   const last = await read($, reviewAtom)
   if (last === null) return `Turn review is ${state}. No turn has changed files in a git repo yet.`
-  const head = `Turn review is ${state}. Last review, ${timeOf(last.at)}: ${plural(last.files.length, 'file')}, ${last.changedLines} changed lines, ${last.inputTokens} input and ${last.outputTokens} output tokens.`
+  const pulled = last.leftOut > 0 ? ` Left out ${plural(last.leftOut, 'file')} changed by commits that came in during the turn (a pull or a rebase).` : ''
+  const head = `Turn review is ${state}. Last review, ${timeOf(last.at)}: ${plural(last.files.length, 'file')}, ${last.changedLines} changed lines, ${last.inputTokens} input and ${last.outputTokens} output tokens.${pulled}`
   if (last.status === 'running') return `${head}\nStill running.`
   if (last.status === 'failed') return `${head}\nIt failed: ${last.error}`
   if (last.status === 'clean') return `${head}\nClean.`
@@ -360,7 +380,13 @@ export const register: Register = on => {
         </Box>
       )
     }
-    const facts = [timeOf(current.at), plural(current.files.length, 'file'), `${current.changedLines} changed lines`, `${current.inputTokens} in / ${current.outputTokens} out tokens`]
+    const facts = [
+      timeOf(current.at),
+      plural(current.files.length, 'file'),
+      `${current.changedLines} changed lines`,
+      ...(current.leftOut > 0 ? [`${current.leftOut} pulled left out`] : []),
+      `${current.inputTokens} in / ${current.outputTokens} out tokens`,
+    ]
     return (
       <Box flexDirection="column">
         <Text bold>{facts.join(' · ')}</Text>
