@@ -16,6 +16,8 @@ SPECIFIC = {
                    lambda n: "rev-2210" in n and "uv" in n),
     "keep": ("A current name that still fits comes back unchanged",
              lambda n: n == "pr-31-feed-cursor-fix"),
+    "hint": ("A hint about the side question wins over keeping the current name",
+             lambda n: "ruff" in n),
     "move": ("A current name about the side question is replaced by one about the cursor fix",
              lambda n: ("feed" in n or "cursor" in n or "pr-31" in n) and "ruff" not in n),
 }

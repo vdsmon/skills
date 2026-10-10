@@ -26,6 +26,7 @@ const FRESH: State = {
   compacted: false,
   pending: null,
   pinOnApply: false,
+  adopt: false,
   lastSet: null,
   lastSeen: null,
   pinned: false,
@@ -56,8 +57,9 @@ const due = (s: State) => !s.isOff && !s.pinned && (s.compacted || (s.nextAt !==
 
 function prompt(current: string | null, hint?: string) {
   const parts = [PROMPT]
-  if (current) parts.push(`The session is now named ${current}. If that name still fits the main work, reply with it unchanged.`)
-  if (hint) parts.push(`The user asks: ${hint}`)
+  // A hint is the user steering the name, so it wins over keeping the current one.
+  if (hint) parts.push(`The user asks for a name that follows this: ${hint}. Follow it, even when that changes the current name.`)
+  else if (current) parts.push(`The session is now named ${current}. If that name still fits the main work, reply with it unchanged.`)
   return parts.join('\n\n')
 }
 
@@ -150,6 +152,8 @@ async function apply($: EngineInterface, title: string | null) {
       name = s.pending
       return { ...seen, lastSeen: s.pending, pending: null, pinned: true, pinOnApply: false }
     }
+    // After /autotitle on, whatever the session is called becomes the base.
+    if (s.adopt) return { ...seen, adopt: false, lastSet: title, nextAt: title ? later(s.turns) : cfg.first }
     // Someone else named the session (/rename, another surface, an old name):
     // it is theirs from now on.
     if (title && title !== s.lastSet) return { ...seen, pinned: true, pending: null }
@@ -206,14 +210,20 @@ async function report($: EngineInterface) {
   const status = s.isOff
     ? 'Off in this session.'
     : s.pinned
-      ? `Pinned: ${s.lastSeen ?? s.lastSet ?? 'this name'} was set by hand, so it is not renamed. /${COMMAND} on lets it follow the work again.`
-      : `${s.lastSet ? `Last name set: ${s.lastSet}.` : 'No name set yet.'} Next check ${next}.`
+      ? `Pinned: ${s.lastSeen ? `${s.lastSeen} was` : 'its name was'} set by hand, so it is not renamed. /${COMMAND} on lets it follow the work again.`
+      : [
+          s.lastSet ? `Last name set: ${s.lastSet}.` : 'No name set yet.',
+          s.pending ? `Picked ${s.pending}; it lands with your next message.` : '',
+          `Next check ${next}.`,
+        ]
+          .filter(Boolean)
+          .join(' ')
   const recheck = cfg.recheck > 0 ? `every ${cfg.recheck} turns` : 'never'
   return [
     status,
     `This session: turn ${s.turns}; ${s.stats.checks} checks, ${s.stats.renames} renames, ${s.stats.failures} failures.`,
     `Settings: first name after turn ${cfg.first}, re-check ${recheck}. /${COMMAND} names it now, /${COMMAND} off pauses it here.`,
-  ].join('\n')
+  ].join('\n\n')
 }
 
 export const register: Register = (on, options) => {
@@ -241,11 +251,9 @@ export const register: Register = (on, options) => {
       return { text: await report($) }
     }
     if (word === 'on') {
-      // Take the current name as the base, so the next prompt does not pin it again.
-      await update($, state, s => {
-        const base = s.lastSeen ?? s.lastSet
-        return { ...s, isOff: false, pinned: false, lastSet: base, nextAt: base ? later(s.turns) : cfg.first }
-      })
+      // The next prompt carries the current name (unknown after a resume until
+      // then); it becomes the base instead of pinning the session again.
+      await update($, state, s => ({ ...s, isOff: false, pinned: false, adopt: true, pending: null }))
       await save($)
       return { text: await report($) }
     }

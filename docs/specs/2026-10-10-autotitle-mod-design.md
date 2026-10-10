@@ -66,8 +66,8 @@ So the name lands with your next prompt. A check after the last turn of a sessio
 | Call | What it does |
 | --- | --- |
 | `/autotitle` | Picks a name now and applies it at once |
-| `/autotitle <hint>` | Same, with the hint in the fork prompt ("focus on the PR part") |
-| `/autotitle off` / `on` | Pauses or resumes auto-naming in this session; `on` also clears `pinned` and takes the current name (`lastSeen`) as `lastSet`, so the next prompt does not pin it again |
+| `/autotitle <hint>` | Same, with the hint in the fork prompt ("focus on the PR part"); the hint replaces the keep-the-current-name line, so it can change the name |
+| `/autotitle off` / `on` | Pauses or resumes auto-naming in this session; `on` also clears `pinned` and takes the name the next prompt brings as `lastSet` (after a resume the name is unknown until then), so that prompt does not pin it again |
 | `/autotitle status` | State (on, off or pinned), the last name it set, the turn of the next check, and counts of checks, renames and failures |
 
 A name from `/autotitle` is applied with `$.command.run({ command: 'rename', args })`, since the "user named this session" reminder is true here. It counts as yours: it sets `lastSet` to that name and sets `pinned`. Before the first response there is nothing to fork; the command answers "Nothing to name yet."

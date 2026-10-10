@@ -209,7 +209,8 @@ test('/autotitle picks a name now, renames and pins', async ($, on) => {
   expect(r.text).toBe('Named this session pr-17-exit-handling.')
   await w.clock.advance(0)
   expect(w.seen.renames).toEqual(['pr-17-exit-handling'])
-  expect(w.seen.prompts[0]).toContain('The user asks: focus on the PR part')
+  expect(w.seen.prompts[0]).toContain('The user asks for a name that follows this: focus on the PR part.')
+  expect(w.seen.prompts[0]).not.toContain('reply with it unchanged')
   await w.turns($, 30, 'pr-17-exit-handling')
   expect(w.seen.forks).toBe(1)
   expect(w.store.get(`s:${SID}`)).toMatchObject({ lastSet: 'pr-17-exit-handling', pinned: true })
@@ -260,6 +261,7 @@ test('/autotitle status says what it is doing', async ($, on) => {
   await w.start($)
   expect((await autotitle($, 'status')).text).toContain('No name set yet. Next check after turn 3.')
   await w.turns($, 3)
+  expect((await autotitle($, 'status')).text).toContain('No name set yet. Picked pr-17-review-fixes; it lands with your next message. Next check after turn 13.')
   await w.prompt($)
   expect((await autotitle($, 'status')).text).toContain('Last name set: pr-17-review-fixes. Next check after turn 13.')
   await autotitle($, 'off')
@@ -297,6 +299,20 @@ test('a resumed pinned session stays pinned', async ($, on) => {
   await w.start($)
   await w.turns($, 30, 'picked-by-hand')
   expect(w.seen.forks).toBe(0)
+})
+
+test('/autotitle on right after a resume adopts the name the next prompt brings', async ($, on) => {
+  const w = world(on, { [`s:${SID}`]: { lastSet: 'old-auto-name', pinned: true, at: 99 * DAY } })
+  await w.start($)
+  expect((await autotitle($, 'status')).text).toContain('Pinned: its name was set by hand')
+  await autotitle($, 'on')
+  expect(w.store.get(`s:${SID}`)).toMatchObject({ pinned: false })
+  expect(await w.prompt($, 'named-by-hand')).toBeUndefined()
+  await w.turn($)
+  await w.turns($, 9, 'named-by-hand')
+  expect(w.seen.forks).toBe(1)
+  expect(w.seen.prompts[0]).toContain('The session is now named named-by-hand.')
+  expect(await w.prompt($, 'named-by-hand')).toBe('pr-17-review-fixes')
 })
 
 test('store entries older than 60 days are pruned at session start', async ($, on) => {

@@ -21,6 +21,8 @@ export type State = {
   pending: string | null
   /** Pin the session once `pending` lands (the /autotitle fallback). */
   pinOnApply: boolean
+  /** Take the next prompt's name as `lastSet` instead of pinning it (after /autotitle on). */
+  adopt: boolean
   /** The last name this plugin gave the session. */
   lastSet: string | null
   /** The session's name as the last prompt saw it. */
