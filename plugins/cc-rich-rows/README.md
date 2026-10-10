@@ -27,6 +27,8 @@ It is a mod: a hooks module Claude Code runs inside each interactive session.
 
 The footer gives the row count and how long the call ran. Claude reads the tool's output as it always did: only the drawing changes.
 
+Claude Code folds read-only calls, which make most of this output (`gh`, `curl`, `jq`), into one count line such as `Ran 1 shell command`. The mod keeps that line and draws the table under it. When the group holds several calls, each table gets its command as a caption. ctrl+o unfolds the group and shows the raw output.
+
 ## Nothing is hidden
 
 The mod draws a table only when all of it fits: 20 rows or fewer, 10 columns or fewer, and as wide as the transcript. Any other output keeps Claude Code's own drawing, so no row or cell is ever cut away. Claude Code does not tell a mod when ctrl+o expands a row, so a table that hid rows would hide them there too.
@@ -35,7 +37,8 @@ It also leaves alone:
 
 - an errored call, and Bash output with anything beside stdout (stderr, an interrupt, a background task, a note such as "No matches found")
 - CSV whose first line does not look like a header (short names that start with a letter, none twice) or reads like prose (`, `), such as `gh pr list` without `--json`
-- results inside a folded group of calls (`Read 3 files, ran 2 shell commands`) that ctrl+o unfolds
+
+The width check uses the whole terminal. Beside a docked pane the transcript is narrower, so a wide table may wrap there.
 
 ## Tests
 

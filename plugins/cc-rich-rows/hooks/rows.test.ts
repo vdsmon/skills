@@ -77,6 +77,61 @@ test('output that would not show whole, or is not a table, keeps the engine draw
   }
 })
 
+const groupCall = (id: string, command: string, stdout: string, extra: Record<string, unknown> = {}) => ({
+  tool_use_id: id,
+  tool: 'Bash',
+  input: { command },
+  isRunning: false,
+  isErrored: false,
+  isInterrupted: false,
+  output: bash(stdout),
+  ...extra,
+})
+
+function group($: Engine, calls: ReturnType<typeof groupCall>[], isExpanded = false) {
+  return $.ui.mount({
+    plugin: 'cc-rich-rows',
+    surface: 'terminal',
+    component: 'ToolGroup',
+    viewport: VIEWPORT,
+    props: { calls, isActive: false, isExpanded },
+  })
+}
+
+test('a folded group keeps its count line and draws its table under it', async ($, on) => {
+  world(on)
+  const ui = await group($, [groupCall('g1', 'gh pr list --json number,title,state', JSON_ROWS)])
+  const drawn = await ui.drawn()
+  expect(drawn.type).toBe('Box')
+  expect(await ui.find({ type: 'Markdown' })).toBeDefined()
+  expect((await ui.findAll({ type: 'Text' })).map(one => one.text)).toEqual(['2 rows'])
+})
+
+test('a folded group of several calls captions each table with its command', async ($, on) => {
+  world(on)
+  const ui = await group($, [
+    groupCall('g1', 'git status', 'On branch main\n'),
+    groupCall('g2', 'gh pr list --json number,title,state', JSON_ROWS),
+    groupCall('g3', 'curl -s api/x', 'id,name\n1,a\n'),
+  ])
+  expect((await ui.findAll({ type: 'Markdown' })).length).toBe(2)
+  expect((await ui.findAll({ type: 'Text' })).map(one => one.text)).toEqual(['$ gh pr list --json number,title,state', '2 rows', '$ curl -s api/x', '1 row'])
+})
+
+test('an expanded, running or errored group call keeps the engine drawing', async ($, on) => {
+  world(on)
+  const cases = [
+    group($, [groupCall('g1', 'gh pr list --json n', JSON_ROWS)], true),
+    group($, [groupCall('g2', 'gh pr list --json n', JSON_ROWS, { isRunning: true })]),
+    group($, [groupCall('g3', 'gh pr list --json n', JSON_ROWS, { isErrored: true })]),
+  ]
+  for (const pending of cases) {
+    const ui = await pending
+    expect(await ui.find({ type: 'Markdown' })).toBeUndefined()
+    await ui.unmount()
+  }
+})
+
 test('table helpers', async () => {
   expect(tableOf('name\tsize\na.ts\t12\nb.ts\t3')).toEqual({ header: ['name', 'size'], rows: [['a.ts', '12'], ['b.ts', '3']] })
   expect(tableOf('[{"a":1},{"b":{"c":true}}]')).toEqual({ header: ['a', 'b'], rows: [['1', ''], ['', '{"c":true}']] })
