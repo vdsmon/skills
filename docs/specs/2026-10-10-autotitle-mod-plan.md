@@ -72,7 +72,7 @@ plus, when set, `The session is now named <current>. If that name still fits the
 
 ### 4. Measure the prompt
 
-Reuse `evals/session-name/` as `evals/autotitle/` (git mv): the same three fixtures, the prompt above in place of the skill call, and `grade.py` changed to expect one bare name per run. The `split` case passes when the name covers either thread. Run each case 3 times with `claude -p --model opus` over the fixture text. Goal: 9 of 9 valid names, `drift` names the feed cursor fix, `portuguese` keeps `rev-2210` and `uv`. Change the wording until it passes, and keep the result as experiments row #22.
+Reuse `evals/session-name/` as `evals/autotitle/` (git mv): the same three fixtures, the prompt above in place of the skill call, and `grade.py` changed to expect one bare name per run. The `split` case passes when the name covers either thread. Run each case 3 times with `claude -p --model opus` over the fixture text. Goal: 9 of 9 valid names, `drift` names the feed cursor fix, `portuguese` keeps `rev-2210` and `uv`. Change the wording until it passes, and keep the result as experiments row #23.
 
 ### 5. Repo wiring
 

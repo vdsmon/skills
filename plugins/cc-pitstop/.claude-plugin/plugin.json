@@ -1,0 +1,56 @@
+{
+  "name": "cc-pitstop",
+  "version": "1.0.0",
+  "description": "Pauses Claude Code before the 5-hour or weekly usage limit, across every session on the machine, and resumes the paused work on its own when the window resets.",
+  "author": {
+    "name": "Victor De Simone",
+    "email": "victorsmoliveira@gmail.com",
+    "url": "https://github.com/vdsmon"
+  },
+  "homepage": "https://github.com/vdsmon/skills",
+  "repository": "https://github.com/vdsmon/skills",
+  "license": "MIT",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "warn5h": {
+      "type": "number",
+      "title": "Warn at (5-hour %)",
+      "description": "5-hour usage at which the model is told to land the current thread.",
+      "default": 90,
+      "min": 1,
+      "max": 100
+    },
+    "park5h": {
+      "type": "number",
+      "title": "Park at (5-hour %)",
+      "description": "5-hour usage at which every session pauses until the window resets.",
+      "default": 97,
+      "min": 1,
+      "max": 100
+    },
+    "warnWeekly": {
+      "type": "number",
+      "title": "Warn at (weekly %)",
+      "description": "Weekly usage at which the model is told to land the current thread.",
+      "default": 96,
+      "min": 1,
+      "max": 100
+    },
+    "parkWeekly": {
+      "type": "number",
+      "title": "Park at (weekly %)",
+      "description": "Weekly usage at which every session pauses until the window resets.",
+      "default": 99,
+      "min": 1,
+      "max": 100
+    },
+    "graceRequests": {
+      "type": "number",
+      "title": "Grace requests",
+      "description": "Requests the main thread may still make after it reads the stop note, to save its state. All subagents share a pool of 3.",
+      "default": 2,
+      "min": 0,
+      "max": 10
+    }
+  }
+}

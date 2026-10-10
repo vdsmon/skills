@@ -22,7 +22,7 @@ What I assumed (correct me):
 
 ## Spike results
 
-Throwaway mod in a Haiku session on Claude Code 2.1.296 (recorded as `docs/experiments.md` #21):
+Throwaway mod in a Haiku session on Claude Code 2.1.296 (recorded as `docs/experiments.md` #22):
 
 - `classic.UserPromptSubmit` returning `sessionTitle` writes a `custom-title` record, the same record `/rename` writes. It adds nothing to the transcript and nothing to the model's context. It lands on the prompt whose hook returns it.
 - `$.command.run({ command: 'rename', args })` also writes `custom-title`, but adds the `/rename` lines and the reminder "The user named this session x" to the model's context. From `classic.Stop` it is refused ("would wait on the turn this hook is holding"); from `turn.complete` it works.
