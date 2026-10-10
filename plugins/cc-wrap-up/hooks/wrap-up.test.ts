@@ -31,11 +31,15 @@ function world(on: On) {
     sends: [] as { to: string; text: string }[],
     isCopyRefused: false,
     isCompactSkipped: false,
+    registered: [] as { name: string; isDeferred: unknown }[],
   }
   on('session.start', async (_$, e) => ({ cwd: e.cwd }))
   on('session.end', async (_$, e) => ({ sessionId: e.sessionId }))
   on('command.register', async (_$, e) => ({ value: { command: e.name } }))
-  on('tool.register', async (_$, e) => ({ value: { tool: `mcp__cc-wrap-up__${e.name}` } }))
+  on('tool.register', async (_$, e) => {
+    seen.registered.push({ name: e.name, isDeferred: e.isDeferred })
+    return { value: { tool: `mcp__cc-wrap-up__${e.name}` } }
+  })
   on('command.list', async () => ({
     value: seen.commands.map(name => ({ name, description: name, source: 'builtin' as const })),
   }))
@@ -269,4 +273,132 @@ test('the settings move the lines', { options: { startTokens: 100_000, stepToken
   expect(await buttons(ui)).toEqual([])
   await turn($, seen, 110_000)
   expect(await buttons(ui)).toEqual(['compact', 'handoff', 'later'])
+})
+
+const COMPACT = {
+  kind: 'compact',
+  message: 'Hotfix for the 503 on hotfix/rate-limit. Fix committed as 4e1a9c2.\nSkip the repro.',
+  followUp: 'Add the regression test for the backoff in src/limiter.ts.',
+  openQuestion: false,
+}
+
+const HANDOFF = {
+  kind: 'handoff',
+  resumePrompt: 'Resume from /repo/.git/handoff/HANDOFF.md: the 503 fix is committed. First: add the regression test.',
+  handoffPath: '/repo/.git/handoff/HANDOFF.md',
+  openQuestion: false,
+}
+
+function ready($: Engine, input: Record<string, unknown>) {
+  toolUses += 1
+  return $.tool.call({ tool: 'mcp__cc-wrap-up__ready', tool_use_id: `toolu_${toolUses}`, ...input })
+}
+
+function typed($: Engine, command: string, args = '') {
+  return $.command.run({
+    command,
+    args,
+    origin: { kind: 'composer' },
+    presentation: { isFullscreen: true, columns: 120 },
+  })
+}
+
+function said($: Engine, text: string, kind: 'composer' | 'bridge' = 'composer') {
+  return $.prompt.submit({ text, wait: false, origin: { kind } })
+}
+
+async function texts(ui: Awaited<ReturnType<typeof band>>) {
+  return (await ui.findAll({ type: 'Text' })).map(t => t.text).join('\n')
+}
+
+test('the ready tool is registered deferred at session start', async ($, on) => {
+  const seen = world(on)
+  await start($)
+  expect(seen.registered).toEqual([{ name: 'ready', isDeferred: true }])
+})
+
+test('a compact payload opens the band with the message and its buttons', async ($, on) => {
+  world(on)
+  await start($)
+  const ui = await band($)
+  const r = await ready($, COMPACT)
+  expect(r.isError).toBeUndefined()
+  expect(await lineText(ui)).toContain('Hotfix for the 503')
+  expect(await texts(ui)).not.toContain('Skip the repro')
+  expect(await buttons(ui)).toEqual(['compact-now', 'edit', 'not-now'])
+})
+
+test('a handoff payload opens the band with the path and its buttons', async ($, on) => {
+  world(on)
+  await start($)
+  const ui = await band($)
+  await ready($, HANDOFF)
+  expect(await lineText(ui)).toContain('Handoff at /repo/.git/handoff/HANDOFF.md')
+  expect(await buttons(ui)).toEqual(['fresh', 'copy', 'done'])
+})
+
+test('a payload with an open question says so', async ($, on) => {
+  world(on)
+  await start($)
+  const ui = await band($)
+  await ready($, { ...COMPACT, openQuestion: true })
+  expect(await texts(ui)).toContain('question still open')
+})
+
+test('a payload with a missing field is refused by name and changes nothing', async ($, on) => {
+  world(on)
+  await start($)
+  const ui = await band($)
+  const r = await ready($, { kind: 'compact', message: 'only the message' })
+  expect(r.deny).toContain('followUp')
+  const h = await ready($, { kind: 'handoff', resumePrompt: 'go' })
+  expect(h.deny).toContain('handoffPath')
+  expect(await buttons(ui)).toEqual([])
+})
+
+test('a prep the user typed shows as preparing, and one that hands nothing over says so', async ($, on) => {
+  const seen = world(on)
+  await start($)
+  const ui = await band($)
+  await typed($, 'prep-compact:prep-compact')
+  expect(await lineText(ui)).toContain('Preparing to compact')
+  expect(await buttons(ui)).toEqual([])
+  await turn($, seen, 300_000)
+  expect(seen.toasts.join('\n')).toContain('use the printed blocks')
+  expect(await lineText(ui)).toBeUndefined()
+})
+
+test('a prep that hands over its result leaves the band ready after its turn', async ($, on) => {
+  const seen = world(on)
+  await start($)
+  const ui = await band($)
+  await typed($, 'prep-exit:prep-exit')
+  expect(await lineText(ui)).toContain('Preparing the handoff')
+  await ready($, HANDOFF)
+  await turn($, seen, 700_000)
+  expect(await buttons(ui)).toEqual(['fresh', 'copy', 'done'])
+  expect(seen.toasts).toEqual([])
+})
+
+test('the next prompt of the user drops a payload, and a slash command does not', async ($, on) => {
+  world(on)
+  await start($)
+  const ui = await band($)
+  await ready($, COMPACT)
+  await typed($, 'help')
+  expect(await buttons(ui)).toEqual(['compact-now', 'edit', 'not-now'])
+  await said($, 'actually, one more thing', 'bridge')
+  expect(await buttons(ui)).toEqual([])
+})
+
+test('with an open question, the answer keeps the payload and the next prompt drops it', async ($, on) => {
+  world(on)
+  await start($)
+  const ui = await band($)
+  await ready($, { ...COMPACT, openQuestion: true })
+  await said($, 'yes, commit the env example too')
+  expect(await buttons(ui)).toEqual(['compact-now', 'edit', 'not-now'])
+  expect(await texts(ui)).not.toContain('question still open')
+  await said($, 'and now something else')
+  expect(await buttons(ui)).toEqual([])
 })

@@ -1,9 +1,12 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Phase, Wrap } from '../types'
+import type { Payload, Phase, PrepKind, Wrap } from '../types'
 
 const AUTO_COMPACT_AT = '967k'
+const TOOL = 'ready'
+const TOOL_NAME = `mcp__cc-wrap-up__${TOOL}`
+const SKILL: Record<PrepKind, string> = { compact: 'prep-compact', handoff: 'prep-exit' }
 
 const IDLE: Wrap = {
   phase: 'idle',
@@ -97,14 +100,72 @@ async function reset($: EngineInterface) {
   await update($, wrap, w => ({ ...IDLE, isOff: w.isOff }))
 }
 
+/** Not now: hide the band and look again one step past the current size. */
+const dismissed = (w: Wrap): Wrap => ({
+  ...w,
+  phase: 'idle',
+  payload: null,
+  prepKind: null,
+  line: w.phase === 'urgent' ? w.line : (w.tokens ?? cfg.start) + cfg.step,
+})
+
 async function later($: EngineInterface) {
-  await update($, wrap, w => ({
-    ...w,
-    phase: 'idle',
-    payload: null,
-    prepKind: null,
-    line: w.phase === 'urgent' ? w.line : (w.tokens ?? cfg.start) + cfg.step,
-  }))
+  await update($, wrap, dismissed)
+}
+
+/** Which prep skill a command name runs, if any (plugin skills are namespaced). */
+function prepKindOf(command: string): PrepKind | null {
+  for (const kind of ['compact', 'handoff'] as const) {
+    if (command === SKILL[kind] || command.endsWith(`:${SKILL[kind]}`)) return kind
+  }
+  return null
+}
+
+const TOOL_SPEC = {
+  name: TOOL,
+  description:
+    'Hands the result of prep-compact or prep-exit to the wrap-up band, which offers the user to compact or to deliver the resume prompt.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      kind: { enum: ['compact', 'handoff'] },
+      message: { type: 'string', description: 'compact: the focus message, without the /compact prefix' },
+      followUp: { type: 'string', description: 'compact: the next action, sent as a prompt after compaction' },
+      resumePrompt: { type: 'string', description: 'handoff: the first message for the next session' },
+      handoffPath: { type: 'string', description: 'handoff: absolute path of HANDOFF.md' },
+      openQuestion: { type: 'boolean', description: 'true when a question was held back for the user' },
+    },
+    required: ['kind'],
+  },
+  isDeferred: true,
+}
+
+/** The tool's input as a payload, or why it is refused. */
+function payloadOf(e: Record<string, unknown>): Payload | string {
+  const text = (k: string) => (typeof e[k] === 'string' && (e[k] as string).trim() !== '' ? (e[k] as string) : '')
+  const missing = (keys: string[]) => keys.filter(k => text(k) === '')
+  const openQuestion = e.openQuestion === true
+  if (e.kind === 'compact') {
+    const gone = missing(['message', 'followUp'])
+    if (gone.length > 0) return `missing ${gone.join(' and ')}`
+    return { kind: 'compact', message: text('message').replace(/^\/compact\s+/, ''), followUp: text('followUp'), openQuestion }
+  }
+  if (e.kind === 'handoff') {
+    const gone = missing(['resumePrompt', 'handoffPath'])
+    if (gone.length > 0) return `missing ${gone.join(' and ')}`
+    return { kind: 'handoff', resumePrompt: text('resumePrompt'), handoffPath: text('handoffPath'), openQuestion }
+  }
+  return 'kind must be compact or handoff'
+}
+
+async function onTurnEnd($: EngineInterface, reason: string) {
+  const w = await read($, wrap)
+  if (w.phase === 'prepping') {
+    await update($, wrap, cur => (cur.phase === 'prepping' ? dismissed(cur) : cur))
+    const skill = SKILL[w.prepKind ?? 'compact']
+    await $.ui.toast(`${skill} finished without handing its result to wrap-up; use the printed blocks.`)
+  }
+  if (reason === 'answer') await onAnswer($)
 }
 
 export const register: Register = (on, options) => {
@@ -114,8 +175,43 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     isInteractive = e.isInteractive
+    await $.tool.register(TOOL_SPEC)
     return next(e)
   })
+
+  on('tool.call', { tool: TOOL_NAME }, async ($, e) => {
+    const payload = payloadOf(e)
+    if (typeof payload === 'string') {
+      return { deny: `cc-wrap-up: ${payload}. Nothing was handed over; print your usual blocks.` }
+    }
+    await update($, wrap, w => ({
+      ...w,
+      phase: payload.kind === 'compact' ? 'ready-compact' : 'ready-handoff',
+      payload,
+      prepKind: null,
+    }))
+    return { result: 'The wrap-up band now offers this to the user. Print your usual blocks too.' }
+  }).catch(() => ({ deny: 'cc-wrap-up failed to take the result. Print your usual blocks.' }))
+
+  // A prep the user typed: show it as running, so a prep that hands nothing over is noticed.
+  on('command.run', async ($, e, next) => {
+    const kind = prepKindOf(e.command)
+    if (kind !== null) await update($, wrap, w => ({ ...w, phase: 'prepping', prepKind: kind, payload: null }))
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  // A ready result describes the session when the skill ran. The user's own next
+  // words make it stale, except the answer to a question the skill held back.
+  on('prompt.submit', async ($, e, next) => {
+    if (e.origin.kind === 'composer' || e.origin.kind === 'bridge') {
+      await update($, wrap, w => {
+        if (w.payload === null || (w.phase !== 'ready-compact' && w.phase !== 'ready-handoff')) return w
+        if (w.payload.openQuestion) return { ...w, payload: { ...w.payload, openQuestion: false } }
+        return dismissed(w)
+      })
+    }
+    return next(e)
+  }).catch(($, e, next) => next(e))
 
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     const ran = await next(e)
@@ -124,9 +220,9 @@ export const register: Register = (on, options) => {
   }).catch(($, e, next) => next(e))
 
   on('turn.complete', async ($, e, next) => {
-    if (isInteractive && e.agentId === undefined && e.reason === 'answer') {
+    if (isInteractive && e.agentId === undefined) {
       try {
-        await onAnswer($)
+        await onTurnEnd($, e.reason)
       } catch {
         // Fails silent: a missed cue comes back on the next turn.
       }
@@ -148,24 +244,61 @@ export const register: Register = (on, options) => {
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const w = await read($, wrap)
-    if (e.props.hasSurvey || e.props.isWorking || e.props.view.agentId !== undefined) return next(e)
-    if (w.phase !== 'cue' && w.phase !== 'urgent') return next(e)
+    if (e.props.hasSurvey || e.props.view.agentId !== undefined) return next(e)
+    // While a turn runs the band would offer what cannot run yet; a prep shows as running.
+    if (e.props.isWorking && w.phase !== 'prepping') return next(e)
+    if (w.phase === 'idle' || w.phase === 'armed') return next(e)
 
     const { Box, Button, Text } = $.ui.resolve(e)
+    const row = (line: string, color: 'warning' | undefined, ...actions: ReturnType<typeof Button>[]) => {
+      const note = w.payload?.openQuestion ? (
+        <Text dimColor>1 question still open above; answer it before you go on.</Text>
+      ) : null
+      return (
+        <Box key="wrap-up" flexDirection="column">
+          <Box flexDirection="row" gap={1}>
+            <Text color={color} wrap="truncate-end">
+              {line}
+            </Text>
+            {actions}
+          </Box>
+          {note}
+        </Box>
+      )
+    }
+
+    if (w.phase === 'prepping') {
+      return row(w.prepKind === 'handoff' ? 'Preparing the handoff…' : 'Preparing to compact…', undefined)
+    }
+    if (w.phase === 'ready-compact' && w.payload?.kind === 'compact') {
+      return row(
+        `Compact message ready: ${w.payload.message.split('\n')[0]}`,
+        undefined,
+        <Button key="compact-now" label="Compact now" variant="primary" onPress={() => undefined} />,
+        <Button key="edit" label="Edit" onPress={() => undefined} />,
+        <Button key="not-now" label="Not now" onPress={() => later($)} />,
+      )
+    }
+    if (w.phase === 'ready-handoff' && w.payload?.kind === 'handoff') {
+      return row(
+        `Handoff at ${w.payload.handoffPath}`,
+        undefined,
+        <Button key="fresh" label="Fresh session here" variant="primary" onPress={() => undefined} />,
+        <Button key="copy" label="Copy prompt" onPress={() => undefined} />,
+        <Button key="done" label="Done" onPress={() => later($)} />,
+      )
+    }
+    if (w.phase !== 'cue' && w.phase !== 'urgent') return next(e)
+
     const size = w.tokens === null ? 'This session' : `${formatTokens(w.tokens)} tokens`
-    const text =
+    return row(
       w.phase === 'urgent'
         ? `${size} · auto-compact runs at ${AUTO_COMPACT_AT}, with no audit`
-        : `${size} · good moment to wrap up`
-    return (
-      <Box key="wrap-up" flexDirection="row" gap={1}>
-        <Text color={w.phase === 'urgent' ? 'warning' : undefined}>
-          {text}
-        </Text>
-        <Button key="compact" label="Compact" onPress={() => undefined} />
-        <Button key="handoff" label="Hand off" onPress={() => undefined} />
-        <Button key="later" label="Later" onPress={() => later($)} />
-      </Box>
+        : `${size} · good moment to wrap up`,
+      w.phase === 'urgent' ? 'warning' : undefined,
+      <Button key="compact" label="Compact" onPress={() => undefined} />,
+      <Button key="handoff" label="Hand off" onPress={() => undefined} />,
+      <Button key="later" label="Later" onPress={() => later($)} />,
     )
   })
 }
