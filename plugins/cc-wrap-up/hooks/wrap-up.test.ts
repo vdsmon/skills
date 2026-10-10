@@ -402,3 +402,87 @@ test('with an open question, the answer keeps the payload and the next prompt dr
   await said($, 'and now something else')
   expect(await buttons(ui)).toEqual([])
 })
+
+test('Compact runs prep-compact and shows the prep as running', async ($, on) => {
+  const seen = world(on)
+  await start($)
+  const ui = await band($)
+  await turn($, seen, 520_000)
+  await ui.press({ key: 'compact' })
+  expect(seen.ran).toEqual([{ command: 'prep-compact:prep-compact', args: '' }])
+  expect(await lineText(ui)).toContain('Preparing to compact')
+})
+
+test('without prep-compact installed, Compact compacts at once with no message', async ($, on) => {
+  const seen = world(on)
+  seen.commands = ['compact', 'clear']
+  await start($)
+  const ui = await band($)
+  await turn($, seen, 520_000)
+  expect((await ui.find({ key: 'compact' }))?.text).toContain('Compact now')
+  expect(await buttons(ui)).toEqual(['compact', 'later'])
+  await ui.press({ key: 'compact' })
+  expect(seen.ran).toEqual([])
+  expect(seen.compactions.map(c => c.instructions)).toEqual([undefined])
+  expect(seen.submits).toEqual([])
+  expect(await buttons(ui)).toEqual([])
+})
+
+test('Compact now compacts with the message, then sends the follow-up as the user', async ($, on) => {
+  const seen = world(on)
+  await start($)
+  const ui = await band($)
+  await ready($, COMPACT)
+  await ui.press({ key: 'compact-now' })
+  expect(seen.compactions.map(c => c.instructions)).toEqual([COMPACT.message])
+  expect(seen.submits).toEqual([{ text: COMPACT.followUp, asUser: true }])
+  expect(await buttons(ui)).toEqual([])
+})
+
+test('a skipped compaction keeps the band and sends nothing', async ($, on) => {
+  const seen = world(on)
+  seen.isCompactSkipped = true
+  await start($)
+  const ui = await band($)
+  await ready($, COMPACT)
+  await ui.press({ key: 'compact-now' })
+  expect(seen.toasts.join('\n')).toContain('a hook said no')
+  expect(seen.submits).toEqual([])
+  expect(await buttons(ui)).toEqual(['compact-now', 'edit', 'not-now'])
+})
+
+test('Edit puts /compact with the message in the prompt box and keeps the band', async ($, on) => {
+  const seen = world(on)
+  await start($)
+  const ui = await band($)
+  await ready($, COMPACT)
+  await ui.press({ key: 'edit' })
+  expect(seen.fills).toEqual([`/compact ${COMPACT.message}`])
+  expect(seen.compactions).toEqual([])
+  expect(await buttons(ui)).toEqual(['compact-now', 'edit', 'not-now'])
+})
+
+test('Not now closes the band and drops the message', async ($, on) => {
+  const seen = world(on)
+  await start($)
+  const ui = await band($)
+  await ready($, COMPACT)
+  await ui.press({ key: 'not-now' })
+  expect(await buttons(ui)).toEqual([])
+  expect(seen.compactions).toEqual([])
+})
+
+test('while a turn runs, the band offers nothing but a running prep', async ($, on) => {
+  const seen = world(on)
+  await start($)
+  await turn($, seen, 520_000)
+  const working = await $.ui.mount({
+    plugin: 'cc-wrap-up',
+    surface: 'terminal',
+    component: 'AbovePrompt',
+    props: { ...BAND, isWorking: true },
+  })
+  expect(await buttons(working)).toEqual([])
+  await typed($, 'prep-compact:prep-compact')
+  expect(await lineText(working)).toContain('Preparing to compact')
+})

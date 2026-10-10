@@ -121,6 +121,49 @@ function prepKindOf(command: string): PrepKind | null {
   return null
 }
 
+/** The installed command that runs the prep skill of this kind, if any. */
+async function findPrep($: EngineInterface, kind: PrepKind) {
+  try {
+    return (await $.command.list()).find(c => prepKindOf(c.name) === kind)?.name ?? null
+  } catch {
+    return null
+  }
+}
+
+async function startPrep($: EngineInterface, kind: PrepKind) {
+  const command = await findPrep($, kind)
+  if (command === null) {
+    if (kind === 'compact') await compactNow($, undefined, undefined)
+    return
+  }
+  // The mod's own command.run never reaches its own hook, so mark the prep here.
+  await update($, wrap, w => ({ ...w, phase: 'prepping', prepKind: kind, payload: null }))
+  try {
+    await $.command.run({ command })
+  } catch (err) {
+    await update($, wrap, dismissed)
+    await $.ui.toast(`${SKILL[kind]} did not start: ${String(err)}`)
+  }
+}
+
+/** Compacts with the message, then sends the follow-up as the user's next prompt. */
+async function compactNow($: EngineInterface, message: string | undefined, followUp: string | undefined) {
+  let r: Awaited<ReturnType<EngineInterface['session']['compact']>>
+  try {
+    r = await $.session.compact(message === undefined ? {} : { instructions: message })
+  } catch (err) {
+    await $.ui.toast(`Compaction did not run: ${String(err)}`)
+    return
+  }
+  if (r.skip !== undefined) {
+    await $.ui.toast(`Compaction skipped: ${r.skip}`)
+    return
+  }
+  // The mod's own compaction never reaches its own session.compact hook.
+  await reset($)
+  if (followUp !== undefined) void $.prompt.submit({ text: followUp, asUser: true })
+}
+
 const TOOL_SPEC = {
   name: TOOL,
   description:
@@ -271,11 +314,12 @@ export const register: Register = (on, options) => {
       return row(w.prepKind === 'handoff' ? 'Preparing the handoff…' : 'Preparing to compact…', undefined)
     }
     if (w.phase === 'ready-compact' && w.payload?.kind === 'compact') {
+      const { message, followUp } = w.payload
       return row(
-        `Compact message ready: ${w.payload.message.split('\n')[0]}`,
+        `Compact message ready: ${message.split('\n')[0]}`,
         undefined,
-        <Button key="compact-now" label="Compact now" variant="primary" onPress={() => undefined} />,
-        <Button key="edit" label="Edit" onPress={() => undefined} />,
+        <Button key="compact-now" label="Compact now" variant="primary" onPress={() => compactNow($, message, followUp)} />,
+        <Button key="edit" label="Edit" onPress={() => $.prompt.fill({ text: `/compact ${message}` })} />,
         <Button key="not-now" label="Not now" onPress={() => later($)} />,
       )
     }
@@ -291,13 +335,16 @@ export const register: Register = (on, options) => {
     if (w.phase !== 'cue' && w.phase !== 'urgent') return next(e)
 
     const size = w.tokens === null ? 'This session' : `${formatTokens(w.tokens)} tokens`
+    const hasCompactPrep = (await findPrep($, 'compact')) !== null
+    const hasHandoffPrep = (await findPrep($, 'handoff')) !== null
+    const handoff = hasHandoffPrep ? [<Button key="handoff" label="Hand off" onPress={() => startPrep($, 'handoff')} />] : []
     return row(
       w.phase === 'urgent'
         ? `${size} · auto-compact runs at ${AUTO_COMPACT_AT}, with no audit`
         : `${size} · good moment to wrap up`,
       w.phase === 'urgent' ? 'warning' : undefined,
-      <Button key="compact" label="Compact" onPress={() => undefined} />,
-      <Button key="handoff" label="Hand off" onPress={() => undefined} />,
+      <Button key="compact" label={hasCompactPrep ? 'Compact' : 'Compact now'} onPress={() => startPrep($, 'compact')} />,
+      ...handoff,
       <Button key="later" label="Later" onPress={() => later($)} />,
     )
   })
