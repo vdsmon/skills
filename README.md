@@ -74,7 +74,6 @@ Generated from each plugin's `plugin.json` by `scripts/sync-codex.sh`, so do not
 | `humanize` | any | Strip AI-writing tells from text. Detects em-dash overuse, AI vocabulary, inflated significance, rule-of-three, sycophancy, compound coinages, and 20+ more patterns. |
 | `brainstorming` | any | Design-before-code gate that sizes each request as a spike, a bounded change, or architectural work, and gets approval on a design before any code. |
 | `systematic-debugging` | any | Four-phase debugging discipline (root-cause investigation, pattern analysis, hypothesis, single-fix implementation). |
-| `skill-smith` | any | Build and test Agent Skills with a baseline-first eval loop (Sonnet runs, benchmark viewer) and a skill-design vocabulary. |
 | `git-cleanup` | any | Removes local git branches and worktrees that are safely merged into dev/develop/master/main, skipping dirty worktrees and the main checkout. |
 | `strip-migration-cruft` | any | Finds comments and docs that narrate past project history (phase, wave, story, migration notes), sorts cruft from live meaning, and strips the cruft after confirmation. |
 | `grilling` | any | Relentless interview that stress-tests a plan, decision, or idea one round of questions at a time, until you and the agent agree. |
