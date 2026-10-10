@@ -22,7 +22,7 @@ plugins/<plugin>/
   tests/test-*.sh                   # Optional offline test suite; tests/live-*.sh spend tokens
 scripts/                            # sync-codex.sh, bump-plugin.sh, check.py, test-offline.sh
 docs/                               # Repo notes that never ship, e.g. docs/experiments.md
-evals/<skill>/                      # Eval fixtures kept out of the shipped plugin; point skill-smith at them by path
+evals/<skill>/                      # Eval fixtures kept out of the shipped plugin
 ```
 
 You author `plugin.json` and the skills. `scripts/sync-codex.sh` (`mise run sync`) derives the rest, so never hand-edit a generated file:
@@ -64,7 +64,7 @@ The body is a prompt, not docs: second-person imperative. Keep this file and eve
 
 **Plugin description** (`plugin.json`): the first sentence must stand alone in 170 chars or fewer, because it becomes the README row. The whole description is 300 chars or fewer. Mechanics go in SKILL.md, not the description.
 
-**Progressive disclosure**: move reference content out of SKILL.md into sibling files (see `plugins/skill-smith/skills/skill-smith/references/`). Keep references one level deep: chains of `.md` -> `.md` -> `.md` cause partial reads. Aim for 100 lines or fewer in SKILL.md.
+**Progressive disclosure**: move reference content out of SKILL.md into sibling files (see `plugins/humanize/skills/humanize/references/`). Keep references one level deep: chains of `.md` -> `.md` -> `.md` cause partial reads. Aim for 100 lines or fewer in SKILL.md.
 
 **Helper scripts**: put deterministic logic in `skills/<skill>/scripts/` and have the skill call it (e.g. prep-compact's `scripts/baseline.sh`). Otherwise the model re-interprets the prose on every run.
 
@@ -89,9 +89,8 @@ Hooks are cc- only. Rules for any new hook:
 
 These plugins started as copies of other repos. Re-sync them from upstream from time to time: re-apply the local changes, and name the source in the commit body as `synced from <repo>@<sha> (<version>)`, so the next re-sync starts from a clean diff.
 
-- `mattpocock/skills`: grilling, codebase-design, teach, and skill-smith's design vocabulary (`references/skill-design-*.md`).
-- `obra/superpowers`: brainstorming, systematic-debugging, and skill-smith's TDD-for-skills discipline (from writing-skills).
-- `anthropics/skills`: skill-smith's eval harness (from skill-creator).
+- `mattpocock/skills`: grilling, codebase-design, teach.
+- `obra/superpowers`: brainstorming, systematic-debugging.
 
 ## Shipping a change
 
