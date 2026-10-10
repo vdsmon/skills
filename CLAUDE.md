@@ -42,7 +42,7 @@ To add, rename or remove a plugin, or to flip its cc- prefix: the dir name, the 
 - `mise run verify` runs sync, fails if a generated file changed, then runs `scripts/check.py`. check.py fails on a broken contract (above), a description over its cap, `when_to_use` on a user-only skill, a cc- feature in an unprefixed plugin, or prep-compact's and prep-exit's `baseline.sh` copies differing (change both together). It warns on a SKILL.md over 100 lines.
 - `mise run test` runs every offline suite (`plugins/*/tests/test-*.sh`). Run the suite of any plugin whose hooks or scripts you touch.
 - CI (`.github/workflows/ci.yml`, on macOS because the hooks use BSD `stat` and `date`) runs sync, check.py and the offline suites on every pull request and on main.
-- `mise run test:keepwarm` runs the cc-keepwarm mod's validate and tests through the `claude` CLI, which CI does not have. Run it after touching the mod or upgrading Claude Code.
+- `mise run test:keepwarm` and `mise run test:autotitle` run the cc-keepwarm and cc-autotitle mods' validate and tests through the `claude` CLI, which CI does not have. Run one after touching its mod or upgrading Claude Code.
 
 ## Anatomy of a skill
 
