@@ -20,7 +20,6 @@ declare module 'claude-code' {
       original: StateFamily<string | null>
       /** The file whose diff the pane shows; null for the list. */
       selected: string | null
-      isOpen: boolean
       /** Bumped by /clear, so originals from before it are not used again. */
       epoch: number
     }

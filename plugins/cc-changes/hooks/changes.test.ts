@@ -27,14 +27,18 @@ function world(on: On): Seen {
   on('env.get', async () => ({ value: '/home/me' }))
   on('command.register', async (_$, e) => ({ value: { command: e.name } }))
   on('ui.log', async () => ({ value: undefined }))
-  on('ui.open', async () => {
+  const open = new Set<string>()
+  on('ui.open', async (_$, e) => {
     seen.opened += 1
+    open.add(e.id)
     return { value: { isPlaced: true } } as never
   })
-  on('ui.close', async () => {
+  on('ui.close', async (_$, e) => {
     seen.closed += 1
+    open.delete(e.id)
     return { value: undefined } as never
   })
+  on('ui.panes', async () => ({ value: [...open].map(id => ({ id, title: id, isShown: true, isFocused: false, isPlaced: true })) }))
   on('ui.render', async ($, e) => $.ui.resolve(e).Box({}))
   on('fs.read', async (_$, e) => {
     const text = seen.disk.get(e.path)

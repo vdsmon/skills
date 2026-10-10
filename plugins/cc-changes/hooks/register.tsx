@@ -10,7 +10,6 @@ const PANE = 'cc-changes'
 
 const filesAtom = atom({ plugin: 'cc-changes', key: 'files' } as const, [])
 const selectedAtom = atom({ plugin: 'cc-changes', key: 'selected' } as const, null)
-const isOpenAtom = atom({ plugin: 'cc-changes', key: 'isOpen' } as const, false)
 const epochAtom = atom({ plugin: 'cc-changes', key: 'epoch' } as const, 0)
 
 const cfg = { root: '', home: '' }
@@ -94,13 +93,12 @@ async function trackBash($: EngineInterface, diff: Patch) {
 }
 
 async function toggle($: EngineInterface) {
-  if (await read($, isOpenAtom)) {
+  // The engine's record, not a value of the mod's: a reload closes and reopens panes behind the mod's back.
+  if ((await $.ui.panes()).some(pane => pane.id === PANE && pane.isShown)) {
     await $.ui.close({ id: PANE })
-    await update($, isOpenAtom, () => false)
     return 'Changes pane closed.'
   }
   await update($, selectedAtom, () => null)
-  await update($, isOpenAtom, () => true)
   const opened = await $.ui.open({ id: PANE, title: 'Changes' })
   return opened.isPlaced ? 'Changes pane opened.' : `The changes pane is waiting: ${opened.reason}`
 }
@@ -152,11 +150,6 @@ export const register: Register = on => {
   }).catch(($, e, next) => next(e))
 
   on('command.run', { command: 'changes' }, async $ => ({ text: await toggle($) }))
-
-  on('ui.close', { id: PANE }, async ($, e, next) => {
-    await update($, isOpenAtom, () => false)
-    return next(e)
-  }).catch(($, e, next) => next(e))
 
   on('session.end', async ($, e, next) => {
     if (e.reason === 'clear') {
