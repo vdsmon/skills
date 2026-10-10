@@ -1,0 +1,14 @@
+{
+  "name": "cc-timeline",
+  "version": "1.0.0",
+  "description": "A side pane that draws each Claude Code turn as a timeline: every tool call is a colored bar on the turn's time axis, with subagent calls under their Agent call.",
+  "author": {
+    "name": "Victor De Simone",
+    "email": "victorsmoliveira@gmail.com",
+    "url": "https://github.com/vdsmon"
+  },
+  "homepage": "https://github.com/vdsmon/skills",
+  "repository": "https://github.com/vdsmon/skills",
+  "license": "MIT",
+  "types": "./types/index.d.ts"
+}

@@ -28,6 +28,12 @@
       "version": "1.0.0"
     },
     {
+      "name": "cc-timeline",
+      "source": "./plugins/cc-timeline",
+      "description": "A side pane that draws each Claude Code turn as a timeline: every tool call is a colored bar on the turn's time axis, with subagent calls under their Agent call. Claude Code only.",
+      "version": "1.0.0"
+    },
+    {
       "name": "cc-wrap-up",
       "source": "./plugins/cc-wrap-up",
       "description": "Cues a wrap-up at a natural break in a long session, then compacts with prep-compact's message or hands off with prep-exit's resume prompt, with no copy-paste. Reads the context size at no cost and acts only when you press. Claude Code only.",
