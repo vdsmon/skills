@@ -293,10 +293,23 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
+  // The user's own /compact (after Edit, or typed): it gets the pending message when
+  // it has none, and the follow-up goes once it stands. The mod's own compaction never
+  // reaches this hook.
   on('session.compact', async ($, e, next) => {
     if (e.agentId !== undefined) return next(e)
-    const r = await next(e)
-    if (r.skip === undefined && e.trigger !== 'precompute') await reset($)
+    const w = await read($, wrap)
+    const pending = w.phase === 'ready-compact' && w.payload?.kind === 'compact' ? w.payload : null
+    if (e.trigger === 'precompute') {
+      // A summary computed now, without the prep's message, could stand in for the real one.
+      return w.phase === 'prepping' || pending !== null ? { skip: 'cc-wrap-up: a prep result is pending' } : next(e)
+    }
+    const isFilled = e.trigger === 'manual' && pending !== null && (e.instructions ?? '').trim() === ''
+    const r = await next(isFilled ? { ...e, instructions: pending.message } : e)
+    if (r.skip !== undefined) return r
+    await reset($)
+    // Not awaited: the follow-up's turn starts only after this compaction finishes.
+    if (e.trigger === 'manual' && pending !== null) void $.prompt.submit({ text: pending.followUp, asUser: true })
     return r
   }).catch(($, e, next) => next(e))
 

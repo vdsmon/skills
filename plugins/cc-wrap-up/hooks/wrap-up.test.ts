@@ -551,3 +551,64 @@ test('Done closes the band', async ($, on) => {
   expect(await buttons(ui)).toEqual([])
   expect(seen.submits).toEqual([])
 })
+
+test("the user's bare /compact gets the pending message, then the follow-up is sent", async ($, on) => {
+  const seen = world(on)
+  await start($)
+  const ui = await band($)
+  await ready($, COMPACT)
+  await $.session.compact({ trigger: 'manual', messages: KEPT })
+  expect(seen.compactions).toEqual([{ trigger: 'manual', instructions: COMPACT.message }])
+  expect(seen.submits).toEqual([{ text: COMPACT.followUp, asUser: true }])
+  expect(await buttons(ui)).toEqual([])
+})
+
+test("the user's own /compact text is kept, and the follow-up still goes", async ($, on) => {
+  const seen = world(on)
+  await start($)
+  await ready($, COMPACT)
+  await $.session.compact({ trigger: 'manual', instructions: 'my own words', messages: KEPT })
+  expect(seen.compactions).toEqual([{ trigger: 'manual', instructions: 'my own words' }])
+  expect(seen.submits).toEqual([{ text: COMPACT.followUp, asUser: true }])
+})
+
+test('a skipped /compact sends no follow-up and keeps the band', async ($, on) => {
+  const seen = world(on)
+  seen.isCompactSkipped = true
+  await start($)
+  const ui = await band($)
+  await ready($, COMPACT)
+  await $.session.compact({ trigger: 'manual', messages: KEPT })
+  expect(seen.submits).toEqual([])
+  expect(await buttons(ui)).toEqual(['compact-now', 'edit', 'not-now'])
+})
+
+test('an auto compaction passes unchanged and sends nothing', async ($, on) => {
+  const seen = world(on)
+  await start($)
+  await ready($, COMPACT)
+  await $.session.compact({ trigger: 'auto', messages: KEPT })
+  expect(seen.compactions).toEqual([{ trigger: 'auto', instructions: undefined }])
+  expect(seen.submits).toEqual([])
+})
+
+test('a precompute is skipped while a prep result is pending, and runs otherwise', async ($, on) => {
+  const seen = world(on)
+  await start($)
+  const idle = await $.session.compact({ trigger: 'precompute', messages: KEPT })
+  expect(idle.skip).toBeUndefined()
+  await ready($, COMPACT)
+  const pending = await $.session.compact({ trigger: 'precompute', messages: KEPT })
+  expect(pending.skip).toContain('cc-wrap-up')
+  expect(seen.compactions).toEqual([{ trigger: 'precompute', instructions: undefined }])
+})
+
+test("a subagent's compaction is left alone", async ($, on) => {
+  const seen = world(on)
+  await start($)
+  const ui = await band($)
+  await ready($, COMPACT)
+  await $.session.compact({ trigger: 'auto', agentId: 'agent_1', messages: KEPT })
+  expect(seen.submits).toEqual([])
+  expect(await buttons(ui)).toEqual(['compact-now', 'edit', 'not-now'])
+})
