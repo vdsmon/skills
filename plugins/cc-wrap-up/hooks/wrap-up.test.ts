@@ -1,5 +1,5 @@
-import { expect, test } from 'claude-code/testing'
-import type { Engine } from 'claude-code/testing'
+import { expect, mock, test } from 'claude-code/testing'
+import type { Engine, MockClock } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 const BAND = {
@@ -13,9 +13,13 @@ const BAND = {
 
 const KEPT = [{ role: 'user' as const, text: 'summary', toolUses: [] }]
 
+// The test's clock: the band starts long work from a timer, so a press settles it.
+let clock: MockClock
+
 // The engine beneath the plugin: a session whose context size, git status and
 // command list the test picks, and a record of every call the mod makes.
 function world(on: On) {
+  clock = mock.clock(on, { now: 0 })
   const seen = {
     tokens: 0 as number | undefined,
     isDirty: false,
@@ -138,6 +142,11 @@ async function turn(
   })
 }
 
+async function press(ui: Awaited<ReturnType<typeof band>>, key: string) {
+  await ui.press({ key })
+  await clock.settle()
+}
+
 async function lineText(ui: Awaited<ReturnType<typeof band>>) {
   return (await ui.find({ type: 'Text' }))?.text
 }
@@ -210,7 +219,7 @@ test('Later moves the line one step past the current size', async ($, on) => {
   await start($)
   const ui = await band($)
   await turn($, seen, 530_000)
-  await ui.press({ key: 'later' })
+  await press(ui, 'later')
   expect(await buttons(ui)).toEqual([])
   await turn($, seen, 600_000)
   expect(await buttons(ui)).toEqual([])
@@ -226,7 +235,7 @@ test('urgent shows without a seam and notifies once per crossing', async ($, on)
   await turn($, seen, 930_000)
   expect(await lineText(ui)).toContain('auto-compact')
   expect(seen.notified).toBe(1)
-  await ui.press({ key: 'later' })
+  await press(ui, 'later')
   expect(await buttons(ui)).toEqual([])
   await turn($, seen, 940_000)
   expect(await buttons(ui)).toEqual(['compact', 'handoff', 'later'])
@@ -243,7 +252,7 @@ test('a compaction clears the cue and puts the line back at the start', async ($
   await start($)
   const ui = await band($)
   await turn($, seen, 530_000)
-  await ui.press({ key: 'later' })
+  await press(ui, 'later')
   await $.session.compact({ trigger: 'manual', messages: KEPT })
   await turn($, seen, 510_000)
   expect(await buttons(ui)).toEqual(['compact', 'handoff', 'later'])
@@ -415,7 +424,7 @@ test('Compact runs prep-compact and shows the prep as running', async ($, on) =>
   await start($)
   const ui = await band($)
   await turn($, seen, 520_000)
-  await ui.press({ key: 'compact' })
+  await press(ui, 'compact')
   expect(seen.ran).toEqual([{ command: 'prep-compact:prep-compact', args: '' }])
   expect(await lineText(ui)).toContain('Preparing to compact')
 })
@@ -428,7 +437,7 @@ test('without prep-compact installed, Compact compacts at once with no message',
   await turn($, seen, 520_000)
   expect((await ui.find({ key: 'compact' }))?.text).toContain('Compact now')
   expect(await buttons(ui)).toEqual(['compact', 'later'])
-  await ui.press({ key: 'compact' })
+  await press(ui, 'compact')
   expect(seen.ran).toEqual([])
   expect(seen.compactions.map(c => c.instructions)).toEqual([undefined])
   expect(seen.submits).toEqual([])
@@ -440,7 +449,7 @@ test('Compact now compacts with the message, then sends the follow-up as the use
   await start($)
   const ui = await band($)
   await ready($, COMPACT)
-  await ui.press({ key: 'compact-now' })
+  await press(ui, 'compact-now')
   expect(seen.compactions.map(c => c.instructions)).toEqual([COMPACT.message])
   expect(seen.submits).toEqual([{ text: COMPACT.followUp, asUser: true }])
   expect(await buttons(ui)).toEqual([])
@@ -452,7 +461,7 @@ test('a skipped compaction keeps the band and sends nothing', async ($, on) => {
   await start($)
   const ui = await band($)
   await ready($, COMPACT)
-  await ui.press({ key: 'compact-now' })
+  await press(ui, 'compact-now')
   expect(seen.toasts.join('\n')).toContain('a hook said no')
   expect(seen.submits).toEqual([])
   expect(await buttons(ui)).toEqual(['compact-now', 'edit', 'not-now'])
@@ -463,7 +472,7 @@ test('Edit puts /compact with the message in the prompt box and keeps the band',
   await start($)
   const ui = await band($)
   await ready($, COMPACT)
-  await ui.press({ key: 'edit' })
+  await press(ui, 'edit')
   expect(seen.fills).toEqual([`/compact ${COMPACT.message}`])
   expect(seen.compactions).toEqual([])
   expect(await buttons(ui)).toEqual(['compact-now', 'edit', 'not-now'])
@@ -474,7 +483,7 @@ test('Not now closes the band and drops the message', async ($, on) => {
   await start($)
   const ui = await band($)
   await ready($, COMPACT)
-  await ui.press({ key: 'not-now' })
+  await press(ui, 'not-now')
   expect(await buttons(ui)).toEqual([])
   expect(seen.compactions).toEqual([])
 })
@@ -499,7 +508,7 @@ test('Hand off runs prep-exit and shows the prep as running', async ($, on) => {
   await start($)
   const ui = await band($)
   await turn($, seen, 520_000)
-  await ui.press({ key: 'handoff' })
+  await press(ui, 'handoff')
   expect(seen.ran).toEqual([{ command: 'prep-exit:prep-exit', args: '' }])
   expect(await lineText(ui)).toContain('Preparing the handoff')
 })
@@ -518,7 +527,7 @@ test('Fresh session here clears, then sends the resume prompt as the first messa
   await start($)
   const ui = await band($)
   await ready($, HANDOFF)
-  await ui.press({ key: 'fresh' })
+  await press(ui, 'fresh')
   expect(seen.order).toEqual(['run clear', 'submit'])
   expect(seen.submits).toEqual([{ text: HANDOFF.resumePrompt, asUser: true }])
   expect(await buttons(ui)).toEqual([])
@@ -529,7 +538,7 @@ test('Copy prompt copies the resume prompt and keeps the band', async ($, on) =>
   await start($)
   const ui = await band($)
   await ready($, HANDOFF)
-  await ui.press({ key: 'copy' })
+  await press(ui, 'copy')
   expect(seen.copies).toEqual([HANDOFF.resumePrompt])
   expect(seen.toasts.join('\n')).toContain('Copied')
   expect(await buttons(ui)).toEqual(['fresh', 'copy', 'done'])
@@ -541,7 +550,7 @@ test('a refused copy says why and keeps the band', async ($, on) => {
   await start($)
   const ui = await band($)
   await ready($, HANDOFF)
-  await ui.press({ key: 'copy' })
+  await press(ui, 'copy')
   expect(seen.toasts.join('\n')).toContain('no-clipboard')
   expect(await buttons(ui)).toEqual(['fresh', 'copy', 'done'])
 })
@@ -551,7 +560,7 @@ test('Done closes the band', async ($, on) => {
   await start($)
   const ui = await band($)
   await ready($, HANDOFF)
-  await ui.press({ key: 'done' })
+  await press(ui, 'done')
   expect(await buttons(ui)).toEqual([])
   expect(seen.submits).toEqual([])
 })

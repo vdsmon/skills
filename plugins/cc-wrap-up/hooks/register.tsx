@@ -114,6 +114,12 @@ async function later($: EngineInterface) {
   await update($, wrap, dismissed)
 }
 
+// A press has a 10 s budget and a compaction or a skill run can take longer, so
+// long work starts from a timer, outside the press's dispatch.
+function soon($: EngineInterface, work: () => Promise<unknown>) {
+  $.clock.after(0, () => void work())
+}
+
 /** Which prep skill a command name runs, if any (plugin skills are namespaced). */
 function prepKindOf(command: string): PrepKind | null {
   for (const kind of ['compact', 'handoff'] as const) {
@@ -224,10 +230,10 @@ const TOOL_SPEC = {
     type: 'object',
     properties: {
       kind: { enum: ['compact', 'handoff'] },
-      message: { type: 'string', description: 'compact: the focus message, without the /compact prefix' },
-      followUp: { type: 'string', description: 'compact: the next action, sent as a prompt after compaction' },
-      resumePrompt: { type: 'string', description: 'handoff: the first message for the next session' },
-      handoffPath: { type: 'string', description: 'handoff: absolute path of HANDOFF.md' },
+      message: { type: 'string', description: 'Required for compact: the focus message, without the /compact prefix' },
+      followUp: { type: 'string', description: 'Required for compact: the follow-up, the next action sent as a prompt after compaction' },
+      resumePrompt: { type: 'string', description: 'Required for handoff: the resume prompt, the first message for the next session' },
+      handoffPath: { type: 'string', description: 'Required for handoff: the absolute path of HANDOFF.md' },
       openQuestion: { type: 'boolean', description: 'true when a question was held back for the user' },
     },
     required: ['kind'],
@@ -390,9 +396,9 @@ export const register: Register = (on, options) => {
       return row(
         `Compact message ready: ${message.split('\n')[0]}`,
         undefined,
-        <Button key="compact-now" label="Compact now" variant="primary" onPress={() => compactNow($, message, followUp)} />,
-        <Button key="edit" label="Edit" onPress={() => $.prompt.fill({ text: `/compact ${message}` })} />,
-        <Button key="not-now" label="Not now" onPress={() => later($)} />,
+        <Button key="compact-now" label="Compact now" hotkey="c" variant="primary" onPress={() => soon($, () => compactNow($, message, followUp))} />,
+        <Button key="edit" label="Edit" hotkey="e" onPress={() => $.prompt.fill({ text: `/compact ${message}` })} />,
+        <Button key="not-now" label="Not now" hotkey="n" onPress={() => later($)} />,
       )
     }
     if (w.phase === 'ready-handoff' && w.payload?.kind === 'handoff') {
@@ -400,9 +406,9 @@ export const register: Register = (on, options) => {
       return row(
         `Handoff at ${w.payload.handoffPath}`,
         undefined,
-        <Button key="fresh" label="Fresh session here" variant="primary" onPress={() => freshSession($, resumePrompt)} />,
-        <Button key="copy" label="Copy prompt" onPress={p => copyPrompt($, resumePrompt, p.surface)} />,
-        <Button key="done" label="Done" onPress={() => later($)} />,
+        <Button key="fresh" label="Fresh session here" hotkey="f" variant="primary" onPress={() => soon($, () => freshSession($, resumePrompt))} />,
+        <Button key="copy" label="Copy prompt" hotkey="y" onPress={p => copyPrompt($, resumePrompt, p.surface)} />,
+        <Button key="done" label="Done" hotkey="d" onPress={() => later($)} />,
       )
     }
     if (w.phase !== 'cue' && w.phase !== 'urgent') return next(e)
@@ -410,15 +416,15 @@ export const register: Register = (on, options) => {
     const size = w.tokens === null ? 'This session' : `${formatTokens(w.tokens)} tokens`
     const hasCompactPrep = (await findPrep($, 'compact')) !== null
     const hasHandoffPrep = (await findPrep($, 'handoff')) !== null
-    const handoff = hasHandoffPrep ? [<Button key="handoff" label="Hand off" onPress={() => startPrep($, 'handoff')} />] : []
+    const handoff = hasHandoffPrep ? [<Button key="handoff" label="Hand off" hotkey="h" onPress={() => soon($, () => startPrep($, 'handoff'))} />] : []
     return row(
       w.phase === 'urgent'
         ? `${size} · auto-compact runs at ${AUTO_COMPACT_AT}, with no audit`
         : `${size} · good moment to wrap up`,
       w.phase === 'urgent' ? 'warning' : undefined,
-      <Button key="compact" label={hasCompactPrep ? 'Compact' : 'Compact now'} onPress={() => startPrep($, 'compact')} />,
+      <Button key="compact" hotkey="c" label={hasCompactPrep ? 'Compact' : 'Compact now'} onPress={() => soon($, () => startPrep($, 'compact'))} />,
       ...handoff,
-      <Button key="later" label="Later" onPress={() => later($)} />,
+      <Button key="later" label="Later" hotkey="l" onPress={() => later($)} />,
     )
   })
 }
