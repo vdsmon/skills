@@ -80,6 +80,14 @@ export const register: Register = on => {
     const isAlone = e.props.calls.length === 1
     const tables: RenderElement[] = []
     for (const { call, table } of found) tables.push(await block($, e, table, call.tool_use_id, isAlone ? undefined : captionOf(call.tool, call.input)))
-    return <Box flexDirection="column">{[line, ...tables]}</Box>
+    // Indented to the count line's text, which the transcript starts 2 cells in.
+    return (
+      <Box flexDirection="column">
+        {line}
+        <Box flexDirection="column" paddingLeft={2}>
+          {tables}
+        </Box>
+      </Box>
+    )
   })
 }
