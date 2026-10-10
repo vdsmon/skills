@@ -8,7 +8,7 @@ Before writing an API call, look up its declaration in the types file that the p
 
 ## Task 0: probes (spike, throwaway)
 
-Done on 2026-10-10. Results are in `docs/experiments.md` #21 to #25, and the spec was updated with them and with the fixed 1M window.
+Done on 2026-10-10. Results are in `docs/experiments.md` #26 to #30, and the spec was updated with them and with the fixed 1M window.
 
 This task answers the spec's four checks before any mod code exists. The probe mod lives in `$CLAUDE_JOB_DIR/tmp/wrapup-probe/` and is never committed.
 

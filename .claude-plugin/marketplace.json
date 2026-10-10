@@ -34,10 +34,16 @@
       "version": "1.0.0"
     },
     {
-      "name": "cc-usage-guard",
-      "source": "./plugins/cc-usage-guard",
-      "description": "Pauses Claude Code before it hits the 5-hour or weekly usage limit and auto-resumes when the window resets, on every surface including the desktop app. Claude Code only.",
-      "version": "0.11.1"
+      "name": "cc-pitstop",
+      "source": "./plugins/cc-pitstop",
+      "description": "Pauses Claude Code before the 5-hour or weekly usage limit, across every session on the machine, and resumes the paused work on its own when the window resets. Claude Code only.",
+      "version": "1.0.0"
+    },
+    {
+      "name": "cc-quiet-watch",
+      "source": "./plugins/cc-quiet-watch",
+      "description": "Watches long jobs on a timer and asks Haiku only when the output changed. It wakes the session only when the job is done, failed, stuck or needs you. Claude Code only.",
+      "version": "1.0.0"
     },
     {
       "name": "prep-compact",
@@ -130,10 +136,10 @@
       "version": "0.1.0"
     },
     {
-      "name": "cc-session-name",
-      "source": "./plugins/cc-session-name",
-      "description": "Suggests a name for the current Claude Code session as one paste-ready /rename line, picked from the whole session instead of the last few messages. Opinionated: one kebab-case name, with options only when the session split into separate threads. Claude Code only.",
-      "version": "0.1.0"
+      "name": "cc-autotitle",
+      "source": "./plugins/cc-autotitle",
+      "description": "Names each Claude Code session on its own: after a few turns it picks a short kebab-case name from the whole session, and renames it again when the work moves on. It never touches a name you set by hand. Claude Code only.",
+      "version": "1.0.0"
     }
   ]
 }

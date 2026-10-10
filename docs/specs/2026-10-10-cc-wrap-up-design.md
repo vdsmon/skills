@@ -1,6 +1,6 @@
 # cc-wrap-up: design
 
-Status: approved on 2026-10-10. Updated the same day with the probe results (`docs/experiments.md` #21 to #25) and the decision to assume a fixed 1M window.
+Status: approved on 2026-10-10. Updated the same day with the probe results (`docs/experiments.md` #26 to #30) and the decision to assume a fixed 1M window.
 
 ## Goal
 
@@ -15,7 +15,7 @@ Today the user does this by hand: watch the token count, run the skill, copy the
 
 An earlier analysis of the user's transcripts found 28 compactions (25 manual, 3 auto) in 13 sessions. The median size before a compaction was about 780k tokens, but the range was 146k to 968k. So 780k describes a habit. It is not the right moment. The right moment is a seam in the work, so a token line only starts the search for a seam. The user chose a start line of 500k and a step of 100k.
 
-The mod assumes a 1M window, the window the user works in. Auto-compaction runs at 967k there (experiment #24). Fixed numbers keep the mod simple: it reads no threshold and does not scale for other windows.
+The mod assumes a 1M window, the window the user works in. Auto-compaction runs at 967k there (experiment #29). Fixed numbers keep the mod simple: it reads no threshold and does not scale for other windows.
 
 ### Success criteria
 
@@ -39,7 +39,7 @@ The mod assumes a 1M window, the window the user works in. Auto-compaction runs 
 
 The mod works from main-thread turns only: a `turn.complete` with no `agentId` and with `reason: 'answer'`. It never draws or acts during a running turn, in a `claude -p` or SDK run, or in a subagent.
 
-**Input:** `tokens`, read after each answered turn as `(await $.session.usage()).context.tokens`. The plain call costs nothing. It is null until a session's first response (experiment #24); then the turn is skipped.
+**Input:** `tokens`, read after each answered turn as `(await $.session.usage()).context.tokens`. The plain call costs nothing. It is null until a session's first response (experiment #29); then the turn is skipped.
 
 **Lines** (each one is a setting, see "Settings"):
 
@@ -76,26 +76,26 @@ The band is an `AbovePrompt` `ui.render` hook, built with `Box`, `Text` and `But
 | `ready-compact` | The first line of the compact message, plus `1 question still open` when the skill held something back | [Compact now] [Edit] [Not now] |
 | `ready-handoff` | `Handoff at <path>`, plus the open-question note | [Fresh session here] [Copy prompt] [Done] |
 
-**Skill commands.** A plugin skill's command is namespaced (`prep-compact:prep-compact`, experiment #24). The mod finds each one in `$.command.list()` as the entry named `prep-compact` (or `prep-exit`) or ending in `:prep-compact` (or `:prep-exit`).
+**Skill commands.** A plugin skill's command is namespaced (`prep-compact:prep-compact`, experiment #29). The mod finds each one in `$.command.list()` as the entry named `prep-compact` (or `prep-exit`) or ending in `:prep-compact` (or `:prep-exit`).
 
 **Button actions:**
 
 - **Compact:** `$.command.run` with the prep-compact command, then the phase becomes `prepping`. When prep-compact is not installed, the button changes to plain **Compact now**, which compacts without a message.
 - **Hand off:** `$.command.run` with the prep-exit command, then the phase becomes `prepping`. When prep-exit is not installed, the button is not shown.
 - **Later:** move `line` as described above, and set the phase to `idle`. In the urgent state, Later hides the band until the next answered turn.
-- **Compact now:** `$.session.compact({ instructions: message })` (experiment #22). The mod's own `session.compact` hook does not see this call, so the mod acts on the call's result. When it resolves without `skip`, send the follow-up with `$.prompt.submit({ text: followUp, asUser: true })` and reset. On `skip`, show its reason with `$.ui.toast` and keep the `ready-compact` phase.
+- **Compact now:** `$.session.compact({ instructions: message })` (experiment #27). The mod's own `session.compact` hook does not see this call, so the mod acts on the call's result. When it resolves without `skip`, send the follow-up with `$.prompt.submit({ text: followUp, asUser: true })` and reset. On `skip`, show its reason with `$.ui.toast` and keep the `ready-compact` phase.
 - **Edit:** `$.prompt.fill({ text: '/compact ' + message })` keeps the follow-up pending. The mod's `session.compact` hook (see below) sends it after the user's own `/compact`.
 - **Not now** and **Done:** set the phase to `idle`. Done means the handoff already sits in `HANDOFF.md` and memory, for another machine or a later day.
-- **Fresh session here:** keep the resume prompt in a module variable, run `$.command.run({ command: 'clear' })`, then call `$.prompt.submit({ text: resumePrompt, asUser: true })`. Experiment #21 confirmed this: the module lives across `/clear`, no `session.start` fires, and the submit runs as the new session's first turn. The new session's `$.state` starts empty.
+- **Fresh session here:** keep the resume prompt in a module variable, run `$.command.run({ command: 'clear' })`, then call `$.prompt.submit({ text: resumePrompt, asUser: true })`. Experiment #26 confirmed this: the module lives across `/clear`, no `session.start` fires, and the submit runs as the new session's first turn. The new session's `$.state` starts empty.
 - **Copy prompt:** `$.ui.copy({ text: resumePrompt, surface: e.surface })`. When it gives `isCopied: false`, toast the reason and keep the band, because the prompt is also printed in the transcript.
 
-**Keys and timing.** Every button has a letter hotkey (Compact `c`, Hand off `h`, Later `l`; Compact now `c`, Edit `e`, Not now `n`; Fresh session here `f`, Copy prompt `y`, Done `d`), which works after ctrl+x tab focuses the band. A press has a 10 s budget (experiment #26), so Compact, Hand off, Compact now and Fresh session here start their work with `$.clock.after(0, ...)`, outside the press.
+**Keys and timing.** Every button has a letter hotkey (Compact `c`, Hand off `h`, Later `l`; Compact now `c`, Edit `e`, Not now `n`; Fresh session here `f`, Copy prompt `y`, Done `d`), which works after ctrl+x tab focuses the band. A press has a 10 s budget (experiment #31), so Compact, Hand off, Compact now and Fresh session here start their work with `$.clock.after(0, ...)`, outside the press.
 
-**A stale payload:** a `ready-*` payload describes the session at the moment the skill ran. When the user sends a prompt of their own (a `prompt.submit` with origin `composer` or `bridge`), drop the payload and set the phase to `idle`. The mod's own submits never reach its own hook, and a slash command such as `/compact` arrives as `command.run`, not as a prompt (experiments #22 and #24), so neither one drops it.
+**A stale payload:** a `ready-*` payload describes the session at the moment the skill ran. When the user sends a prompt of their own (a `prompt.submit` with origin `composer` or `bridge`), drop the payload and set the phase to `idle`. The mod's own submits never reach its own hook, and a slash command such as `/compact` arrives as `command.run`, not as a prompt (experiments #27 and #29), so neither one drops it.
 
 ## The tool: how a skill hands its result to the mod
 
-In `session.start`, the mod registers one tool with `$.tool.register`. The model sees it as `mcp__cc-wrap-up__ready`. It is deferred (`isDeferred: true`), so it costs nothing in the prompt until it is used; a deferred plugin tool is listed by name, and the model loads and calls it (experiment #23). The mod answers it in a `tool.call` hook with the matcher `{ tool: 'mcp__cc-wrap-up__ready' }`. The input fields arrive as properties of `e` (`e.kind`, `e.message`, and so on).
+In `session.start`, the mod registers one tool with `$.tool.register`. The model sees it as `mcp__cc-wrap-up__ready`. It is deferred (`isDeferred: true`), so it costs nothing in the prompt until it is used; a deferred plugin tool is listed by name, and the model loads and calls it (experiment #28). The mod answers it in a `tool.call` hook with the matcher `{ tool: 'mcp__cc-wrap-up__ready' }`. The input fields arrive as properties of `e` (`e.kind`, `e.message`, and so on).
 
 Input schema:
 
@@ -123,7 +123,7 @@ If a `prepping` turn ends without a tool call (an old skill version, or the mode
 The hook runs only for the main loop (no `agentId`). The mod's own `$.session.compact` never reaches it.
 
 - **`manual`** (the user's own `/compact`): when a `ready-compact` payload is pending and `e.instructions` is empty, call `next({ ...e, instructions: message })`. When the result is not a `skip` and a follow-up is pending, send the follow-up with `$.prompt.submit({ text: followUp, asUser: true })`, then reset.
-- **`precompute`**: while the phase is `prepping` or `ready-compact`, return `{ skip: 'cc-wrap-up: a prep result is pending' }`. This keeps a summary computed without the prep's instructions from standing in for the real one. The probe could not make a precompute fire, so this guard is a precaution (experiment #25).
+- **`precompute`**: while the phase is `prepping` or `ready-compact`, return `{ skip: 'cc-wrap-up: a prep result is pending' }`. This keeps a summary computed without the prep's instructions from standing in for the real one. The probe could not make a precompute fire, so this guard is a precaution (experiment #30).
 - **Any other trigger:** pass it on with `next(e)`. After an `auto` compaction that is not skipped, reset the cue (see "When the cue shows").
 
 ## Commands
@@ -196,7 +196,7 @@ The change ships as one pull request:
 - `prep-compact` and `prep-exit`, each with a minor bump.
 - `mise run sync`, so the README table and the generated files are updated.
 - The `test:wrap-up` task.
-- `docs/experiments.md` rows #21 to #26.
+- `docs/experiments.md` rows #26 to #31.
 
 ## Out of scope
 

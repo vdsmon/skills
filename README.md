@@ -66,7 +66,8 @@ Generated from each plugin's `plugin.json` by `scripts/sync-codex.sh`, so do not
 | `skill-polish` | any | Post-mortem for any skill: finds friction in a session, traces it to the responsible skill file, and edits that file's source checkout, not the plugin install copy. |
 | `cc-keepwarm` | CC only | Keeps Claude Code's prompt cache warm in every session with a silent background ping timed from your last request, and skips the ping once the cache is already gone. |
 | `cc-wrap-up` | CC only | Cues a wrap-up at a natural break in a long session, then compacts with prep-compact's message or hands off with prep-exit's resume prompt, with no copy-paste. |
-| `cc-usage-guard` | CC only | Pauses Claude Code before it hits the 5-hour or weekly usage limit and auto-resumes when the window resets, on every surface including the desktop app. |
+| `cc-pitstop` | CC only | Pauses Claude Code before the 5-hour or weekly usage limit, across every session on the machine, and resumes the paused work on its own when the window resets. |
+| `cc-quiet-watch` | CC only | Watches long jobs on a timer and asks Haiku only when the output changed. It wakes the session only when the job is done, failed, stuck or needs you. |
 | `prep-compact` | any | Audit in-flight session state before compaction truncates history, and save what would be lost. |
 | `prep-exit` | any | Save what only the conversation knows before a session ends, so a fresh session can pick up the work. |
 | `prep-goal` | any | Interrogate a rough objective into a tight, verifiable /goal completion condition before handing it to an autonomous goal loop. |
@@ -82,7 +83,7 @@ Generated from each plugin's `plugin.json` by `scripts/sync-codex.sh`, so do not
 | `question` | any | Answer a genuine question in full, with no edits and no side effects. Treats 'why X and not Y?' as curiosity, not as a hidden request to switch to Y or an attack on X. |
 | `open-pr` | any | Write a short, plain pull request description a teammate reads in a minute: what changes, why now, what they must do. |
 | `start-work` | any | Start each job in its own git worktree, based on a fresh fetch of the remote, without switching the main checkout. |
-| `cc-session-name` | CC only | Suggests a name for the current Claude Code session as one paste-ready /rename line, picked from the whole session instead of the last few messages. |
+| `cc-autotitle` | CC only | Names each Claude Code session on its own: after a few turns it picks a short kebab-case name from the whole session, and renames it again when the work moves on. |
 <!-- END PLUGINS -->
 
 ## Layout

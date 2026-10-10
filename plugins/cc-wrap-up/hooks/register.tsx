@@ -179,7 +179,7 @@ async function freshSession($: EngineInterface, resumePrompt: string) {
     await $.ui.toast(`/clear did not run: ${String(err)}`)
     return
   }
-  // The module lives across /clear (experiment #21), so this closure still holds the prompt.
+  // The module lives across /clear (experiment #26), so this closure still holds the prompt.
   await reset($)
   void $.prompt.submit({ text: resumePrompt, asUser: true })
 }
