@@ -1,6 +1,6 @@
 {
   "name": "prep-compact",
-  "version": "1.9.1",
+  "version": "1.10.0",
   "description": "Audit in-flight session state before compaction truncates history, and save what would be lost. Commits real work locally, syncs stale plan and state files, and notes chat-only decisions, asking first only for risky items, then prints a paste-ready /compact message plus a queued follow-up.",
   "author": {
     "name": "Victor De Simone",

@@ -28,6 +28,12 @@
       "version": "1.0.0"
     },
     {
+      "name": "cc-wrap-up",
+      "source": "./plugins/cc-wrap-up",
+      "description": "Cues a wrap-up at a natural break in a long session, then compacts with prep-compact's message or hands off with prep-exit's resume prompt, with no copy-paste. Reads the context size at no cost and acts only when you press. Claude Code only.",
+      "version": "1.0.0"
+    },
+    {
       "name": "cc-pitstop",
       "source": "./plugins/cc-pitstop",
       "description": "Pauses Claude Code before the 5-hour or weekly usage limit, across every session on the machine, and resumes the paused work on its own when the window resets. Claude Code only.",
@@ -43,13 +49,13 @@
       "name": "prep-compact",
       "source": "./plugins/prep-compact",
       "description": "Audit in-flight session state before compaction truncates history, and save what would be lost. Commits real work locally, syncs stale plan and state files, and notes chat-only decisions, asking first only for risky items, then prints a paste-ready /compact message plus a queued follow-up. Portable across SKILL.md-native hosts.",
-      "version": "1.9.1"
+      "version": "1.10.0"
     },
     {
       "name": "prep-exit",
       "source": "./plugins/prep-exit",
       "description": "Save what only the conversation knows before a session ends, so a fresh session can pick up the work. Commits real work locally, syncs state files, writes a handoff note and a memory pointer, asks once only for risky items, and prints a paste-ready resume prompt. Portable across SKILL.md-native hosts.",
-      "version": "0.2.0"
+      "version": "0.3.0"
     },
     {
       "name": "prep-goal",

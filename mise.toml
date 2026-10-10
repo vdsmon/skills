@@ -32,6 +32,10 @@ run = "claude plugin validate plugins/cc-keepwarm && claude plugin test plugins/
 description = "Run the cc-autotitle mod tests (needs the claude CLI, so CI does not run them)"
 run = "claude plugin validate plugins/cc-autotitle && claude plugin test plugins/cc-autotitle"
 
+[tasks."test:wrap-up"]
+description = "Run the cc-wrap-up mod tests (needs the claude CLI, so CI does not run them)"
+run = "claude plugin validate plugins/cc-wrap-up && claude plugin test plugins/cc-wrap-up"
+
 [tasks."test:prep-exit"]
 description = "Run the prep-exit script checks (handoff.sh and baseline.sh, offline)"
 run = "bash plugins/prep-exit/tests/test-prep-exit.sh"
