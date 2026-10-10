@@ -89,6 +89,8 @@ The band is an `AbovePrompt` `ui.render` hook, built with `Box`, `Text` and `But
 - **Fresh session here:** keep the resume prompt in a module variable, run `$.command.run({ command: 'clear' })`, then call `$.prompt.submit({ text: resumePrompt, asUser: true })`. Experiment #21 confirmed this: the module lives across `/clear`, no `session.start` fires, and the submit runs as the new session's first turn. The new session's `$.state` starts empty.
 - **Copy prompt:** `$.ui.copy({ text: resumePrompt, surface: e.surface })`. When it gives `isCopied: false`, toast the reason and keep the band, because the prompt is also printed in the transcript.
 
+**Keys and timing.** Every button has a letter hotkey (Compact `c`, Hand off `h`, Later `l`; Compact now `c`, Edit `e`, Not now `n`; Fresh session here `f`, Copy prompt `y`, Done `d`), which works after ctrl+x tab focuses the band. A press has a 10 s budget (experiment #26), so Compact, Hand off, Compact now and Fresh session here start their work with `$.clock.after(0, ...)`, outside the press.
+
 **A stale payload:** a `ready-*` payload describes the session at the moment the skill ran. When the user sends a prompt of their own (a `prompt.submit` with origin `composer` or `bridge`), drop the payload and set the phase to `idle`. The mod's own submits never reach its own hook, and a slash command such as `/compact` arrives as `command.run`, not as a prompt (experiments #22 and #24), so neither one drops it.
 
 ## The tool: how a skill hands its result to the mod
@@ -194,7 +196,7 @@ The change ships as one pull request:
 - `prep-compact` and `prep-exit`, each with a minor bump.
 - `mise run sync`, so the README table and the generated files are updated.
 - The `test:wrap-up` task.
-- `docs/experiments.md` rows #21 to #25.
+- `docs/experiments.md` rows #21 to #26.
 
 ## Out of scope
 
