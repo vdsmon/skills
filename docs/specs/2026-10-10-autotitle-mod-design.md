@@ -1,4 +1,4 @@
-# cc-autoname: a mod that names sessions on its own
+# cc-autotitle: a mod that names sessions on its own
 
 Status: design, waiting for review. Replaces the `cc-session-name` plugin.
 
@@ -17,7 +17,7 @@ What you said:
 
 What I assumed (correct me):
 
-- Name: `cc-autoname`, command `/autoname`. One word like `cc-keepwarm`. "Name" covers the first name and later renames; "auto-rename" sounds like it only redoes names.
+- Name: `cc-autotitle`, command `/autotitle`. "Title" is Claude Code's own word for it (`sessionTitle`, `custom-title`, `ai-title`), and it covers the first name and later renames; "auto-rename" sounds like it only redoes names.
 - It ships as a new plugin at 1.0.0 and `cc-session-name` is removed, the same way `cc-keepwarm` replaced `cc-cache-keepalive`.
 
 ## Spike results
@@ -61,16 +61,16 @@ So the name lands with your next prompt. A check after the last turn of a sessio
 
 ### Command
 
-`/autoname`, registered on `session.start`:
+`/autotitle`, registered on `session.start`:
 
 | Call | What it does |
 | --- | --- |
-| `/autoname` | Picks a name now and applies it at once |
-| `/autoname <hint>` | Same, with the hint in the fork prompt ("focus on the PR part") |
-| `/autoname off` / `on` | Pauses or resumes auto-naming in this session; `on` also clears `pinned` and takes the current name (`lastSeen`) as `lastSet`, so the next prompt does not pin it again |
-| `/autoname status` | State (on, off or pinned), the last name it set, the turn of the next check, and counts of checks, renames and failures |
+| `/autotitle` | Picks a name now and applies it at once |
+| `/autotitle <hint>` | Same, with the hint in the fork prompt ("focus on the PR part") |
+| `/autotitle off` / `on` | Pauses or resumes auto-naming in this session; `on` also clears `pinned` and takes the current name (`lastSeen`) as `lastSet`, so the next prompt does not pin it again |
+| `/autotitle status` | State (on, off or pinned), the last name it set, the turn of the next check, and counts of checks, renames and failures |
 
-A name from `/autoname` is applied with `$.command.run({ command: 'rename', args })`, since the "user named this session" reminder is true here. It counts as yours: it sets `lastSet` to that name and sets `pinned`. Before the first response there is nothing to fork; the command answers "Nothing to name yet."
+A name from `/autotitle` is applied with `$.command.run({ command: 'rename', args })`, since the "user named this session" reminder is true here. It counts as yours: it sets `lastSet` to that name and sets `pinned`. Before the first response there is nothing to fork; the command answers "Nothing to name yet."
 
 ### Failure
 
@@ -106,17 +106,17 @@ One fork per check: the cached prefix plus the prompt, and about 10 output token
 
 ## Testing
 
-- `plugins/cc-autoname/hooks/autoname.test.ts` through `claude plugin test`, with a mocked clock and fork, like cc-keepwarm. Cases: first check at turn 3 and none before; re-check at turn 13 and after a compaction; a reply equal to the current name applies nothing; a bad reply applies nothing and retries; 3 failures wait for the next check; a manual name pins; `/autoname` pins; `off` and `on`; non-interactive does nothing; subagent turns do not count.
-- `mise run test:autoname` runs validate and the tests; it needs the `claude` CLI, so CI does not run it.
+- `plugins/cc-autotitle/hooks/autotitle.test.ts` through `claude plugin test`, with a mocked clock and fork, like cc-keepwarm. Cases: first check at turn 3 and none before; re-check at turn 13 and after a compaction; a reply equal to the current name applies nothing; a bad reply applies nothing and retries; 3 failures wait for the next check; a manual name pins; `/autotitle` pins; `off` and `on`; non-interactive does nothing; subagent turns do not count.
+- `mise run test:autotitle` runs validate and the tests; it needs the `claude` CLI, so CI does not run it.
 - Live check: run the mod for a day of real sessions, then compare its names with the names you would have picked. Record the result as an experiments row.
 
 ## Shipping
 
-- New `plugins/cc-autoname/` (`plugin.json` at 1.0.0 with `types` and `userConfig`, `hooks/hooks.json`, `hooks/register.ts`, `types/index.d.ts`, the test, a `README.md`, since a hook-only plugin may ship one).
+- New `plugins/cc-autotitle/` (`plugin.json` at 1.0.0 with `types` and `userConfig`, `hooks/hooks.json`, `hooks/register.ts`, `types/index.d.ts`, the test, a `README.md`, since a hook-only plugin may ship one).
 - Remove `plugins/cc-session-name/` and its marketplace entry; `mise run sync` updates the README table.
-- `mise.toml`: a `test:autoname` task. `CLAUDE.md`: name it beside `test:keepwarm`.
+- `mise.toml`: a `test:autotitle` task. `CLAUDE.md`: name it beside `test:keepwarm`.
 
 ## Checks during the build
 
 - Whether atoms survive a resume. If not, a resumed session with a name counts as pinned, and one without a name starts counting again. Both are safe.
-- Whether `$.model.fork` and `$.command.run` are allowed inside a `command.run` hook. If `$.command.run` is refused there, `/autoname` sets `pending` and answers "Renames to x with your next message".
+- Whether `$.model.fork` and `$.command.run` are allowed inside a `command.run` hook. If `$.command.run` is refused there, `/autotitle` sets `pending` and answers "Renames to x with your next message".
