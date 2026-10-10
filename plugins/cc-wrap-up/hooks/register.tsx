@@ -4,6 +4,7 @@ import type { EngineInterface, Register, RenderSurface } from 'claude-code'
 import type { Payload, Phase, PrepKind, Wrap } from '../types'
 
 const AUTO_COMPACT_AT = '967k'
+const COMMAND = 'wrap-up'
 const TOOL = 'ready'
 const TOOL_NAME = `mcp__cc-wrap-up__${TOOL}`
 const SKILL: Record<PrepKind, string> = { compact: 'prep-compact', handoff: 'prep-exit' }
@@ -97,7 +98,7 @@ async function onAnswer($: EngineInterface) {
 
 /** Back to the start: after a compaction, a /clear, or a finished wrap-up. */
 async function reset($: EngineInterface) {
-  await update($, wrap, w => ({ ...IDLE, isOff: w.isOff }))
+  await update($, wrap, (w): Wrap => ({ ...IDLE, isOff: w.isOff }))
 }
 
 /** Not now: hide the band and look again one step past the current size. */
@@ -137,7 +138,7 @@ async function startPrep($: EngineInterface, kind: PrepKind) {
     return
   }
   // The mod's own command.run never reaches its own hook, so mark the prep here.
-  await update($, wrap, w => ({ ...w, phase: 'prepping', prepKind: kind, payload: null }))
+  await update($, wrap, (w): Wrap => ({ ...w, phase: 'prepping', prepKind: kind, payload: null }))
   try {
     await $.command.run({ command })
   } catch (err) {
@@ -182,6 +183,37 @@ async function copyPrompt($: EngineInterface, text: string, surface: RenderSurfa
   await $.ui.toast(
     r.isCopied ? 'Copied the resume prompt.' : `Copy failed (${r.reason}); the resume prompt is also in the transcript.`,
   )
+}
+
+const USAGE = `Use /${COMMAND} to open the band, /${COMMAND} off or /${COMMAND} on to pause or resume the cue, or /${COMMAND} send <name> to hand the resume prompt to another session.`
+
+async function runCommand($: EngineInterface, args: string) {
+  const [verb = '', ...rest] = args.trim().split(/\s+/)
+  const w = await read($, wrap)
+  if (verb === '') {
+    if (BUSY.includes(w.phase)) return 'The wrap-up band already shows a prep in progress or a result.'
+    await update($, wrap, (cur): Wrap => ({ ...cur, phase: 'cue' }))
+    return 'Opened the wrap-up band.'
+  }
+  if (verb === 'off' || verb === 'on') {
+    const isOff = verb === 'off'
+    await update($, wrap, (cur): Wrap => ({
+      ...cur,
+      isOff,
+      phase: isOff && !BUSY.includes(cur.phase) ? 'idle' : cur.phase,
+    }))
+    return isOff
+      ? `Wrap-up cue off in this session. /${COMMAND} still opens the band; /${COMMAND} on resumes the cue.`
+      : 'Wrap-up cue on in this session.'
+  }
+  if (verb === 'send') {
+    const to = rest.join(' ')
+    if (w.payload?.kind !== 'handoff') return 'No handoff is ready. Press Hand off, or run /prep-exit, first.'
+    if (to === '') return `Name the session: /${COMMAND} send <name>.`
+    const r = await $.session.send({ to, text: w.payload.resumePrompt })
+    return r.isDelivered ? `Sent the resume prompt to ${to}.` : `Could not send to ${to}: ${r.reason}`
+  }
+  return `Unknown argument "${verb}". ${USAGE}`
 }
 
 const TOOL_SPEC = {
@@ -239,6 +271,11 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     isInteractive = e.isInteractive
     await $.tool.register(TOOL_SPEC)
+    await $.command.register({
+      name: COMMAND,
+      description: 'Opens the wrap-up band to compact or hand off; off or on pauses or resumes the cue; send <name> hands the resume prompt to another session.',
+      argumentHint: '[off|on|send <name>]',
+    })
     return next(e)
   })
 
@@ -247,7 +284,7 @@ export const register: Register = (on, options) => {
     if (typeof payload === 'string') {
       return { deny: `cc-wrap-up: ${payload}. Nothing was handed over; print your usual blocks.` }
     }
-    await update($, wrap, w => ({
+    await update($, wrap, (w): Wrap => ({
       ...w,
       phase: payload.kind === 'compact' ? 'ready-compact' : 'ready-handoff',
       payload,
@@ -256,10 +293,12 @@ export const register: Register = (on, options) => {
     return { result: 'The wrap-up band now offers this to the user. Print your usual blocks too.' }
   }).catch(() => ({ deny: 'cc-wrap-up failed to take the result. Print your usual blocks.' }))
 
-  // A prep the user typed: show it as running, so a prep that hands nothing over is noticed.
+  // /wrap-up itself; and a prep the user typed, shown as running so that a prep
+  // that hands nothing over is noticed.
   on('command.run', async ($, e, next) => {
+    if (e.command === COMMAND) return { text: await runCommand($, e.args ?? '') }
     const kind = prepKindOf(e.command)
-    if (kind !== null) await update($, wrap, w => ({ ...w, phase: 'prepping', prepKind: kind, payload: null }))
+    if (kind !== null) await update($, wrap, (w): Wrap => ({ ...w, phase: 'prepping', prepKind: kind, payload: null }))
     return next(e)
   }).catch(($, e, next) => next(e))
 

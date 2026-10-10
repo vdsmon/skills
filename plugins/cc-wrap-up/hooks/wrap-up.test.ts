@@ -33,10 +33,14 @@ function world(on: On) {
     isCompactSkipped: false,
     registered: [] as { name: string; isDeferred: unknown }[],
     order: [] as string[],
+    slash: [] as string[],
   }
   on('session.start', async (_$, e) => ({ cwd: e.cwd }))
   on('session.end', async (_$, e) => ({ sessionId: e.sessionId }))
-  on('command.register', async (_$, e) => ({ value: { command: e.name } }))
+  on('command.register', async (_$, e) => {
+    seen.slash.push(e.name)
+    return { value: { command: e.name } }
+  })
   on('tool.register', async (_$, e) => {
     seen.registered.push({ name: e.name, isDeferred: e.isDeferred })
     return { value: { tool: `mcp__cc-wrap-up__${e.name}` } }
@@ -611,4 +615,65 @@ test("a subagent's compaction is left alone", async ($, on) => {
   await $.session.compact({ trigger: 'auto', agentId: 'agent_1', messages: KEPT })
   expect(seen.submits).toEqual([])
   expect(await buttons(ui)).toEqual(['compact-now', 'edit', 'not-now'])
+})
+
+test('/wrap-up is registered at session start', async ($, on) => {
+  const seen = world(on)
+  await start($)
+  expect(seen.slash).toEqual(['wrap-up'])
+})
+
+test('/wrap-up opens the band at any size, even when the cue is off', async ($, on) => {
+  const seen = world(on)
+  await start($)
+  const ui = await band($)
+  await turn($, seen, 300_000)
+  await typed($, 'wrap-up', 'off')
+  const r = await typed($, 'wrap-up')
+  expect(r.text).toContain('wrap-up band')
+  expect(await lineText(ui)).toContain('300k tokens')
+  expect(await buttons(ui)).toEqual(['compact', 'handoff', 'later'])
+})
+
+test('/wrap-up off stops the cue and hides it, and /wrap-up on resumes it', async ($, on) => {
+  const seen = world(on)
+  await start($)
+  const ui = await band($)
+  await turn($, seen, 520_000)
+  expect(await buttons(ui)).toEqual(['compact', 'handoff', 'later'])
+  const off = await typed($, 'wrap-up', 'off')
+  expect(off.text).toContain('off')
+  expect(await buttons(ui)).toEqual([])
+  await turn($, seen, 700_000)
+  expect(await buttons(ui)).toEqual([])
+  await typed($, 'wrap-up', 'on')
+  await turn($, seen, 710_000)
+  expect(await buttons(ui)).toEqual(['compact', 'handoff', 'later'])
+})
+
+test('/wrap-up send hands the resume prompt to another session', async ($, on) => {
+  const seen = world(on)
+  await start($)
+  await ready($, HANDOFF)
+  const r = await typed($, 'wrap-up', 'send peer-1')
+  expect(seen.sends).toEqual([{ to: 'peer-1', text: HANDOFF.resumePrompt }])
+  expect(r.text).toContain('peer-1')
+})
+
+test('/wrap-up send without a handoff or a name sends nothing and says why', async ($, on) => {
+  const seen = world(on)
+  await start($)
+  const none = await typed($, 'wrap-up', 'send peer-1')
+  expect(none.text).toContain('No handoff')
+  await ready($, HANDOFF)
+  const noName = await typed($, 'wrap-up', 'send')
+  expect(noName.text).toContain('send <name>')
+  expect(seen.sends).toEqual([])
+})
+
+test('/wrap-up with an unknown argument says how to use it', async ($, on) => {
+  world(on)
+  await start($)
+  const r = await typed($, 'wrap-up', 'sideways')
+  expect(r.text).toContain('/wrap-up off')
 })
