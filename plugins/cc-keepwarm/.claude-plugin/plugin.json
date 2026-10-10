@@ -1,6 +1,6 @@
 {
   "name": "cc-keepwarm",
-  "version": "3.0.0",
+  "version": "1.0.0",
   "description": "Keeps Claude Code's prompt cache warm in every session with a silent background ping timed from your last request, and skips the ping once the cache is already gone.",
   "author": {
     "name": "Victor De Simone",
