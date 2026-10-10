@@ -22,7 +22,7 @@ What I assumed (correct me):
 
 ## Spike results
 
-Throwaway mod in a Haiku session on Claude Code 2.1.296 (recorded as `docs/experiments.md` #22):
+Throwaway mod in a Haiku session on Claude Code 2.1.296 (recorded as `docs/experiments.md` #23):
 
 - `classic.UserPromptSubmit` returning `sessionTitle` writes a `custom-title` record, the same record `/rename` writes. It adds nothing to the transcript and nothing to the model's context. It lands on the prompt whose hook returns it.
 - `$.command.run({ command: 'rename', args })` also writes `custom-title`, but adds the `/rename` lines and the reminder "The user named this session x" to the model's context. From `classic.Stop` it is refused ("would wait on the turn this hook is holding"); from `turn.complete` it works.
@@ -59,7 +59,7 @@ On the next `classic.UserPromptSubmit` the mod stores `e.session_title` as `last
 
 Two more signals pin the session: a `/rename` the mod did not run (a `command.run` hook on `rename` reads `origin`), and a session resumed or forked with a name the mod has no record of (`classic.SessionStart`), since that name predates the mod.
 
-Why these rules: in 30 days of transcripts, all 34 desktop sessions with a saved name got the app's own sentence-case title at the first prompt, with no `/rename`, and all 9 CLI names were kebab-case names you chose. Auto-named background jobs write no `custom-title` (experiments #24). A desktop rename done by hand before the mod's first name is replaced; that happened 0 times in those 30 days.
+Why these rules: in 30 days of transcripts, all 34 desktop sessions with a saved name got the app's own sentence-case title at the first prompt, with no `/rename`, and all 9 CLI names were kebab-case names you chose. Auto-named background jobs write no `custom-title` (experiments #25). A desktop rename done by hand before the mod's first name is replaced; that happened 0 times in those 30 days.
 
 So the name lands with your next prompt. A check after the last turn of a session never lands; that is fine, since a session that ended does not drift.
 

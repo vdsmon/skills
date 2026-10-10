@@ -16,6 +16,10 @@ run = "scripts/bump-plugin.sh {{arg(name='plugin')}} {{arg(name='level', default
 description = "Run every offline test suite (plugins/*/tests/test-*.sh), never the live token-spending ones"
 run = "scripts/test-offline.sh"
 
+[tasks."test:quiet-watch"]
+description = "Run the cc-quiet-watch mod tests (needs the claude CLI, so CI does not run them)"
+run = "claude plugin validate plugins/cc-quiet-watch && claude plugin test plugins/cc-quiet-watch"
+
 [tasks."test:pitstop"]
 description = "Run the cc-pitstop mod tests (needs the claude CLI, so CI does not run them)"
 run = "claude plugin validate plugins/cc-pitstop && claude plugin test plugins/cc-pitstop"
