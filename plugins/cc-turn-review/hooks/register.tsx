@@ -361,7 +361,7 @@ export const register: Register = on => {
           {`Turn review: ${plural(current.findings.length, 'finding')} · ${current.findings[0] ?? ''}`}
         </Text>
         <Button key="view" label="View" hotkey="v" onPress={() => void view($)} />
-        <Button key="fix" label="Fix" hotkey="f" variant="primary" onPress={() => void fix($)} />
+        <Button key="fix" label="Fix" hotkey="r" variant="primary" onPress={() => void fix($)} />
         <Button key="dismiss" label="Dismiss" hotkey="s" role="dismiss" onPress={() => void dismiss($)} />
       </Box>
     )
@@ -405,7 +405,7 @@ export const register: Register = on => {
           )}
         </Box>
         <Box gap={1} marginTop={1}>
-          {current.status === 'findings' && <Button key="fix" label="Fix" hotkey="f" variant="primary" onPress={() => void fix($)} />}
+          {current.status === 'findings' && <Button key="fix" label="Fix" hotkey="r" variant="primary" onPress={() => void fix($)} />}
           {close}
         </Box>
       </Box>
