@@ -87,18 +87,12 @@ class Shape(unittest.TestCase):
     def test_semicolon_in_code_or_entity_is_fine(self):
         self.assertNotIn("semicolon", rules("Run `a; b` and see &amp; here."))
 
-    def test_mentions_and_late_asks_warn(self):
+    def test_a_mention_fails_and_a_late_ask_warns(self):
         body = "Intro.\n\nSecond.\n\n## Open questions\n\n- @dana, please review the parser before merging.\n"
-        warned = rules(body, level="WARN")
-        self.assertIn("mention", warned)
-        self.assertIn("ask-late", warned)
+        self.assertIn("mention", rules(body, level="FAIL"))
+        self.assertIn("ask-late", rules(body, level="WARN"))
         self.assertNotIn("mention", rules("Mail me at a@example.com or see `@decorator`."))
-
-    def test_tagging_the_author_fails(self):
-        body = "Intro.\n\n@dana handed this over to @sam.\n"
-        failed = [r for lv, r, _, _ in checker.check(body, author="Sam")[0] if lv == "FAIL"]
-        self.assertEqual(failed, ["self-mention"])
-        self.assertNotIn("self-mention", rules(body))
+        self.assertNotIn("mention", rules("Intro.\n\nDana, please review the parser.\n"))
 
 
 class Paths(unittest.TestCase):
