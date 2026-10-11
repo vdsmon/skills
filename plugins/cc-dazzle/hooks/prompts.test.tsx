@@ -40,7 +40,8 @@ test('a typed prompt draws as a bubble on the left with its 24h send time', asyn
   const box = await bubble(ui)
   expect(box?.props.alignSelf).toBe('flex-start')
   expect(box?.props.borderColor).toBe(t.accent)
-  expect((await ui.find({ type: 'Text', text: /^14:32 $/ }))?.props.color).toBe(t.codeComment)
+  expect((await ui.find({ type: 'Text', text: /^ · 14:32$/ }))?.props.color).toBe(t.codeComment)
+  expect(JSON.stringify(box)).not.toContain('14:32')
   expect((await ui.find({ type: 'Text', text: /^how many frog raids\?$/ }))?.props.color).toBe(t.heading)
   await ui.unmount()
 })
@@ -51,7 +52,7 @@ test('a prompt sent on another day shows the date before the time', async ($, on
   await $.prompt.submit({ text: 'old question', wait: false, origin: { kind: 'composer' } })
   await clock.advance(24 * 60 * 60 * 1000)
   const ui = await $.ui.mount({ ...prompt('old question'), requestId: 'row-2' })
-  expect(await ui.find({ type: 'Text', text: /^Oct 10 14:32 $/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^ · Oct 10 14:32$/ })).toBeDefined()
   await ui.unmount()
 })
 
@@ -112,7 +113,7 @@ test('prompt.submit adds no context to the prompt', async ($, on) => {
   expect(seen).toHaveLength(1)
   expect(seen[0] ?? []).toEqual([])
   const ui = await $.ui.mount({ ...prompt('show me deploys per day'), requestId: 'row-3' })
-  expect(await ui.find({ type: 'Text', text: /^09:05 $/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^ · 09:05$/ })).toBeDefined()
   await ui.unmount()
 })
 
