@@ -12,7 +12,12 @@ export const renderUserPrompt = (el: ElementTable, style: Style, text: string, t
       {text.split('\n').map((line, i) => <Text key={`p${i}`} color={color} bold={false}>{line}</Text>)}
     </Box>
   )
-  const stamp = time === undefined ? null : <Text color={t.codeComment}>{`${time} `}</Text>
-  const content = stamp === null ? body : <Box flexDirection="row">{stamp}{body}</Box>
-  return <Box borderStyle="round" borderColor={accent} paddingX={1} alignSelf="flex-start">{content}</Box>
+  const bubble = <Box borderStyle="round" borderColor={accent} paddingX={1} alignSelf="flex-start">{body}</Box>
+  if (time === undefined) return bubble
+  return (
+    <Box flexDirection="row" alignItems="flex-start">
+      {bubble}
+      <Box marginTop={1} flexShrink={0}><Text color={t.codeComment}>{` · ${time}`}</Text></Box>
+    </Box>
+  )
 }
