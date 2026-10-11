@@ -17,7 +17,7 @@ export const renderUserPrompt = (el: ElementTable, style: Style, text: string, t
   return (
     <Box flexDirection="row" alignItems="flex-start">
       {bubble}
-      <Box marginTop={1} flexShrink={0}><Text color={t.codeComment}>{` · ${time}`}</Text></Box>
+      <Box marginTop={1} flexShrink={0}><Text color={t.codeComment}>{` ${time}`}</Text></Box>
     </Box>
   )
 }
