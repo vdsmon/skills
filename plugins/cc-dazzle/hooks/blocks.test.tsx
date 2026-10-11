@@ -176,6 +176,12 @@ test('a code block draws its language above a rounded box with the copy button i
   expect(box?.props.borderColor).toBe(t.rule)
   expect(drawn(box)).toContain('print("hi")')
   expect(drawn(box)).not.toContain('python')
+  const isRound = (n: Node) => n.type === 'Box' && n.props.borderStyle === 'round'
+  const parent = (await ui.findAll({ type: 'Box' })).find(b => ((b.children ?? []) as Node[]).some(c => c !== null && typeof c === 'object' && isRound(c)))
+  const order = ((parent?.children ?? []) as Node[]).filter(n => n !== null && typeof n === 'object')
+  const label = order.findIndex(n => n.type === 'Text' && drawn(n) === ' python')
+  expect(label).toBeGreaterThanOrEqual(0)
+  expect(label).toBeLessThan(order.findIndex(isRound))
   const top = (box?.children ?? [])[0] as Node | undefined
   expect(top?.props.flexDirection).toBe('row')
   const last = (top?.children ?? []).at(-1) as Node | undefined
@@ -232,7 +238,11 @@ test('a mermaid flowchart draws in a rounded box, with its label and buttons abo
   expect(diagram).toBeDefined()
   expect(within(diagram, isButton())).toBe(false)
   expect(drawn(diagram)).not.toContain('mermaid')
-  expect(await ui.find({ type: 'Text', text: /^ mermaid$/ })).toBeDefined()
+  const column = (await ui.findAll({ type: 'Box' })).find(b => b.props.alignSelf === 'flex-start')
+  const [header, body] = (column?.children ?? []) as Node[]
+  expect(within(header, n => n.type === 'Text' && drawn(n) === ' mermaid')).toBe(true)
+  expect(within(header, isButton('⧉ source'))).toBe(true)
+  expect(body?.props.borderStyle).toBe('round')
   expect(await labels(ui)).toEqual(['⧉ source', '⧉ art'])
   await ui.unmount()
 })
@@ -256,6 +266,15 @@ test('a code block still streaming draws without error', async ($, on) => {
     expect(await ui.find({ type: 'Text', text: /^diagram/ })).toBeUndefined()
     await ui.unmount()
   }
+})
+
+test('a half-streamed diagram shows no note until its fence closes', async $ => {
+  const open = await $.ui.mount(reply('```mermaid\npie\n  "a" : 3'))
+  expect(await open.find({ type: 'Text', text: /diagram|draw as source/ })).toBeUndefined()
+  await open.unmount()
+  const closed = await $.ui.mount(reply('```mermaid\npie\n  "a" : 3\n```'))
+  expect(await closed.find({ type: 'Text', text: /^pie diagrams draw as source for now$/ })).toBeDefined()
+  await closed.unmount()
 })
 
 test('slash-command output draws like a reply; colored or errored output goes to the engine', async ($, on) => {

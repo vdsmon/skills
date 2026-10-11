@@ -27,7 +27,7 @@ Source of truth: `pluginConfigs["prismantis@prismantis"].options` in `~/.claude/
 | Option = value | What it draws | Fork code to carry |
 | --- | --- | --- |
 | `theme` = catppuccin-mocha (default) | Catppuccin Mocha colors everywhere | the `catppuccin-mocha` entry of `presets.ts`, as one constant in `theme.ts` |
-| `toolRows` = true | Tool calls as one compact line (`Ran gh pr view 12`, `Read ~/src/app.ts`) | `register.tsx` hooks on `ToolGroup`, `ToolUse`, `ToolResult`; `render.tsx` `renderToolRow`, `renderToolGroup`, `toolLayout`, `toolGutter`, `targetOf`, `shortTarget`, `shortPath`, `statusColor`, `VERBS`, `TARGET_FIELDS`; expanded shell rows: `renderExpandedShell`, `markExpanded`, `expandedCalls` |
+| `toolRows` = true | Tool calls as one compact line (`Ran gh pr view 12`, `Read ~/src/app.ts`) | `register.tsx` hooks on `ToolGroup`, `ToolUse`, `ToolResult`; `render.tsx` `renderToolRow`, `renderToolGroup`, `groupSummary`, `toolLayout`, `toolGutter`, `targetOf`, `shortTarget`, `shortPath`, `statusColor`, `VERBS`, `TARGET_FIELDS`; expanded shell rows: `renderExpandedShell`, `markExpanded`, `expandedCalls` |
 | `toolStyle` = tree-dim | Tool rows dimmed and tucked under Claude's sentence | the `tree` branch of `toolLayout` and `toolGutter`; `toolDim` becomes always true |
 | `treeMark` = corner | `└─` in bold instead of `⎿` | `treeMark`, `heavyMark` (both become constants) |
 | `replyGap` = true | A blank line before each part of a reply | `marginTop: 1` in the `AssistantMessage` hook |
@@ -64,7 +64,7 @@ Each item below goes, with its code, options and tests.
 - **LaTeX:** `latex.ts`, `mathOfBlocks`, the `formulas` and `dir` atoms, the `Image` branch in `drawMarkdown`.
 - **Linux clipboard:** the CopyQ branch of `clipboard.ts` (`LINUX_TABLE_COPY`) and the Linux check in `htmlBackend`. `⧉ html` shows on macOS only, outside SSH, as today on this Mac.
 - **Diagram hints:** `HINT`, `LATEX_HINT`, the context added in `prompt.submit`.
-- **Quiet tool output** (`toolOutput: quiet`): `quietToolRow`, `quietToolGroup`, `groupSummary`, `callLabel`, `describeShell`, `programsOf`, `parseShell`, `isReadOnlyCall`, `READ_*`, `renderFailure`, `renderShellResult`, `refusalReason`, `errorReason`, `readOnlyCalls`. The `ToolResult` hook keeps two branches: Edit and Write draw the diff card, tabular output draws a tool table, everything else goes to `next`.
+- **Quiet tool output** (`toolOutput: quiet`): `quietToolRow`, `quietToolGroup`, `callLabel`, `describeShell`, `programsOf`, `parseShell`, `isReadOnlyCall`, `READ_*`, `renderFailure`, `renderShellResult`, `refusalReason`, `errorReason`, `readOnlyCalls`. The `ToolResult` hook keeps two branches: Edit and Write draw the diff card, tabular output draws a tool table, everything else goes to `next`.
 - **The turn line:** the `TurnDuration` hook, `renderTurnDuration`, `renderPlainTurnDuration`, `endedAt`, the `turnEnds` atom, the `turn.complete` hook.
 - **Unused style branches:** heading styles other than banner, table styles other than box, task styles other than checks, prompt styles other than bubble, `promptAlign: right`, `codeStyle: rule`, `toolStyle` chat, tree-bold (and its bold `narration`) and classic, `treeMark: hook`, `diffTint` soft and vivid, `diffBox` (`renderBoxed`), `copyReply`, `mermaidAscii`, 12h clock.
 - **The extension API:** `engine.create`, `prismantis.markdown` and the `EngineInterface` augmentation. No mod in this repo calls it.
@@ -81,7 +81,7 @@ A new plugin, `plugins/cc-dazzle`: a mod with no skill, version 1.0.0 (as cc-kee
 plugins/cc-dazzle/
   .claude-plugin/plugin.json   name, version, description, author, license MIT, types; no userConfig
   hooks/hooks.json             { "modules": ["./register.tsx"] }
-  hooks/register.tsx           the hooks only: tool.call, ToolGroup, ToolUse, ToolResult, CommandOutput, UserMessage, AssistantMessage, prompt.submit, session.append, turn.start
+  hooks/register.tsx           the hooks only: tool.call, ToolGroup, ToolUse, ToolResult, CommandOutput, UserMessage, AssistantMessage, prompt.submit, session.start (html copy probe), session.append, turn.start
   hooks/theme.ts               the Mocha palette and CLAUDE_DIFF colors as constants
   hooks/markdown.ts            the parser
   hooks/text.ts                width, graphemes, cells, wrapping, remember
