@@ -152,6 +152,12 @@
       "source": "./plugins/cc-autotitle",
       "description": "Names each Claude Code session on its own: after a few turns it picks a short kebab-case name from the whole session, and renames it again when the work moves on. It never touches a name you set by hand. Claude Code only.",
       "version": "1.0.0"
+    },
+    {
+      "name": "cc-dazzle",
+      "source": "./plugins/cc-dazzle",
+      "description": "Draws Claude Code's transcript in Catppuccin Mocha: boxed code blocks, box tables, Mermaid diagrams, diff cards in Claude's colors, compact tool rows and timed prompts. No settings. Claude Code only.",
+      "version": "1.0.2"
     }
   ]
 }

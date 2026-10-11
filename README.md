@@ -86,6 +86,7 @@ Generated from each plugin's `plugin.json` by `scripts/sync-codex.sh`, so do not
 | `open-pr` | any | Write a short, plain pull request description a teammate reads in a minute: what changes, why now, what they must do. |
 | `start-work` | any | Start each job in its own git worktree, based on a fresh fetch of the remote, without switching the main checkout. |
 | `cc-autotitle` | CC only | Names each Claude Code session on its own: after a few turns it picks a short kebab-case name from the whole session, and renames it again when the work moves on. |
+| `cc-dazzle` | CC only | Draws Claude Code's transcript in Catppuccin Mocha: boxed code blocks, box tables, Mermaid diagrams, diff cards in Claude's colors, compact tool rows and timed prompts. |
 <!-- END PLUGINS -->
 
 ## Layout
