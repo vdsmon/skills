@@ -2,6 +2,7 @@ import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
 import { expect, mock, test } from 'claude-code/testing'
 
+import { formatDuration } from './tables'
 import { CLAUDE_DIFF, THEME as t } from './theme'
 
 const engine = (on: On) =>
@@ -127,17 +128,17 @@ test('an errored Edit and a non-tabular result go to the engine', async ($, on) 
 test('Bash output in columns draws as a boxed table with a row count and the run time from tool.call', async ($, on) => {
   const clock = mock.clock(on)
   on('tool.call', async () => {
-    await clock.sleep(2000)
+    await clock.sleep(400)
     return { result: bash(PRS) } as never
   })
   const ran = $.tool.call({ tool: 'Bash', tool_use_id: 'toolu_t', command: 'gh pr list --json number,title,state' } as never)
-  await clock.advance(2000)
+  await clock.advance(400)
   await ran
   const ui = await $.ui.mount(result('Bash', bash(PRS), 'toolu_t'))
   expect((await ui.find({ type: 'Text', text: /^number$/ }))?.props.color).toBe(t.tableHeader)
   expect(await ui.find({ type: 'Text', text: /^╞[═╪]+╡$/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /^cc-timeline: a side pane$/ })).toBeDefined()
-  expect(await footers(ui)).toEqual(['2 rows · 2s'])
+  expect(await footers(ui)).toEqual(['2 rows · 0.4s'])
   await ui.unmount()
 })
 
@@ -149,4 +150,8 @@ test('a collapsed tool group with tabular output draws its row with a preview ta
   expect(await ui.find({ type: 'Text', text: /^item 20$/ })).toBeUndefined()
   expect(await footers(ui)).toEqual(['20 of 143 rows · ctrl+o shows all'])
   await ui.unmount()
+})
+
+test('run times show tenths below 10 seconds and whole units above', () => {
+  expect([0, 400, 2340, 9949, 9960, 75_000, 3_725_000].map(formatDuration)).toEqual(['0.0s', '0.4s', '2.3s', '9.9s', '10s', '1m 15s', '1h 2m'])
 })

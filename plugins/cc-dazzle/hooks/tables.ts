@@ -1,6 +1,8 @@
 export type Table = { header: string[]; rows: string[][] }
 
 export const formatDuration = (ms: number): string => {
+  const tenths = Math.round(ms / 100)
+  if (tenths < 100) return `${(Math.max(tenths, 0) / 10).toFixed(1)}s`
   const s = Math.round(ms / 1000)
   if (s < 60) return `${Math.max(s, 0)}s`
   if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`
