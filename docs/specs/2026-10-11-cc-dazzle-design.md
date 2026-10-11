@@ -1,6 +1,6 @@
 # cc-dazzle: design
 
-Status: draft for review, 2026-10-11.
+Status: draft for review, 2026-10-11. Updated the same day with the user's answers on tool tables, slash-command output, the html table copy and the copy command.
 
 ## Goal
 
@@ -42,7 +42,9 @@ Source of truth: `pluginConfigs["prismantis@prismantis"].options` in `~/.claude/
 | `highlightNumbers`, `highlightPaths` = true (default) | Versions, IDs, counts and file paths colored in prose | the `numbers` and `paths` passes of `markdown.ts` `parse` |
 | `codeStyle` = box | Code blocks in a rounded box, language label above, copy button inside at the top right | the `codeStyle: 'box'` branch of `renderBlocks`; `highlightRows`, `highlightBlock`, `codeLine`, `grammarFor`, `flatten`, `remember`; `vendor/prism.js` |
 | `consoleSplit` = true | In `console` blocks, `$` lines colored as commands, output plain; copy gives the commands only | `isSessionLang`, `PROMPT`, `sessionCommands`, `sessionLine` |
-| `copyButtons` = true (default) | `⧉ copy` on code, tables, diagrams, lists and quotes; for lists and quotes it sits beside the block, at the right | the `copy` helper in `drawMarkdown` (plain text only); `copySource`, `codeId`; the list and quote row layout in `renderBlocks` |
+| `copyButtons` = true (default) | `⧉ copy` on code, diagrams, lists and quotes, at the right of the block; tables get `⧉ md` (markdown), `⧉ art` (the box drawing) and `⧉ html` (a formatted table that pastes as a real table in Docs, Notion or email) | the `copy` helper in `drawMarkdown`; `copySource`, `codeId`; the list and quote row layout in `renderBlocks`; for `⧉ html`: `html.ts` (`tableHtml`, `tableText`), `clipboard.ts` macOS branch (`MAC_TABLE_COPY`), `htmlBackend`, `copyTable` |
+| `toolRows` = true (tool tables) | Bash and MCP output in columns (`docker ps`, `gh pr list`, TSV) drawn as a boxed table with a footer like `12 rows · 0.4s` | `tables.ts` (all of it); the `tool.call` timing hook; the `took` state family; `toolTableView`; the table branches of the `ToolGroup` and `ToolResult` hooks |
+| (always on) slash-command output | Text a slash command prints (for example a mod command such as `/wrap-up`) drawn like a reply: headings, box tables, copy buttons. Text with terminal color codes is left alone | the `CommandOutput` hook |
 | `mermaid` = true (default), `mermaidAscii` = false | Mermaid diagrams drawn as box art in a rounded box, `mermaid` label and `⧉ source` / `⧉ art` buttons outside the box | `mermaid.tsx` (all of it); `vendor/mermaid-text.js`; the mermaid loop in `drawMarkdown` (fit check `columns - 6`) and the boxed branch in `renderBlocks` |
 | `diffCards` = true, `diffTint` = claude, `diffSyntax` = true | Edit and Write results as a diff card in Claude Code's colors, changed words marked, code colored by file type, long diffs folded | `renderDiffCard`, `renderClaudeDiff`, `diffLines`, `changedRanges`, `markRange`, `CLAUDE_DIFF`, `isDark`, `diffLang`, `EXT_LANGS`, `paintDiff`; the fold button: `folder`, the `unfolded` atom |
 | `diffBox` = false | (nothing) | nothing |
@@ -57,30 +59,19 @@ Each item below goes, with its code, options and tests.
 
 - **Every option.** No `userConfig`. The repo's hooks rule asks for an off switch; `/plugin disable cc-dazzle` is it. cc-dazzle spends no tokens and schedules nothing, so the opt-in rule does not apply.
 - **Other themes, color overrides and theme switching:** `presets.ts` (all but Mocha), the 20 `*Color` options, `pickTheme`, `RANDOM_THEMES`, `resolveStyle`.
-- **The `/prismantis` command:** theme switch, `copy`, `demo`, `demo-rtl`, the help screen (`help.ts`).
+- **The `/prismantis` command:** theme switch, `demo`, `demo-rtl`, the help screen (`help.ts`), and `copy`, which Claude Code's own `/copy` already does.
 - **RTL:** `rtl.ts`, `detectTerminal`, `applyRtl`, `probe`, `TERMINALS`, `hasRtl`, `flow`, `fullWidth`, the Apple Terminal fullscreen `fit`. The style becomes one constant.
 - **LaTeX:** `latex.ts`, `mathOfBlocks`, the `formulas` and `dir` atoms, the `Image` branch in `drawMarkdown`.
-- **HTML and Linux clipboard:** `clipboard.ts`, `html.ts` `tableHtml`, `htmlBackend`, `copyTable`. `tableText` stays for plain-text table copy.
+- **Linux clipboard:** the CopyQ branch of `clipboard.ts` (`LINUX_TABLE_COPY`) and the Linux check in `htmlBackend`. `⧉ html` shows on macOS only, outside SSH, as today on this Mac.
 - **Diagram hints:** `HINT`, `LATEX_HINT`, the context added in `prompt.submit`.
-- **Quiet tool output** (`toolOutput: quiet`): `quietToolRow`, `quietToolGroup`, `groupSummary`, `callLabel`, `describeShell`, `programsOf`, `parseShell`, `isReadOnlyCall`, `READ_*`, `renderFailure`, `renderShellResult`, `refusalReason`, `errorReason`, `readOnlyCalls`.
+- **Quiet tool output** (`toolOutput: quiet`): `quietToolRow`, `quietToolGroup`, `groupSummary`, `callLabel`, `describeShell`, `programsOf`, `parseShell`, `isReadOnlyCall`, `READ_*`, `renderFailure`, `renderShellResult`, `refusalReason`, `errorReason`, `readOnlyCalls`. The `ToolResult` hook keeps two branches: Edit and Write draw the diff card, tabular output draws a tool table, everything else goes to `next`.
 - **The turn line:** the `TurnDuration` hook, `renderTurnDuration`, `renderPlainTurnDuration`, `endedAt`, the `turnEnds` atom, the `turn.complete` hook.
 - **Unused style branches:** heading styles other than banner, table styles other than box, task styles other than checks, prompt styles other than bubble, `promptAlign: right`, `codeStyle: rule`, `toolStyle` chat, tree-bold (and its bold `narration`) and classic, `treeMark: hook`, `diffTint` soft and vivid, `diffBox` (`renderBoxed`), `copyReply`, `mermaidAscii`, 12h clock.
 - **The extension API:** `engine.create`, `prismantis.markdown` and the `EngineInterface` augmentation. No mod in this repo calls it.
 - **Tooling:** bench, snapshot, clipboard check and vendor build scripts; `FORK.md`; `docs/CHANGELOG.md`; the README demo images.
-- **Tool tables, slash-command markdown and the copy command:** see "Open questions". The design below assumes they are dropped.
-
 ### Behavior changes
 
-- Copying a table gives its markdown as plain text. Before, on macOS, it gave a formatted table.
-- With the open questions settled as recommended: tabular Bash and MCP output draws as Claude Code draws it, and slash-command output is no longer drawn as markdown.
-
-## Open questions
-
-These are on today because they are on by default. The user never asked about them. My recommendation for each is to drop it and add it back when missed.
-
-1. **Tool tables.** Bash and MCP output that looks like a table (columns, TSV, JSON rows) draws as a boxed table with a footer like `12 rows · 0.4s`. Code: `tables.ts`, the `tool.call` timing hook, the `took` state family, `toolTableView`.
-2. **Slash-command output as markdown.** The `CommandOutput` hook draws the text of commands like `/context` with the markdown renderer.
-3. **Copy the last reply by command.** `/prismantis copy [code]`. Keeping it means a `/dazzle copy` command.
+None the user should notice. The `/prismantis` command goes away; `/copy` covers its copy part.
 
 ## Shape
 
@@ -90,7 +81,7 @@ A new plugin, `plugins/cc-dazzle`: a mod with no skill, version 1.0.0 (as cc-kee
 plugins/cc-dazzle/
   .claude-plugin/plugin.json   name, version, description, author, license MIT, types; no userConfig
   hooks/hooks.json             { "modules": ["./register.tsx"] }
-  hooks/register.tsx           the hooks only: ToolGroup, ToolUse, ToolResult, UserMessage, AssistantMessage, prompt.submit, session.append, turn.start
+  hooks/register.tsx           the hooks only: tool.call, ToolGroup, ToolUse, ToolResult, CommandOutput, UserMessage, AssistantMessage, prompt.submit, session.append, turn.start
   hooks/theme.ts               the Mocha palette and CLAUDE_DIFF colors as constants
   hooks/markdown.ts            the parser
   hooks/text.ts                width, graphemes, cells, wrapping, remember
@@ -98,16 +89,19 @@ plugins/cc-dazzle/
   hooks/tools.tsx              tool rows, tool groups, expanded shell rows, the diff card
   hooks/prompt.tsx             renderUserPrompt
   hooks/mermaid.tsx            mermaid to box art
+  hooks/tables.ts              tool output to tables, the footer
+  hooks/html.ts                tableHtml, tableText
+  hooks/clipboard.ts           the macOS formatted-table copy
   hooks/clock.ts               clockText (24h), sentAt, promptKey, withRecord
   hooks/queue.ts               the queued-prompt list
   hooks/vendor/prism.js, prism.d.ts, mermaid-text.js, mermaid-text.d.ts
   hooks/blocks.test.tsx, hooks/tools.test.tsx, hooks/prompts.test.tsx
-  types/index.d.ts             PluginState['cc-dazzle']: unfolded, sent, queued, drawn
+  types/index.d.ts             PluginState['cc-dazzle']: unfolded, sent, queued, drawn, took
   README.md                    what it draws, how to turn it off, where the ideas come from
   NOTICE                       the MIT notices below
 ```
 
-`render.tsx` (1,467 lines in the fork) is split into `text.ts`, `blocks.tsx`, `tools.tsx` and `prompt.tsx`, because each part is read and changed on its own. Code moves over as it is; the only edits are deleting dropped branches and turning options into constants. Every `$.state` ref changes from `plugin: 'prismantis'` to `plugin: 'cc-dazzle'`. Old prismantis state does not carry over, which is harmless: it holds prompt times and fold states only.
+`render.tsx` (1,467 lines in the fork) is split into `text.ts`, `blocks.tsx`, `tools.tsx` and `prompt.tsx`, because each part is read and changed on its own. Code moves over as it is; the only edits are deleting dropped branches and turning options into constants. Every `$.state` ref changes from `plugin: 'prismantis'` to `plugin: 'cc-dazzle'`. Old prismantis state does not carry over, which is harmless: it holds prompt times, fold states and tool timings only.
 
 **Vendor bundles.** This repo has no build and no package manager, so `prism.js` and `mermaid-text.js` are committed as frozen copies of the fork's files at `892da32`: Prism 1.30.0 (core and 24 languages) and beautiful-mermaid 1.1.3 with the fork's patches. A rebuild needs the fork's `scripts/build-vendor.mjs`; if that is ever needed, copy the script to `scripts/dazzle-vendor/` in this repo, outside `plugins/`.
 
@@ -140,27 +134,31 @@ Run with `claude plugin test plugins/cc-dazzle`. Each test checks a behavior thr
 9. A reply part has `●` on the first part only, and a blank line before each part. [look]
 10. A one-paragraph reply is not bold. [look]
 11. H1 draws in a banner box; H2 with a heavy rule. [render]
-12. A table draws boxed with a double line under the header; its copy button copies the markdown as plain text. [render, tables]
-13. A task list shows `[ ]` and `[✓]`, done items dimmed and struck through. [features]
-14. Numbers and file paths in prose get their colors. [render]
-15. A code block draws its language label above a rounded box, the copy button inside at the top right. [look]
-16. A TypeScript code block gets Prism colors. [render]
-17. A `console` block colors `$` lines as commands and output as plain text; its copy button copies the commands only. [look]
-18. A list's copy button sits on the list's first row at the right, not on a line of its own. [look]
-19. A quote's copy button sits at its right. [look]
-20. A mermaid flowchart draws in a rounded box, with `mermaid` and the `⧉ source` / `⧉ art` buttons above it, outside the box. [look]
-21. A diagram too wide for the terminal falls back to its source with a note. [features]
-22. A code block still streaming (`isOpen`) draws without error. [regressions]
+12. A table draws boxed with a double line under the header, with `⧉ md`, `⧉ art` and `⧉ html` buttons. [render, tables]
+13. `⧉ html` runs the macOS helper with the table as HTML and as tab-separated text; when the helper fails it copies plain text and says why. Over SSH the button is hidden. [clipboard]
+14. A task list shows `[ ]` and `[✓]`, done items dimmed and struck through. [features]
+15. Numbers and file paths in prose get their colors. [render]
+16. A code block draws its language label above a rounded box, the copy button inside at the top right. [look]
+17. A TypeScript code block gets Prism colors. [render]
+18. A `console` block colors `$` lines as commands and output as plain text; its copy button copies the commands only. [look]
+19. A list's copy button sits on the list's first row at the right, not on a line of its own. [look]
+20. A quote's copy button sits at its right. [look]
+21. A mermaid flowchart draws in a rounded box, with `mermaid` and the `⧉ source` / `⧉ art` buttons above it, outside the box. [look]
+22. A diagram too wide for the terminal falls back to its source with a note. [features]
+23. A code block still streaming (`isOpen`) draws without error. [regressions]
+24. Slash-command output with a heading and a table draws like a reply; output with terminal color codes, and errored output, go to `next`. [features]
 
 **Tools (`tools.test.tsx`)**
 
-23. A Bash call draws as one dim row with a bold `└─` and the command colored. [look, features]
-24. A Read call draws `Read` and the path shortened to `~/…`. [render]
-25. An expanded tool group goes to `next`; an expanded Bash row shows command and output. [features]
-26. An Edit result draws a diff card in Claude Code's colors, with the changed words marked. [look]
-27. A `.ts` file's diff lines get Prism colors. [look]
-28. A long diff folds behind `+N more lines`; pressing it unfolds through the `unfolded` state. [features]
-29. An errored Edit, and any other tool's result, go to `next`. [regressions]
+25. A Bash call draws as one dim row with a bold `└─` and the command colored. [look, features]
+26. A Read call draws `Read` and the path shortened to `~/…`. [render]
+27. An expanded tool group goes to `next`; an expanded Bash row shows command and output. [features]
+28. An Edit result draws a diff card in Claude Code's colors, with the changed words marked. [look]
+29. A `.ts` file's diff lines get Prism colors. [look]
+30. A long diff folds behind `+N more lines`; pressing it unfolds through the `unfolded` state. [features]
+31. An errored Edit, and a non-tabular result, go to `next`. [regressions]
+32. Bash output in columns draws as a boxed table with a `N rows · 0.4s` footer; the time comes from the `tool.call` hook. [tables, features]
+33. A collapsed tool group with tabular output draws the row with a preview table under it. [features]
 
 ## Migration
 
@@ -169,7 +167,7 @@ The order matters, because two mods that draw the same row do not stack.
 1. Build cc-dazzle on `feat/cc-dazzle`. Run `mise run verify`, `mise run test:dazzle` and `tsc -p plugins/cc-dazzle`. Open a PR; the user merges it.
 2. Install it and remove prismantis in the same step: `claude plugin marketplace update vdsmon-skills`, `claude plugin install cc-dazzle@vdsmon-skills`, `claude plugin uninstall prismantis@prismantis`, `claude plugin marketplace remove prismantis`. Then `/reload-plugins` or a restart.
 3. Remove `pluginConfigs["prismantis@prismantis"]` from `~/.claude/settings.json`.
-4. Compare with a screenshot from before the switch: one reply with a heading, a table, a task list, a TypeScript block, a console block, a mermaid flowchart, an edit and a queued prompt. Fix any gap before the next step.
+4. Compare with a screenshot from before the switch: one reply with a heading, a table (and its `⧉ html` copy pasted into a doc), a task list, a TypeScript block, a console block, a mermaid flowchart, an edit, a `docker ps`-style command and a queued prompt. Fix any gap before the next step.
 5. Archive the fork: `gh repo archive vdsmon/prismantis --yes`. The user runs it or confirms it first. The clone at `~/repos/personal/prismantis` stays as the reference for the vendor build and for features to bring back.
 6. Retarget the routine `prismantis-upstream-check` (`trig_01UQph3ciY1Ewiz6ARhAH2UK`): source repo `vdsmon/skills`; each Monday it reads the week's commits and releases in `NahumLitvin/prismantis` and lists the ones worth copying into cc-dazzle, each with the cc-dazzle file it would touch. Rename it `cc-dazzle-upstream-ideas`. Still read-only.
 7. Update the memory note `prismantis-fork-home`.
