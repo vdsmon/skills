@@ -190,7 +190,8 @@ export const renderDiffCard = (el: ElementTable, style: Style, output: unknown, 
   const t = style.theme
   const added = rows.filter(r => r.mark === '+').length
   const removed = rows.filter(r => r.mark === '-').length
-  const toggle = rows.length > DIFF_LINES ? fold?.(id, rows.length - DIFF_LINES, 'fold') : null
+  const deleted = removed > 0 && removed === rows.length
+  const toggle = !deleted && rows.length > DIFF_LINES ? fold?.(id, rows.length - DIFF_LINES, 'fold') : null
   const shown = rows.slice(0, toggle?.folded === false ? DIFF_MAX : DIFF_LINES)
   const gutter = String(Math.max(0, ...shown.map(r => r.num))).length
   return (
@@ -202,8 +203,8 @@ export const renderDiffCard = (el: ElementTable, style: Style, output: unknown, 
           <Text> </Text>
           <Text color={t.codeFlag} dimColor={removed === 0}>{`−${removed}`}</Text>
         </Text>
-        {renderClaudeDiff(el, style, output, rows, shown, gutter)}
-        {rows.length > shown.length && toggle?.folded !== true ? <Text dimColor>{`… +${rows.length - shown.length} lines`}</Text> : null}
+        {deleted ? <Text dimColor>file deleted</Text> : renderClaudeDiff(el, style, output, rows, shown, gutter)}
+        {!deleted && rows.length > shown.length && toggle?.folded !== true ? <Text dimColor>{`… +${rows.length - shown.length} lines`}</Text> : null}
         {toggle?.element ?? null}
       </Box>
     </Box>

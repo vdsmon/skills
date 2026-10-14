@@ -115,6 +115,17 @@ test('a long diff folds behind a more-lines button that unfolds it through the u
   await again.unmount()
 })
 
+test('a diff that removes every line draws only the count and file deleted', async ($, on) => {
+  engine(on)
+  const gone = { filePath: '/tmp/old.ts', structuredPatch: [{ oldStart: 1, newStart: 0, lines: Array.from({ length: 30 }, (_, i) => `-const x${i} = ${i}`) }] }
+  const ui = await $.ui.mount(result('Write', gone, 'd1'))
+  expect(await ui.find({ type: 'Text', text: /^−30$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^file deleted$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /x0/ })).toBeUndefined()
+  expect(await ui.find({ key: 'fold' })).toBeUndefined()
+  await ui.unmount()
+})
+
 test('an errored Edit and a non-tabular result go to the engine', async ($, on) => {
   engine(on)
   const patch = { filePath: '/tmp/app.ts', structuredPatch: [{ oldStart: 1, newStart: 1, lines: ['-a', '+b'] }] }
