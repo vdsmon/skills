@@ -1,7 +1,7 @@
 import type { Inline } from './markdown'
 import { inlineText } from './markdown'
 
-const WIDE = /[ᄀ-ᅟ⺀-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦]|\p{Extended_Pictographic}/u
+const WIDE = /[\u1100-\u115F\u2E80-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6\u{1F1E6}-\u{1F1FF}\u{20000}-\u{3FFFD}\u20E3]|\p{Emoji_Presentation}|\p{Extended_Pictographic}\uFE0F/u
 const segmenter = typeof Intl !== 'undefined' && 'Segmenter' in Intl ? new Intl.Segmenter() : undefined
 
 export const graphemes = (s: string): string[] => (segmenter ? [...segmenter.segment(s)].map(g => g.segment) : [...s])
@@ -9,7 +9,9 @@ export const graphemes = (s: string): string[] => (segmenter ? [...segmenter.seg
 export const cells = (s: string): string[] => (/^[ -~]*$/.test(s) ? [...s] : graphemes(s).flatMap(g => (WIDE.test(g) ? [g, ''] : [g])))
 
 export const width = (s: string): number =>
-  /^[ -~]*$/.test(s) ? s.length : graphemes(s).reduce((w, g) => (/^\p{M}+$/u.test(g) ? w : w + (WIDE.test(g) ? 2 : 1)), 0)
+  /^[ -~]*$/.test(s) ? s.length
+  : s.length === 1 ? (/\p{M}/u.test(s) ? 0 : WIDE.test(s) ? 2 : 1)
+  : graphemes(s).reduce((w, g) => (/^\p{M}+$/u.test(g) ? w : w + (WIDE.test(g) ? 2 : 1)), 0)
 
 export const wrapRanges = (text: string, w: number): [number, number][] => {
   if (width(text) <= w) return [[0, text.length]]
@@ -20,20 +22,23 @@ export const wrapRanges = (text: string, w: number): [number, number][] => {
     let start = word.index
     const end = start + word[0].length
     let size = width(word[0])
-    while (size > w) {
+    if (size > w) {
       if (line) out.push(line)
       line = undefined
       let cut = start
       let taken = 0
       for (const g of graphemes(text.slice(start, end))) {
         const step = width(g)
-        if (cut > start && taken + step > w) break
+        if (cut > start && taken + step > w) {
+          out.push([start, cut])
+          start = cut
+          size -= taken
+          taken = 0
+          if (size <= w) break
+        }
         cut += g.length
         taken += step
       }
-      out.push([start, cut])
-      start = cut
-      size -= taken
     }
     if (start === end) continue
     const joined = line ? used + width(text.slice(line[1], start)) + size : Infinity

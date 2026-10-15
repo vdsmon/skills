@@ -20,26 +20,36 @@ const padWide = (source: string) => (/^[\x00-\x7F]*$/.test(source) ? source : gr
 const unquoteCategories = (source: string) =>
   source.replace(/^(\s*x-axis\b[^[\n]*\[)([^\]\n]*)\]/m, (_, head: string, items: string) => `${head}${items.replace(/"([^"]*)"/g, (_q, s: string) => s.replaceAll(',', ' '))}]`)
 
+const BLOCK = /[█▀▄]/
+
 const labelBars = (art: string, source: string): string => {
   const series = source.match(/^\s*(bar|line)\b.*$/gm) ?? []
   const values = /^\s*bar\b[^[\n]*\[([^\]\n]*)\]/m.exec(source)?.[1]?.split(',').map(v => v.trim())
   if (series.length !== 1 || !values || /^\s*xychart(-beta)?\s+horizontal/m.test(source)) return art
-  const grid = art.split('\n').map(l => [...l])
-  const axis = grid.findLastIndex(row => row.includes('┬'))
-  const ticks = grid[axis]?.flatMap((ch, x) => (ch === '┬' ? [x] : [])) ?? []
+  const grid = ['', ...art.split('\n')].map(l => [...l])
+  const gutter = (r: number) => /^\s*(-?[\d.]+)[┤┼]/.exec(grid[r]?.join('') ?? '')?.[1]
+  const axis = grid.findLastIndex((_, r) => gutter(r) !== undefined)
+  const ticks = [...(grid[axis]?.join('') ?? '').matchAll(/┬|▀+/g)].map(m => m.index + Math.floor(m[0].length / 2))
   if (ticks.length !== values.length) return art
+  const zero = grid.findIndex((_, r) => gutter(r) === '0')
+  const top = grid.findIndex((_, r) => gutter(r) !== undefined)
+  const base = zero !== -1 ? zero : gutter(top)?.startsWith('-') ? top : axis
   ticks.forEach((x, k) => {
-    const top = grid.findIndex(row => row[x] === '█')
-    const y = top === -1 ? axis - 1 : top - 1
+    const filled = grid.flatMap((row, r) => (BLOCK.test(row[x] ?? '') ? [r] : []))
+    const y = Number(values[k]) < 0 ? (filled.at(-1) ?? base) + 1 : (filled[0] ?? base) - 1
     const text = [...values[k]!]
-    const from = x - Math.floor((text.length - 1) / 2)
-    const row = grid[y]
-    if (!row || y < 0) return
+    const bar = grid[filled[0] ?? -1] ?? []
+    let [left, right] = [x, x]
+    while (BLOCK.test(bar[left - 1] ?? '')) left--
+    while (BLOCK.test(bar[right + 1] ?? '')) right++
+    const from = left + Math.ceil((right - left + 1 - text.length) / 2)
+    const row = y < axis ? grid[y] : undefined
+    if (!row) return
     while (row.length < from + text.length) row.push(' ')
     if (!text.every((_, i) => /[ ·]/.test(row[from + i] ?? ' '))) return
     text.forEach((ch, i) => (row[from + i] = ch))
   })
-  return grid.map(row => row.join('').trimEnd()).join('\n')
+  return grid.map(row => row.join('').trimEnd()).join('\n').replace(/^\n/, '')
 }
 
 const SIDEWAYS = /^(\s*(?:flowchart|graph)[ \t]+)(LR|RL)\b/
@@ -51,18 +61,26 @@ export const unsupportedKind = (source: string): string | undefined => {
   return kind && !SUPPORTED.test(kind) ? kind : undefined
 }
 
-export const mermaidText = (source: string, columns: number): string | null => {
-  if (source.length > 8000 || source.split('\n').length > MAX_LINES) return null
-  const art = draw(source, columns)
-  const fits = (a: string) => a.split('\n').every(l => width(l) <= columns - 2)
-  if (art === null || fits(art) || !SIDEWAYS.test(source)) return art
-  return draw(source.replace(SIDEWAYS, '$1TD'), columns) ?? art
-}
+const INLINE_TAG = /<\/?(?:b|i|u|s|em|strong|del|code|small|sub|sup|span|mark)\b[^<>\n]*>/gi
 
-const evenTicks = (art: string) => {
-  const rows = art.split('\n').flatMap((line, i) => (/^\s*-?[\d.,]+[kMG%]?\s*[┤┼+|]/.test(line) ? [i] : []))
-  return rows.slice(2).every((row, i) => row - rows[i + 1]! === rows[1]! - rows[0]!)
-}
+type Mark = { italic?: boolean; bold?: boolean; underline?: boolean; strikethrough?: boolean }
+const TAG_MARK: Record<string, keyof Mark> = { i: 'italic', em: 'italic', b: 'bold', strong: 'bold', u: 'underline', s: 'strikethrough', del: 'strikethrough' }
+
+export const inlineMarks = (source: string): [string[], Mark][] =>
+  [...source.matchAll(/<(i|em|b|strong|u|s|del)\b[^<>\n]*>([^<\n]+)<\/\1\s*>/gi)]
+    .map(m => [cells(m[2]!.trim()), { [TAG_MARK[m[1]!.toLowerCase()]!]: true }] as [string[], Mark])
+
+const fitted = new Map<string, string | null>()
+
+export const mermaidText = (source: string, columns: number): string | null =>
+  remember(fitted, `${columns}:${source}`, () => {
+    source = source.replace(INLINE_TAG, '')
+    if (source.length > 8000 || source.split('\n').length > MAX_LINES) return null
+    const art = draw(source, columns)
+    const fits = (a: string) => a.split('\n').every(l => width(l) <= columns - 2)
+    if (art === null || fits(art) || !SIDEWAYS.test(source)) return art
+    return draw(source.replace(SIDEWAYS, '$1TD'), columns) ?? art
+  })
 
 const draw = (source: string, columns: number): string | null => {
   const isChart = /^\s*xychart/.test(source)
@@ -71,17 +89,8 @@ const draw = (source: string, columns: number): string | null => {
   const key = `${isChart ? size.width : 0}:${source}`
   return remember(textCache, key, () => {
     try {
-      const render = () => renderMermaidAscii(unquoteCategories(padded.replace(/^(\s*%%[^\n]*\n)+/, '')).replace(/(-->|-\.->|==>|---|-\.-|===)[ \t]+\|/g, '$1|'), { useAscii: false, colorMode: 'none', paddingX: 3, paddingY: 1 }).replace(/[ \t]+$/gm, '').trimEnd().replace(/▶/g, '►').replace(/◀/g, '◄')
-      let art = ''
-      for (const height of isChart ? [0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6, -6, 7, -7, 8, -8].map(d => size.height + d).filter(h => h >= 6) : [0]) {
-        if (isChart) setChartSize(size.width, height)
-        art = render()
-        if (!isChart || evenTicks(art)) break
-      }
-      if (isChart && !evenTicks(art)) {
-        setChartSize(size.width, size.height)
-        art = render()
-      }
+      if (isChart) setChartSize(size.width, size.height)
+      const art = renderMermaidAscii(unquoteCategories(padded.replace(/^(\s*%%[^\n]*\n)+/, '')).replace(/(-->|-\.->|==>|---|-\.-|===)[ \t]+\|/g, '$1|'), { useAscii: false, colorMode: 'none', paddingX: 3, paddingY: 1 }).replace(/[ \t]+$/gm, '').trimEnd().replace(/▶/g, '►').replace(/◀/g, '◄')
       return (isChart ? labelBars(art, padded) : art.split('\n').filter(l => !/^[\s│|]*$/.test(l)).join('\n')).replaceAll(PAD, '')
     } catch {
       return null
@@ -123,17 +132,25 @@ const paint = (art: string, style: Style): (string | undefined)[][] => {
     for (let y = r; y <= r2; y++) for (let x = c; x <= c2; x++) if (cell(y, x).trim()) color[y]![x] = hue
   }
 
-  const bars = [...new Set(grid.flatMap(row => row.flatMap((ch, c) => (ch === '█' && row[c - 1] !== '█' ? [c] : []))))].sort((a, b) => a - b)
-  const ticks = grid.findLast(row => row.includes('┬'))?.filter(ch => ch === '┬').length ?? 0
-  const tops = bars.map(x => grid.findIndex(row => row[x] === '█'))
-  const single = bars.length > 1 && bars.length <= ticks
+  const bars = [...new Set(grid.flatMap(row => row.flatMap((ch, c) => (BLOCK.test(ch) && row[c - 1] !== ch ? [c] : []))))].sort((a, b) => a - b)
+  const ends = bars.map(x => {
+    const row = grid.find(row => BLOCK.test(row[x] ?? ''))!
+    let end = x
+    while (row[end + 1] === row[x]) end++
+    return end
+  })
+  const tops = bars.map(x => {
+    const r = grid.findIndex(row => BLOCK.test(row[x] ?? ''))
+    return r * 2 + (grid[r]![x] === '▄' ? 1 : 0)
+  })
+  const single = bars.length > 1 && bars.every((x, i) => i === 0 || x - ends[i - 1]! > 2)
   const barColor = (i: number) => (single ? (tops[i] === Math.min(...tops) ? t.emphasis ?? t.accent : t.quote) : next(i))
   grid.forEach((row, r) =>
     row.forEach((ch, c) => {
       if (color[r]![c] !== undefined) return
-      if (ch === '█') {
+      if (BLOCK.test(ch)) {
         let start = c
-        while (row[start - 1] === '█') start--
+        while (row[start - 1] === ch) start--
         color[r]![c] = barColor(bars.indexOf(start))
       } else if (ch === '·') color[r]![c] = t.rule
       else if (ARROW.test(ch)) color[r]![c] = t.accent
@@ -145,23 +162,28 @@ const paint = (art: string, style: Style): (string | undefined)[][] => {
   return color
 }
 
-const painted = new WeakMap<Theme, Map<string, (string | undefined)[][]>>()
+type Painted = { grid: string[][]; colors: (string | undefined)[][] }
+const painted = new WeakMap<Theme, Map<string, Painted>>()
 
-export const boxArt = ({ Box, Text }: ElementTable, style: Style, art: string, key: string): RenderElement => {
-  const cache = painted.get(style.theme) ?? new Map<string, (string | undefined)[][]>()
+export const boxArt = ({ Box, Text }: ElementTable, style: Style, art: string, key: string, marks: [string[], Mark][] = []): RenderElement => {
+  const cache = painted.get(style.theme) ?? new Map<string, Painted>()
   painted.set(style.theme, cache)
-  const colors = remember(cache, art, () => paint(art, style))
+  const { grid, colors } = remember(cache, art, () => ({ grid: art.split('\n').map(cells), colors: paint(art, style) }))
   return (
     <Box key={key} flexDirection="column" paddingLeft={2}>
-      {art.split('\n').map((line, i) => {
-        const chars = cells(line)
+      {grid.map((chars, i) => {
+        const marked: (Mark | undefined)[] = chars.map(() => undefined)
+        for (const [phrase, mark] of marks)
+          for (let c = 0; c + phrase.length <= chars.length; c++)
+            if (phrase.every((ch, k) => chars[c + k] === ch)) for (let k = 0; k < phrase.length; k++) marked[c + k] = mark
         const parts: RenderElement[] = []
         let at = 0
         while (at < chars.length) {
           const hue = colors[i]?.[at]
+          const mark = marked[at]
           let end = at + 1
-          while (end < chars.length && colors[i]?.[end] === hue) end++
-          parts.push(<Text key={`t${parts.length}`} color={hue}>{chars.slice(at, end).join('')}</Text>)
+          while (end < chars.length && colors[i]?.[end] === hue && marked[end] === mark) end++
+          parts.push(<Text key={`t${parts.length}`} color={hue} {...mark}>{chars.slice(at, end).join('')}</Text>)
           at = end
         }
         return <Text key={`${key}.${i}`}>{parts.length ? parts : ' '}</Text>
