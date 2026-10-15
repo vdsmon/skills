@@ -26,5 +26,7 @@ export type Style = {
   cwd: string
   home: string
   inside?: 'quote' | 'alert'
+  httpLinks?: boolean
+  editorLinks?: boolean
   noteKey?: string
 }

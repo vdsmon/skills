@@ -183,32 +183,94 @@ const renderClaudeDiff = (el: ElementTable, style: Style, output: unknown, rows:
   })
 }
 
-export const renderDiffCard = (el: ElementTable, style: Style, output: unknown, fold: Fold, id: string): RenderElement | undefined => {
-  const rows = diffLines(output)
-  if (rows === undefined) return undefined
+const diffBox = (el: ElementTable, style: Style, output: unknown, rows: DiffLine[], fold: Fold, id: string, key: string, title?: string): RenderElement => {
   const { Box, Text } = el
   const t = style.theme
   const added = rows.filter(r => r.mark === '+').length
   const removed = rows.filter(r => r.mark === '-').length
-  const toggle = rows.length > DIFF_LINES ? fold?.(id, rows.length - DIFF_LINES, 'fold') : null
+  const toggle = rows.length > DIFF_LINES ? fold?.(id, rows.length - DIFF_LINES, `fold${key}`) : null
   const shown = rows.slice(0, toggle?.folded === false ? DIFF_MAX : DIFF_LINES)
   const gutter = String(Math.max(0, ...shown.map(r => r.num))).length
   return (
-    <Box flexDirection="row">
-      <Text dimColor bold>{`  ${TREE_MARK}`.padEnd(5)}</Text>
-      <Box flexDirection="column" borderStyle="round" borderColor={t.rule} paddingX={1} flexShrink={1}>
-        <Text>
-          <Text color={t.number} dimColor={added === 0}>{`+${added}`}</Text>
-          <Text> </Text>
-          <Text color={t.codeFlag} dimColor={removed === 0}>{`−${removed}`}</Text>
-        </Text>
-        {renderClaudeDiff(el, style, output, rows, shown, gutter)}
-        {rows.length > shown.length && toggle?.folded !== true ? <Text dimColor>{`… +${rows.length - shown.length} lines`}</Text> : null}
-        {toggle?.element ?? null}
-      </Box>
+    <Box key={`card${key}`} flexDirection="column" borderStyle="round" borderColor={t.rule} paddingX={1} flexShrink={1}>
+      <Text>
+        {title === undefined ? null : <Text color={t.path}>{`${title} `}</Text>}
+        <Text color={t.number} dimColor={added === 0}>{`+${added}`}</Text>
+        <Text> </Text>
+        <Text color={t.codeFlag} dimColor={removed === 0}>{`−${removed}`}</Text>
+      </Text>
+      {renderClaudeDiff(el, style, output, rows, shown, gutter)}
+      {rows.length > shown.length && toggle?.folded !== true ? <Text dimColor>{`… +${rows.length - shown.length} lines`}</Text> : null}
+      {toggle?.element ?? null}
     </Box>
   )
 }
+
+const diffRow = ({ Box, Text }: ElementTable, cards: RenderElement[], below: boolean): RenderElement => (
+  <Box flexDirection="row">
+    <Text dimColor bold>{below ? '     ' : `  ${TREE_MARK}`.padEnd(5)}</Text>
+    <Box flexDirection="column" flexShrink={1} alignItems="flex-start">{cards}</Box>
+  </Box>
+)
+
+export const renderDiffCard = (el: ElementTable, style: Style, output: unknown, fold: Fold, id: string): RenderElement | undefined => {
+  const rows = diffLines(output)
+  return rows === undefined ? undefined : diffRow(el, [diffBox(el, style, output, rows, fold, id, '')], false)
+}
+
+type EditedFile = { path: string; rows: DiffLine[] }
+
+export type BashEdits = { files: EditedFile[]; more: number; shared: boolean }
+
+export const EDIT_NOTES = {
+  first: 'every file that changed while this ran, by this command or anything else: a view of the changes, not an audit of the command',
+  shared: 'another command ran in this repository at the same time, so changes by either may show under either one',
+  tree: 'a git step in this command can move the working tree, so these may be its changes rather than edits',
+} as const
+
+// A Bash result carries the per-file hunks Claude Code draws a shell edit from, in Edit's structuredPatch shape.
+export const bashEdits = (output: unknown): BashEdits | undefined => {
+  if (output === null || typeof output !== 'object') return undefined
+  const diff = (output as { bashEditDiff?: unknown }).bashEditDiff
+  if (diff === null || typeof diff !== 'object') return undefined
+  const { files, moreFiles, shared } = diff as { files?: unknown; moreFiles?: unknown; shared?: unknown }
+  if (!Array.isArray(files) || files.length === 0) return undefined
+  const edited: EditedFile[] = []
+  for (const file of files as ({ filePath?: unknown; hunks?: unknown } | null)[]) {
+    const rows = diffLines({ structuredPatch: file?.hunks })
+    if (typeof file?.filePath !== 'string' || rows === undefined) return undefined
+    edited.push({ path: file.filePath, rows })
+  }
+  return { files: edited, more: typeof moreFiles === 'number' && moreFiles > 0 ? moreFiles : 0, shared: shared === true }
+}
+
+export const withoutBashEdits = (output: unknown): unknown => {
+  if (output === null || typeof output !== 'object') return output
+  const { bashEditDiff: _, ...rest } = output as Record<string, unknown>
+  return rest
+}
+
+export const hasShellOutput = (output: unknown): boolean => {
+  const out = output !== null && typeof output === 'object' ? (output as Record<string, unknown>) : {}
+  return lines(out.stdout).length + lines(out.stderr).length > 0
+}
+
+export const renderBashEdits = (el: ElementTable, style: Style, edits: BashEdits, fold: Fold, id: string, below = false, notes: readonly string[] = []): RenderElement => {
+  const cards = edits.files.map((file, i) => diffBox(el, style, { filePath: file.path }, file.rows, fold, `${id}:${i}`, String(i), shortPath(style, file.path)))
+  const more = edits.more ? [<el.Text key="more" dimColor>{`… +${edits.more} more ${edits.more === 1 ? 'file' : 'files'}`}</el.Text>] : []
+  const said = notes.map((note, i) => <el.Text key={`note${i}`} dimColor>{`(${note})`}</el.Text>)
+  return diffRow(el, [...cards, ...more, ...said], below)
+}
+
+const TREE_MOVER = /(^|[;&|(]\s*|\bsudo\s+)(?:\w+=\S*\s+)*git\s+(?:(?:-C|-c)\s+\S+\s+|--?[\w-]+(?:=\S+)?\s+)*(checkout|switch|stash|pull|merge|rebase|reset|restore|clean|cherry-pick|revert)\b/
+
+export const movesTree = (command: string): boolean => TREE_MOVER.test(command)
+
+export const editNotes = (edits: BashEdits, first: boolean, command?: string): string[] => [
+  ...(first ? [EDIT_NOTES.first] : []),
+  ...(edits.shared ? [EDIT_NOTES.shared] : []),
+  ...(command !== undefined && movesTree(command) ? [EDIT_NOTES.tree] : []),
+]
 
 export const renderToolRow = (el: ElementTable, style: Style, row: ToolRow): RenderElement => {
   const { Text } = el
