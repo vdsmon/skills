@@ -1,8 +1,8 @@
 # cc-dazzle
 
-Draws the Claude Code transcript in Catppuccin Mocha. It has no settings.
+Draws the Claude Code transcript in Catppuccin Mocha, with optional stretchtext replies.
 
-It is a mod: a hooks module that Claude Code runs inside each session. It only draws rows. It adds nothing to your prompts and makes no model calls, so it spends no tokens.
+It is a mod: a hooks module that Claude Code runs inside each session. It makes no model calls. With stretchtext off, the default, it only draws rows and adds nothing to your prompts.
 
 ## Install
 
@@ -24,6 +24,17 @@ Mods that draw the same row do not stack, so turn off any other mod that draws r
 - **Your prompts:** a rounded box with the send time (`14:32`, or `Oct 10 14:32` for another day). A prompt you send while Claude works stays gray until Claude reads it.
 - **Slash-command output:** drawn like a reply, unless it has terminal color codes.
 
+## Stretchtext replies
+
+Off by default. Turn it on in `/config` (cc-dazzle, **Stretchtext replies**); the change reloads the mod at once.
+
+When it is on, Claude writes each reply short, with `{{short|long}}` stretches. A stretch draws as its short form, underlined. Click it and the long form grows in place around the words you already read; click `«` to shrink it back. Stretches can nest. With your next prompt, Claude is told which stretches you opened.
+
+- Clicks work in the fullscreen terminal (`/tui fullscreen`) and in the desktop app. Elsewhere every stretch shows open, so nothing is hidden.
+- It adds a short guide to the system prompt and one line to each prompt that follows a reply with stretches.
+- Claude still writes every level, so a reply costs about as many tokens as before.
+- Turned off, old replies with stretches show every stretch open.
+
 ## Turn it off
 
 ```
@@ -32,4 +43,4 @@ Mods that draw the same row do not stack, so turn off any other mod that draws r
 
 ## Credits
 
-Most of the code comes from [prismantis](https://github.com/NahumLitvin/prismantis) by Nahum Litvin, through the fork `vdsmon/prismantis` at 0.15.19. Upstream prismantis stays a source of ideas: they are copied here by hand. `hooks/vendor/` holds frozen builds of [Prism](https://github.com/PrismJS/prism) 1.30.0 and [beautiful-mermaid](https://github.com/lukilabs/beautiful-mermaid) 1.1.3. See `NOTICE` for the licenses.
+Most of the code comes from [prismantis](https://github.com/NahumLitvin/prismantis) by Nahum Litvin, through the fork `vdsmon/prismantis` at 0.15.19. Upstream prismantis stays a source of ideas: they are copied here by hand. The stretchtext code comes from [cc-stretch](https://github.com/pro-vi/cc-stretch) 0.3.3 by pro-vi, after Ted Nelson's stretchtext. `hooks/vendor/` holds frozen builds of [Prism](https://github.com/PrismJS/prism) 1.30.0 and [beautiful-mermaid](https://github.com/lukilabs/beautiful-mermaid) 1.1.3. See `NOTICE` for the licenses.

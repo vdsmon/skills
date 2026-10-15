@@ -10,6 +10,7 @@ import type { Block } from './markdown'
 import { parse } from './markdown'
 import { boxArt, mermaidText, shortenEdgeLabels, unsupportedKind } from './mermaid'
 import { renderUserPrompt } from './prompt'
+import { openText, registerStretch, stretchBody, stretchNote, writtenText } from './stretch/index'
 import { deliveredText, isQueued, withQueued, withoutDelivered } from './queue'
 import type { Table } from './tables'
 import { MAX_ROWS, PREVIEW_ROWS, captionOf, isTabular, markdownTable, tableFooter, toolTable } from './tables'
@@ -128,12 +129,13 @@ const toolTableView = async ($: EngineInterface, e: RenderInput, style: Style, b
 
 const isOwn = (kind: string) => kind === 'composer' || kind === 'bridge'
 
-export const register: Register = on => {
+export const register: Register = (on, options) => {
   const style: Style = { theme: THEME, htmlCopy: null, cwd: '', home: '' }
   const parsed = new Map<string, ReturnType<typeof parse>>()
   const parseCached = (text: string) => remember(parsed, text, () => parse(text, { numbers: true, paths: true }))
   const forSurface = (base: Style, surface: RenderSurface): Style => (surface === 'terminal' || !base.htmlCopy ? base : { ...base, htmlCopy: null })
   const probes: Probes = {}
+  if (options.stretch === true) registerStretch(on)
 
   on('tool.call', async ($, e, next) => {
     if (!isTabular(e.tool)) return next(e)
@@ -207,7 +209,8 @@ export const register: Register = on => {
       await update($, sent, list => withRecord(list, { text: promptKey(e.text), at }))
     }
     await probe($, style, probes)
-    return next(e)
+    const note = options.stretch === true && e.origin.kind === 'composer' ? await stretchNote($).catch(() => undefined) : undefined
+    return next(note === undefined ? e : { ...e, context: [...(e.context ?? []), note] })
   })
 
   on('ui.render', { component: 'CommandOutput' }, async ($, e, next) => {
@@ -232,11 +235,24 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
-    const blocks = parseCached(e.props.text)
-    if (blocks.length === 0) return next(e)
     const el = $.ui.resolve(e)
     const { Box, Text } = el
     const open = await read($, unfolded)
+    const draw = (text: string) => drawMarkdown($, el, forSurface(style, e.surface), parseCached(text), columnsOf(e.viewport), open)
+    const text = options.stretch === true && e.props.isSummary !== true ? await writtenText($, e.props.text) : e.props.text
+    const stretched = options.stretch === true && e.props.isSummary !== true ? await stretchBody($, { ...e, props: { ...e.props, text } }, draw) : undefined
+    if (stretched !== undefined) {
+      return (
+        <Box flexDirection="row" marginTop={1}>
+          <Box width={2} flexShrink={0}>
+            <Text color={style.theme.accent}>{e.props.isFirstOfReply ? '●' : ' '}</Text>
+          </Box>
+          <Box flexDirection="column" rowGap={1} flexGrow={1}>{stretched}</Box>
+        </Box>
+      )
+    }
+    const blocks = parseCached(openText(e.props.text))
+    if (blocks.length === 0) return next(e)
     return (
       <Box flexDirection="row" marginTop={1}>
         <Box width={2} flexShrink={0}>
