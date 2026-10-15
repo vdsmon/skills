@@ -8,7 +8,7 @@ import { clipboardCommand } from './clipboard'
 import { clockText, promptKey, sentAt, withRecord } from './clock'
 import type { Block } from './markdown'
 import { parse } from './markdown'
-import { boxArt, mermaidText, shortenEdgeLabels, unsupportedKind } from './mermaid'
+import { boxArt, inlineMarks, mermaidText, shortenEdgeLabels, unsupportedKind } from './mermaid'
 import { renderUserPrompt } from './prompt'
 import { openText, registerStretch, stretchBody, stretchNote, writtenText } from './stretch/index'
 import { deliveredText, isQueued, withQueued, withoutDelivered } from './queue'
@@ -103,7 +103,7 @@ const drawMarkdown = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['
       const wide = art === null ? Infinity : Math.max(...art.split('\n').map(width))
       narrowest = Math.min(narrowest, wide)
       if (art === null || wide > columns - 6) continue
-      drawn.set(i, { element: boxArt(el, style, art, `b${i}`), art })
+      drawn.set(i, { element: boxArt(el, style, art, `b${i}`, inlineMarks(source)), art })
       break
     }
     if (!drawn.has(i) && !block.isOpen) {
@@ -171,7 +171,8 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
     await locate($, style)
     if (!expandedCalls.has(e.props.tool_use_id)) return renderToolRow($.ui.resolve(e), style, e.props)
-    return e.props.tool === 'Bash' || e.props.tool === 'PowerShell' ? renderExpandedShell($.ui.resolve(e), style, e.props) : next(e)
+    const shell = e.props.tool === 'Bash' || e.props.tool === 'PowerShell'
+    return shell && typeof e.props.output !== 'string' ? renderExpandedShell($.ui.resolve(e), style, e.props) : next(e)
   })
 
   on('ui.render', { component: 'ToolResult' }, async ($, e, next) => {

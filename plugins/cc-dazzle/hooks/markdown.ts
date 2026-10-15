@@ -33,7 +33,7 @@ const ALERT = /^\[!(note|tip|important|warning|caution)\]\s*(.*)$/i
 export type Highlight = { numbers: boolean; paths: boolean }
 
 const MAX_INLINE = 4000
-const TABLE_SEP = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/
+const TABLE_SEP = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/
 const LIST_ITEM = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/
 const FENCE = /^\s*(`{3,}|~{3,})\s*([\w+-]*)/
 const NOTE_DEF = /^\[\^([^\]\s]+)\]:\s*(.*)$/
@@ -59,7 +59,7 @@ const splitRow = (line: string): string[] => {
   return cells
 }
 
-const INLINE = /(`+)(?!`)(.+?)(?<!`)\1(?!`)|\[([^\]]+)\]\(([^)\s]+)\)|\*\*([^*]+?)\*\*|(?<![\w_])__([^_]+?)__(?![\w_])|~~([^~]+?)~~|(?<![\w*])\*([^*\s][^*]*?)\*(?!\w)|(?<![\w_])_([^_\s][^_]*?)_(?!\w)|(https?:\/\/[^\s<>()]+[^\s<>().,;:!?'"])|(?<![\\$\w])\$(?=\S)((?:\\.|[^$\n\\])+?)(?<=\S)\$(?![\w$])|\[\^([^\]\s]+)\]/g
+const INLINE = /(`+)(?!`)(.+?)(?<!`)\1(?!`)|\[([^\]]+)\]\(((?:[^()\s]|\([^()\s]*\))+)\)|\*\*(?!\s)((?:[^*]|\*[^*\s][^*]*?(?<!\s)\*)+?)(?<!\s)\*\*|(?<![\w_])__(?!\s)([^_]+?)(?<!\s)__(?![\w_])|~~([^~]+?)~~|(?<![\w*])\*([^*\s][^*]*?)(?<!\s)\*(?!\w)|(?<![\w_])_([^_\s][^_]*?)(?<!\s)_(?!\w)|(https?:\/\/(?:[^\s<>()]|\([^\s<>()]*\))*(?:[^\s<>().,;:!?'"]|\([^\s<>()]*\)))|(?<![\\$\w])\$(?=\S)((?:\\.|[^$\n\\])+?)(?<=\S)\$(?![\w$])|\[\^([^\]\s]+)\]/g
 const NUMBER = /(?<![\w.#/-])(v?\d+(?:[.,:]\d+)*(?:%|ms|s|m|h|d|Gi|Mi|GB|MB|KB|x)?)(?![\w/])/g
 const PATH = /(?<![\w/.:])((?:~|\.{1,2})?\/[\w.@+-]+(?:\/[\w.@+-]*)*)/g
 
@@ -94,7 +94,7 @@ export const parseInline = (text: string, hl: Highlight): Inline[] => {
   for (const m of text.matchAll(INLINE)) {
     if (m.index > at) out.push(...decorate(text.slice(at, m.index), hl))
     if (m[2] !== undefined) out.push({ kind: 'code', text: m[2] })
-    else if (m[3] !== undefined) out.push({ kind: 'link', text: m[3], href: m[4] ?? "" })
+    else if (m[3] !== undefined) out.push({ kind: 'link', text: m[3].replace(/^`([^`]+)`$/, '$1'), href: m[4]! })
     else if (m[5] !== undefined || m[6] !== undefined) out.push({ kind: 'strong', children: parseInline(m[5] ?? m[6] ?? "", hl) })
     else if (m[7] !== undefined) out.push({ kind: 'strike', children: parseInline(m[7], hl) })
     else if (m[8] !== undefined || m[9] !== undefined) out.push({ kind: 'emphasis', children: parseInline(m[8] ?? m[9] ?? "", hl) })
@@ -179,10 +179,13 @@ export const parse = (source: string, hl: Highlight): Block[] => {
 const notesOf = (source: string): Map<string, string> => {
   const defs = new Map<string, string>()
   const lines = source.replace(/\r\n?/g, '\n').split('\n')
-  let fenced = false
+  let closer: RegExp | undefined
   let last: string | undefined
   for (const line of lines) {
-    if (FENCE.test(line)) fenced = !fenced
+    const run = FENCE.exec(line)?.[1]
+    const fenced = closer !== undefined || run !== undefined
+    if (closer?.test(line)) closer = undefined
+    else if (!closer && run) closer = closerOf(run)
     const def = fenced ? null : NOTE_DEF.exec(line)
     if (def) {
       last = def[1]!
@@ -194,6 +197,7 @@ const notesOf = (source: string): Map<string, string> => {
 }
 
 const indentOf = (line: string): number => (line.match(/^\s*/)?.[0] ?? '').replace(/\t/g, '  ').length
+const closerOf = (run: string) => new RegExp(`^\\s*\\${run[0]}{${run.length},}\\s*$`)
 
 const parseBlocks = (source: string, hl: Highlight): Block[] => {
   const lines = source.replace(/\r\n?/g, '\n').split('\n')
@@ -215,7 +219,7 @@ const parseBlocks = (source: string, hl: Highlight): Block[] => {
       flush(i)
       const start = i
       const run = fence[1] ?? '```'
-      const closer = new RegExp(`^\\s*\\${run[0]}{${run.length},}\\s*$`)
+      const closer = closerOf(run)
       const body: string[] = []
       i++
       while (i < lines.length && !closer.test(at(i))) body.push(at(i++))
@@ -238,7 +242,7 @@ const parseBlocks = (source: string, hl: Highlight): Block[] => {
       while (/^\s{2,}\S/.test(at(i + 1))) i++
       continue
     }
-    const heading = /^(#{1,6})\s+(.*?)\s*#*\s*$/.exec(line)
+    const heading = /^(#{1,6})\s+(.*?)(?:\s+#+)?\s*$/.exec(line)
     if (heading) {
       flush(i)
       add({ kind: 'heading', level: (heading[1] ?? '#').length, inline: parseInline(heading[2] ?? '', hl) }, i, i + 1)
@@ -287,9 +291,10 @@ const parseBlocks = (source: string, hl: Highlight): Block[] => {
       while (i < lines.length) {
         const it = LIST_ITEM.exec(at(i))
         if (it) {
-          contentIndent.push((it[1] ?? '').replace(/\t/g, '  ').length + (it[2] ?? '').length + 1)
+          const lead = indentOf(it[1] ?? '')
+          contentIndent.push(lead + (it[2] ?? '').length + 1)
           const task = /^\[([ xX])\]\s+(.*)$/.exec(it[3] ?? '')
-          items.push({ marker: it[2] ?? '-', depth: Math.floor((it[1] ?? '').replace(/\t/g, '  ').length / 2), ...(task ? { task: task[1] !== ' ' } : {}), inline: parseInline(task ? task[2]! : it[3] ?? '', hl) })
+          items.push({ marker: it[2] ?? '-', depth: Math.floor(lead / 2), ...(task ? { task: task[1] !== ' ' } : {}), inline: parseInline(task ? task[2]! : it[3] ?? '', hl) })
         } else if (/^\s{2,}\S/.test(at(i)) && items.length) {
           const indent = indentOf(at(i))
           let owner = items.length - 1
@@ -300,7 +305,7 @@ const parseBlocks = (source: string, hl: Highlight): Block[] => {
           if (fence) {
             const from = i
             const run = fence[1] ?? '```'
-            const closer = new RegExp(`^\\s*\\${run[0]}{${run.length},}\\s*$`)
+            const closer = closerOf(run)
             const strip = new RegExp(`^ {0,${indent}}`)
             const body: string[] = []
             i++

@@ -27,7 +27,7 @@ const renderInline = (el: ElementTable, style: Style, nodes: Inline[], keyBase: 
       case 'math':
         return <Text key={key} italic color={t.emphasis}>{n.text}</Text>
       case 'link':
-        return /^(https:|http:\/\/localhost\b)/i.test(n.href)
+        return /^(https:|http:\/\/localhost(:\d+)?(\/|$))/i.test(n.href)
           ? n.text === n.href ? <el.Link key={key} href={n.href} /> : <el.Link key={key} href={n.href}><Text color={t.link} underline>{n.text}</Text></el.Link>
           : <Text key={key} color={t.link} underline>{n.text}</Text>
       case 'number':
@@ -186,7 +186,7 @@ export const tableArt = (block: Extract<Block, { kind: 'table' }>): string => {
     block.header.map((_, c) => Math.max(...cells.map(r => longestWord(r[c]!)))),
   )
   const pad = (text: string, c: number, align: 'left' | 'right' | 'center') => {
-    const room = widths[c]! - width(text)
+    const room = Math.max(0, widths[c]! - width(text))
     const left = align === 'right' ? room : align === 'center' ? Math.floor(room / 2) : 0
     return ' '.repeat(left) + text + ' '.repeat(room - left)
   }
@@ -348,7 +348,10 @@ const FOLD_SHOW = 20
 
 const codeId = (lines: string[]): string => {
   let h = 5381
-  for (const line of lines) for (let i = 0; i < line.length; i++) h = (h * 33 + line.charCodeAt(i)) | 0
+  for (const line of lines) {
+    for (let i = 0; i < line.length; i++) h = (h * 33 + line.charCodeAt(i)) | 0
+    h = (h * 33 + 10) | 0
+  }
   return `${lines.length}:${(h >>> 0).toString(36)}`
 }
 
