@@ -538,6 +538,30 @@ test('the next prompt tells the model which stretches were opened and which not'
   await ui.unmount()
 })
 
+test('a finished reply handed over with its long forms filtered out still draws its stretches', ON, async ($, on) => {
+  on('classic.MessageDisplay', () => ({}))
+  on('session.surfaces', () => ({ value: ['terminal'] }))
+  const text = 'A monad is {{a wrapper|a wrapper, like Maybe}} with two operations.'
+  const flush = await $.classic.MessageDisplay({ turn_id: 't', message_id: 'm', index: 0, final: true, delta: text })
+  expect(flush.displayContent).toBe('A monad is a wrapper with two operations.')
+  const ui = await mountReply($, FULLSCREEN, flush.displayContent)
+  await pressOn(ui, 'a wrapper')
+  await ui.advance(2000)
+  expect(await textIn(ui)).toBe('A monad is a wrapper, like Maybe « with two operations.')
+  await ui.unmount()
+})
+
+test('a reply streamed before the module loaded is found among the session messages', ON, async ($, on) => {
+  const text = 'Old reply with {{a stretch|a stretch, longer}}.'
+  on('session.messages', () => ({ value: [{ role: 'assistant', text, toolUses: [] }] }))
+  const ui = await mountReply($, FULLSCREEN, 'Old reply with a stretch.')
+  expect(await textIn(ui)).toBe('Old reply with a stretch.')
+  await pressOn(ui, 'a stretch')
+  await ui.advance(2000)
+  expect(await textIn(ui)).toBe('Old reply with a stretch, longer «.')
+  await ui.unmount()
+})
+
 describe('setting off', () => {
   test('a reply with markup draws every stretch open and no Client', async $ => {
     const ui = await mountReply($, FULLSCREEN)

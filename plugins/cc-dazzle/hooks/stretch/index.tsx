@@ -64,22 +64,56 @@ export async function stretchNote($: EngineInterface): Promise<string | undefine
     : NO_CLICK
 }
 
+// Claude Code 2.1.300 hands AssistantMessage the display text the stream filter wrote, so a finished
+// reply arrives with its long forms gone. Each filtered text maps back to the reply as written.
+const written = new Map<string, string>()
+// Replies streamed after the module loaded are remembered as they stream, so the session is read once.
+let hasScanned = false
+const remember = (shown: string, raw: string) => {
+  written.set(shown.trim(), raw)
+  if (written.size > 500) written.delete(written.keys().next().value!)
+}
+
+/**
+ * A reply's text as Claude wrote it, stretches included. A reply streamed before the module loaded
+ * is found among the session's messages by filtering each the way the stream did.
+ */
+export async function writtenText($: EngineInterface, text: string): Promise<string> {
+  const key = text.trim()
+  if (key === '' || text.includes('{{')) return text
+  const known = written.get(key)
+  if (known !== undefined || hasScanned) return known ?? text
+  hasScanned = true
+  const messages = await $.session.messages().catch(() => [])
+  for (const message of messages) {
+    if (message.role !== 'assistant' || !message.text.includes('{{')) continue
+    const shown = hideLongForms(message.text, { open: [], fence: undefined })
+    if (shown !== message.text) remember(shown, message.text)
+  }
+  return written.get(key) ?? text
+}
+
 /** The hooks that teach Claude the markup, hide it while a reply streams and keep what the reader opened. The note goes out from cc-dazzle's own prompt.submit hook. */
 export function registerStretch(on: On): void {
   // While a reply streams, Claude Code draws its lines before the reply reaches AssistantMessage.
   // One filter state per message, until its final flush; null for a message left as written.
-  const streams = new Map<string, StreamState | null>()
+  const streams = new Map<string, { state: StreamState | null; raw: string; shown: string }>()
   on('classic.MessageDisplay', async ($, e, next) => {
     const answer = await next(e)
     // The desktop app draws a finished reply from this display text, so hiding the long forms here
     // would strip the markup its links are made from. Decided on a message's first flush.
-    let state = streams.get(e.message_id)
-    if (state === undefined) state = (await $.session.surfaces()).includes('desktop') ? null : { open: [], fence: undefined }
+    let stream = streams.get(e.message_id)
+    if (stream === undefined) stream = { state: (await $.session.surfaces()).includes('desktop') ? null : { open: [], fence: undefined }, raw: '', shown: '' }
     if (e.final) streams.delete(e.message_id)
-    else streams.set(e.message_id, state)
-    if (state === null) return answer
+    else streams.set(e.message_id, stream)
+    if (stream.state === null) return answer
 
-    return { ...answer, displayContent: hideLongForms(answer.displayContent ?? e.delta, state) }
+    const raw = answer.displayContent ?? e.delta
+    const shown = hideLongForms(raw, stream.state)
+    stream.raw += raw
+    stream.shown += shown
+    if (e.final && stream.raw !== stream.shown) remember(stream.shown, stream.raw)
+    return { ...answer, displayContent: shown }
   }).catch(($, e, next) => next(e))
 
   on('prompt.compose', async ($, e, next) => {

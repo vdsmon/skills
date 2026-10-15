@@ -10,7 +10,7 @@ import type { Block } from './markdown'
 import { parse } from './markdown'
 import { boxArt, mermaidText, shortenEdgeLabels, unsupportedKind } from './mermaid'
 import { renderUserPrompt } from './prompt'
-import { openText, registerStretch, stretchBody, stretchNote } from './stretch/index'
+import { openText, registerStretch, stretchBody, stretchNote, writtenText } from './stretch/index'
 import { deliveredText, isQueued, withQueued, withoutDelivered } from './queue'
 import type { Table } from './tables'
 import { MAX_ROWS, PREVIEW_ROWS, captionOf, isTabular, markdownTable, tableFooter, toolTable } from './tables'
@@ -239,7 +239,8 @@ export const register: Register = (on, options) => {
     const { Box, Text } = el
     const open = await read($, unfolded)
     const draw = (text: string) => drawMarkdown($, el, forSurface(style, e.surface), parseCached(text), columnsOf(e.viewport), open)
-    const stretched = options.stretch === true && e.props.isSummary !== true ? await stretchBody($, e, draw) : undefined
+    const text = options.stretch === true && e.props.isSummary !== true ? await writtenText($, e.props.text) : e.props.text
+    const stretched = options.stretch === true && e.props.isSummary !== true ? await stretchBody($, { ...e, props: { ...e.props, text } }, draw) : undefined
     if (stretched !== undefined) {
       return (
         <Box flexDirection="row" marginTop={1}>
