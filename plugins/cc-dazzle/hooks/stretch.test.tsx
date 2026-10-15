@@ -292,7 +292,7 @@ test('in the terminal, a « after a rule or a code fence goes on its own line an
   await ui.unmount()
 })
 
-test('the words a stretch adds take its colour, faded once another opens or the reader writes again', ON, async ($, on) => {
+test('the words a stretch adds take the accent, faded once another opens or the reader writes again', ON, async ($, on) => {
     mock.clock(on, { now: 0 })
     mock.env(on, {})
   const text = 'One {{cat|cat, black,}} and {{dog|dog, brown,}} here.'
@@ -303,19 +303,19 @@ test('the words a stretch adds take its colour, faded once another opens or the 
   await pressOn(ui, 'cat')
   await ui.advance(2000)
   expect(await textIn(ui)).toBe('One cat, black, « and dog here.')
-  expect(await colourOf('black,')).toBe('#ffdd77')
+  expect(await colourOf('black,')).toBe('#cba6f7')
   expect(await colourOf('cat,')).toBeUndefined()
 
   await pressOn(ui, 'dog')
   await ui.advance(2000)
-  expect(await colourOf('brown,')).toBe('#d3bdff')
-  expect(await colourOf('black,')).toBe('#a6904d')
+  expect(await colourOf('brown,')).toBe('#cba6f7')
+  expect(await colourOf('black,')).toBe('#846ca1')
   // A closer keeps its stretch's unfaded colour, as a faded one reads as disabled.
   const closers = (await ui.findAll({ type: 'Text', in: FIRST })).filter(piece => piece.text === '«')
-  expect(closers.map(piece => piece.props.color)).toEqual(['#ffdd77', '#d3bdff'])
+  expect(closers.map(piece => piece.props.color)).toEqual(['#cba6f7', '#cba6f7'])
 
   await $.prompt.submit({ text: 'ok', wait: false, origin: { kind: 'composer' } })
-  expect(await colourOf('brown,')).toBe('#897ba6')
+  expect(await colourOf('brown,')).toBe('#846ca1')
   await ui.unmount()
 })
 

@@ -20,14 +20,13 @@ const MAIN_SCREEN_NOTE =
   "cc-dazzle: stretches are open because this session is on Claude Code's main screen, where a printed reply cannot change. " +
   'For clickable stretches, run /tui fullscreen. If it says fullscreen is already on, start Claude Code with CLAUDE_CODE_NO_FLICKER=1, which forces fullscreen.'
 
-// The words a stretch adds take Claude Code's warning, autoAccept, planMode and claude colours (dark
-// theme, 2.1.300), mixed 45% toward the text so they tint rather than shout. All but the newest open
-// stretch take a faded form, mixed 35% toward the background.
-const BASE = [[255, 193, 7], [175, 135, 255], [72, 150, 140], [215, 119, 87]]
+// The words a stretch adds take cc-dazzle's accent; all but the newest open stretch take a faded
+// form of it, mixed 35% toward the background.
+const ACCENT = [0xcb, 0xa6, 0xf7]
 const mix = (rgb: number[], toward: number, share: number) => rgb.map(v => Math.round(v + (toward - v) * share))
 const hex = (rgb: number[]) => `#${rgb.map(v => v.toString(16).padStart(2, '0')).join('')}`
-const PALETTE = BASE.map(rgb => mix(rgb, 255, 0.45)).map(soft => ({ soft: hex(soft), faded: hex(mix(soft, 0, 0.35)) }))
-const HUES = BASE.length
+const PALETTE = [{ soft: hex(ACCENT), faded: hex(mix(ACCENT, 0, 0.35)) }]
+const HUES = PALETTE.length
 
 // Every link drawn here is answered here and never followed; a ctrl- or cmd-click opens it in a
 // browser, so it points at a reserved name that resolves nowhere.
