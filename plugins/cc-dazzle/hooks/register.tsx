@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderElement, RenderInput, RenderSurface } from 'claude-code'
 
 import type { Drawn, Fold } from './blocks'
-import { renderBlocks } from './blocks'
+import { instanceKey, noteTip, renderBlocks } from './blocks'
 import type { ClipboardBackend } from './clipboard'
 import { clipboardCommand } from './clipboard'
 import { clockText, promptKey, sentAt, withRecord } from './clock'
@@ -18,6 +18,7 @@ import { remember, width } from './text'
 import type { Style } from './theme'
 import { THEME } from './theme'
 import { renderDiffCard, renderExpandedShell, renderToolGroup, renderToolRow } from './tools'
+import { takesClickableMarks } from './version'
 
 const expandedCalls = new Set<string>()
 
@@ -53,7 +54,10 @@ const htmlBackend = async ($: EngineInterface): Promise<ClipboardBackend | null>
   return helper?.kind === 'file' ? 'macos' : null
 }
 
-type Probes = { htmlCopy?: Promise<ClipboardBackend | null> }
+type Probes = { htmlCopy?: Promise<ClipboardBackend | null>; marks?: Promise<boolean> }
+
+const clickableMarks = ($: EngineInterface, probes: Probes): Promise<boolean> =>
+  (probes.marks ??= $.session.version().then(v => takesClickableMarks(v.base), () => false))
 
 const probe = async ($: EngineInterface, style: Style, probes: Probes): Promise<void> => {
   probes.htmlCopy ??= htmlBackend($)
@@ -73,7 +77,7 @@ const folder = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolv
   return { folded, element: <el.Button key={key} variant="secondary" label={folded ? `+${hidden} more lines` : 'show less'} onPress={() => update($, unfolded, ids => (folded ? [...ids, id].slice(-500) : ids.filter(x => x !== id)))} /> }
 }
 
-const drawMarkdown = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolve']>, style: Style, blocks: ReturnType<typeof parse>, columns: number, open?: string[]): RenderElement[] => {
+const drawMarkdown = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolve']>, style: Style, blocks: ReturnType<typeof parse>, columns: number, open?: string[], notes?: { id: string; press: boolean }): RenderElement[] => {
   const { Button } = el
   const copy = (text: string | (() => string), key: string, label = '⧉ copy', html?: () => string) => {
     const copied = async (surface: RenderSurface): Promise<string> => {
@@ -111,7 +115,8 @@ const drawMarkdown = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['
       drawn.set(i, { note: kind ? `${kind} diagrams draw as source for now` : narrowest === Infinity ? 'diagram failed to render' : `diagram is ${narrowest} cols, terminal is ${columns}` })
     }
   }
-  return renderBlocks(el, style, blocks, columns, drawn, copy, folder($, el, open))
+  const tip = notes?.press ? noteTip(blocks, text => void $.ui.toast(text)) : undefined
+  return renderBlocks(el, notes ? { ...style, noteKey: instanceKey(notes.id) } : style, blocks, columns, drawn, copy, folder($, el, open), tip)
 }
 
 const toolTableView = async ($: EngineInterface, e: RenderInput, style: Style, blocks: Block[], table: Table, id: string | undefined, shown: number, caption?: string): Promise<RenderElement> => {
@@ -239,7 +244,8 @@ export const register: Register = (on, options) => {
     const el = $.ui.resolve(e)
     const { Box, Text } = el
     const open = await read($, unfolded)
-    const draw = (text: string) => drawMarkdown($, el, forSurface(style, e.surface), parseCached(text), columnsOf(e.viewport), open)
+    const notes = { id: e.requestId, press: await clickableMarks($, probes) }
+    const draw = (text: string) => drawMarkdown($, el, forSurface(style, e.surface), parseCached(text), columnsOf(e.viewport), open, notes)
     const text = options.stretch === true && e.props.isSummary !== true ? await writtenText($, e.props.text) : e.props.text
     const stretched = options.stretch === true && e.props.isSummary !== true ? await stretchBody($, { ...e, props: { ...e.props, text } }, draw) : undefined
     if (stretched !== undefined) {
@@ -260,7 +266,7 @@ export const register: Register = (on, options) => {
           <Text color={style.theme.accent}>{e.props.isFirstOfReply ? '●' : ' '}</Text>
         </Box>
         <Box flexDirection="column" rowGap={1} flexGrow={1}>
-          {drawMarkdown($, el, forSurface(style, e.surface), blocks, columnsOf(e.viewport), open)}
+          {drawMarkdown($, el, forSurface(style, e.surface), blocks, columnsOf(e.viewport), open, notes)}
         </Box>
       </Box>
     )

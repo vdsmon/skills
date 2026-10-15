@@ -3,10 +3,13 @@ import type { ElementTable, RenderElement } from 'claude-code'
 import { tableHtml, tableText } from './html'
 import type { Block, Inline } from './markdown'
 import { displayText, inlineText } from './markdown'
-import { hasLink, longestWord, mostLines, remember, width, wrapInline, wrapRanges } from './text'
+import { graphemes, hasLink, longestWord, mostLines, remember, sliceInline, width, wrapInline, wrapRanges } from './text'
 import type { Style, Theme } from './theme'
 import type { PrismToken } from './vendor/prism.js'
 import { languages, tokenize } from './vendor/prism.js'
+
+const noteHover = (style: Style, note: number | undefined) =>
+  note === undefined || style.noteKey === undefined ? {} : { hover: { scope: `fn:${style.noteKey}:${note}`, inverse: true } }
 
 const renderInline = (el: ElementTable, style: Style, nodes: Inline[], keyBase: string): RenderElement[] => {
   const { Text } = el
@@ -37,9 +40,81 @@ const renderInline = (el: ElementTable, style: Style, nodes: Inline[], keyBase: 
       case 'dim':
         return <Text key={key} dimColor>{n.text}</Text>
       case 'footnote':
-        return <Text key={key} color={t.accent}>{n.text}</Text>
+        return <Text key={key} color={t.accent} {...noteHover(style, n.note)}>{n.text}</Text>
     }
   })
+}
+
+type Mark = { start: number; end: number; text: string; note: number }
+type TextLook = { italic?: boolean; color?: string; bold?: boolean; dimColor?: boolean; strikethrough?: boolean }
+
+const marksIn = (nodes: Inline[], at = 0): Mark[] => {
+  const out: Mark[] = []
+  for (const n of nodes) {
+    const length = inlineText([n]).length
+    if (n.kind === 'footnote' && n.note !== undefined) out.push({ start: at, end: at + length, text: n.text, note: n.note })
+    else if ('children' in n) out.push(...marksIn(n.children, at))
+    at += length
+  }
+  return out
+}
+
+const piecesOf = (text: string, a: number, b: number, columns: number, marks: Mark[]): (readonly [number, number])[] => {
+  if (width(text.slice(a, b)) <= columns) return [[a, b]]
+  const out: [number, number][] = []
+  let start = a
+  let at = a
+  let taken = 0
+  for (const g of graphemes(text.slice(a, b))) {
+    const step = width(g)
+    if (at > start && taken + step > columns) {
+      const cut = marks.find(m => m.start < at && at < m.end)?.start ?? at
+      if (cut > start) {
+        out.push([start, cut])
+        taken = width(text.slice(cut, at))
+        start = cut
+      }
+    }
+    at += g.length
+    taken += step
+  }
+  out.push([start, b])
+  return out
+}
+
+// A Text holds only inline elements, so a line with clickable footnote marks draws as a wrapping row
+// of word runs, each mark a plain Button.
+const pressInline = (el: ElementTable, style: Style, nodes: Inline[], columns: number, key: string, tip: Tip | undefined, look: TextLook = {}, box: { justifyContent?: 'flex-start' | 'flex-end' | 'center' } = {}): RenderElement | null => {
+  const marks = tip ? marksIn(nodes).flatMap(m => {
+    const press = tip(m.note)
+    return press ? [{ ...m, press }] : []
+  }) : []
+  if (!marks.length) return null
+  const { Box, Text, Button } = el
+  const run = (a: number, b: number) => <Text key={`${key}.t${a}`} {...look}>{renderInline(el, style, sliceInline(nodes, a, b), `${key}.t${a}`)}</Text>
+  const text = inlineText(nodes)
+  const words = [...text.matchAll(/\s*\S+\s*/g)].flatMap(m => piecesOf(text, m.index, m.index + m[0].length, Math.max(1, columns), marks))
+  return (
+    <Box key={key} flexDirection="row" flexWrap="wrap" {...box}>
+      {words.map(([a, b]) => {
+        const inside = marks.filter(m => m.start >= a && m.end <= b)
+        if (!inside.length) return run(a, b)
+        const parts: RenderElement[] = []
+        let at = a
+        for (const m of inside) {
+          if (m.start > at) parts.push(run(at, m.start))
+          parts.push(
+            <Button key={`${key}.n${m.start}`} plain {...noteHover(style, m.note)} onPress={m.press}>
+              <Text color={style.theme.accent} bold={look.bold}>{m.text}</Text>
+            </Button>,
+          )
+          at = m.end
+        }
+        if (at < b) parts.push(run(at, b))
+        return <Box key={`${key}.w${a}`} flexDirection="row" flexShrink={0}>{parts}</Box>
+      })}
+    </Box>
+  )
 }
 
 const PRISM_COLORS: Record<string, keyof Theme> = {
@@ -177,6 +252,60 @@ export const columnWidths = (natural: number[], available: number, gap: number, 
 
 const ART_WIDTH = 100
 
+const textRows = (text: string, w: number): number => (width(text) <= w ? 1 : mostLines(text, Math.max(1, w)))
+
+const heightOf = (blocks: Block[], w: number): number => blocks.reduce((sum, block, b) => sum + (b ? 1 : 0) + blockHeight(block, w), 0)
+
+const tableSize = (block: Extract<Block, { kind: 'table' }>) => ({
+  natural: block.header.map((h, c) => Math.max(width(displayText(h)), ...block.rows.map(r => width(displayText(r[c] ?? []))))),
+  words: block.header.map((h, c) => Math.max(longestWord(displayText(h)), ...block.rows.map(r => longestWord(displayText(r[c] ?? []))))),
+})
+
+const blockHeight = (block: Block, w: number): number => {
+  switch (block.kind) {
+    case 'heading':
+      return 2 * textRows(displayText(block.inline), w - 4) + 2
+    case 'paragraph':
+      return textRows(displayText(block.inline), w)
+    case 'list':
+      return block.items.reduce((sum, item) => {
+        const pad = item.depth * 2 + item.marker.length + 4
+        return sum + textRows(displayText(item.inline), w - pad) + (item.blocks ? heightOf(item.blocks, w - pad) + 1 : 0)
+      }, 0)
+    case 'code':
+      return block.lines.reduce((sum, line) => sum + textRows(line, w - 8), 3)
+    case 'table': {
+      const { natural, words } = tableSize(block)
+      const widths = columnWidths(natural, w - 4, 3, words)
+      const tallest = (cells: Inline[][]) => Math.max(1, ...widths.map((cw, c) => textRows(displayText(cells[c] ?? []), cw)))
+      return block.rows.reduce((sum, row) => sum + 1 + tallest(row), 4 + tallest(block.header))
+    }
+    case 'quote':
+      return Math.max(1, heightOf(block.blocks, w - 2))
+    case 'alert':
+      return 3 + heightOf(block.blocks, w - 4)
+    case 'rule':
+      return 1
+    case 'notes':
+      return block.notes.reduce((sum, note) => sum + textRows(`${note.mark} ${displayText(note.inline)}`, w), 1)
+  }
+}
+
+const clip = ({ Box }: ElementTable, w: number, drawn: RenderElement, key?: string) => (
+  <Box key={key} flexDirection="column" minWidth={w}>
+    <Box height={0} flexGrow={1} overflow="hidden">
+      {drawn}
+    </Box>
+  </Box>
+)
+
+const headerRuns = (nodes: Inline[]): Inline[] =>
+  nodes.flatMap(n => (n.kind === 'footnote' ? [n] : 'children' in n ? headerRuns(n.children) : [{ kind: 'text' as const, text: n.text }]))
+    .reduce<Inline[]>((out, n) => {
+      const last = out[out.length - 1]
+      return n.kind === 'text' && last?.kind === 'text' ? [...out.slice(0, -1), { kind: 'text', text: last.text + n.text }] : [...out, n]
+    }, [])
+
 export const tableArt = (block: Extract<Block, { kind: 'table' }>): string => {
   const cells = [block.header, ...block.rows].map(r => block.header.map((_, c) => displayText(r[c] ?? [])))
   const widths = columnWidths(
@@ -200,15 +329,10 @@ export const tableArt = (block: Extract<Block, { kind: 'table' }>): string => {
   return ['```', ...art, '```'].join('\n')
 }
 
-const renderTable = (el: ElementTable, style: Style, block: Extract<Block, { kind: 'table' }>, columns: number, key: string) => {
+const renderTable = (el: ElementTable, style: Style, block: Extract<Block, { kind: 'table' }>, columns: number, key: string, tip?: Tip) => {
   const { Box, Text } = el
   const t = style.theme
-  const natural = block.header.map((h, c) =>
-    Math.max(width(displayText(h)), ...block.rows.map(r => width(displayText(r[c] ?? [])))),
-  )
-  const words = block.header.map((h, c) =>
-    Math.max(longestWord(displayText(h)), ...block.rows.map(r => longestWord(displayText(r[c] ?? [])))),
-  )
+  const { natural, words } = tableSize(block)
   const widths = columnWidths(natural, columns - 4, 3, words)
   const justify = (c: number) =>
     block.align[c] === 'right' ? 'flex-end' : block.align[c] === 'center' ? 'center' : 'flex-start'
@@ -216,13 +340,7 @@ const renderTable = (el: ElementTable, style: Style, block: Extract<Block, { kin
   const bar = (k: string, text: string, lines = 1) => (
     <Text key={k} color={t.tableRule} dimColor={!t.tableRule}>{Array.from({ length: lines }, () => text).join('\n')}</Text>
   )
-  const clipped = (lines: number) => (k: string, text: string) => (
-    <Box key={k} minWidth={width(text)}>
-      <Box position="absolute" top={0} bottom={0} left={0} minWidth={width(text)} overflow="hidden">
-        {bar(`${k}.b`, text, lines)}
-      </Box>
-    </Box>
-  )
+  const clipped = (lines: number) => (k: string, text: string) => clip(el, width(text), bar(`${k}.b`, text, lines), k)
   const edge = (k: string, [left, fill, mid, right]: string) =>
     bar(k, left + widths.map(w => fill!.repeat(w + 2)).join(mid) + right)
 
@@ -231,11 +349,13 @@ const renderTable = (el: ElementTable, style: Style, block: Extract<Block, { kin
       {border(`${k}.l`, '│ ')}
       {widths.map((w, c) => {
         const content = cells[c] ?? []
+        const runs = isHeader ? headerRuns(content) : content
         const cellBox = (
           <Box key={`${k}.${c}`} width={w} flexShrink={0} justifyContent={justify(c)}>
-            {isHeader
-              ? <Text bold color={t.tableHeader}>{inlineText(content)}</Text>
-              : <Text>{renderInline(el, style, content, `${k}.${c}`)}</Text>}
+            {pressInline(el, style, runs, w, `${k}.${c}.p`, tip, isHeader ? { bold: true, color: t.tableHeader } : {}, { justifyContent: justify(c) })
+              ?? (isHeader
+                ? <Text bold color={t.tableHeader}>{runs.some(n => n.kind === 'footnote') ? renderInline(el, style, runs, `${k}.${c}`) : inlineText(runs)}</Text>
+                : <Text>{renderInline(el, style, content, `${k}.${c}`)}</Text>)}
           </Box>
         )
         return c > 0 ? [border(`${k}.${c}s`, ' │ '), cellBox] : cellBox
@@ -249,7 +369,7 @@ const renderTable = (el: ElementTable, style: Style, block: Extract<Block, { kin
     const wrapped = widths.map((w, c) => {
       const content = cells[c] ?? []
       if (natural[c]! <= w) return [content]
-      return wrapInline(isHeader ? [{ kind: 'text', text: inlineText(content) }] : content, w)
+      return wrapInline(isHeader ? headerRuns(content) : content, w)
     })
     return Array.from({ length: Math.max(...wrapped.map(l => l.length)) }, (_, i) =>
       row(wrapped.map(l => l[i] ?? []), `${k}.${i}`, isHeader))
@@ -278,37 +398,44 @@ const renderHeading = (el: ElementTable, style: Style, block: Extract<Block, { k
 
 const ALERT_COLOR = { note: 'blue', tip: 'green', important: 'magenta', warning: 'yellow', caution: 'red' } as const
 
-const renderParagraph = (el: ElementTable, style: Style, block: Extract<Block, { kind: 'paragraph' }>, key: string) => {
+const prose = (style: Style) => (style.inside === 'quote' ? { italic: true, color: style.theme.quote } : {})
+
+const renderParagraph = (el: ElementTable, style: Style, block: Extract<Block, { kind: 'paragraph' }>, columns: number, key: string, tip?: Tip) => {
   const { Text } = el
-  return <Text key={key}>{renderInline(el, style, block.inline, key)}</Text>
+  return pressInline(el, style, block.inline, columns, key, tip, prose(style)) ?? <Text key={key} {...prose(style)}>{renderInline(el, style, block.inline, key)}</Text>
 }
 
-const renderQuote = (el: ElementTable, style: Style, block: Extract<Block, { kind: 'quote' }>, key: string) => {
-  const { Box, Text } = el
-  const t = style.theme
+const renderNested = (el: ElementTable, style: Style, blocks: Block[], columns: number, key: string, copy?: CopyButton, fold?: Fold, tip?: Tip) =>
+  renderBlocks(el, style, blocks, columns, new Map(), copy && ((text, id, label, html) => copy(text, `${key}.${id}`, label, html)), fold && ((id, hidden, k) => fold(id, hidden, `${key}.${k}`)), tip)
+
+const quoteBar = (el: ElementTable, text: string, color: string | undefined, lines: number) =>
+  lines <= 1 ? <el.Text color={color}>{text}</el.Text> : clip(el, width(text), <el.Text color={color}>{Array.from({ length: lines }, () => text).join('\n')}</el.Text>)
+
+const renderQuote = (el: ElementTable, style: Style, block: Extract<Block, { kind: 'quote' }>, columns: number, key: string, copy?: CopyButton, fold?: Fold, tip?: Tip) => {
+  const { Box } = el
+  const inner = columns - 2
   return (
-    <Box key={key} flexDirection="row">
-      <Text color={t.accent}>│ </Text>
-      <Text italic color={t.quote}>{renderInline(el, style, block.inline, key)}</Text>
+    <Box key={key} flexDirection="row" alignItems="stretch">
+      {quoteBar(el, '│ ', style.theme.accent, heightOf(block.blocks, inner))}
+      <Box flexDirection="column" rowGap={1}>{renderNested(el, { ...style, inside: 'quote' }, block.blocks, inner, key, copy, fold, tip)}</Box>
     </Box>
   )
 }
 
-const renderAlert = (el: ElementTable, style: Style, block: Extract<Block, { kind: 'alert' }>, key: string) => {
+const renderAlert = (el: ElementTable, style: Style, block: Extract<Block, { kind: 'alert' }>, columns: number, key: string, copy?: CopyButton, fold?: Fold, tip?: Tip) => {
   const { Box, Text } = el
   const color = ALERT_COLOR[block.level]
-  const title = <Text bold color={color}>{block.level[0]!.toUpperCase() + block.level.slice(1)}</Text>
   return (
     <Box key={key} flexDirection="column" alignSelf="flex-start" borderStyle="round" borderColor={color} paddingX={1}>
-      {title}
-      {block.inline.length ? <Text>{renderInline(el, style, block.inline, key)}</Text> : null}
+      <Text bold color={color}>{block.level[0]!.toUpperCase() + block.level.slice(1)}</Text>
+      {block.blocks.length ? <Box flexDirection="column" rowGap={1}>{renderNested(el, { ...style, inside: 'alert' }, block.blocks, columns - 4, key, copy, fold, tip)}</Box> : null}
     </Box>
   )
 }
 
 const TASK_GLYPHS = ['[ ]', '[✓]'] as const
 
-const renderList = (el: ElementTable, style: Style, block: Extract<Block, { kind: 'list' }>, columns: number, key: string, copy?: CopyButton, fold?: Fold) => {
+const renderList = (el: ElementTable, style: Style, block: Extract<Block, { kind: 'list' }>, columns: number, key: string, copy?: CopyButton, fold?: Fold, tip?: Tip) => {
   const { Box, Text } = el
   const t = style.theme
   return (
@@ -320,16 +447,14 @@ const renderList = (el: ElementTable, style: Style, block: Extract<Block, { kind
         const row = (
           <Box key={k} flexDirection="row" paddingLeft={item.depth * 2}>
             <Text color={t.bullet}>{`${glyph} `}</Text>
-            <Text dimColor={item.task === true} strikethrough={item.task === true}>{renderInline(el, style, item.inline, k)}</Text>
+            {pressInline(el, style, item.inline, columns - pad, `${k}.i`, tip, { ...(item.task === true ? { dimColor: true, strikethrough: true } : {}), ...prose(style) }) ?? <Text dimColor={item.task === true} strikethrough={item.task === true} {...prose(style)}>{renderInline(el, style, item.inline, k)}</Text>}
           </Box>
         )
         if (!item.blocks) return row
-        const scoped: CopyButton | undefined = copy && ((text, id, label, html) => copy(text, `${k}.${id}`, label, html))
-        const scopedFold: Fold | undefined = fold && ((id, hidden, key) => fold(id, hidden, `${k}.${key}`))
         return (
           <Box key={k} flexDirection="column">
             {row}
-            <Box flexDirection="column" paddingLeft={pad}>{renderBlocks(el, style, item.blocks, columns - pad, new Map(), scoped, scopedFold)}</Box>
+            <Box flexDirection="column" paddingLeft={pad}>{renderNested(el, style, item.blocks, columns - pad, k, copy, fold, tip)}</Box>
           </Box>
         )
       })}
@@ -340,6 +465,23 @@ const renderList = (el: ElementTable, style: Style, block: Extract<Block, { kind
 export type CopyButton = (text: string | (() => string), key: string, label?: string, html?: () => string) => RenderElement | null
 export type Drawn = Map<number, { element?: RenderElement; art?: string; note?: string }>
 export type Fold = (id: string, hidden: number, key: string) => { folded: boolean; element: RenderElement } | null
+export type Tip = (note: number) => (() => void) | undefined
+
+export const instanceKey = (id: string): string => {
+  let h = 5381
+  for (let i = 0; i < id.length; i++) h = (h * 33 + id.charCodeAt(i)) | 0
+  return (h >>> 0).toString(36)
+}
+
+export const noteTip = (blocks: Block[], toast: (text: string) => void): Tip | undefined => {
+  const notes = blocks.find(block => block.kind === 'notes')
+  if (notes?.kind !== 'notes') return undefined
+  const text = new Map(notes.notes.map(note => [note.note, `${note.mark} ${inlineText(note.inline)}`]))
+  return note => {
+    const line = text.get(note)
+    return line === undefined ? undefined : () => toast(line)
+  }
+}
 
 const NUMBER_AT = 10
 const NUMBER_MAX = 400
@@ -355,23 +497,41 @@ const codeId = (lines: string[]): string => {
   return `${lines.length}:${(h >>> 0).toString(36)}`
 }
 
-const copySource = (block: Block): string | undefined =>
-  block.kind === 'code' ? block.lines.join('\n') : block.kind === 'table' || block.kind === 'list' ? block.raw : block.kind === 'quote' || block.kind === 'alert' ? block.raw.split('\n').map(line => line.replace(/^\s*>\s?/, '')).join('\n') : undefined
+const copySource = (style: Style, block: Block): string | undefined =>
+  block.kind === 'code' ? block.lines.join('\n')
+  : block.kind === 'table' ? block.raw
+  : style.inside ? undefined
+  : block.kind === 'list' ? block.raw
+  : block.kind === 'quote' || block.kind === 'alert' ? block.raw.split('\n').map(line => line.replace(/^\s*>\s?/, '')).join('\n')
+  : undefined
 
-export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], columns: number, drawn: Drawn = new Map(), copy?: CopyButton, fold?: Fold): RenderElement[] => {
+const opensWithCopy = (block: Block) => block.kind === 'quote' && (block.blocks[0]?.kind === 'code' || block.blocks[0]?.kind === 'table')
+
+export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], columns: number, drawn: Drawn = new Map(), copy?: CopyButton, fold?: Fold, tip?: Tip): RenderElement[] => {
   const { Box, Text } = el
   const t = style.theme
+  const reserved = (button: RenderElement | null | undefined): number => (button?.type === 'Button' ? width(`[ ${button.props.label} ]`) : 0)
+  const buttons = blocks.map((block, b) => {
+    const text = copySource(style, block)
+    const isPlainCode = block.kind === 'code' && !drawn.get(b)?.element
+    const art = drawn.get(b)?.art ?? (block.kind === 'table' ? () => tableArt(block) : undefined)
+    const first = text === undefined || isPlainCode ? null : copy?.(text, `copy${b}`, block.kind === 'table' ? '⧉ md' : art === undefined ? undefined : '⧉ source')
+    const second = first && art !== undefined ? copy?.(art, `art${b}`, '⧉ art') : null
+    const html = first && block.kind === 'table' ? copy?.(() => tableText(block), `html${b}`, '⧉ html', () => tableHtml(block)) : null
+    return { first, second, html }
+  })
+  const beside = (b: number) => (buttons[b]!.first ? columns - reserved(buttons[b]!.first) - 2 : columns)
   const rendered = blocks.map((block, b) => {
     const key = `b${b}`
     switch (block.kind) {
       case 'heading':
         return renderHeading(el, style, block, key)
       case 'paragraph':
-        return renderParagraph(el, style, block, key)
+        return renderParagraph(el, style, block, columns, key, tip)
       case 'quote':
-        return renderQuote(el, style, block, key)
+        return renderQuote(el, style, block, beside(b), key, copy, fold, tip)
       case 'alert':
-        return renderAlert(el, style, block, key)
+        return renderAlert(el, style, block, beside(b), key, copy, fold, tip)
       case 'rule':
         return <Text key={key} color={t.rule} dimColor={!t.rule}>{'─'.repeat(Math.max(8, Math.min(columns, 80)))}</Text>
       case 'code': {
@@ -403,26 +563,21 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
         )
       }
       case 'list':
-        return renderList(el, style, block, columns, key, copy, fold)
+        return renderList(el, style, block, columns, key, copy, fold, tip)
       case 'table':
-        return renderTable(el, style, block, columns, key)
+        return renderTable(el, style, block, columns, key, tip)
       case 'notes':
         return (
           <Box key={key} flexDirection="column">
             <Text dimColor>{'─'.repeat(Math.min(columns, 12))}</Text>
-            {block.notes.map((note, i) => <Text key={`${key}.${i}`} dimColor>{note.mark} {renderInline(el, style, note.inline, `${key}.${i}`)}</Text>)}
+            {block.notes.map((note, i) => <Text key={`${key}.${i}`} dimColor {...noteHover(style, note.note)}>{note.mark} {renderInline(el, style, note.inline, `${key}.${i}`)}</Text>)}
           </Box>
         )
     }
   })
   const copied = rendered.map((element, b) => {
     const block = blocks[b]
-    const text = block ? copySource(block) : undefined
-    const isPlainCode = block?.kind === 'code' && !drawn.get(b)?.element
-    const art = drawn.get(b)?.art ?? (block?.kind === 'table' ? () => tableArt(block) : undefined)
-    const first = text === undefined || isPlainCode ? null : copy?.(text, `copy${b}`, block?.kind === 'table' ? '⧉ md' : art === undefined ? undefined : '⧉ source')
-    const second = first && art !== undefined ? copy?.(art, `art${b}`, '⧉ art') : null
-    const html = first && block?.kind === 'table' ? copy?.(() => tableText(block), `html${b}`, '⧉ html', () => tableHtml(block)) : null
+    const { first, second, html } = buttons[b]!
     const button = second ? (
       <el.Box key={`copies${b}`} flexDirection="row" columnGap={1}>
         {first}
@@ -447,7 +602,7 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
     return block?.kind === 'quote' || block?.kind === 'alert' || block?.kind === 'list' ? (
       <Box key={`c${b}`} flexDirection="row" columnGap={2}>
         {element}
-        {button}
+        {block && opensWithCopy(block) ? <Box alignSelf="flex-end">{button}</Box> : button}
       </Box>
     ) : (
       <Box key={`c${b}`} flexDirection="column" alignSelf="flex-start">

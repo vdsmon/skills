@@ -55,7 +55,7 @@ export const wrapRanges = (text: string, w: number): [number, number][] => {
   return out.length ? out : [[0, 0]]
 }
 
-const sliceInline = (nodes: Inline[], from: number, to: number): Inline[] => {
+export const sliceInline = (nodes: Inline[], from: number, to: number): Inline[] => {
   const out: Inline[] = []
   let at = 0
   for (const n of nodes) {
