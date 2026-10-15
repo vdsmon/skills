@@ -25,4 +25,6 @@ export type Style = {
   htmlCopy: ClipboardBackend | null
   cwd: string
   home: string
+  inside?: 'quote' | 'alert'
+  noteKey?: string
 }
