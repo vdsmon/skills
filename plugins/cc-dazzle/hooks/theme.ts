@@ -26,6 +26,7 @@ export type Style = {
   cwd: string
   home: string
   inside?: 'quote' | 'alert'
+  copyButtonStyle?: 'inline' | 'hover'
   httpLinks?: boolean
   editorLinks?: boolean
   noteKey?: string

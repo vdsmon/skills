@@ -138,11 +138,14 @@ const toolTableView = async ($: EngineInterface, e: RenderInput, style: Style, b
 const isOwn = (kind: string) => kind === 'composer' || kind === 'bridge'
 
 export const register: Register = (on, options) => {
-  const style: Style = { theme: THEME, htmlCopy: null, cwd: '', home: '' }
+  const style: Style = { theme: THEME, htmlCopy: null, cwd: '', home: '', copyButtonStyle: options.copyButtonStyle === 'hover' ? 'hover' : 'inline' }
   const parsed = new Map<string, ReturnType<typeof parse>>()
   const parseCached = (text: string) => remember(parsed, text, () => parse(text, { numbers: true, paths: true }))
-  const forSurface = (base: Style, surface: RenderSurface, reach?: Reach): Style =>
-    surface === 'terminal' ? (reach?.http || reach?.editor ? { ...base, httpLinks: reach.http, editorLinks: reach.editor } : base) : base.htmlCopy ? { ...base, htmlCopy: null } : base
+  const forSurface = (base: Style, surface: RenderSurface, reach?: Reach): Style => {
+    const drawn = surface === 'terminal' ? (reach?.http || reach?.editor ? { ...base, httpLinks: reach.http, editorLinks: reach.editor } : base) : base.htmlCopy ? { ...base, htmlCopy: null } : base
+    // The phone app has no pointer to hover with.
+    return surface === 'mobile' && drawn.copyButtonStyle === 'hover' ? { ...drawn, copyButtonStyle: 'inline' } : drawn
+  }
   const probes: Probes = {}
   const shellCommands = new Map<string, string>()
   const noteCommand = (id: string | undefined, tool: string, input: unknown) => {

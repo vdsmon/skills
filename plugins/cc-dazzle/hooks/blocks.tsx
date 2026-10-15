@@ -545,7 +545,12 @@ const opensWithCopy = (block: Block) => block.kind === 'quote' && (block.blocks[
 export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], columns: number, drawn: Drawn = new Map(), copy?: CopyButton, fold?: Fold, tip?: Tip): RenderElement[] => {
   const { Box, Text } = el
   const t = style.theme
+  const hover = style.copyButtonStyle === 'hover'
+  // With hover, a block's buttons float over its top-right corner, out of the flow, and show only
+  // while the pointer is over the block. On a block narrower than its buttons they start at its left edge.
+  const floating = (button: RenderElement | null, low = false) => (button ? <Box position="absolute" {...(low ? { bottom: 0 } : { top: 0 })} left={0} minWidth="100%" justifyContent="flex-end" display="none" hover={{ display: 'flex' }}>{button}</Box> : null)
   const reserved = (button: RenderElement | null | undefined): number => (button?.type === 'Button' ? width(`[ ${button.props.label} ]`) : 0)
+  const reservedAll = (row: (RenderElement | null | undefined)[]): number => row.reduce<number>((w, button) => (reserved(button) ? w + (w ? 1 : 0) + reserved(button) : w), 0)
   const buttons = blocks.map((block, b) => {
     const text = copySource(style, block)
     const isPlainCode = block.kind === 'code' && !drawn.get(b)?.element
@@ -555,7 +560,7 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
     const html = first && block.kind === 'table' ? copy?.(() => tableText(block), `html${b}`, '⧉ html', () => tableHtml(block)) : null
     return { first, second, html }
   })
-  const beside = (b: number) => (buttons[b]!.first ? columns - reserved(buttons[b]!.first) - 2 : columns)
+  const beside = (b: number) => (hover || !buttons[b]!.first ? columns : columns - reserved(buttons[b]!.first) - 2)
   const shown = blocks.map(block => drawable(block, style.httpLinks === true, style.editorLinks === true))
   const rendered = shown.map((block, b) => {
     const key = `b${b}`
@@ -591,8 +596,9 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
             <Box flexDirection="column" borderStyle="round" borderColor={t.rule} paddingX={1}>
               <Box flexDirection="row" columnGap={2}>
                 <Box flexDirection="column" flexGrow={1} flexShrink={1}>{body}</Box>
-                {copy?.(source, `copy${b}`) ?? null}
+                {hover ? null : copy?.(source, `copy${b}`) ?? null}
               </Box>
+              {hover ? floating(copy?.(source, `copy${b}`) ?? null) : null}
               {toggle?.element ?? null}
             </Box>
           </Box>
@@ -624,14 +630,23 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
     if (!button) return element
     if (block?.kind === 'code' && drawn.get(b)?.art !== undefined) {
       return (
-        <Box key={`c${b}`} flexDirection="column" alignSelf="flex-start">
+        <Box key={`c${b}`} flexDirection="column" alignSelf="flex-start" {...(hover ? { minWidth: reservedAll([first, second, html]) } : {})}>
           <Box flexDirection="row" justifyContent="space-between" columnGap={2}>
             <el.Text color={style.theme.codeComment}>{` ${block.lang || 'diagram'}`}</el.Text>
-            {button}
+            {hover ? null : button}
           </Box>
+          {hover ? floating(button) : null}
           <Box flexDirection="column" borderStyle="round" borderColor={style.theme.rule} paddingX={1}>
             {element}
           </Box>
+        </Box>
+      )
+    }
+    if (hover) {
+      return (
+        <Box key={`c${b}`} flexDirection="column" alignSelf="flex-start" minWidth={reservedAll([first, second, html])}>
+          {element}
+          {floating(button, block !== undefined && opensWithCopy(block))}
         </Box>
       )
     }

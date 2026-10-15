@@ -24,6 +24,10 @@ Mods that draw the same row do not stack, so turn off any other mod that draws r
 - **Your prompts:** a rounded box with the send time (`14:32`, or `Oct 10 14:32` for another day). A prompt you send while Claude works stays gray until Claude reads it.
 - **Slash-command output:** drawn like a reply, unless it has terminal color codes.
 
+## Copy buttons on hover
+
+In `/config` (cc-dazzle, **Copy buttons**), `hover` hides each block's copy buttons until the pointer is over the block. They float over its top-right corner and take no space. `inline`, the default, always shows them. The phone app always shows them inline.
+
 ## Stretchtext replies
 
 Off by default. Turn it on in `/config` (cc-dazzle, **Stretchtext replies**); the change reloads the mod at once.
