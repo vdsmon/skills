@@ -157,7 +157,7 @@
       "name": "cc-dazzle",
       "source": "./plugins/cc-dazzle",
       "description": "Draws Claude Code's transcript in Catppuccin Mocha: boxed code blocks, box tables, Mermaid diagrams, diff cards in Claude's colors, compact tool rows and timed prompts. Optional stretchtext replies. Claude Code only.",
-      "version": "1.3.0"
+      "version": "1.4.0"
     }
   ]
 }

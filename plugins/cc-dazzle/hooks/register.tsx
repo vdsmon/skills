@@ -17,8 +17,8 @@ import { MAX_ROWS, PREVIEW_ROWS, captionOf, isTabular, markdownTable, tableFoote
 import { remember, width } from './text'
 import type { Style } from './theme'
 import { THEME } from './theme'
-import { renderDiffCard, renderExpandedShell, renderToolGroup, renderToolRow } from './tools'
-import { takesClickableMarks } from './version'
+import { bashEdits, editNotes, hasShellOutput, renderBashEdits, renderDiffCard, renderExpandedShell, renderToolGroup, renderToolRow, withoutBashEdits } from './tools'
+import { takesClickableMarks, takesEditorLinks, takesHttpLinks } from './version'
 
 const expandedCalls = new Set<string>()
 
@@ -54,10 +54,13 @@ const htmlBackend = async ($: EngineInterface): Promise<ClipboardBackend | null>
   return helper?.kind === 'file' ? 'macos' : null
 }
 
-type Probes = { htmlCopy?: Promise<ClipboardBackend | null>; marks?: Promise<boolean> }
+type Reach = { http: boolean; editor: boolean; marks: boolean }
 
-const clickableMarks = ($: EngineInterface, probes: Probes): Promise<boolean> =>
-  (probes.marks ??= $.session.version().then(v => takesClickableMarks(v.base), () => false))
+type Probes = { htmlCopy?: Promise<ClipboardBackend | null>; reach?: Promise<Reach> }
+
+// What this Claude Code release opens: plain http links, VS Code file links and clickable footnote marks.
+const reachOf = ($: EngineInterface, probes: Probes): Promise<Reach> =>
+  (probes.reach ??= $.session.version().then(v => ({ http: takesHttpLinks(v.base), editor: takesEditorLinks(v.base), marks: takesClickableMarks(v.base) }), () => ({ http: false, editor: false, marks: false })))
 
 const probe = async ($: EngineInterface, style: Style, probes: Probes): Promise<void> => {
   probes.htmlCopy ??= htmlBackend($)
@@ -138,8 +141,18 @@ export const register: Register = (on, options) => {
   const style: Style = { theme: THEME, htmlCopy: null, cwd: '', home: '' }
   const parsed = new Map<string, ReturnType<typeof parse>>()
   const parseCached = (text: string) => remember(parsed, text, () => parse(text, { numbers: true, paths: true }))
-  const forSurface = (base: Style, surface: RenderSurface): Style => (surface === 'terminal' || !base.htmlCopy ? base : { ...base, htmlCopy: null })
+  const forSurface = (base: Style, surface: RenderSurface, reach?: Reach): Style =>
+    surface === 'terminal' ? (reach?.http || reach?.editor ? { ...base, httpLinks: reach.http, editorLinks: reach.editor } : base) : base.htmlCopy ? { ...base, htmlCopy: null } : base
   const probes: Probes = {}
+  const shellCommands = new Map<string, string>()
+  const noteCommand = (id: string | undefined, tool: string, input: unknown) => {
+    const command = tool === 'Bash' && input !== null && typeof input === 'object' ? (input as { command?: unknown }).command : undefined
+    if (!id || typeof command !== 'string') return
+    shellCommands.delete(id)
+    shellCommands.set(id, command)
+    if (shellCommands.size > 500) shellCommands.delete(shellCommands.keys().next().value!)
+  }
+  let firstEdit: string | undefined
   if (options.stretch === true) registerStretch(on)
 
   on('tool.call', async ($, e, next) => {
@@ -152,6 +165,7 @@ export const register: Register = (on, options) => {
 
   on('ui.render', { component: 'ToolGroup' }, async ($, e, next) => {
     await locate($, style)
+    for (const call of e.props.calls) noteCommand(call.tool_use_id, call.tool, call.input)
     if (e.props.isExpanded) {
       for (const call of e.props.calls) if (call.tool_use_id) markExpanded(call.tool_use_id)
       return next(e)
@@ -175,6 +189,7 @@ export const register: Register = (on, options) => {
 
   on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
     await locate($, style)
+    noteCommand(e.props.tool_use_id, e.props.tool, e.props.input)
     if (!expandedCalls.has(e.props.tool_use_id)) return renderToolRow($.ui.resolve(e), style, e.props)
     const shell = e.props.tool === 'Bash' || e.props.tool === 'PowerShell'
     return shell && typeof e.props.output !== 'string' ? renderExpandedShell($.ui.resolve(e), style, e.props) : next(e)
@@ -184,6 +199,17 @@ export const register: Register = (on, options) => {
     if ((e.props.tool === 'Edit' || e.props.tool === 'Write') && !e.props.isErrored) {
       const el = $.ui.resolve(e)
       return renderDiffCard(el, style, e.props.output, folder($, el, await read($, unfolded)), e.props.tool_use_id) ?? next(e)
+    }
+    const edits = e.props.tool === 'Bash' && !e.props.isErrored ? bashEdits(e.props.output) : undefined
+    if (edits) {
+      await locate($, style)
+      const el = $.ui.resolve(e)
+      const output = withoutBashEdits(e.props.output)
+      const above = hasShellOutput(output) ? await next({ ...e, props: { ...e.props, output } }) : null
+      firstEdit ??= e.props.tool_use_id
+      const notes = editNotes(edits, firstEdit === e.props.tool_use_id, shellCommands.get(e.props.tool_use_id))
+      const cards = renderBashEdits(el, style, edits, folder($, el, await read($, unfolded)), e.props.tool_use_id, above !== null, notes)
+      return above === null ? cards : <el.Box flexDirection="column">{above}{cards}</el.Box>
     }
     if (!e.props.isErrored) {
       const table = toolTable(e.props.tool, e.props.output)
@@ -227,7 +253,7 @@ export const register: Register = (on, options) => {
     const el = $.ui.resolve(e)
     const { Box } = el
     const open = await read($, unfolded)
-    return <Box flexDirection="column" rowGap={1}>{drawMarkdown($, el, forSurface(style, e.surface), blocks, columnsOf(e.viewport), open)}</Box>
+    return <Box flexDirection="column" rowGap={1}>{drawMarkdown($, el, forSurface(style, e.surface, await reachOf($, probes)), blocks, columnsOf(e.viewport), open)}</Box>
   })
 
   on('ui.render', { component: 'UserMessage' }, async ($, e, next) => {
@@ -244,8 +270,9 @@ export const register: Register = (on, options) => {
     const el = $.ui.resolve(e)
     const { Box, Text } = el
     const open = await read($, unfolded)
-    const notes = { id: e.requestId, press: await clickableMarks($, probes) }
-    const draw = (text: string) => drawMarkdown($, el, forSurface(style, e.surface), parseCached(text), columnsOf(e.viewport), open, notes)
+    const reach = await reachOf($, probes)
+    const notes = { id: e.requestId, press: reach.marks }
+    const draw = (text: string) => drawMarkdown($, el, forSurface(style, e.surface, reach), parseCached(text), columnsOf(e.viewport), open, notes)
     const text = options.stretch === true && e.props.isSummary !== true ? await writtenText($, e.props.text) : e.props.text
     const stretched = options.stretch === true && e.props.isSummary !== true ? await stretchBody($, { ...e, props: { ...e.props, text } }, draw) : undefined
     if (stretched !== undefined) {
@@ -266,7 +293,7 @@ export const register: Register = (on, options) => {
           <Text color={style.theme.accent}>{e.props.isFirstOfReply ? '●' : ' '}</Text>
         </Box>
         <Box flexDirection="column" rowGap={1} flexGrow={1}>
-          {drawMarkdown($, el, forSurface(style, e.surface), blocks, columnsOf(e.viewport), open, notes)}
+          {drawMarkdown($, el, forSurface(style, e.surface, reach), blocks, columnsOf(e.viewport), open, notes)}
         </Box>
       </Box>
     )
