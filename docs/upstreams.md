@@ -16,11 +16,10 @@ $ git log --oneline 86b06d1..HEAD
 
 ## prismantis 0.15.1 to 0.24.0
 
-Ported: the inline prose fixes, one-dash table rows, symbol widths, flowchart edges without spaces, HTML tags in mermaid labels, bar chart heights, the localhost check, fold ids, footnotes inside fences, error output of an expanded shell row, the redraw speedups, quotes and alerts that keep their blocks, clickable footnote marks, link handling by Claude Code version, and shell edits drawn as diff cards.
+Ported: the inline prose fixes, one-dash table rows, symbol widths, flowchart edges without spaces, HTML tags in mermaid labels, bar chart heights, the localhost check, fold ids, footnotes inside fences, error output of an expanded shell row, the redraw speedups, quotes and alerts that keep their blocks, clickable footnote marks, link handling by Claude Code version, shell edits drawn as diff cards, and copy buttons shown only on hover (the `copyButtonStyle` setting).
 
 Left out on purpose:
 
 - Figures (`figure` code blocks, 0.18.0): Claude writes them only when a system prompt note tells it to, and cc-dazzle has no such note.
 - Diff tints from the theme (0.20.0, 0.22.0): cc-dazzle draws diffs in Claude Code's own colors.
-- Copy buttons shown only on hover (0.20.0): it would add a setting.
 - Parts cc-dazzle does not have: themes, LaTeX, right-to-left text, the clock option, quiet tool output, Windows HTML copy and the Codex plugin.
