@@ -275,30 +275,21 @@ export const register: Register = (on, options) => {
     const open = await read($, unfolded)
     const reach = await reachOf($, probes)
     const notes = { id: e.requestId, press: reach.marks }
-    const draw = (text: string) => drawMarkdown($, el, forSurface(style, e.surface, reach), parseCached(text), columnsOf(e.viewport), open, notes)
-    const text = options.stretch === true && e.props.isSummary !== true ? await writtenText($, e.props.text) : e.props.text
-    const stretched = options.stretch === true && e.props.isSummary !== true ? await stretchBody($, { ...e, props: { ...e.props, text } }, draw) : undefined
-    if (stretched !== undefined) {
-      return (
-        <Box flexDirection="row" marginTop={1}>
-          <Box width={2} flexShrink={0}>
-            <Text color={style.theme.accent}>{e.props.isFirstOfReply ? '●' : ' '}</Text>
-          </Box>
-          <Box flexDirection="column" rowGap={1} flexGrow={1}>{stretched}</Box>
-        </Box>
-      )
-    }
-    const blocks = parseCached(openText(e.props.text))
-    if (blocks.length === 0) return next(e)
-    return (
+    const drawStyle = forSurface(style, e.surface, reach)
+    const draw = (text: string) => drawMarkdown($, el, drawStyle, parseCached(text), columnsOf(e.viewport), open, notes)
+    const reply = (body: RenderElement[]) => (
       <Box flexDirection="row" marginTop={1}>
         <Box width={2} flexShrink={0}>
           <Text color={style.theme.accent}>{e.props.isFirstOfReply ? '●' : ' '}</Text>
         </Box>
-        <Box flexDirection="column" rowGap={1} flexGrow={1}>
-          {drawMarkdown($, el, forSurface(style, e.surface, reach), blocks, columnsOf(e.viewport), open, notes)}
-        </Box>
+        <Box flexDirection="column" rowGap={1} flexGrow={1}>{body}</Box>
       </Box>
     )
+    const text = options.stretch === true && e.props.isSummary !== true ? await writtenText($, e.props.text) : e.props.text
+    const stretched = options.stretch === true && e.props.isSummary !== true ? await stretchBody($, { ...e, props: { ...e.props, text } }, draw) : undefined
+    if (stretched !== undefined) return reply(stretched)
+    const blocks = parseCached(openText(e.props.text))
+    if (blocks.length === 0) return next(e)
+    return reply(drawMarkdown($, el, drawStyle, blocks, columnsOf(e.viewport), open, notes))
   })
 }
