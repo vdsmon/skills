@@ -2,6 +2,7 @@ import type { ElementTable, RenderElement } from 'claude-code'
 
 import { cells, graphemes, remember, width } from './text'
 import type { Style, Theme } from './theme'
+import { DIAGRAM_HUES } from './theme'
 import { renderMermaidAscii, setChartSize } from './vendor/mermaid-text.js'
 
 const MAX_LINES = 80
@@ -106,7 +107,7 @@ const paint = (art: string, style: Style): (string | undefined)[][] => {
   const grid = art.split('\n').map(cells)
   const cell = (r: number, c: number) => grid[r]?.[c] ?? ''
   const color: (string | undefined)[][] = grid.map(row => row.map(() => undefined))
-  const palette = [...new Set([t.link, t.number, t.heading, t.emphasis, t.path, t.codeFlag, t.accent])].filter((c): c is string => c !== undefined)
+  const palette = DIAGRAM_HUES
   const next = (i: number) => palette[i % palette.length]
   const labels = new Map<string, string | undefined>()
 
@@ -144,7 +145,7 @@ const paint = (art: string, style: Style): (string | undefined)[][] => {
     return r * 2 + (grid[r]![x] === '▄' ? 1 : 0)
   })
   const single = bars.length > 1 && bars.every((x, i) => i === 0 || x - ends[i - 1]! > 2)
-  const barColor = (i: number) => (single ? (tops[i] === Math.min(...tops) ? t.emphasis ?? t.accent : t.quote) : next(i))
+  const barColor = (i: number) => (single ? (tops[i] === Math.min(...tops) ? DIAGRAM_HUES[3] : t.quote) : next(i))
   grid.forEach((row, r) =>
     row.forEach((ch, c) => {
       if (color[r]![c] !== undefined) return

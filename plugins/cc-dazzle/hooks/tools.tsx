@@ -24,7 +24,7 @@ const field = (input: unknown, ...keys: string[]): string | undefined => {
 const TARGET_FIELDS = ['file_path', 'notebook_path', 'path', 'pattern', 'url', 'query', 'description']
 
 const statusColor = (t: Theme, row: ToolRow) =>
-  row.isErrored ? t.codeFlag : row.isInterrupted ? t.codeComment : row.isRunning ? t.accent : t.number
+  row.isErrored ? t.error : row.isInterrupted ? t.codeComment : row.isRunning ? t.accent : t.success
 
 const TREE_MARK = '└─'
 
@@ -186,6 +186,7 @@ const renderClaudeDiff = (el: ElementTable, style: Style, output: unknown, rows:
 const diffBox = (el: ElementTable, style: Style, output: unknown, rows: DiffLine[], fold: Fold, id: string, key: string, title?: string): RenderElement => {
   const { Box, Text } = el
   const t = style.theme
+  const c = isDark(t.codeText) ? CLAUDE_DIFF.dark : CLAUDE_DIFF.light
   const added = rows.filter(r => r.mark === '+').length
   const removed = rows.filter(r => r.mark === '-').length
   const toggle = rows.length > DIFF_LINES ? fold?.(id, rows.length - DIFF_LINES, `fold${key}`) : null
@@ -195,9 +196,9 @@ const diffBox = (el: ElementTable, style: Style, output: unknown, rows: DiffLine
     <Box key={`card${key}`} flexDirection="column" borderStyle="round" borderColor={t.rule} paddingX={1} flexShrink={1}>
       <Text>
         {title === undefined ? null : <Text color={t.path}>{`${title} `}</Text>}
-        <Text color={t.number} dimColor={added === 0}>{`+${added}`}</Text>
+        <Text color={c.addMark} dimColor={added === 0}>{`+${added}`}</Text>
         <Text> </Text>
-        <Text color={t.codeFlag} dimColor={removed === 0}>{`−${removed}`}</Text>
+        <Text color={c.delMark} dimColor={removed === 0}>{`−${removed}`}</Text>
       </Text>
       {renderClaudeDiff(el, style, output, rows, shown, gutter)}
       {rows.length > shown.length && toggle?.folded !== true ? <Text dimColor>{`… +${rows.length - shown.length} lines`}</Text> : null}
@@ -286,7 +287,7 @@ export const renderToolRow = (el: ElementTable, style: Style, row: ToolRow): Ren
         <Text bold={false} dimColor>{verb}</Text>
         {target === undefined ? null : <Text> </Text>}
         {target === undefined ? null : isShell ? codeLine(el, style, target, 'bash', 'cmd') : <Text color={isPath ? t.path : t.inlineCode} dimColor>{target}</Text>}
-        {row.isInterrupted ? <Text dimColor> interrupted</Text> : row.isErrored ? <Text color={t.codeFlag}> failed</Text> : null}
+        {row.isInterrupted ? <Text dimColor> interrupted</Text> : row.isErrored ? <Text color={t.error}> failed</Text> : null}
       </Text>
   ))
 }
@@ -300,7 +301,7 @@ export const renderExpandedShell = (el: ElementTable, style: Style, row: ToolRow
   const out = row.output !== null && typeof row.output === 'object' ? (row.output as Record<string, unknown>) : {}
   const stdout = lines(out.stdout)
   const stderr = lines(out.stderr)
-  const shown = [...stdout.map(text => ({ text, color: undefined as string | undefined })), ...stderr.map(text => ({ text, color: t.codeFlag as string | undefined }))]
+  const shown = [...stdout.map(text => ({ text, color: undefined as string | undefined })), ...stderr.map(text => ({ text, color: t.error as string | undefined }))]
   const visible = shown.slice(0, OUTPUT_LINES)
   const dot = statusColor(t, row)
   return (
@@ -321,7 +322,7 @@ export const renderExpandedShell = (el: ElementTable, style: Style, row: ToolRow
       </Box>
       {row.isRunning ? null : (
         <Box paddingLeft={2}>
-          <Box flexDirection="column" alignSelf="flex-start" borderStyle="round" borderColor={t.codeComment} paddingX={1}>
+          <Box flexDirection="column" alignSelf="flex-start" borderStyle="round" borderColor={t.rule} paddingX={1}>
             {visible.length === 0 ? <Text dimColor>(No output)</Text> : visible.map((l, i) => <Text key={`o${i}`} color={l.color}>{l.text === '' ? ' ' : l.text}</Text>)}
             {shown.length > visible.length ? <Text dimColor>{`… +${shown.length - visible.length} lines`}</Text> : null}
           </Box>
@@ -361,14 +362,14 @@ export const renderToolGroup = (el: ElementTable, style: Style, calls: readonly 
   const t = style.theme
   const failed = calls.filter(c => c.isErrored).length
   const running = isActive && calls.some(c => c.isRunning)
-  const dot = failed ? t.codeFlag : running ? t.accent : t.number
+  const dot = failed ? t.error : running ? t.accent : t.success
   const last = calls[calls.length - 1]
   const lastTarget = last ? targetOf(style, last.input, ['command', ...TARGET_FIELDS]).target?.split('\n')[0] : undefined
   const summary = groupSummary(calls)
   return toolLayout(el, dot, (
       <Text wrap="truncate-end" dimColor>
         <Text bold={false} dimColor>{summary}</Text>
-        {failed ? <Text color={t.codeFlag}>{` · ${failed} failed`}</Text> : null}
+        {failed ? <Text color={t.error}>{` · ${failed} failed`}</Text> : null}
         {lastTarget ? <Text dimColor>{` · last: ${lastTarget}`}</Text> : null}
       </Text>
   ))

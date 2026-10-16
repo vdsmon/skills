@@ -1,7 +1,9 @@
 // Lays out a paragraph that holds stretches, for a Client to draw: its markdown as rows of styled
-// runs, wrapped to the region's width, so a press can be matched to the phrase under it. Claude
-// Code draws every paragraph without a stretch with its own markdown.
+// runs, wrapped to the region's width, so a press can be matched to the phrase under it. It colors
+// what cc-dazzle's own renderer colors, so a paragraph looks the same with or without a stretch.
 
+import { NUMBER, PATH } from '../markdown'
+import { THEME } from '../theme'
 import { isRule } from './parse'
 
 /** What a press on a pressable phrase does to its stretch. */
@@ -14,10 +16,15 @@ export type Run = {
   code?: true
   underline?: true
   dim?: true
-  /** The colour of the words a stretch added. */
+  /** The colour of the words a stretch added, or FRESH for the words the newest open stretch added. */
   tint?: string
+  color?: string
+  kind?: 'number' | 'path'
   link?: { action: Action; key: string }
 }
+
+/** The tint of the words the newest open stretch added: drawn in the text's own colour, marked in the gutter. */
+export const FRESH = 'fresh'
 
 export type Row = Run[]
 
@@ -133,17 +140,24 @@ function rowsOf({ text: line, tints }: Line, width: number): Row[] {
   // The runs of the line's end from `rest` on.
   const inlineOf = (rest: string, isBold = false) => inline(rest, tints.slice(line.length - rest.length), isBold)
   if (line.trim() === '') return [[]]
-  if (isRule(line)) return [[{ text: '─'.repeat(Math.min(width, 60)), dim: true }]]
+  if (isRule(line)) return [[{ text: '─'.repeat(Math.min(width, 60)), color: THEME.rule }]]
   // A table row keeps its columns: written as is, cut where the region ends.
   if (/^\s*\|/.test(line)) return cutRows(inlineOf(line), width)
-  const heading = /^#{1,6}\s+(.*)$/.exec(line)
-  if (heading) return wrap(inlineOf(heading[1] ?? '', true), width, '', '')
+  const heading = /^(#{1,6})\s+(.*)$/.exec(line)
+  if (heading) {
+    const level = heading[1]?.length ?? 1
+    const color = level <= 2 ? THEME.heading : THEME.strong
+    const rows = wrap(inlineOf(heading[2] ?? '', true).map(run => (run.code ? run : { ...run, color })), width, '', '')
+    return level === 1 ? [...rows, [{ text: '━'.repeat(Math.min(width, widthOf(heading[2] ?? ''))), color }]] : rows
+  }
   const quote = /^>\s?(.*)$/.exec(line)
-  if (quote) return wrap(inlineOf(quote[1] ?? ''), width, '▎ ', '▎ ', true)
+  if (quote) return wrap(inlineOf(quote[1] ?? '').map(run => (run.code ? run : { ...run, italic: true, color: THEME.quote })), width, '│ ', '│ ', { color: THEME.codeComment })
   const item = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/.exec(line)
   if (item) {
-    const lead = `${item[1] ?? ''}${item[2] ?? ''} `
-    return wrap(inlineOf(item[3] ?? ''), width, lead, ' '.repeat(widthOf(lead)))
+    const indent = item[1] ?? ''
+    const marker = item[2] ?? '-'
+    const lead = `${indent}${/\d/.test(marker) ? marker : indent.length >= 2 ? '◦' : '•'} `
+    return wrap(inlineOf(item[3] ?? ''), width, lead, ' '.repeat(widthOf(lead)), { color: THEME.bullet })
   }
   const indent = /^\s*/.exec(line)?.[0] ?? ''
 
@@ -218,17 +232,38 @@ function inline(text: string, tints: Line['tints'], isBold = false): Run[] {
     i += 1
   }
 
-  return runs
+  return runs.flatMap(decorate)
+}
+
+/** A plain run split where cc-dazzle colors a number or a path. */
+function decorate(run: Run): Run[] {
+  if (run.code || run.dim || run.kind) return [run]
+  const marks: { start: number; end: number; kind: 'number' | 'path' }[] = []
+  for (const m of run.text.matchAll(PATH)) marks.push({ start: m.index, end: m.index + m[0].length, kind: 'path' })
+  for (const m of run.text.matchAll(NUMBER)) {
+    if (!marks.some(p => m.index < p.end && m.index + m[0].length > p.start)) marks.push({ start: m.index, end: m.index + m[0].length, kind: 'number' })
+  }
+  if (marks.length === 0) return [run]
+  marks.sort((a, b) => a.start - b.start)
+  const out: Run[] = []
+  let at = 0
+  for (const m of marks) {
+    if (m.start > at) out.push({ ...run, text: run.text.slice(at, m.start) })
+    out.push({ ...run, text: run.text.slice(m.start, m.end), kind: m.kind })
+    at = m.end
+  }
+  if (at < run.text.length) out.push({ ...run, text: run.text.slice(at) })
+  return out
 }
 
 /** Word-wraps runs into rows of `width` cells; the first row starts with `first`, later rows with `rest`. */
-function wrap(runs: Run[], width: number, first: string, rest: string, isDimLead = false): Row[] {
+function wrap(runs: Run[], width: number, first: string, rest: string, leadStyle: Omit<Run, 'text'> = {}): Row[] {
   const rows: Row[] = []
   let row: Row = []
   let used = 0
   let isBare = true
   const begin = (lead: string) => {
-    row = lead === '' ? [] : [{ text: lead, ...(isDimLead && { dim: true }) }]
+    row = lead === '' ? [] : [{ text: lead, ...leadStyle }]
     used = widthOf(lead)
     isBare = true
   }
@@ -323,6 +358,7 @@ function cut(text: string, room: number): [string, string] {
 function isSameStyle(a: Run, b: Run): boolean {
   return (
     a.bold === b.bold && a.italic === b.italic && a.code === b.code && a.underline === b.underline && a.dim === b.dim && a.tint === b.tint &&
+    a.color === b.color && a.kind === b.kind &&
     a.link?.action === b.link?.action && a.link?.key === b.link?.key
   )
 }

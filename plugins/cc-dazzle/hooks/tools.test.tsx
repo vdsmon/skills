@@ -40,7 +40,7 @@ const footers = async (ui: Ui) => (await ui.findAll({ type: 'Text' })).map(n => 
 
 test('a Bash call draws as one dim row behind a bold corner, the command colored', async $ => {
   const ui = await $.ui.mount(toolUse('Bash', { command: 'gh pr view 12 --json state' }, 'b1'))
-  expect((await ui.find({ type: 'Text', text: /^ {2}└─ $/ }))?.props).toMatchObject({ bold: true, color: t.number })
+  expect((await ui.find({ type: 'Text', text: /^ {2}└─ $/ }))?.props).toMatchObject({ bold: true, color: t.success })
   expect(await ui.find({ type: 'Text', text: /⎿/ })).toBeUndefined()
   const line = (await ui.findAll({ type: 'Text' })).find(n => n.props.wrap === 'truncate-end')
   expect(line?.props.dimColor).toBe(true)
@@ -69,7 +69,7 @@ test('an expanded tool group goes to the engine, and an expanded Bash row shows 
   expect(await row.find({ type: 'Text', text: /^Bash\($/ })).toBeDefined()
   expect((await row.find({ type: 'Text', text: /^gh$/ }))?.props.color).toBe(t.codeCommand)
   expect(await row.find({ type: 'Text', text: /^in_progress$/ })).toBeDefined()
-  expect((await row.find({ type: 'Text', text: /^warn$/ }))?.props.color).toBe(t.codeFlag)
+  expect((await row.find({ type: 'Text', text: /^warn$/ }))?.props.color).toBe(t.error)
   expect(await row.find({ type: 'Text', text: /^engine$/ })).toBeUndefined()
   await row.unmount()
 })
@@ -78,8 +78,8 @@ test('an Edit result draws a diff card in Claude Code colors with the changed wo
   engine(on)
   const js = { filePath: '/tmp/app.js', structuredPatch: [{ oldStart: 1, newStart: 1, lines: [' function greet() {', '-  log("Hello, World!");', '+  log("Hello, Claude!");', ' }'] }] }
   const ui = await $.ui.mount(result('Edit', js, 'e1'))
-  expect((await ui.find({ type: 'Text', text: /^\+1$/ }))?.props.color).toBe(t.number)
-  expect((await ui.find({ type: 'Text', text: /^−1$/ }))?.props.color).toBe(t.codeFlag)
+  expect((await ui.find({ type: 'Text', text: /^\+1$/ }))?.props.color).toBe(CLAUDE_DIFF.dark.addMark)
+  expect((await ui.find({ type: 'Text', text: /^−1$/ }))?.props.color).toBe(CLAUDE_DIFF.dark.delMark)
   expect((await ui.find({ type: 'Box', text: /^2 \+ {3}log\("Hello, Claude!"\);$/ }))?.props.backgroundColor).toBe(CLAUDE_DIFF.dark.addBg)
   expect((await ui.find({ type: 'Box', text: /^2 - {3}log\("Hello, World!"\);$/ }))?.props.backgroundColor).toBe(CLAUDE_DIFF.dark.delBg)
   expect((await ui.find({ type: 'Text', text: /^Claude$/ }))?.props.backgroundColor).toBe(CLAUDE_DIFF.dark.addWord)

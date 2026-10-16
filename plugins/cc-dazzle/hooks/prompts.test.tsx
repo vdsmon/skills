@@ -42,7 +42,7 @@ test('a typed prompt draws as a bubble on the left with its 24h send time', asyn
   expect(box?.props.borderColor).toBe(t.accent)
   expect((await ui.find({ type: 'Text', text: /^ 14:32$/ }))?.props.color).toBe(t.codeComment)
   expect(JSON.stringify(box)).not.toContain('14:32')
-  expect((await ui.find({ type: 'Text', text: /^how many frog raids\?$/ }))?.props.color).toBe(t.heading)
+  expect((await ui.find({ type: 'Text', text: /^how many frog raids\?$/ }))?.props.color).toBe(t.codeText)
   await ui.unmount()
 })
 
@@ -85,7 +85,7 @@ test('a queued_command append for the prompt draws it in the normal color again'
   await $.session.append(delivery('queued test'))
   const read = await $.ui.mount(prompt('queued test'))
   expect((await bubble(read))?.props.borderColor).toBe(t.accent)
-  expect((await read.find({ type: 'Text', text: /^queued test$/ }))?.props.color).toBe(t.heading)
+  expect((await read.find({ type: 'Text', text: /^queued test$/ }))?.props.color).toBe(t.codeText)
   await read.unmount()
   const other = await $.ui.mount(prompt('still waiting'))
   expect((await bubble(other))?.props.borderColor).toBe(t.codeComment)

@@ -287,7 +287,8 @@ export const register: Register = (on, options) => {
     )
     const text = options.stretch === true && e.props.isSummary !== true ? await writtenText($, e.props.text) : e.props.text
     const stretched = options.stretch === true && e.props.isSummary !== true ? await stretchBody($, { ...e, props: { ...e.props, text } }, draw) : undefined
-    if (stretched !== undefined) return reply(stretched)
+    if (stretched?.framed) return <Box flexDirection="column" rowGap={1} marginTop={1}>{stretched.body}</Box>
+    if (stretched !== undefined) return reply(stretched.body)
     const blocks = parseCached(openText(e.props.text))
     if (blocks.length === 0) return next(e)
     return reply(drawMarkdown($, el, drawStyle, blocks, columnsOf(e.viewport), open, notes))

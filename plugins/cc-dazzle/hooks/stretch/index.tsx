@@ -2,8 +2,10 @@ import { atom, memberOf, read, update } from 'claude-code'
 import type { EngineInterface, On, RenderElement, RenderInput, SessionMessage } from 'claude-code'
 
 import { GUIDE } from './guide'
-import { closeAfter, codeSpanEnd, hideLongForms, isLinkable, isOpenable, KEY_SEPARATOR, paragraphsOf, parentOf, parse, stretches } from './parse'
+import { closeAfter, codeSpanEnd, hideLongForms, isLinkable, isOpenable, KEY_SEPARATOR, paragraphsOf, parse, stretches } from './parse'
 import type { Segment, StreamState, Stretch } from './parse'
+import { THEME } from '../theme'
+import { FRESH } from './layout'
 import type { ReplyPost, ReplyProps, Tint } from './reply'
 
 // Stretchtext, ported from cc-stretch 0.3.3 (pro-vi/cc-stretch). A reply's `{{short|long}}` stretches
@@ -19,14 +21,6 @@ const newestReply = atom({ plugin: 'cc-dazzle', key: 'stretchNewest' } as const,
 const MAIN_SCREEN_NOTE =
   "cc-dazzle: stretches are open because this session is on Claude Code's main screen, where a printed reply cannot change. " +
   'For clickable stretches, run /tui fullscreen. If it says fullscreen is already on, start Claude Code with CLAUDE_CODE_NO_FLICKER=1, which forces fullscreen.'
-
-// The words a stretch adds take cc-dazzle's accent; all but the newest open stretch take a faded
-// form of it, mixed 35% toward the background.
-const ACCENT = [0xcb, 0xa6, 0xf7]
-const mix = (rgb: number[], toward: number, share: number) => rgb.map(v => Math.round(v + (toward - v) * share))
-const hex = (rgb: number[]) => `#${rgb.map(v => v.toString(16).padStart(2, '0')).join('')}`
-const PALETTE = [{ soft: hex(ACCENT), faded: hex(mix(ACCENT, 0, 0.35)) }]
-const HUES = PALETTE.length
 
 // Every link drawn here is answered here and never followed; a ctrl- or cmd-click opens it in a
 // browser, so it points at a reserved name that resolves nowhere.
@@ -131,15 +125,13 @@ export function registerStretch(on: On): void {
     const { opened } = post
     if (opened !== undefined) await update($, seen, list => (list.includes(opened.short) ? list : [...list, opened.short]))
 
-    // Each open stretch keeps the count it was opened at, across the reply's paragraphs; a nested
-    // one skips its parent's colour. The newest is the open stretch with the reply's last count.
+    // Each open stretch keeps the count it was opened at, across the reply's paragraphs. The newest
+    // is the open stretch with the reply's last count.
     const here = `${e.element}#`
     await update($, memberOf(stretchOrder, { requestId: e.requestId }), ({ order, count }) => {
       const kept = Object.fromEntries(Object.entries(order).filter(([at]) => !at.startsWith(here) || post.open.includes(at.slice(here.length))))
       if (opened === undefined) return { order: kept, count }
-      const parent = kept[`${here}${parentOf(opened.key)}`]
-      const n = parent !== undefined && count % HUES === parent % HUES ? count + 1 : count
-      return { order: { ...kept, [`${here}${opened.key}`]: n }, count: n + 1 }
+      return { order: { ...kept, [`${here}${opened.key}`]: count }, count: count + 1 }
     })
     if (opened !== undefined) await update($, newestReply, () => e.requestId)
     return next(e)
@@ -153,8 +145,9 @@ let notedRequest: string | undefined
 /**
  * A reply's body when it holds a stretch, undefined when it holds none. `draw` draws markdown the
  * way cc-dazzle does; in the fullscreen terminal a paragraph holding a stretch is drawn by a Client.
+ * `framed` says the body draws the reply's gutter itself, as a Client marks rows in it.
  */
-export async function stretchBody($: EngineInterface, e: RenderInput & { props: { text: string } }, draw: (text: string) => RenderElement[]): Promise<RenderElement[] | undefined> {
+export async function stretchBody($: EngineInterface, e: RenderInput & { props: { text: string; isFirstOfReply?: boolean } }, draw: (text: string) => RenderElement[]): Promise<{ body: RenderElement[]; framed: boolean } | undefined> {
   if (!e.props.text.includes('{{')) return undefined
   const parts = parse(e.props.text)
   const all = stretches(parts)
@@ -181,21 +174,30 @@ export async function stretchBody($: EngineInterface, e: RenderInput & { props: 
       const short = stretch.short.trim()
       await update($, seen, list => (list.includes(short) ? list : [...list, short]))
     }
-    return [<Markdown key="stretch" text={text} pressableLinks={links} onLinkPress={link => void press(link.href)} />]
+    return { body: [<Markdown key="stretch" text={text} pressableLinks={links} onLinkPress={link => void press(link.href)} />], framed: false }
   }
 
   if (canPress(e)) {
-    const { Box, Client } = $.ui.resolve(e)
+    const { Box, Client, Text } = $.ui.resolve(e)
     const [{ order, count }, newest] = await Promise.all([read($, memberOf(stretchOrder, { requestId: e.requestId })), read($, newestReply)])
-    return Promise.all(
+    const body = await Promise.all(
       paragraphsOf(e.props.text).map(async (paragraph, i) => {
         const key = `paragraph-${i}`
-        if (!paragraph.hasStretch) return <Box key={key} flexDirection="column" rowGap={1}>{draw(paragraph.text)}</Box>
+        const dot = i === 0 && e.props.isFirstOfReply === true
+        if (!paragraph.hasStretch) {
+          return (
+            <Box key={key} flexDirection="row">
+              <Box width={2} flexShrink={0}><Text color={THEME.accent}>{dot ? '●' : ' '}</Text></Box>
+              <Box flexDirection="column" rowGap={1} flexGrow={1}>{draw(paragraph.text)}</Box>
+            </Box>
+          )
+        }
         const open = await read($, memberOf(openStretches, { requestId: `${e.requestId}#${key}` }))
         const tints = tintsOf(order, key, newest === e.requestId ? count - 1 : -1)
-        return <Client key={key} module="./reply.tsx" props={{ text: paragraph.text, open, tints } satisfies ReplyProps} width="100%" />
+        return <Client key={key} module="./reply.tsx" props={{ text: paragraph.text, open, tints, dot } satisfies ReplyProps} width="100%" />
       }),
     )
+    return { body, framed: true }
   }
 
   // Where a press is not known to land, every stretch is drawn open and nothing is hidden; on the
@@ -203,18 +205,17 @@ export async function stretchBody($: EngineInterface, e: RenderInput & { props: 
   const { Text } = $.ui.resolve(e)
   if (isMainScreen(e)) notedRequest ??= e.requestId
   const body = draw(writeOpen(parts))
-  return isMainScreen(e) && notedRequest === e.requestId ? [...body, <Text key="stretch-note" dimColor>{MAIN_SCREEN_NOTE}</Text>] : body
+  return { body: isMainScreen(e) && notedRequest === e.requestId ? [...body, <Text key="stretch-note" dimColor>{MAIN_SCREEN_NOTE}</Text>] : body, framed: false }
 }
 
-/** The tint of each open stretch in one paragraph: its colour by the count it was opened at, faded unless opened at `newest`. */
+/** The tint of each open stretch in one paragraph: FRESH for the one opened at `newest`, none for the rest, and a grey closer. */
 function tintsOf(order: Record<string, number>, paragraph: string, newest: number): Record<string, Tint> {
   const here = `${paragraph}#`
   return Object.fromEntries(
     Object.entries(order)
       .filter(([at]) => at.startsWith(here))
       .flatMap(([at, n]) => {
-        const colours = PALETTE[n % PALETTE.length]
-        return colours === undefined ? [] : [[at.slice(here.length), { words: n === newest ? colours.soft : colours.faded, closer: colours.soft }]]
+        return [[at.slice(here.length), { words: n === newest ? FRESH : '', closer: THEME.bullet ?? '' }]]
       }),
   )
 }

@@ -15,8 +15,8 @@ Mods that draw the same row do not stack, so turn off any other mod that draws r
 
 ## What it draws
 
-- **Replies:** a blank line before each part, a box around H1, a heavy rule under H2, boxed tables with a double line under the header, `[ ]` and `[✓]` task lists, and version numbers and file paths in color.
-- **Code:** a rounded box with the language above it and a copy button inside, Prism colors for 24 languages, and `console` blocks with the `$` lines colored as commands. Their copy button copies the commands only.
+- **Replies:** a blank line before each part, headings in lavender with a heavy rule under H1, boxed tables with a double line under the header, `[ ]` and `[✓]` task lists, and version numbers and file paths in color. Each color has one job: mauve marks who is talking, red marks only failures.
+- **Code:** a rounded box with the language and a copy button above it, Prism colors for 24 languages, and `console` blocks with the `$` lines colored as commands. Their copy button copies the commands only.
 - **Mermaid:** flowcharts and other diagrams drawn as box art. A diagram that does not fit shows its source with a note.
 - **Copy buttons:** `⧉ copy` on code, lists and quotes. Tables get `⧉ md`, `⧉ art` and, on macOS outside SSH, `⧉ html`, which pastes as a real table in Docs, Notion or email.
 - **Tool calls:** one dim row each (`Ran gh pr view 12`, `Read ~/src/app.ts`) under a bold `└─`. Bash and MCP output in columns shows as a boxed table with a row count and the run time.
@@ -32,7 +32,7 @@ In `/config` (cc-dazzle, **Copy buttons**), `hover` hides each block's copy butt
 
 Off by default. Turn it on in `/config` (cc-dazzle, **Stretchtext replies**); the change reloads the mod at once.
 
-When it is on, Claude writes each reply short, with `{{short|long}}` stretches. A stretch draws as its short form, underlined. Click it and the long form grows in place around the words you already read; click `«` to shrink it back. Stretches can nest. With your next prompt, Claude is told which stretches you opened.
+When it is on, Claude writes each reply short, with `{{short|long}}` stretches. A stretch draws as its short form, underlined. Click it and the long form grows in place around the words you already read, with a grey `▎` in the left margin beside the lines that hold the new words; click `«` to shrink it back. Stretches can nest. With your next prompt, Claude is told which stretches you opened.
 
 - Clicks work in the fullscreen terminal (`/tui fullscreen`) and in the desktop app. Elsewhere every stretch shows open, so nothing is hidden.
 - It adds a short guide to the system prompt and one line to each prompt that follows a reply with stretches.

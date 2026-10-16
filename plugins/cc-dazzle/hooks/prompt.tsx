@@ -5,7 +5,7 @@ import type { Style } from './theme'
 export const renderUserPrompt = (el: ElementTable, style: Style, text: string, time?: string, waiting = false): RenderElement => {
   const { Box, Text } = el
   const t = style.theme
-  const color = waiting ? t.codeComment : t.heading
+  const color = waiting ? t.codeComment : t.codeText
   const accent = waiting ? t.codeComment : t.accent
   const body = (
     <Box flexDirection="column">
