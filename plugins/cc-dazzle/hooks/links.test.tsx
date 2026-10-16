@@ -1,7 +1,7 @@
 import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
-import { THEME as t } from './theme'
+import { CLAUDE_DIFF, THEME as t } from './theme'
 import { bashEdits, EDIT_NOTES, movesTree, withoutBashEdits } from './tools'
 import { takesEditorLinks, takesHttpLinks } from './version'
 
@@ -144,8 +144,8 @@ test('shell edits draw the same diff card as the Edit tool, one per file', async
   const ui = await $.ui.mount(shellEdit('s-1', bashEdit('', 2)))
   expect((await ui.find({ type: 'Text', text: /^src\/app\.ts $/ }))?.props.color).toBe(t.path)
   expect((await ui.find({ type: 'Text', text: /^NOTES\.md $/ }))?.props.color).toBe(t.path)
-  expect((await ui.find({ type: 'Text', text: /^\+2$/ }))?.props.color).toBe(t.number)
-  expect((await ui.find({ type: 'Text', text: /^−1$/ }))?.props.color).toBe(t.codeFlag)
+  expect((await ui.find({ type: 'Text', text: /^\+2$/ }))?.props.color).toBe(CLAUDE_DIFF.dark.addMark)
+  expect((await ui.find({ type: 'Text', text: /^−1$/ }))?.props.color).toBe(CLAUDE_DIFF.dark.delMark)
   expect((await ui.find({ type: 'Text', text: /^… \+2 more files$/ }))?.props.dimColor).toBe(true)
   expect(await ui.find({ type: 'Text', text: /^engine$/ })).toBeUndefined()
   await ui.unmount()

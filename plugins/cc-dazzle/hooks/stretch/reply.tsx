@@ -1,24 +1,25 @@
 import type { ClientModule, ClientSurface, TextProps } from 'claude-code'
 
 import { grow, lengthOf } from './grow'
-import { isMarkup, layout, link, linkAt, tint } from './layout'
+import { THEME } from '../theme'
+import { FRESH, isMarkup, layout, link, linkAt, tint } from './layout'
 import type { Row, Run } from './layout'
 import { closeAfter, isLinkable, KEY_SEPARATOR, parse, stretches } from './parse'
 import type { Segment, Stretch } from './parse'
 
-// Draws one paragraph of a reply that holds stretches. It runs where the reader's screen draws it,
-// so a press answers at once and the growth moves on the screen's own frame clock. What the reader
-// opens is posted to the hooks module, which keeps it across redraws, notes it for Claude and picks
-// its colour.
+// Draws one paragraph of a reply that holds stretches, with its own two-cell gutter: the reply's
+// dot on its first row, and a grey bar beside each row that holds words the newest open stretch
+// added. It runs where the reader's screen draws it, so a press answers at once and the growth
+// moves on the screen's own frame clock. What the reader opens is posted to the hooks module,
+// which keeps it across redraws, notes it for Claude and marks the newest.
 
-/**
- * The colours of an open stretch: of the words it added (faded unless it is the newest) and of its
- * closer, which never fades, as a faded closer reads as disabled.
- */
+/** How an open stretch draws: FRESH when its words are the newest added, '' once read, and its closer's colour. */
 export type Tint = { words: string; closer: string }
 
-/** The paragraph, the stretches the reader already has open in it, and the tint of each. */
-export type ReplyProps = { text: string; open: string[]; tints: Record<string, Tint> }
+/** The paragraph, the stretches the reader already has open in it, the tint of each, and whether it opens the reply. */
+export type ReplyProps = { text: string; open: string[]; tints: Record<string, Tint>; dot?: boolean }
+
+const GUTTER = 2
 
 /**
  * What the instance posts to the hooks module when the open stretches change, with the stretch the
@@ -39,19 +40,21 @@ const Reply: ClientModule<ReplyProps, State> = (props, surface) => {
   if (surface.state === undefined) {
     surface.setState({ open: props.open, growth: null })
     surface.onPointer(event => {
-      if (event.type === 'down' && event.button === 'left') press(surface, event.x, event.y)
+      if (event.type === 'down' && event.button === 'left' && event.x >= GUTTER) press(surface, event.x - GUTTER, event.y)
     })
     surface.every(FRAME_MS, () => tick(surface))
   }
   const state = surface.state ?? { open: props.open, growth: null }
   const segments = parse(props.text)
-  const rows = layout(compose(segments, state, props.tints), surface.columns > 0 ? surface.columns : 80)
+  const rows = layout(compose(segments, state, props.tints), (surface.columns > 0 ? surface.columns : 80) - GUTTER)
   drawn.set(surface, { rows, segments })
+  const gutter = (row: Row, y: number) =>
+    y === 0 && props.dot ? <Text color={THEME.accent}>● </Text> : row.some(run => run.tint === FRESH) ? <Text color={THEME.bullet}>▎ </Text> : '  '
 
   return (
     <Box flexDirection="column">
-      {rows.map(row => (
-        <Text wrap="truncate">{row.length === 0 ? ' ' : row.map(run => <Text {...styleOf(run)}>{run.text}</Text>)}</Text>
+      {rows.map((row, y) => (
+        <Text wrap="truncate">{gutter(row, y)}{row.length === 0 ? ' ' : row.map(run => <Text {...styleOf(run)}>{run.text}</Text>)}</Text>
       ))}
     </Box>
   )
@@ -70,7 +73,7 @@ function compose(segments: Segment[], state: State, tints: Record<string, Tint>)
     // A short form over several lines is drawn open, or as written when its long form is empty.
     if (!isLinkable(stretch)) return stretch.long.length === 0 ? stretch.short : write(stretch.long)
     const colours = tints[stretch.key]
-    const paint = (word: string) => (colours === undefined || isMarkup(word) ? word : tint(colours.words, word))
+    const paint = (word: string) => (colours === undefined || colours.words === '' || isMarkup(word) ? word : tint(colours.words, word))
     if (state.growth?.key === stretch.key) return grow(stretch.short, stretch.long, easeInOut(state.growth.progress), draw, paint)
     if (!state.open.includes(stretch.key)) return link('open', stretch.key, stretch.short)
     const closer = link('close', stretch.key, '«')
@@ -122,15 +125,19 @@ function closed(open: string[], key: string): string[] {
 }
 
 function styleOf(run: Run): TextProps {
+  const color =
+    run.code ? THEME.inlineCode
+    : run.kind === 'number' ? THEME.number
+    : run.kind === 'path' ? THEME.path
+    : run.color ?? (run.tint && run.tint !== FRESH ? run.tint : run.bold ? THEME.strong : run.italic ? THEME.emphasis : undefined)
   return {
     ...(run.bold && { bold: true }),
     ...(run.italic && { italic: true }),
     ...(run.underline && { underline: true }),
     ...(run.dim && { dimColor: true }),
-    ...(run.tint && { color: run.tint }),
-    ...(run.code && { color: 'permission' }),
-    // Underlined, in the text's own colour, marks what a press acts on, leaving colour to code and
-    // to the words a click added. A closer is tinted like them, in its stretch's unfaded colour.
+    ...(color && { color }),
+    // Underlined marks what a press acts on, in the colour the words would have anyway. Only a
+    // closer is tinted, grey, so it reads as a control.
     ...(run.link && { underline: true }),
   }
 }

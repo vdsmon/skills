@@ -3,6 +3,7 @@ import { describe, expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
 import { grow } from './stretch/grow'
+import { THEME as t } from './theme'
 import { layout, link, linkAt, tint, widthOf } from './stretch/layout'
 import { hideLongForms, paragraphsOf, parse, stretches } from './stretch/parse'
 
@@ -59,12 +60,15 @@ const textOf = (node: unknown): string => {
   return ''
 }
 
-/** The rows a paragraph's Client draws, as plain text. */
-const rowsOf = async (ui: Mounted, key = FIRST): Promise<string[]> => {
+/** The rows a paragraph's Client draws, as plain text, with the two-cell gutter in front. */
+const gutteredRowsOf = async (ui: Mounted, key = FIRST): Promise<string[]> => {
   const tree = await ui.drawn({ in: key })
   const children: unknown = 'children' in tree ? tree.children : []
   return (Array.isArray(children) ? children.flat(Infinity) : [children]).map(textOf)
 }
+const GUTTER = 2
+/** The rows a paragraph's Client draws, as plain text, without the gutter. */
+const rowsOf = async (ui: Mounted, key = FIRST): Promise<string[]> => (await gutteredRowsOf(ui, key)).map(row => row.slice(GUTTER))
 const textIn = async (ui: Mounted, key = FIRST) => (await rowsOf(ui, key)).join('\n')
 
 /** Presses `phrase` where the Client drew it, as a mouse does: down, then up. The last one when `last`. */
@@ -73,7 +77,7 @@ const pressOn = async (ui: Mounted, phrase: string, { key = FIRST, last = false 
   const y = last ? rows.findLastIndex(row => row.includes(phrase)) : rows.findIndex(row => row.includes(phrase))
   if (y === -1) throw new Error(`"${phrase}" is not drawn:\n${rows.join('\n')}`)
   const row = rows[y] ?? ''
-  const x = widthOf(row.slice(0, last ? row.lastIndexOf(phrase) : row.indexOf(phrase)))
+  const x = GUTTER + widthOf(row.slice(0, last ? row.lastIndexOf(phrase) : row.indexOf(phrase)))
   await ui.pointer({ type: 'down', x, y, button: 'left', in: key })
   await ui.pointer({ type: 'up', x, y, button: 'left', in: key })
 }
@@ -191,12 +195,20 @@ describe('layout', () => {
   test('draws bold, code and list items, and keeps a fenced block as written', ON, async () => {
     const rows = layout(['- **bold** and `code`', '```', 'let x = {{y}}', '```'].join('\n'), 40)
     expect(rows[0]?.map(run => [run.text, run.bold === true, run.code === true])).toEqual([
-      ['- ', false, false],
+      ['• ', false, false],
       ['bold', true, false],
       [' and ', false, false],
       ['code', false, true],
     ])
     expect(rows[1]?.map(run => run.text).join('')).toBe('  let x = {{y}}')
+  })
+
+  test('marks numbers and paths as cc-dazzle does, and draws H1 over a heavy rule', ON, async () => {
+    const runs = layout('Run 20 jobs in ./ci/cache.ts now', 60)[0] ?? []
+    expect(runs.filter(run => run.kind).map(run => [run.text, run.kind])).toEqual([['20', 'number'], ['./ci/cache.ts', 'path']])
+    const heading = layout('# Fix', 60)
+    expect(heading[0]?.[0]).toMatchObject({ text: 'Fix', bold: true, color: t.heading })
+    expect(heading[1]?.[0]).toMatchObject({ text: '━━━', color: t.heading })
   })
 
   test('a code span or a link label tinted word by word draws whole, and the tint ends where its words do', ON, async () => {
@@ -230,11 +242,11 @@ test('a press grows a stretch in place, nested ones too, and « shrinks it back'
   const ui = await mountReply($, FULLSCREEN)
   expect(await textIn(ui)).toBe('The build fails on a stale cache.\nBraces in code stay: {{a|b}}.')
   expect(await textIn(ui, 'paragraph-1')).toBe('The fix is one line.')
-  expect((await ui.find({ type: 'Text' }))?.text).toBe('●')
+  expect((await gutteredRowsOf(ui))[0]).toMatch(/^● /)
   // A pressable phrase is underlined; code beside it is not.
   const pieces = await ui.findAll({ type: 'Text', in: FIRST })
   expect(pieces.find(piece => piece.text === 'on a stale cache')?.props).toMatchObject({ underline: true })
-  expect(pieces.find(piece => piece.text === '{{a|b}}')?.props).toMatchObject({ color: 'permission' })
+  expect(pieces.find(piece => piece.text === '{{a|b}}')?.props).toMatchObject({ color: t.inlineCode })
   expect(pieces.find(piece => piece.text === '{{a|b}}')?.props).not.toHaveProperty('underline')
 
   await pressOn(ui, 'on a stale cache')
@@ -292,36 +304,35 @@ test('in the terminal, a « after a rule or a code fence goes on its own line an
   await ui.unmount()
 })
 
-test('the words a stretch adds take the accent, faded once another opens or the reader writes again', ON, async ($, on) => {
+test('the rows holding the newest added words get a grey gutter bar, the words keep their colour, and the bar goes once another opens or the reader writes again', ON, async ($, on) => {
     mock.clock(on, { now: 0 })
     mock.env(on, {})
-  const text = 'One {{cat|cat, black,}} and {{dog|dog, brown,}} here.'
+  const text = 'Intro.\n\nOne {{cat|cat, black,}} here.\nTwo {{dog|dog, brown,}} there.'
   on('session.messages', () => ({ value: [{ role: 'assistant', text, toolUses: [] }] }))
   on('prompt.submit', (_, e) => ({ text: e.text, context: e.context }))
   const ui = await mountReply($, FULLSCREEN, text)
-  const colourOf = async (text: string) => (await ui.findAll({ type: 'Text', in: FIRST })).find(piece => piece.text?.trim() === text)?.props.color
-  await pressOn(ui, 'cat')
+  const key = 'paragraph-1'
+  const pieces = async () => ui.findAll({ type: 'Text', in: key })
+  const marks = async () => (await gutteredRowsOf(ui, key)).map(row => row.slice(0, GUTTER))
+  await pressOn(ui, 'cat', { key })
   await ui.advance(2000)
-  expect(await textIn(ui)).toBe('One cat, black, « and dog here.')
-  expect(await colourOf('black,')).toBe('#cba6f7')
-  expect(await colourOf('cat,')).toBeUndefined()
+  expect(await textIn(ui, key)).toBe('One cat, black, « here.\nTwo dog there.')
+  expect(await marks()).toEqual(['▎ ', '  '])
+  expect((await pieces()).find(piece => piece.text?.trim() === 'black,')?.props.color).toBeUndefined()
+  expect((await pieces()).find(piece => piece.text === '«')?.props).toMatchObject({ color: t.bullet, underline: true })
 
-  await pressOn(ui, 'dog')
+  await pressOn(ui, 'dog', { key })
   await ui.advance(2000)
-  expect(await colourOf('brown,')).toBe('#cba6f7')
-  expect(await colourOf('black,')).toBe('#846ca1')
-  // A closer keeps its stretch's unfaded colour, as a faded one reads as disabled.
-  const closers = (await ui.findAll({ type: 'Text', in: FIRST })).filter(piece => piece.text === '«')
-  expect(closers.map(piece => piece.props.color)).toEqual(['#cba6f7', '#cba6f7'])
+  expect(await marks()).toEqual(['  ', '▎ '])
 
   await $.prompt.submit({ text: 'ok', wait: false, origin: { kind: 'composer' } })
-  expect(await colourOf('brown,')).toBe('#846ca1')
+  expect(await marks()).toEqual(['  ', '  '])
   await ui.unmount()
 })
 
 test('a short form written over several lines is drawn open in the terminal too', ON, async $ => {
   const ui = await mountReply($, FULLSCREEN, ['Two steps: {{- one', '- two|- one, first', '- two, second}}'].join('\n'))
-  expect(await textIn(ui)).toBe('Two steps: - one, first\n- two, second')
+  expect(await textIn(ui)).toBe('Two steps: - one, first\n• two, second')
   await ui.unmount()
 })
 

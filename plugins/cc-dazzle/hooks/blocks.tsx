@@ -5,6 +5,7 @@ import type { Block, Inline } from './markdown'
 import { displayText, inlineText } from './markdown'
 import { graphemes, hasLink, longestWord, mostLines, remember, sliceInline, width, wrapInline, wrapRanges } from './text'
 import type { Style, Theme } from './theme'
+import { ALERT_COLOR } from './theme'
 import type { PrismToken } from './vendor/prism.js'
 import { languages, tokenize } from './vendor/prism.js'
 
@@ -224,7 +225,7 @@ const sessionLine = (el: ElementTable, style: Style, line: string, key: string):
   if (!command) return <Text key={key} color={t.codeText} dimColor>{line === '' ? ' ' : line}</Text>
   return (
     <Text key={key} color={t.codeText}>
-      <Text color={t.accent} bold>{`${command[1]} `}</Text>
+      <Text color={t.codeComment}>{`${command[1]} `}</Text>
       {codeLine(el, style, command[2]!, 'bash', `${key}.c`)}
     </Text>
   )
@@ -422,16 +423,12 @@ const renderTable = (el: ElementTable, style: Style, block: Extract<Block, { kin
 const renderHeading = (el: ElementTable, style: Style, block: Extract<Block, { kind: 'heading' }>, key: string) => {
   const { Box, Text } = el
   const t = style.theme
-  const color = block.level <= 2 ? t.heading : t.accent ?? t.heading
+  const color = block.level <= 2 ? t.heading : t.strong
   const inline = block.inline
-  const label = inlineText(inline)
-  if (block.level === 1) return <Box key={key} alignSelf="flex-start" borderStyle="bold" borderColor={color} paddingX={1}><Text bold color={color}>{renderInline(el, style, inline, key)}</Text></Box>
-  return block.level === 2
-    ? <Box key={key} flexDirection="column" alignSelf="flex-start"><Text bold color={color}>{renderInline(el, style, inline, key)}</Text><Text color={color}>{'━'.repeat(width(label))}</Text></Box>
-    : <Text key={key} bold color={block.level === 3 ? color : t.strong}>{renderInline(el, style, inline, key)}</Text>
+  return block.level === 1
+    ? <Box key={key} flexDirection="column" alignSelf="flex-start"><Text bold color={color}>{renderInline(el, style, inline, key)}</Text><Text color={color}>{'━'.repeat(width(inlineText(inline)))}</Text></Box>
+    : <Text key={key} bold color={color}>{renderInline(el, style, inline, key)}</Text>
 }
-
-const ALERT_COLOR = { note: 'blue', tip: 'green', important: 'magenta', warning: 'yellow', caution: 'red' } as const
 
 const prose = (style: Style) => (style.inside === 'quote' ? { italic: true, color: style.theme.quote } : {})
 
@@ -451,7 +448,7 @@ const renderQuote = (el: ElementTable, style: Style, block: Extract<Block, { kin
   const inner = columns - 2
   return (
     <Box key={key} flexDirection="row" alignItems="stretch">
-      {quoteBar(el, '│ ', style.theme.accent, heightOf(block.blocks, inner))}
+      {quoteBar(el, '│ ', style.theme.codeComment, heightOf(block.blocks, inner))}
       <Box flexDirection="column" rowGap={1}>{renderNested(el, { ...style, inside: 'quote' }, block.blocks, inner, key, copy, fold, tip)}</Box>
     </Box>
   )
@@ -592,13 +589,13 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
         return (
           <Box key={key} flexDirection="column">
             {note ? <Text color={t.codeComment}>{note}</Text> : null}
-            <Text color={t.codeComment}>{` ${block.lang || 'code'}`}</Text>
+            <Box flexDirection="row" justifyContent="space-between" columnGap={2}>
+              <Text color={t.codeComment}>{` ${block.lang || 'code'}`}</Text>
+              {hover ? null : copy?.(source, `copy${b}`) ?? null}
+            </Box>
             <Box flexDirection="column" borderStyle="round" borderColor={t.rule} paddingX={1}>
-              <Box flexDirection="row" columnGap={2}>
-                <Box flexDirection="column" flexGrow={1} flexShrink={1}>{body}</Box>
-                {hover ? null : copy?.(source, `copy${b}`) ?? null}
-              </Box>
               {hover ? floating(copy?.(source, `copy${b}`) ?? null) : null}
+              <Box flexDirection="column">{body}</Box>
               {toggle?.element ?? null}
             </Box>
           </Box>

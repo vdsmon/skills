@@ -90,12 +90,13 @@ test('a one-paragraph reply is not bold', async $ => {
   await ui.unmount()
 })
 
-test('H1 draws in a banner box and H2 over a heavy rule', async $ => {
+test('H1 draws bold over a heavy rule, H2 bold alone, both with no box', async $ => {
   const ui = await $.ui.mount(reply('# Title\n\n## Section'))
-  const banner = (await ui.findAll({ type: 'Box' })).find(b => b.props.borderStyle === 'bold')
-  expect(banner?.props.borderColor).toBe(t.heading)
-  expect(banner?.text).toBe('Title')
-  expect((await ui.find({ type: 'Text', text: /^━━━━━━━$/ }))?.props.color).toBe(t.heading)
+  expect((await ui.findAll({ type: 'Box' })).some(b => b.props.borderStyle === 'bold')).toBe(false)
+  expect((await ui.find({ type: 'Text', text: /^Title$/ }))?.props).toMatchObject({ bold: true, color: t.heading })
+  expect((await ui.find({ type: 'Text', text: /^━━━━━$/ }))?.props.color).toBe(t.heading)
+  expect((await ui.find({ type: 'Text', text: /^Section$/ }))?.props).toMatchObject({ bold: true, color: t.heading })
+  expect(await ui.find({ type: 'Text', text: /^━━━━━━━$/ })).toBeUndefined()
   await ui.unmount()
 })
 
@@ -169,7 +170,7 @@ test('numbers and file paths in prose get their colors', async $ => {
   await ui.unmount()
 })
 
-test('a code block draws its language above a rounded box with the copy button inside at the top right', async $ => {
+test('a code block draws its language and copy button above a rounded box', async $ => {
   const ui = await $.ui.mount(reply('Run:\n\n```python\nprint("hi")\n```'))
   expect((await ui.find({ type: 'Text', text: /^ python$/ }))?.props.color).toBe(t.codeComment)
   const [box] = await roundBoxes(ui)
@@ -179,13 +180,14 @@ test('a code block draws its language above a rounded box with the copy button i
   const isRound = (n: Node) => n.type === 'Box' && n.props.borderStyle === 'round'
   const parent = (await ui.findAll({ type: 'Box' })).find(b => ((b.children ?? []) as Node[]).some(c => c !== null && typeof c === 'object' && isRound(c)))
   const order = ((parent?.children ?? []) as Node[]).filter(n => n !== null && typeof n === 'object')
-  const label = order.findIndex(n => n.type === 'Text' && drawn(n) === ' python')
+  const label = order.findIndex(n => n.type === 'Box' && drawn(n) === ' python')
   expect(label).toBeGreaterThanOrEqual(0)
   expect(label).toBeLessThan(order.findIndex(isRound))
-  const top = (box?.children ?? [])[0] as Node | undefined
-  expect(top?.props.flexDirection).toBe('row')
-  const last = (top?.children ?? []).at(-1) as Node | undefined
+  const top = order[label]
+  expect(top?.props).toMatchObject({ flexDirection: 'row', justifyContent: 'space-between' })
+  const last = (top?.children ?? []).filter(Boolean).at(-1) as Node | undefined
   expect(last?.type).toBe('Button')
+  expect(within(box, isButton())).toBe(false)
   expect(last?.props.label).toBe('⧉ copy')
   await ui.unmount()
 })
@@ -202,7 +204,7 @@ test('a console block colors commands, leaves output plain and copies the comman
   const copies = recordCopies(on)
   const ui = await $.ui.mount(reply('Run:\n\n```console\n$ git status --short\n## main...origin/main\n$ mise run test\nok - cc-keepwarm\n```'))
   expect((await ui.find({ type: 'Text', text: /^ok - cc-keepwarm$/ }))?.props).toMatchObject({ color: t.codeText, dimColor: true })
-  expect((await ui.find({ type: 'Text', text: /^\$ $/ }))?.props.color).toBe(t.accent)
+  expect((await ui.find({ type: 'Text', text: /^\$ $/ }))?.props.color).toBe(t.codeComment)
   expect((await ui.find({ type: 'Text', text: /^git$/ }))?.props.color).toBe(t.codeCommand)
   await ui.press({ key: 'copy1' })
   expect(copies).toEqual(['git status --short\nmise run test'])
@@ -281,7 +283,7 @@ test('slash-command output draws like a reply; colored or errored output goes to
   engine(on)
   const command = (text: string, isErrored = false) => ({ plugin: 'cc-dazzle', surface: 'terminal' as const, component: 'CommandOutput' as const, props: { command: 'wrap-up', args: '', text, isErrored } })
   const ok = await $.ui.mount(command(`# Report\n\n${TABLE}`))
-  expect((await ok.findAll({ type: 'Box' })).find(b => b.props.borderStyle === 'bold')?.text).toBe('Report')
+  expect((await ok.find({ type: 'Text', text: /^Report$/ }))?.props.color).toBe(t.heading)
   expect((await ok.find({ type: 'Text', text: /^Name$/ }))?.props.color).toBe(t.tableHeader)
   expect(await ok.find({ type: 'Text', text: /^╞[═╪]+╡$/ })).toBeDefined()
   expect(await labels(ok)).toEqual(['⧉ md', '⧉ art'])
