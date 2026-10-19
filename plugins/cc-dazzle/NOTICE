@@ -98,7 +98,7 @@ SOFTWARE.
 
 ================================================================================
 cc-stretch (https://github.com/pro-vi/cc-stretch)
-hooks/stretch/, hooks/stretch.test.tsx and hooks/stretch-upstream.test.tsx, ported from 0.3.3 (commit 4466e11), with fixes from releases up to 0.5.1 (commit 9aa56da).
+hooks/stretch/ and hooks/stretch*.test.tsx, ported from 0.3.3 (commit 4466e11), with fixes and features from releases up to 0.5.1 (commit 9aa56da).
 ================================================================================
 
 MIT License

@@ -16,21 +16,20 @@ $ git log --oneline 354e11d..HEAD
 
 ## prismantis 0.24.0 to 0.31.0
 
-Ported: hover copy buttons that cover only their own cells (#170), the 8-bit control character filter with the escape-sequence filter it extends (#188, #98), code drawn through the app's own Code element off the terminal (#176), Lua highlighting (#216), and one color and a legend name per xychart series (#225). Both vendor files are upstream's, unchanged.
+Ported: hover copy buttons that cover only their own cells (#170), the 8-bit control character filter with the escape-sequence filter it extends (#188, #98), code drawn through the app's own Code element off the terminal (#176), Lua highlighting (#216), one color and a legend name per xychart series (#225), and pie and gantt charts (#177, #221), with the pie always round where it fits (upstream's `pieStyle` default). Both vendor files and `hooks/charts.ts` are upstream's, unchanged.
 
 Left out on purpose:
 
-- Pie and gantt charts (#177, #221): new diagram kinds. Ask to bring them in.
 - Markdown images in kitty and Ghostty, and the image path check (#179, #185): they live in `latex.ts`, which cc-dazzle dropped.
 - Hebrew and right-to-left fixes (#181, #194, #195, #210, #217), CJK labels in figures (#201), the Korean demo, `/prismantis setup` (#178, #198, #206), the repro-issue hint (#203), and CI, badges and the security policy: parts cc-dazzle does not have.
 
 ## cc-stretch 0.3.3 to 0.5.1
 
-Ported: code spans and fences read across lines and emoji counted as two cells (0.3.5), CJK and Thai line breaks and growth (0.3.6), a hang on a short form over several lines and Private Use Area characters drawn as written (0.3.7), the guide line "Stretch list items, not whole lists." (0.4.0), and a reply's flushes filtered in order (0.5.0). `parse.ts`, `grow.ts` and `guide.ts` are upstream's, unchanged; `layout.ts` takes the fixes by hand.
+Ported: code spans and fences read across lines and emoji counted as two cells (0.3.5), CJK and Thai line breaks and growth (0.3.6), a hang on a short form over several lines and Private Use Area characters drawn as written (0.3.7), the guide line "Stretch list items, not whole lists." (0.4.0), a reply's flushes filtered in order (0.5.0), keyboard letters (0.4.0), drag-select and links drawn in a stretch paragraph (0.5.0), and double-click select (0.5.1). `parse.ts`, `grow.ts` and `guide.ts` are upstream's, unchanged; `layout.ts`, `reply.tsx` and `index.tsx` take the rest by hand, in cc-dazzle's colors: letters on red, the rest of a lettered phrase on mauve, links in the link blue.
 
 Left out on purpose:
 
-- Keyboard letters (0.4.0), the style toolbar and tinted highlights (0.5.0), drag-select, double-click select and links drawn in a stretch paragraph (0.5.0, 0.5.1): features. Ask to bring them in.
+- The style toolbar and tinted highlights (0.5.0): cc-dazzle's look is fixed on purpose.
 - Filter state kept across a plugin reload (0.5.0): cc-stretch reloads on each toolbar save; cc-dazzle's settings change rarely.
 - The plain cell after a styled paragraph (0.4.0): 0.5.1 took it out again.
 - Tool-group folding (0.3.5): cc-dazzle draws tool rows itself.

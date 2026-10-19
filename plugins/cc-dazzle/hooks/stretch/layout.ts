@@ -4,7 +4,8 @@
 
 import { NUMBER, PATH } from '../markdown'
 import { THEME } from '../theme'
-import { closesFence, isRule, openingFence } from './parse'
+import { closesFence, drawnAs, isRule, openingFence } from './parse'
+import type { Segment, Stretch } from './parse'
 
 /** What a press on a pressable phrase does to its stretch. */
 export type Action = 'open' | 'close'
@@ -21,12 +22,25 @@ export type Run = {
   color?: string
   kind?: 'number' | 'path'
   link?: { action: Action; key: string }
+  /** Where a markdown link or a bare URL goes, drawn as a hyperlink. */
+  href?: string
 }
 
 /** The tint of the words the newest open stretch added: drawn in the text's own colour, marked in the gutter. */
 export const FRESH = 'fresh'
 
 export type Row = Run[]
+
+/** How a row a line wrapped onto joins the row before it: what the break took out, and the lead's cells. */
+export type Continuation = { join: string; lead: number }
+
+// The rows a line wrapped onto, so a copy of several rows gives back the line as written.
+const continuations = new WeakMap<Row, Continuation>()
+
+/** How `row` continues the row before it, if a line wrapped onto it. */
+export function continuationOf(row: Row): Continuation | undefined {
+  return continuations.get(row)
+}
 
 // Noncharacters frame a pressable phrase or a tinted word in composed text: Unicode keeps them for a
 // program's own use, where the Private Use Area holds icons such as Nerd Font's. A start mark with no
@@ -72,6 +86,26 @@ export function isMarkup(word: string): boolean {
 /** A pressable phrase for composed text: drawn as `label`, a press does `action` to stretch `key`. */
 export function link(action: Action, key: string, label: string): string {
   return `${START}${action}${SEP}${key}${SEP}${label}${END}`
+}
+
+/**
+ * The stretches `action` acts on among those drawn, with the stretches in `open` open: to open, those
+ * drawn as links with every stretch around them open; to close, those open, whose « is drawn.
+ */
+export function targetsIn(parts: Segment[], open: readonly string[], action: Action): Stretch[] {
+  return parts.flatMap(part => {
+    if (typeof part === 'string' || part.long === undefined) return []
+    switch (drawnAs(part)) {
+      case 'text':
+        return []
+      // A short form over several lines is drawn open, with no «, so the stretches inside it are drawn.
+      case 'open':
+        return targetsIn(part.long, open, action)
+      case 'link':
+        if (!open.includes(part.key)) return action === 'open' ? [part] : []
+        return [...(action === 'close' ? [part] : []), ...targetsIn(part.long, open, action)]
+    }
+  })
 }
 
 /** The rows `text` takes in a region `columns` cells wide. */
@@ -286,9 +320,19 @@ function inline(text: string, tints: Line['tints'], isBold = false): Run[] {
     const markdownLink = /^\[([^\]\n]+)\]\(([^)\s]+)\)/.exec(text.slice(i))
     if (markdownLink) {
       const label = markdownLink[1] ?? ''
-      for (let k = 0; k < label.length; k++) emit(label[k] ?? '', i + 1 + k, { underline: true })
-      emit(` (${markdownLink[2] ?? ''})`, i + markdownLink[0].length - 1, { dim: true })
+      const href = markdownLink[2] ?? ''
+      // A target that opens the same from any folder is drawn as a link; any other keeps its target
+      // beside it.
+      const isFollowed = /^(https?|file):/.test(href)
+      for (let k = 0; k < label.length; k++) emit(label[k] ?? '', i + 1 + k, isFollowed ? { href } : { underline: true })
+      if (!isFollowed) emit(` (${href})`, i + markdownLink[0].length - 1, { dim: true })
       i += markdownLink[0].length
+      continue
+    }
+    const url = ch === 'h' && !/\w/.test(text[i - 1] ?? ' ') ? bareUrlAt(text, i) : undefined
+    if (url !== undefined) {
+      for (let k = 0; k < url.length; k++) emit(url[k] ?? '', i + k, { href: url })
+      i += url.length
       continue
     }
     emit(ch, i)
@@ -300,7 +344,7 @@ function inline(text: string, tints: Line['tints'], isBold = false): Run[] {
 
 /** A plain run split where cc-dazzle colors a number or a path. */
 function decorate(run: Run): Run[] {
-  if (run.code || run.dim || run.kind) return [run]
+  if (run.code || run.dim || run.kind || run.href !== undefined) return [run]
   const marks: { start: number; end: number; kind: 'number' | 'path' }[] = []
   for (const m of run.text.matchAll(PATH)) marks.push({ start: m.index, end: m.index + m[0].length, kind: 'path' })
   for (const m of run.text.matchAll(NUMBER)) {
@@ -317,6 +361,23 @@ function decorate(run: Run): Run[] {
   }
   if (at < run.text.length) out.push({ ...run, text: run.text.slice(at) })
   return out
+}
+
+/**
+ * The `http:` or `https:` URL written at `at`, without punctuation that ends the sentence after it
+ * or a closing bracket it did not open.
+ */
+function bareUrlAt(text: string, at: number): string | undefined {
+  let url = /^https?:\/\/[^\s<>`\ufdd0-\ufdd4]+/.exec(text.slice(at))?.[0]
+  if (url === undefined) return undefined
+  for (;;) {
+    const opened = url.split('(').length - 1
+    const closed = url.split(')').length - 1
+    if (/[.,;:!?'"*_]$/.test(url) || (url.endsWith(')') && closed > opened)) url = url.slice(0, -1)
+    else break
+  }
+
+  return /^https?:\/\/[^/]/.test(url) ? url : undefined
 }
 
 /**
@@ -340,14 +401,18 @@ function wrap(runs: Run[], width: number, first: string, rest: string, leadStyle
     used += widthOf(piece.text)
     isBare = false
   }
-  const breakRow = () => {
+  const breakRow = (isAtSpace = false) => {
     const last = row.at(-1)
+    let join = isAtSpace ? ' ' : ''
     if (last !== undefined && !isBare) {
-      last.text = last.text.trimEnd()
+      const trimmed = last.text.trimEnd()
+      if (trimmed !== last.text) join = ' '
+      last.text = trimmed
       if (last.text === '') row.pop()
     }
     rows.push(row)
     begin(rest)
+    continuations.set(row, { join, lead: used })
   }
 
   begin(first)
@@ -357,7 +422,7 @@ function wrap(runs: Run[], width: number, first: string, rest: string, leadStyle
       if (text.trim() === '') {
         if (isBare) continue
         if (used + widthOf(text) <= width) put({ ...run, text })
-        else breakRow()
+        else breakRow(true)
         continue
       }
       let word = text
@@ -395,6 +460,7 @@ function cutRows(runs: Run[], width: number): Row[] {
         rows.push(row)
         row = []
         used = 0
+        continuations.set(row, { join: '', lead: 0 })
       }
       const [head, tail] = cut(rest, width - used)
       row.push({ ...run, text: head })
@@ -424,7 +490,7 @@ function cut(text: string, room: number): [string, string] {
 function isSameStyle(a: Run, b: Run): boolean {
   return (
     a.bold === b.bold && a.italic === b.italic && a.code === b.code && a.underline === b.underline && a.dim === b.dim && a.tint === b.tint &&
-    a.color === b.color && a.kind === b.kind &&
+    a.color === b.color && a.kind === b.kind && a.href === b.href &&
     a.link?.action === b.link?.action && a.link?.key === b.link?.key
   )
 }

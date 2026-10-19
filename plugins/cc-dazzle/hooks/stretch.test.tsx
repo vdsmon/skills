@@ -225,9 +225,12 @@ describe('layout', () => {
     const added = (word: string) => tint('#d3bdff', word)
     const text = `${added('Run')} ${added('`claude')} ${added('plugin')} install\` and ${added('[the')} ${added('docs')} page](https://x.invalid/a) now`
     const runs = layout(text, 80)[0] ?? []
-    expect(runs.map(run => run.text).join('')).toBe('Run claude plugin install and the docs page (https://x.invalid/a) now')
+    expect(runs.map(run => run.text).join('')).toBe('Run claude plugin install and the docs page now')
     expect(runs.filter(run => run.code).map(run => run.text)).toEqual(['claude plugin install'])
-    expect(runs.filter(run => run.underline).map(run => [run.text, run.tint])).toEqual([['the docs ', '#d3bdff'], ['page', undefined]])
+    expect(runs.filter(run => run.href).map(run => [run.text, run.tint, run.href])).toEqual([
+      ['the docs ', '#d3bdff', 'https://x.invalid/a'],
+      ['page', undefined, 'https://x.invalid/a'],
+    ])
     expect(runs.find(run => run.text.includes('and'))?.tint).toBeUndefined()
   })
 
