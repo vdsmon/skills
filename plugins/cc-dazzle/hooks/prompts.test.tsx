@@ -46,6 +46,20 @@ test('a typed prompt draws as a bubble on the left with its 24h send time', asyn
   await ui.unmount()
 })
 
+test('a prompt keeps one blank line where it has one or more, and drops none of its text', async ($, on) => {
+  mock.clock(on, { now: local(10, 14, 32) })
+  for (const [text, rows] of [
+    ['yess\n\nalso, merge', ['yess', ' ', 'also, merge']],
+    ['yess\n\n\n\nalso, merge', ['yess', ' ', 'also, merge']],
+    ['yess\n  \n\t\nalso, merge', ['yess', ' ', 'also, merge']],
+    ['one\ntwo', ['one', 'two']],
+  ] as const) {
+    const ui = await $.ui.mount(prompt(text))
+    expect((await ui.findAll({ type: 'Text' })).filter(n => n.props.color === t.codeText).map(n => n.text)).toEqual([...rows])
+    await ui.unmount()
+  }
+})
+
 test('a prompt sent on another day shows the date before the time', async ($, on) => {
   const clock = mock.clock(on, { now: local(10, 14, 32) })
   submits(on)
