@@ -200,6 +200,13 @@ test('a TypeScript code block gets Prism colors', async $ => {
   await ui.unmount()
 })
 
+test('a Lua code block gets Prism colors', async $ => {
+  const ui = await $.ui.mount(reply('```lua\nlocal name = "shop" -- app\n```'))
+  expect((await ui.find({ type: 'Text', text: /^local$/ }))?.props.color).toBe(t.codeFlag)
+  expect((await ui.find({ type: 'Text', text: /^-- app$/ }))?.props).toMatchObject({ color: t.codeComment, italic: true })
+  await ui.unmount()
+})
+
 test('a console block colors commands, leaves output plain and copies the commands only', async ($, on) => {
   const copies = recordCopies(on)
   const ui = await $.ui.mount(reply('Run:\n\n```console\n$ git status --short\n## main...origin/main\n$ mise run test\nok - cc-keepwarm\n```'))

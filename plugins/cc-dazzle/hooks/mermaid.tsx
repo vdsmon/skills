@@ -83,6 +83,50 @@ export const mermaidText = (source: string, columns: number): string | null =>
     return draw(source.replace(SIDEWAYS, '$1TD'), columns) ?? art
   })
 
+const prepared = (padded: string) => unquoteCategories(padded.replace(/^(\s*%%[^\n]*\n)+/, '')).replace(/(-->|-\.->|==>|---|-\.-|===)[ \t]+\|/g, '$1|')
+
+// A chart of two or more series is drawn a second time in truecolor with neutral role colors, so
+// each cell's series hue tells which series owns it.
+const NEUTRAL = '#808080'
+const PROBE = { fg: NEUTRAL, border: NEUTRAL, line: NEUTRAL, arrow: NEUTRAL, corner: NEUTRAL, junction: NEUTRAL, accent: '#ff0000', bg: '#000000' }
+const SGR = /\x1b\[([\d;]*)m/g
+
+const seriesOf = (colored: string): number[][] => {
+  const hues = colored.split('\n').map(line => {
+    const row: (string | undefined)[] = []
+    let hue: string | undefined
+    let at = 0
+    const take = (text: string) => graphemes(text).forEach(() => row.push(hue))
+    for (const m of line.matchAll(SGR)) {
+      take(line.slice(at, m.index))
+      hue = m[1]!.startsWith('38;2;') && m[1] !== '38;2;128;128;128' ? m[1] : undefined
+      at = m.index + m[0].length
+    }
+    take(line.slice(at))
+    return row
+  })
+  const legend = hues.find(row => row.some(Boolean)) ?? []
+  const order = [...new Set(legend.filter((h): h is string => h !== undefined))]
+  return hues.map(row => row.map(h => (h === undefined ? -1 : order.indexOf(h))))
+}
+
+const seriesCache = new Map<string, number[][] | null>()
+
+export const chartSeries = (source: string, columns: number): number[][] | undefined => {
+  source = source.replace(INLINE_TAG, '')
+  if (!/^\s*xychart/.test(source) || (source.match(/^\s*(bar|line)\b/gm) ?? []).length < 2) return undefined
+  const padded = padWide(source)
+  const size = chartSize(columns, padded)
+  return remember(seriesCache, `${size.width}:${source}`, () => {
+    try {
+      setChartSize(size.width, size.height)
+      return seriesOf(renderMermaidAscii(prepared(padded), { useAscii: false, colorMode: 'truecolor', theme: PROBE, paddingX: 3, paddingY: 1 }))
+    } catch {
+      return null
+    }
+  }) ?? undefined
+}
+
 const draw = (source: string, columns: number): string | null => {
   const isChart = /^\s*xychart/.test(source)
   const padded = padWide(source)
@@ -91,7 +135,7 @@ const draw = (source: string, columns: number): string | null => {
   return remember(textCache, key, () => {
     try {
       if (isChart) setChartSize(size.width, size.height)
-      const art = renderMermaidAscii(unquoteCategories(padded.replace(/^(\s*%%[^\n]*\n)+/, '')).replace(/(-->|-\.->|==>|---|-\.-|===)[ \t]+\|/g, '$1|'), { useAscii: false, colorMode: 'none', paddingX: 3, paddingY: 1 }).replace(/[ \t]+$/gm, '').trimEnd().replace(/▶/g, '►').replace(/◀/g, '◄')
+      const art = renderMermaidAscii(prepared(padded), { useAscii: false, colorMode: 'none', paddingX: 3, paddingY: 1 }).replace(/[ \t]+$/gm, '').trimEnd().replace(/▶/g, '►').replace(/◀/g, '◄')
       return (isChart ? labelBars(art, padded) : art.split('\n').filter(l => !/^[\s│|]*$/.test(l)).join('\n')).replaceAll(PAD, '')
     } catch {
       return null
@@ -102,7 +146,7 @@ const draw = (source: string, columns: number): string | null => {
 const LINE = /[─-╿◇]/
 const ARROW = /[►◄▲▼]/
 
-const paint = (art: string, style: Style): (string | undefined)[][] => {
+const paint = (art: string, style: Style, series?: number[][]): (string | undefined)[][] => {
   const t = style.theme
   const grid = art.split('\n').map(cells)
   const cell = (r: number, c: number) => grid[r]?.[c] ?? ''
@@ -146,6 +190,7 @@ const paint = (art: string, style: Style): (string | undefined)[][] => {
   })
   const single = bars.length > 1 && bars.every((x, i) => i === 0 || x - ends[i - 1]! > 2)
   const barColor = (i: number) => (single ? (tops[i] === Math.min(...tops) ? DIAGRAM_HUES[3] : t.quote) : next(i))
+  series?.forEach((row, r) => row.forEach((owner, c) => owner >= 0 && grid[r]?.[c]?.trim() && (color[r]![c] = next(owner))))
   grid.forEach((row, r) =>
     row.forEach((ch, c) => {
       if (color[r]![c] !== undefined) return
@@ -166,10 +211,10 @@ const paint = (art: string, style: Style): (string | undefined)[][] => {
 type Painted = { grid: string[][]; colors: (string | undefined)[][] }
 const painted = new WeakMap<Theme, Map<string, Painted>>()
 
-export const boxArt = ({ Box, Text }: ElementTable, style: Style, art: string, key: string, marks: [string[], Mark][] = []): RenderElement => {
+export const boxArt = ({ Box, Text }: ElementTable, style: Style, art: string, key: string, marks: [string[], Mark][] = [], series?: number[][]): RenderElement => {
   const cache = painted.get(style.theme) ?? new Map<string, Painted>()
   painted.set(style.theme, cache)
-  const { grid, colors } = remember(cache, art, () => ({ grid: art.split('\n').map(cells), colors: paint(art, style) }))
+  const { grid, colors } = remember(cache, art, () => ({ grid: art.split('\n').map(cells), colors: paint(art, style, series) }))
   return (
     <Box key={key} flexDirection="column" paddingLeft={2}>
       {grid.map((chars, i) => {

@@ -182,3 +182,76 @@ test('a line at 0 runs along the axis line', () => {
     expect(lines[axis - 1]).not.toMatch(/─/)
   }
 })
+
+// Fixes from upstream prismantis 0.24.0 to 0.31.0.
+
+const CONTROLS = '\u001b]8;;file:///etc/passwd\u0007x\u001b]8;;\u0007 \u001b[2J \u001b]52;c;cHduZWQ=\u0007 \u009b31m'
+for (const stretch of [false, true]) test(`terminal control sequences in a reply are never drawn${stretch ? ', with stretchtext on' : ''}`, { options: { stretch } }, async $ => {
+  const ui = await $.ui.mount(reply(`hi ${CONTROLS}\n\n| a |\n|---|\n| ${CONTROLS} |\n\n> ${CONTROLS}\n\n- ${CONTROLS}\n\n\`\`\`bash\necho ${CONTROLS}\n\`\`\``, 120))
+  const texts = (await ui.findAll({ type: 'Text' })).map(n => n.text ?? '')
+  expect(texts.length).toBeGreaterThan(4)
+  expect(texts.filter(t => /[\u001b\u0007\u009b]/.test(t))).toEqual([])
+  expect((await ui.findAll({ type: 'Link' })).map(l => String(l.props.href))).toEqual([])
+  await ui.unmount()
+})
+
+const chart = (body: string) => reply(`\`\`\`mermaid\nxychart-beta\n${body}\n\`\`\``)
+
+test('each line of a multi-line chart and its legend swatch share one color, distinct from the other lines', async $ => {
+  const ui = await $.ui.mount(chart('  x-axis [a, b, c, d]\n  y-axis 0 --> 10\n  line [9, 9, 9, 9]\n  line [5, 5, 5, 5]\n  line [1, 1, 1, 1]'))
+  const lines = (await ui.findAll({ type: 'Text', text: /^─{4,}$/ })).map(l => l.props.color)
+  expect(new Set(lines).size).toBe(3)
+  const swatches = (await ui.findAll({ type: 'Text', text: /^─$/ })).map(s => s.props.color)
+  expect(new Set(swatches)).toEqual(new Set(lines))
+  await ui.unmount()
+})
+
+test('a named series shows its name in the legend and a nameless one keeps Line N', async $ => {
+  const ui = await $.ui.mount(chart('  x-axis [a, b, c]\n  y-axis 0 --> 10\n  line "east" [8, 8, 8]\n  line [2, 2, 2]'))
+  expect(await ui.find({ type: 'Text', text: /east/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /Line 2/ })).toBeDefined()
+  expect(new Set((await ui.findAll({ type: 'Text', text: /^─{3,}$/ })).map(l => l.props.color)).size).toBe(2)
+  await ui.unmount()
+})
+
+test('grouped bars take one color per series, not one per bar', async $ => {
+  const ui = await $.ui.mount(chart('  x-axis [a, b, c]\n  y-axis 0 --> 10\n  bar [8, 8, 8]\n  bar [4, 4, 4]'))
+  const hues = new Set((await ui.findAll({ type: 'Text', text: /^[█▄▀]+$/ })).map(b => b.props.color))
+  expect(hues.size).toBe(2)
+  await ui.unmount()
+})
+
+const longCode = (n: number) => `\`\`\`text\n${Array.from({ length: n }, (_, i) => `step ${i + 1}`).join('\n')}\n\`\`\``
+
+test('code blocks draw through the native Code element off the terminal', async $ => {
+  const ui = await $.ui.mount({ ...reply('```ts\nconst name = "shop"\n  return name\n```'), surface: 'desktop' })
+  const code = await ui.find({ type: 'Code' })
+  expect(code?.props.source).toBe('const name = "shop"\n  return name')
+  expect(code?.props.language).toBe('ts')
+  expect(code?.props.startLine).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /^const$/ })).toBeUndefined()
+  await ui.unmount()
+  const long = await $.ui.mount({ ...reply(longCode(12)), surface: 'desktop' })
+  expect((await long.find({ type: 'Code' }))?.props.startLine).toBe(1)
+  expect(await long.find({ type: 'Text', text: /^ 1  $/ })).toBeUndefined()
+  await long.unmount()
+  const term = await $.ui.mount(reply('```ts\nconst name = "shop"\n```'))
+  expect(await term.find({ type: 'Code' })).toBeUndefined()
+  await term.unmount()
+})
+
+test('a long native code block folds to 20 lines and copies every line', async ($, on) => {
+  const copied: string[] = []
+  on('ui.copy', (_, e) => {
+    copied.push(e.text)
+    return { value: { isCopied: true as const } }
+  })
+  const ui = await $.ui.mount({ ...reply(longCode(45)), surface: 'desktop' })
+  const shown = async () => String((await ui.find({ type: 'Code' }))!.props.source).split('\n').length
+  expect(await shown()).toBe(20)
+  await ui.press({ key: 'copy0' })
+  expect(copied.at(-1)).toBe(Array.from({ length: 45 }, (_, i) => `step ${i + 1}`).join('\n'))
+  await ui.press({ key: 'fold0' })
+  expect(await shown()).toBe(45)
+  await ui.unmount()
+})

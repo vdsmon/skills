@@ -2,7 +2,7 @@ import { atom, memberOf, read, update } from 'claude-code'
 import type { EngineInterface, On, RenderElement, RenderInput, SessionMessage } from 'claude-code'
 
 import { GUIDE } from './guide'
-import { closeAfter, codeSpanEnd, hideLongForms, isLinkable, isOpenable, KEY_SEPARATOR, paragraphsOf, parse, stretches } from './parse'
+import { closeAfter, codeSpan, hideLongForms, isLinkable, isOpenable, KEY_SEPARATOR, newStreamState, paragraphsOf, parse, stretches } from './parse'
 import type { Segment, StreamState, Stretch } from './parse'
 import { THEME } from '../theme'
 import { FRESH } from './layout'
@@ -80,7 +80,7 @@ export async function writtenText($: EngineInterface, text: string): Promise<str
   const messages = await $.session.messages().catch(() => [])
   for (const message of messages) {
     if (message.role !== 'assistant' || !message.text.includes('{{')) continue
-    const shown = hideLongForms(message.text, { open: [], fence: undefined })
+    const shown = hideLongForms(message.text, newStreamState())
     if (shown !== message.text) remember(shown, message.text)
   }
   return written.get(key) ?? text
@@ -91,22 +91,40 @@ export function registerStretch(on: On): void {
   // While a reply streams, Claude Code draws its lines before the reply reaches AssistantMessage.
   // One filter state per message, until its final flush; null for a message left as written.
   const streams = new Map<string, { state: StreamState | null; raw: string; shown: string }>()
-  on('classic.MessageDisplay', async ($, e, next) => {
-    const answer = await next(e)
-    // The desktop app draws a finished reply from this display text, so hiding the long forms here
-    // would strip the markup its links are made from. Decided on a message's first flush.
-    let stream = streams.get(e.message_id)
-    if (stream === undefined) stream = { state: (await $.session.surfaces()).includes('desktop') ? null : { open: [], fence: undefined }, raw: '', shown: '' }
-    if (e.final) streams.delete(e.message_id)
-    else streams.set(e.message_id, stream)
-    if (stream.state === null) return answer
+  // Each streaming message's latest flush. As of Claude Code 2.1.302 up to three flushes of a message
+  // run at once and the final one does not wait, so each flush filters after the one before it.
+  const flushes = new Map<string, Promise<void>>()
+  on('classic.MessageDisplay', ($, e, next) => {
+    const before = flushes.get(e.message_id)
+    const flush = (async () => {
+      const answer = await next(e)
+      await before
+      let stream = streams.get(e.message_id)
+      if (stream === undefined) {
+        // A message that begins abandons any not finished, which then gets no final flush.
+        if (e.index === 0) for (const id of streams.keys()) if (!flushes.has(id)) streams.delete(id)
+        // The desktop app draws a finished reply from this display text, so hiding the long forms here
+        // would strip the markup its links are made from. Decided on a message's first flush.
+        stream = { state: (await $.session.surfaces()).includes('desktop') ? null : newStreamState(), raw: '', shown: '' }
+      }
+      if (e.final) streams.delete(e.message_id)
+      else streams.set(e.message_id, stream)
+      if (stream.state === null) return answer
 
-    const raw = answer.displayContent ?? e.delta
-    const shown = hideLongForms(raw, stream.state)
-    stream.raw += raw
-    stream.shown += shown
-    if (e.final && stream.raw !== stream.shown) remember(stream.shown, stream.raw)
-    return { ...answer, displayContent: shown }
+      const raw = answer.displayContent ?? e.delta
+      const shown = hideLongForms(raw, stream.state)
+      stream.raw += raw
+      stream.shown += shown
+      if (e.final && stream.raw !== stream.shown) remember(stream.shown, stream.raw)
+      return { ...answer, displayContent: shown }
+    })()
+    const settled = flush.then(
+      () => undefined,
+      () => undefined,
+    )
+    flushes.set(e.message_id, settled)
+    void settled.then(() => flushes.get(e.message_id) === settled && flushes.delete(e.message_id))
+    return flush
   }).catch(($, e, next) => next(e))
 
   on('prompt.compose', async ($, e, next) => {
@@ -250,7 +268,7 @@ function labelOf(short: string): string {
   let label = ''
   let from = 0
   for (let at = short.indexOf('`'); at !== -1; at = short.indexOf('`', from)) {
-    const stop = codeSpanEnd(short, at)
+    const { stop } = codeSpan(short, at)
     label += plain(short.slice(from, at)) + short.slice(at, stop)
     from = stop
   }

@@ -34,6 +34,7 @@ export type Style = {
   home: string
   inside?: 'quote' | 'alert'
   copyButtonStyle?: 'inline' | 'hover'
+  nativeCode?: boolean
   httpLinks?: boolean
   editorLinks?: boolean
   noteKey?: string

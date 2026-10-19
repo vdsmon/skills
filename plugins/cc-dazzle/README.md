@@ -16,8 +16,8 @@ Mods that draw the same row do not stack, so turn off any other mod that draws r
 ## What it draws
 
 - **Replies:** a blank line before each part, headings in lavender with a heavy rule under H1, boxed tables with a double line under the header, `[ ]` and `[✓]` task lists, and version numbers and file paths in color. Each color has one job: mauve marks who is talking, red marks only failures.
-- **Code:** a rounded box with the language and a copy button above it, Prism colors for 24 languages, and `console` blocks with the `$` lines colored as commands. Their copy button copies the commands only.
-- **Mermaid:** flowcharts and other diagrams drawn as box art. A diagram that does not fit shows its source with a note.
+- **Code:** a rounded box with the language and a copy button above it, Prism colors for 25 languages, and `console` blocks with the `$` lines colored as commands. Their copy button copies the commands only. In the desktop app, VS Code and the phone app, code goes through the app's own code element, so indentation holds.
+- **Mermaid:** flowcharts, charts and other diagrams drawn as box art. Each series of a chart gets its own color, and the legend shows its name. A diagram that does not fit shows its source with a note.
 - **Copy buttons:** `⧉ copy` on code, lists and quotes. Tables get `⧉ md`, `⧉ art` and, on macOS outside SSH, `⧉ html`, which pastes as a real table in Docs, Notion or email.
 - **Tool calls:** one dim row each (`Ran gh pr view 12`, `Read ~/src/app.ts`) under a bold `└─`. Bash and MCP output in columns shows as a boxed table with a row count and the run time.
 - **Edits:** a diff card in Claude Code's colors, with the changed words marked, code colored by file type, and long diffs folded.
@@ -26,7 +26,7 @@ Mods that draw the same row do not stack, so turn off any other mod that draws r
 
 ## Copy buttons on hover
 
-In `/config` (cc-dazzle, **Copy buttons**), `hover` hides each block's copy buttons until the pointer is over the block. They float over its top-right corner and take no space. `inline`, the default, always shows them. The phone app always shows them inline.
+In `/config` (cc-dazzle, **Copy buttons**), `hover` hides each block's copy buttons until the pointer is over the block. They float over its top-right corner, cover only their own cells and take no space. `inline`, the default, always shows them. The phone app always shows them inline.
 
 ## Stretchtext replies
 
@@ -47,4 +47,4 @@ When it is on, Claude writes each reply short, with `{{short|long}}` stretches. 
 
 ## Credits
 
-Most of the code comes from [prismantis](https://github.com/NahumLitvin/prismantis) by Nahum Litvin, through the fork `vdsmon/prismantis` at 0.15.19. Upstream prismantis stays a source of ideas: they are copied here by hand. The stretchtext code comes from [cc-stretch](https://github.com/pro-vi/cc-stretch) 0.3.3 by pro-vi, after Ted Nelson's stretchtext. `hooks/vendor/` holds frozen builds of [Prism](https://github.com/PrismJS/prism) 1.30.0 and [beautiful-mermaid](https://github.com/lukilabs/beautiful-mermaid) 1.1.3. See `NOTICE` for the licenses.
+Most of the code comes from [prismantis](https://github.com/NahumLitvin/prismantis) by Nahum Litvin, through the fork `vdsmon/prismantis` at 0.15.19. Upstream prismantis stays a source of ideas: they are copied here by hand. The stretchtext code comes from [cc-stretch](https://github.com/pro-vi/cc-stretch) 0.3.3 by pro-vi, with fixes from releases up to 0.5.1, after Ted Nelson's stretchtext. `hooks/vendor/` holds frozen builds of [Prism](https://github.com/PrismJS/prism) 1.30.0 and [beautiful-mermaid](https://github.com/lukilabs/beautiful-mermaid) 1.1.3. See `NOTICE` for the licenses.
