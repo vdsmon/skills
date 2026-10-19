@@ -29,7 +29,7 @@ SOFTWARE.
 
 ================================================================================
 Prism (https://github.com/PrismJS/prism)
-hooks/vendor/prism.js: Prism 1.30.0, core and 24 language definitions.
+hooks/vendor/prism.js: Prism 1.30.0, core and 25 language definitions.
 ================================================================================
 
 MIT LICENSE
@@ -98,7 +98,7 @@ SOFTWARE.
 
 ================================================================================
 cc-stretch (https://github.com/pro-vi/cc-stretch)
-hooks/stretch/ and hooks/stretch.test.tsx, ported from 0.3.3 (commit 4466e11).
+hooks/stretch/ and hooks/stretch*.test.tsx, ported from 0.3.3 (commit 4466e11), with fixes and features from releases up to 0.5.1 (commit 9aa56da).
 ================================================================================
 
 MIT License

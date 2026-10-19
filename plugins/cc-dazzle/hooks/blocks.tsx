@@ -537,19 +537,24 @@ const copySource = (style: Style, block: Block): string | undefined =>
   : block.kind === 'quote' || block.kind === 'alert' ? block.raw.split('\n').map(line => line.replace(/^\s*>\s?/, '')).join('\n')
   : undefined
 
-const opensWithCopy = (block: Block) => block.kind === 'quote' && (block.blocks[0]?.kind === 'code' || block.blocks[0]?.kind === 'table')
+const opensWithCopy = (block: Block): boolean =>
+  block.kind === 'quote' && (block.blocks[0]?.kind === 'code' || block.blocks[0]?.kind === 'table' || (block.blocks[0] !== undefined && opensWithCopy(block.blocks[0])))
+
+const holdsOnlyEmptyCode = (block: Block): boolean =>
+  block.kind === 'quote' && block.blocks.length === 1 && ((block.blocks[0]!.kind === 'code' && block.blocks[0]!.lines.length === 0) || holdsOnlyEmptyCode(block.blocks[0]!))
 
 export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], columns: number, drawn: Drawn = new Map(), copy?: CopyButton, fold?: Fold, tip?: Tip): RenderElement[] => {
   const { Box, Text } = el
   const t = style.theme
   const hover = style.copyButtonStyle === 'hover'
   // With hover, a block's buttons float over its top-right corner, out of the flow, and show only
-  // while the pointer is over the block. On a block narrower than its buttons they start at its left edge.
-  const floating = (button: RenderElement | null, low = false) => (button ? <Box position="absolute" {...(low ? { bottom: 0 } : { top: 0 })} left={0} minWidth="100%" justifyContent="flex-end" display="none" hover={{ display: 'flex' }}>{button}</Box> : null)
+  // while the pointer is over the block. They cover only their own cells: the block reserves their
+  // width, so they never run off its left edge.
+  const floating = (button: RenderElement | null, low = false) => (button ? <Box position="absolute" {...(low ? { bottom: 0 } : { top: 0 })} right={0} display="none" hover={{ display: 'flex' }}>{button}</Box> : null)
   const reserved = (button: RenderElement | null | undefined): number => (button?.type === 'Button' ? width(`[ ${button.props.label} ]`) : 0)
   const reservedAll = (row: (RenderElement | null | undefined)[]): number => row.reduce<number>((w, button) => (reserved(button) ? w + (w ? 1 : 0) + reserved(button) : w), 0)
   const buttons = blocks.map((block, b) => {
-    const text = copySource(style, block)
+    const text = hover && holdsOnlyEmptyCode(block) ? undefined : copySource(style, block)
     const isPlainCode = block.kind === 'code' && !drawn.get(b)?.element
     const art = drawn.get(b)?.art ?? (block.kind === 'table' ? () => tableArt(block) : undefined)
     const first = text === undefined || isPlainCode ? null : copy?.(text, `copy${b}`, block.kind === 'table' ? '⧉ md' : art === undefined ? undefined : '⧉ source')
@@ -580,21 +585,25 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
         const toggle = lines.length > FOLD_AT ? fold?.(codeId(lines), lines.length - FOLD_SHOW, `fold${b}`) : null
         const shown = toggle?.folded ? FOLD_SHOW : lines.length
         const session = isSessionLang(block.lang)
-        const rows = session
+        const numbered = lines.length >= NUMBER_AT && lines.length <= NUMBER_MAX
+        const rows = style.nativeCode
+          ? [<el.Code key="code" source={lines.slice(0, shown).join('\n') || ' '} {...(block.lang ? { language: block.lang } : {})} {...(numbered ? { startLine: 1 } : {})} />]
+          : session
           ? lines.slice(0, shown).map((line, i) => sessionLine(el, style, line, `${key}.${i}`))
           : (isShellLang(block.lang) ? null : highlightBlock(el, style, lines, block.lang, key))?.slice(0, shown) ?? lines.slice(0, shown).map((line, i) => codeLine(el, style, line, block.lang, `${key}.${i}`))
         const gutter = String(lines.length).length
         const source = session ? sessionCommands(lines) : lines.join('\n')
-        const body = lines.length < NUMBER_AT || lines.length > NUMBER_MAX ? rows : rows.map((row, i) => row.type === 'Text' ? <Box key={`n${i}`} flexDirection="row"><Text color={t.codeComment} dimColor>{`${String(i + 1).padStart(gutter)}  `}</Text>{row}</Box> : row)
+        const button = copy?.(source, `copy${b}`) ?? null
+        const body = !numbered || style.nativeCode ? rows : rows.map((row, i) => row.type === 'Text' ? <Box key={`n${i}`} flexDirection="row"><Text color={t.codeComment} dimColor>{`${String(i + 1).padStart(gutter)}  `}</Text>{row}</Box> : row)
         return (
-          <Box key={key} flexDirection="column">
+          <Box key={key} flexDirection="column" {...(hover ? { minWidth: reserved(button) } : {})}>
             {note ? <Text color={t.codeComment}>{note}</Text> : null}
             <Box flexDirection="row" justifyContent="space-between" columnGap={2}>
               <Text color={t.codeComment}>{` ${block.lang || 'code'}`}</Text>
-              {hover ? null : copy?.(source, `copy${b}`) ?? null}
+              {hover ? null : button}
             </Box>
             <Box flexDirection="column" borderStyle="round" borderColor={t.rule} paddingX={1}>
-              {hover ? floating(copy?.(source, `copy${b}`) ?? null) : null}
+              {hover ? floating(button) : null}
               <Box flexDirection="column">{body}</Box>
               {toggle?.element ?? null}
             </Box>

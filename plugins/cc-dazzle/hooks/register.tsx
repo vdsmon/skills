@@ -8,7 +8,7 @@ import { clipboardCommand } from './clipboard'
 import { clockText, promptKey, sentAt, withRecord } from './clock'
 import type { Block } from './markdown'
 import { parse } from './markdown'
-import { boxArt, inlineMarks, mermaidText, shortenEdgeLabels, unsupportedKind } from './mermaid'
+import { boxArt, chartSeries, inlineMarks, mermaidArt, shortenEdgeLabels, unsupportedKind } from './mermaid'
 import { renderUserPrompt } from './prompt'
 import { openText, registerStretch, stretchBody, stretchNote, writtenText } from './stretch/index'
 import { deliveredText, isQueued, withQueued, withoutDelivered } from './queue'
@@ -106,11 +106,12 @@ const drawMarkdown = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['
     const source = block.lines.join('\n')
     let narrowest = Infinity
     for (const max of [Infinity, 24, 12]) {
-      const art = mermaidText(max === Infinity ? source : shortenEdgeLabels(source, max), columns)
-      const wide = art === null ? Infinity : Math.max(...art.split('\n').map(width))
+      const text = max === Infinity ? source : shortenEdgeLabels(source, max)
+      const art = mermaidArt(text, columns)
+      const wide = art === null ? Infinity : Math.max(...art.text.split('\n').map(width))
       narrowest = Math.min(narrowest, wide)
       if (art === null || wide > columns - 6) continue
-      drawn.set(i, { element: boxArt(el, style, art, `b${i}`, inlineMarks(source)), art })
+      drawn.set(i, { element: boxArt(el, style, art.text, `b${i}`, inlineMarks(source), art.slices, chartSeries(text, columns)), art: art.text })
       break
     }
     if (!drawn.has(i) && !block.isOpen) {
@@ -142,7 +143,8 @@ export const register: Register = (on, options) => {
   const parsed = new Map<string, ReturnType<typeof parse>>()
   const parseCached = (text: string) => remember(parsed, text, () => parse(text, { numbers: true, paths: true }))
   const forSurface = (base: Style, surface: RenderSurface, reach?: Reach): Style => {
-    const drawn = surface === 'terminal' ? (reach?.http || reach?.editor ? { ...base, httpLinks: reach.http, editorLinks: reach.editor } : base) : base.htmlCopy ? { ...base, htmlCopy: null } : base
+    const drawn = surface === 'terminal' ? (reach?.http || reach?.editor ? { ...base, httpLinks: reach.http, editorLinks: reach.editor } : base) : { ...base, htmlCopy: null, nativeCode: true }
+    // Off the terminal, Text is proportional and collapses spaces, so code goes to the app's own Code element.
     // The phone app has no pointer to hover with.
     return surface === 'mobile' && drawn.copyButtonStyle === 'hover' ? { ...drawn, copyButtonStyle: 'inline' } : drawn
   }

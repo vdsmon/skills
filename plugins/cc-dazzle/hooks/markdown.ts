@@ -176,7 +176,11 @@ const numberNotes = (blocks: Block[], defs: Map<string, string>, hl: Highlight):
   return defs.size ? [...out, { kind: 'notes', notes, raw: '' }] : out
 }
 
-export const parse = (source: string, hl: Highlight): Block[] => {
+// Whole escape sequences go, not just the escape byte, so their payload never becomes a link.
+const CONTROL = /\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)?|\u001b\[[0-?]*[ -/]*[@-~]|\u001b[@-_]?|[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g
+
+export const parse = (raw: string, hl: Highlight): Block[] => {
+  const source = raw.replace(CONTROL, '')
   const blocks = parseBlocks(source, hl)
   return source.includes('[^') ? numberNotes(blocks, notesOf(source), hl) : blocks
 }

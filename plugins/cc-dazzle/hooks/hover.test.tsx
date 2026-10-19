@@ -37,11 +37,30 @@ test('copyButtonStyle hover floats every copy button out of the flow, shown only
   await ui.unmount()
 })
 
-test('copyButtonStyle hover starts buttons wider than their block at its left edge', HOVER, async $ => {
-  const ui = await $.ui.mount(reply(`${TABLE}\n\n\`\`\`bash\nls\n\`\`\``))
-  const corners = (await ui.findAll({ type: 'Box' })).filter(b => b.props.position === 'absolute' && b.props.top === 0)
-  expect(corners.map(b => b.text)).toEqual(['⧉ md⧉ art', '⧉ copy'])
-  for (const corner of corners) expect(corner.props).toMatchObject({ left: 0, minWidth: '100%', justifyContent: 'flex-end' })
+test('copyButtonStyle hover covers only its buttons\' cells, so the rest of the row stays drawn while they show', HOVER, async $ => {
+  const ui = await $.ui.mount(reply(`${TABLE}\n\n\`\`\`bash\nls\n\`\`\`\n\n> \`\`\`bash\n> npm test\n> \`\`\`\n>\n> Run that first.`))
+  const floats = (await ui.findAll({ type: 'Box' })).filter(b => b.props.position === 'absolute' && b.props.display === 'none')
+  expect(floats.map(b => b.text)).toEqual(['⧉ md⧉ art', '⧉ copy', '⧉ copy', '⧉ copy'])
+  for (const float of floats) {
+    expect(float.props.right).toBe(0)
+    expect(float.props.left).toBeUndefined()
+    expect(float.props.minWidth).toBeUndefined()
+  }
+  await ui.unmount()
+})
+
+test('copyButtonStyle hover makes a block at least as wide as its buttons, so buttons anchored right never run off its left edge', HOVER, async $ => {
+  const ui = await $.ui.mount(reply('| a |\n|---|\n| 1 |\n\n```\nx\n```'))
+  expect((await ui.find({ key: 'c0' }))?.props.minWidth).toBe('[ ⧉ md ] [ ⧉ art ]'.length)
+  expect((await ui.find({ key: 'b1' }))?.props.minWidth).toBe('[ ⧉ copy ]'.length)
+  await ui.unmount()
+})
+
+test('copyButtonStyle hover puts a quote\'s button on its last row when a nested quote opens it with code, and drops it on a quote of one empty code block', HOVER, async $ => {
+  const ui = await $.ui.mount(reply('> > ```bash\n> > ls\n> > ```\n> after\n\nmiddle\n\n> ```\n> ```'))
+  const floats = (await ui.findAll({ type: 'Box' })).filter(b => b.props.position === 'absolute' && b.props.display === 'none')
+  expect(floats.filter(b => b.props.bottom === 0).map(b => b.text)).toEqual(['⧉ copy'])
+  expect(floats.filter(b => b.text === '⧉ copy').length).toBe(floats.length)
   await ui.unmount()
 })
 

@@ -17,6 +17,17 @@ declare module 'claude-code' {
       stretchOrder: StateFamily<{ order: Record<string, number>; count: number }>
       /** The request id of the reply in which a stretch was opened last, until the next prompt. */
       stretchNewest: string
+      /**
+       * Per paragraph of a reply drawn by a stretch Client: the stretch the reader last asked to open
+       * or close from the keyboard, numbered so each ask acts once; null before any.
+       */
+      stretchAsk: StateFamily<{ key: string; action: 'open' | 'close'; n: number } | null>
+      /**
+       * While letters show, until the next edit or other change to the prompt, a submitted prompt or
+       * their chord again: whether they open or close, and each one's stretch, by paragraph member
+       * and stretch key; null while none show.
+       */
+      stretchLetters: { action: 'open' | 'close'; targets: { letter: string; member: string; key: string }[] } | null
     }
   }
 }

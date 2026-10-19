@@ -5,7 +5,7 @@ import type { Engine } from 'claude-code/testing'
 import { grow } from './stretch/grow'
 import { THEME as t } from './theme'
 import { layout, link, linkAt, tint, widthOf } from './stretch/layout'
-import { hideLongForms, paragraphsOf, parse, stretches } from './stretch/parse'
+import { hideLongForms, newStreamState, paragraphsOf, parse, stretches } from './stretch/parse'
 
 const REPLY = [
   'The build fails {{on a stale cache|because the cache key hashes only `package.json`{{, set in one file|, set in `ci/cache.ts`}}}}.',
@@ -123,10 +123,10 @@ describe('grow', () => {
 
 describe('streaming', () => {
   test('shows each stretch as its short form, across flushes, and drops lines of hidden depth', ON, async () => {
-    const state = { open: [], fence: undefined }
+    const state = newStreamState()
     expect(hideLongForms('The build fails {{on a stale cache|because the cache key', state)).toBe('The build fails on a stale cache')
     expect(hideLongForms('hashes only `package.json`.\nStill hidden.\n}}, written {{x|y}} there.\n\nNext `{{a|b}}` line.', state)).toBe(', written x there.\n\nNext `{{a|b}}` line.')
-    expect(hideLongForms('}} done.', { open: [{ isLong: true }], fence: undefined })).toBe(' done.')
+    expect(hideLongForms('}} done.', { ...newStreamState(), open: [{ isLong: true }] })).toBe(' done.')
   })
 
   for (const surfaces of [['terminal'], ['terminal', 'mobile'], ['terminal', 'vscode']] satisfies RenderSurface[][]) {
@@ -153,6 +153,16 @@ describe('streaming', () => {
     expect((await flush('m2', 0, 'A monad is {{a wrapper|a wrapper, like')).displayContent).toBeUndefined()
     surfaces = ['terminal']
     expect((await flush('m2', 1, 'Maybe or List,}} with two operations.', true)).displayContent).toBeUndefined()
+  })
+
+  test('flushes of one message that run at once are filtered in order', ON, async ($, on) => {
+    on('classic.MessageDisplay', () => ({}))
+    on('session.surfaces', () => ({ value: ['terminal'] }))
+    const flush = (index: number, delta: string, final = false) =>
+      $.classic.MessageDisplay({ turn_id: 't', message_id: 'm', index, final, delta })
+    const [opening, last] = await Promise.all([flush(0, 'A monad is {{a wrapper|a wrapper, like\n'), flush(1, 'Maybe or List,}} with two operations.', true)])
+    expect(opening.displayContent).toBe('A monad is a wrapper\n')
+    expect(last.displayContent).toBe(' with two operations.')
   })
 })
 
@@ -215,9 +225,12 @@ describe('layout', () => {
     const added = (word: string) => tint('#d3bdff', word)
     const text = `${added('Run')} ${added('`claude')} ${added('plugin')} install\` and ${added('[the')} ${added('docs')} page](https://x.invalid/a) now`
     const runs = layout(text, 80)[0] ?? []
-    expect(runs.map(run => run.text).join('')).toBe('Run claude plugin install and the docs page (https://x.invalid/a) now')
+    expect(runs.map(run => run.text).join('')).toBe('Run claude plugin install and the docs page now')
     expect(runs.filter(run => run.code).map(run => run.text)).toEqual(['claude plugin install'])
-    expect(runs.filter(run => run.underline).map(run => [run.text, run.tint])).toEqual([['the docs ', '#d3bdff'], ['page', undefined]])
+    expect(runs.filter(run => run.href).map(run => [run.text, run.tint, run.href])).toEqual([
+      ['the docs ', '#d3bdff', 'https://x.invalid/a'],
+      ['page', undefined, 'https://x.invalid/a'],
+    ])
     expect(runs.find(run => run.text.includes('and'))?.tint).toBeUndefined()
   })
 

@@ -4,7 +4,8 @@
 
 import { NUMBER, PATH } from '../markdown'
 import { THEME } from '../theme'
-import { isRule } from './parse'
+import { closesFence, drawnAs, isRule, openingFence } from './parse'
+import type { Segment, Stretch } from './parse'
 
 /** What a press on a pressable phrase does to its stretch. */
 export type Action = 'open' | 'close'
@@ -21,6 +22,8 @@ export type Run = {
   color?: string
   kind?: 'number' | 'path'
   link?: { action: Action; key: string }
+  /** Where a markdown link or a bare URL goes, drawn as a hyperlink. */
+  href?: string
 }
 
 /** The tint of the words the newest open stretch added: drawn in the text's own colour, marked in the gutter. */
@@ -28,13 +31,44 @@ export const FRESH = 'fresh'
 
 export type Row = Run[]
 
-// Private-use characters frame a pressable phrase or a tinted word in composed text; a reply never
-// writes them.
-const START = '\ue000'
-const SEP = '\ue001'
-const END = '\ue002'
-const TINT = '\ue003'
-const TINT_END = '\ue004'
+/** How a row a line wrapped onto joins the row before it: what the break took out, and the lead's cells. */
+export type Continuation = { join: string; lead: number }
+
+// The rows a line wrapped onto, so a copy of several rows gives back the line as written.
+const continuations = new WeakMap<Row, Continuation>()
+
+/** How `row` continues the row before it, if a line wrapped onto it. */
+export function continuationOf(row: Row): Continuation | undefined {
+  return continuations.get(row)
+}
+
+// Noncharacters frame a pressable phrase or a tinted word in composed text: Unicode keeps them for a
+// program's own use, where the Private Use Area holds icons such as Nerd Font's. A start mark with no
+// separator after it is read as a character, so a stray one still lets its line be laid out.
+const START = '\ufdd0'
+const SEP = '\ufdd1'
+const END = '\ufdd2'
+const TINT = '\ufdd3'
+const TINT_END = '\ufdd4'
+
+// A mark drawn on the letter before it, or a character no terminal draws, takes no cell.
+const ZERO_WIDTH = /[\p{Mn}\p{Me}\p{Default_Ignorable_Code_Point}]/u
+
+// A character drawn as a picture by default, such as 🚀, takes two cells; the first is U+231A, so
+// widthOf tests nothing below it. A flag is two regional indicators that take two cells together,
+// so each one keeps its single cell.
+const EMOJI = /(?!\p{Regional_Indicator})\p{Emoji_Presentation}/u
+
+// Where a row may break in text without spaces. Chinese and Japanese break between any two
+// characters. Korean spaces its words, so it breaks at spaces as Latin text does. Thai, Lao, Khmer
+// and Burmese write words without spaces, and a row breaks between words where Intl.Segmenter
+// finds them. Closing punctuation, a Japanese small kana, the long-vowel mark and a mark drawn on
+// the letter before it never start a row; opening punctuation never ends one.
+const UNSPACED = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Bopomofo}\u3000-\u303f\uff00-\uffef]/u
+const SEGMENTED = /[\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}]/u
+const NO_START = /[\p{Pe}\p{Pf},.:;!?，。、；：？！…·ぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶーゝゞヽヾ々]/u
+const NO_END = /[\p{Ps}\p{Pi}]/u
+const SEGMENTER = new Intl.Segmenter(undefined, { granularity: 'word' })
 
 /** A line's text without its tint marks, and the tint of each character left. */
 type Line = { text: string; tints: (string | undefined)[] }
@@ -46,12 +80,32 @@ export function tint(colour: string, word: string): string {
 
 /** Whether a word is markdown syntax rather than text: a bullet, a list number, a rule, a fence, a pipe, a heading mark. */
 export function isMarkup(word: string): boolean {
-  return !/[\p{L}\p{N}]/u.test(word) || /^\d+[.)]$/.test(word) || /^(`{3,}|~{3,})/.test(word)
+  return !/[\p{L}\p{N}]/u.test(word) || /^\d+[.)]$/.test(word) || openingFence(word) !== undefined
 }
 
 /** A pressable phrase for composed text: drawn as `label`, a press does `action` to stretch `key`. */
 export function link(action: Action, key: string, label: string): string {
   return `${START}${action}${SEP}${key}${SEP}${label}${END}`
+}
+
+/**
+ * The stretches `action` acts on among those drawn, with the stretches in `open` open: to open, those
+ * drawn as links with every stretch around them open; to close, those open, whose « is drawn.
+ */
+export function targetsIn(parts: Segment[], open: readonly string[], action: Action): Stretch[] {
+  return parts.flatMap(part => {
+    if (typeof part === 'string' || part.long === undefined) return []
+    switch (drawnAs(part)) {
+      case 'text':
+        return []
+      // A short form over several lines is drawn open, with no «, so the stretches inside it are drawn.
+      case 'open':
+        return targetsIn(part.long, open, action)
+      case 'link':
+        if (!open.includes(part.key)) return action === 'open' ? [part] : []
+        return [...(action === 'close' ? [part] : []), ...targetsIn(part.long, open, action)]
+    }
+  })
 }
 
 /** The rows `text` takes in a region `columns` cells wide. */
@@ -61,12 +115,12 @@ export function layout(text: string, columns: number): Row[] {
   let fence: string | undefined
   for (const marked of text.split('\n')) {
     const line = untint(marked)
-    const marker = /^[ \t]*(`{3,}|~{3,})/.exec(line.text)?.[1]
     if (fence !== undefined) {
-      if (marker !== undefined && marker[0] === fence[0] && marker.length >= fence.length) fence = undefined
+      if (closesFence(line.text, fence)) fence = undefined
       else rows.push(...cutRows([{ text: `  ${line.text}`, code: true }], width))
       continue
     }
+    const marker = openingFence(line.text)
     if (marker !== undefined) {
       fence = marker
       continue
@@ -95,19 +149,62 @@ export function linkAt(rows: Row[], x: number, y: number): Run['link'] {
   return spans.find(span => span.link?.action === 'close' && x >= span.from - 1 && x < span.to + 1)?.link
 }
 
-/** Cells a string takes: two for wide East Asian characters and most emoji, else one. */
+/**
+ * Cells a string takes: none for a mark drawn on the letter before it (a Thai vowel written above or
+ * below a letter, a tone mark, an accent) or a character no terminal draws, such as a joiner; two for
+ * wide East Asian characters and most emoji; else one.
+ */
 export function widthOf(text: string): number {
   let cells = 0
   for (const ch of text) {
     const c = ch.codePointAt(0) ?? 0
+    // Every character below U+0300 takes one cell, so most English text skips the tests below. That
+    // includes the soft hyphen (U+00AD), which ZERO_WIDTH would count as none.
+    if (c < 0x300) {
+      cells += 1
+      continue
+    }
     const isWide =
       (c >= 0x1100 && c <= 0x115f) || (c >= 0x2e80 && c <= 0xa4cf) || (c >= 0xac00 && c <= 0xd7a3) ||
       (c >= 0xf900 && c <= 0xfaff) || (c >= 0xfe30 && c <= 0xfe4f) || (c >= 0xff00 && c <= 0xff60) ||
-      (c >= 0xffe0 && c <= 0xffe6) || (c >= 0x1f300 && c <= 0x1f64f) || (c >= 0x1f900 && c <= 0x1f9ff)
-    cells += isWide ? 2 : 1
+      (c >= 0xffe0 && c <= 0xffe6) || (c >= 0x1f300 && c <= 0x1f64f) || (c >= 0x1f900 && c <= 0x1f9ff) ||
+      (c >= 0x231a && EMOJI.test(ch))
+    cells += ZERO_WIDTH.test(ch) ? 0 : isWide ? 2 : 1
   }
 
   return cells
+}
+
+/**
+ * One part of a line split at spaces, cut into the pieces a row may break between and growth adds
+ * one at a time; a run of spaces stays whole.
+ */
+export function breakables(text: string): string[] {
+  // Nothing below Thai breaks, so a Latin word or a run of spaces comes back whole without a look at
+  // each character.
+  if (!/[^\0-\u0dff]/.test(text)) return [text]
+  const wordStarts = new Set<number>()
+  if (SEGMENTED.test(text)) for (const word of SEGMENTER.segment(text)) wordStarts.add(word.index)
+  const pieces: string[] = []
+  let piece = ''
+  let last = ''
+  let isAfterUnspaced = false
+  let at = 0
+  for (const ch of text) {
+    const isUnspaced = UNSPACED.test(ch)
+    const isWordStart = wordStarts.has(at) && SEGMENTED.test(last + ch)
+    if (piece !== '' && (isUnspaced || isAfterUnspaced || isWordStart) && !NO_START.test(ch) && !NO_END.test(last) && !ZERO_WIDTH.test(ch)) {
+      pieces.push(piece)
+      piece = ''
+    }
+    piece += ch
+    last = ch
+    isAfterUnspaced = isUnspaced || (isAfterUnspaced && NO_START.test(ch))
+    at += ch.length
+  }
+  if (piece !== '') pieces.push(piece)
+
+  return pieces
 }
 
 /**
@@ -121,8 +218,8 @@ function untint(marked: string): Line {
   let tinted: string | undefined
   for (let i = 0; i < marked.length; i++) {
     const ch = marked[i] ?? ''
-    if (ch === TINT) {
-      const sep = marked.indexOf(SEP, i + 1)
+    const sep = ch === TINT ? marked.indexOf(SEP, i + 1) : -1
+    if (sep !== -1) {
       tinted = marked.slice(i + 1, sep)
       i = sep
     } else if (ch === TINT_END) {
@@ -189,9 +286,9 @@ function inline(text: string, tints: Line['tints'], isBold = false): Run[] {
 
   for (let i = 0; i < text.length; ) {
     const ch = text[i] ?? ''
-    if (ch === START) {
-      const first = text.indexOf(SEP, i + 1)
-      const second = text.indexOf(SEP, first + 1)
+    const first = ch === START ? text.indexOf(SEP, i + 1) : -1
+    const second = first === -1 ? -1 : text.indexOf(SEP, first + 1)
+    if (second !== -1) {
       pressable = { action: text.slice(i + 1, first) === 'close' ? 'close' : 'open', key: text.slice(first + 1, second) }
       i = second + 1
       continue
@@ -223,9 +320,19 @@ function inline(text: string, tints: Line['tints'], isBold = false): Run[] {
     const markdownLink = /^\[([^\]\n]+)\]\(([^)\s]+)\)/.exec(text.slice(i))
     if (markdownLink) {
       const label = markdownLink[1] ?? ''
-      for (let k = 0; k < label.length; k++) emit(label[k] ?? '', i + 1 + k, { underline: true })
-      emit(` (${markdownLink[2] ?? ''})`, i + markdownLink[0].length - 1, { dim: true })
+      const href = markdownLink[2] ?? ''
+      // A target that opens the same from any folder is drawn as a link; any other keeps its target
+      // beside it.
+      const isFollowed = /^(https?|file):/.test(href)
+      for (let k = 0; k < label.length; k++) emit(label[k] ?? '', i + 1 + k, isFollowed ? { href } : { underline: true })
+      if (!isFollowed) emit(` (${href})`, i + markdownLink[0].length - 1, { dim: true })
       i += markdownLink[0].length
+      continue
+    }
+    const url = ch === 'h' && !/\w/.test(text[i - 1] ?? ' ') ? bareUrlAt(text, i) : undefined
+    if (url !== undefined) {
+      for (let k = 0; k < url.length; k++) emit(url[k] ?? '', i + k, { href: url })
+      i += url.length
       continue
     }
     emit(ch, i)
@@ -237,7 +344,7 @@ function inline(text: string, tints: Line['tints'], isBold = false): Run[] {
 
 /** A plain run split where cc-dazzle colors a number or a path. */
 function decorate(run: Run): Run[] {
-  if (run.code || run.dim || run.kind) return [run]
+  if (run.code || run.dim || run.kind || run.href !== undefined) return [run]
   const marks: { start: number; end: number; kind: 'number' | 'path' }[] = []
   for (const m of run.text.matchAll(PATH)) marks.push({ start: m.index, end: m.index + m[0].length, kind: 'path' })
   for (const m of run.text.matchAll(NUMBER)) {
@@ -256,7 +363,27 @@ function decorate(run: Run): Run[] {
   return out
 }
 
-/** Word-wraps runs into rows of `width` cells; the first row starts with `first`, later rows with `rest`. */
+/**
+ * The `http:` or `https:` URL written at `at`, without punctuation that ends the sentence after it
+ * or a closing bracket it did not open.
+ */
+function bareUrlAt(text: string, at: number): string | undefined {
+  let url = /^https?:\/\/[^\s<>`\ufdd0-\ufdd4]+/.exec(text.slice(at))?.[0]
+  if (url === undefined) return undefined
+  for (;;) {
+    const opened = url.split('(').length - 1
+    const closed = url.split(')').length - 1
+    if (/[.,;:!?'"*_]$/.test(url) || (url.endsWith(')') && closed > opened)) url = url.slice(0, -1)
+    else break
+  }
+
+  return /^https?:\/\/[^/]/.test(url) ? url : undefined
+}
+
+/**
+ * Wraps runs into rows of `width` cells, breaking at spaces and, in text without them, where
+ * `breakables` allows; the first row starts with `first`, later rows with `rest`.
+ */
 function wrap(runs: Run[], width: number, first: string, rest: string, leadStyle: Omit<Run, 'text'> = {}): Row[] {
   const rows: Row[] = []
   let row: Row = []
@@ -274,24 +401,28 @@ function wrap(runs: Run[], width: number, first: string, rest: string, leadStyle
     used += widthOf(piece.text)
     isBare = false
   }
-  const breakRow = () => {
+  const breakRow = (isAtSpace = false) => {
     const last = row.at(-1)
+    let join = isAtSpace ? ' ' : ''
     if (last !== undefined && !isBare) {
-      last.text = last.text.trimEnd()
+      const trimmed = last.text.trimEnd()
+      if (trimmed !== last.text) join = ' '
+      last.text = trimmed
       if (last.text === '') row.pop()
     }
     rows.push(row)
     begin(rest)
+    continuations.set(row, { join, lead: used })
   }
 
   begin(first)
   for (const run of runs) {
-    for (const text of run.text.split(/( +)/)) {
+    for (const text of run.text.split(/( +)/).flatMap(breakables)) {
       if (text === '') continue
       if (text.trim() === '') {
         if (isBare) continue
         if (used + widthOf(text) <= width) put({ ...run, text })
-        else breakRow()
+        else breakRow(true)
         continue
       }
       let word = text
@@ -329,6 +460,7 @@ function cutRows(runs: Run[], width: number): Row[] {
         rows.push(row)
         row = []
         used = 0
+        continuations.set(row, { join: '', lead: 0 })
       }
       const [head, tail] = cut(rest, width - used)
       row.push({ ...run, text: head })
@@ -358,7 +490,7 @@ function cut(text: string, room: number): [string, string] {
 function isSameStyle(a: Run, b: Run): boolean {
   return (
     a.bold === b.bold && a.italic === b.italic && a.code === b.code && a.underline === b.underline && a.dim === b.dim && a.tint === b.tint &&
-    a.color === b.color && a.kind === b.kind &&
+    a.color === b.color && a.kind === b.kind && a.href === b.href &&
     a.link?.action === b.link?.action && a.link?.key === b.link?.key
   )
 }

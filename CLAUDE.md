@@ -91,6 +91,7 @@ These plugins started as copies of other repos. Re-sync them from upstream from 
 
 - `mattpocock/skills`: grilling, codebase-design, teach.
 - `obra/superpowers`: brainstorming, systematic-debugging.
+- `NahumLitvin/prismantis` and `pro-vi/cc-stretch`: cc-dazzle. Upstream is read, never merged: start from the "Last checked" versions in `docs/upstreams.md`, port fixes and useful or cool features with their upstream tests, leave out only what cannot apply or fights cc-dazzle's fixed look, then record both lists there and move the rows forward.
 
 ## Shipping a change
 

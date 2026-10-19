@@ -1,6 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import { tableArt } from './blocks'
+import { pieText } from './charts'
 import type { Block } from './markdown'
 import { parse } from './markdown'
 import { inlineMarks, mermaidText } from './mermaid'
@@ -181,4 +182,152 @@ test('a line at 0 runs along the axis line', () => {
     expect(lines[axis]).toMatch(/^\s*0┼─+╯/)
     expect(lines[axis - 1]).not.toMatch(/─/)
   }
+})
+
+// Fixes from upstream prismantis 0.24.0 to 0.31.0.
+
+const CONTROLS = '\u001b]8;;file:///etc/passwd\u0007x\u001b]8;;\u0007 \u001b[2J \u001b]52;c;cHduZWQ=\u0007 \u009b31m'
+for (const stretch of [false, true]) test(`terminal control sequences in a reply are never drawn${stretch ? ', with stretchtext on' : ''}`, { options: { stretch } }, async $ => {
+  const ui = await $.ui.mount(reply(`hi ${CONTROLS}\n\n| a |\n|---|\n| ${CONTROLS} |\n\n> ${CONTROLS}\n\n- ${CONTROLS}\n\n\`\`\`bash\necho ${CONTROLS}\n\`\`\``, 120))
+  const texts = (await ui.findAll({ type: 'Text' })).map(n => n.text ?? '')
+  expect(texts.length).toBeGreaterThan(4)
+  expect(texts.filter(t => /[\u001b\u0007\u009b]/.test(t))).toEqual([])
+  expect((await ui.findAll({ type: 'Link' })).map(l => String(l.props.href))).toEqual([])
+  await ui.unmount()
+})
+
+const chart = (body: string) => reply(`\`\`\`mermaid\nxychart-beta\n${body}\n\`\`\``)
+
+test('each line of a multi-line chart and its legend swatch share one color, distinct from the other lines', async $ => {
+  const ui = await $.ui.mount(chart('  x-axis [a, b, c, d]\n  y-axis 0 --> 10\n  line [9, 9, 9, 9]\n  line [5, 5, 5, 5]\n  line [1, 1, 1, 1]'))
+  const lines = (await ui.findAll({ type: 'Text', text: /^─{4,}$/ })).map(l => l.props.color)
+  expect(new Set(lines).size).toBe(3)
+  const swatches = (await ui.findAll({ type: 'Text', text: /^─$/ })).map(s => s.props.color)
+  expect(new Set(swatches)).toEqual(new Set(lines))
+  await ui.unmount()
+})
+
+test('a named series shows its name in the legend and a nameless one keeps Line N', async $ => {
+  const ui = await $.ui.mount(chart('  x-axis [a, b, c]\n  y-axis 0 --> 10\n  line "east" [8, 8, 8]\n  line [2, 2, 2]'))
+  expect(await ui.find({ type: 'Text', text: /east/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /Line 2/ })).toBeDefined()
+  expect(new Set((await ui.findAll({ type: 'Text', text: /^─{3,}$/ })).map(l => l.props.color)).size).toBe(2)
+  await ui.unmount()
+})
+
+test('grouped bars take one color per series, not one per bar', async $ => {
+  const ui = await $.ui.mount(chart('  x-axis [a, b, c]\n  y-axis 0 --> 10\n  bar [8, 8, 8]\n  bar [4, 4, 4]'))
+  const hues = new Set((await ui.findAll({ type: 'Text', text: /^[█▄▀]+$/ })).map(b => b.props.color))
+  expect(hues.size).toBe(2)
+  await ui.unmount()
+})
+
+test('a bar pie draws one bar per slice, largest first, with its share', () => {
+  const art = pieText('pie showData title Pets\n  "Cats" : 85\n  "Dogs" : 386\n  "Rats" : 0\n  "Mice" : 0.5', false, 80)!.text.split('\n')
+  expect(art[0]).toBe('Pets')
+  expect(art.slice(1).map(l => l.split(' ')[0])).toEqual(['Dogs', 'Cats', 'Mice', 'Rats'])
+  expect(art[1]).toMatch(/█ 386  82%$/)
+  expect(art[3]).toMatch(/<1%$/)
+  expect(art[4]).not.toContain('█')
+  expect(new Set(art.slice(1).map(l => width(l))).size).toBe(1)
+})
+
+test('a pie draws a round circle with a legend, largest slice first', () => {
+  const art = mermaidText('pie showData title Pets\n  "Cats" : 85\n  "Dogs" : 386\n  "Rats" : 15', 80)!.split('\n')
+  expect(art[0]).toBe('Pets')
+  expect(art).toHaveLength(13)
+  expect(art[1]).toMatch(/^ +▄▄▟█+▙▄▄$/)
+  expect(art[12]).toMatch(/^ +▀▀▜█+▛▀▀$/)
+  expect(art.slice(5, 8).map(l => l.split('   ██ ')[1])).toEqual(['Dogs 386  79%', 'Cats  85  17%', 'Rats  15   3%'])
+})
+
+test('a round pie falls back to bars past seven slices and when the terminal is too narrow', () => {
+  const pie = 'pie\n  "Dogs" : 386\n  "Cats" : 85'
+  const many = `pie\n${[1, 2, 3, 4, 5, 6, 7, 8].map(n => `  "s${n}" : ${n}`).join('\n')}`
+  for (const [source, columns] of [[many, 80], [pie, 30]] as const) expect(mermaidText(source, columns)).toBe(pieText(source, false, columns)!.text)
+  expect(mermaidText(pie, 80)).toContain('▟')
+})
+
+test('each round pie slice and its legend swatch share one color', async $ => {
+  const ui = await $.ui.mount(reply('```mermaid\npie title Pets\n  "Dogs" : 386\n  "Cats" : 85\n  "Rats" : 15\n```'))
+  const texts = await ui.findAll({ type: 'Text' })
+  const swatches = [' Dogs 79%', ' Cats 17%', ' Rats  3%'].map(label => texts[texts.findIndex(n => n.text === label) - 1]?.props.color)
+  expect(new Set(swatches).size).toBe(3)
+  expect((await ui.find({ type: 'Text', text: /^▜█+▛$/ }))?.props.color).toBe(swatches[0])
+  await ui.unmount()
+})
+
+test('two pies that draw the same art but split it differently each keep their own slice colors', async $ => {
+  const pie = (a: number, b: number) => '```mermaid\npie\n  "A" : ' + a + '\n  "B" : ' + b + '\n```'
+  const drawn: string[][] = []
+  for (const [a, b] of [[5103, 4897], [5104, 4896], [5103, 4897]] as const) {
+    const ui = await $.ui.mount(reply(pie(a, b)))
+    drawn.push((await ui.findAll({ type: 'Text' })).map(n => `${n.text}|${n.props.color}`))
+    await ui.unmount()
+  }
+  expect(drawn[0]!.filter(r => !r.includes('|undefined')).join()).not.toBe(drawn[1]!.filter(r => !r.includes('|undefined')).join())
+  expect(drawn[2]).toEqual(drawn[0])
+})
+
+test('a gantt chart places each task on a shared time axis', () => {
+  const art = mermaidText('gantt\n  dateFormat YYYY-MM-DD\n  section Build\n  Parse :p, 2026-10-01, 7d\n  Draw :after p, 7d\n  Ship :milestone, 2026-10-15, 0d', 80)!.split('\n')
+  expect(art[0]!.trim().startsWith('10-01')).toBe(true)
+  expect(art[1]!.trim()).toMatch(/^▏(─+▏)+$/)
+  const span = (line: string) => [line.indexOf('█'), line.lastIndexOf('█')]
+  const [parse, draw] = [span(art[3]!), span(art[4]!)]
+  expect(draw[0]).toBe(parse[1]! + 1)
+  expect(draw[1]! - draw[0]!).toBe(parse[1]! - parse[0]!)
+  expect(art[5]!.indexOf('◆')).toBe(draw[1])
+  expect(art[2]).toBe('Build')
+})
+
+test('pie and gantt sources the chart cannot read show a failure note, not a broken chart', async $ => {
+  for (const source of ['pie\n  "a" : -1', 'pie\n  "a" : 0', 'gantt\n  Task : 3d', 'gantt\n  dateFormat X\n  Task : 1, 2', 'gantt\n  Task : after nope, 1d']) {
+    expect(mermaidText(source, 80)).toBeNull()
+    const ui = await $.ui.mount(reply('```mermaid\n' + source + '\n```'))
+    expect(await ui.find({ type: 'Text', text: /diagram failed to render/ })).toBeDefined()
+    await ui.unmount()
+  }
+})
+
+test('pie and gantt charts shrink to a narrow terminal', () => {
+  const pie = 'pie\n  "A very long slice label that goes on" : 3\n  "b" : 1'
+  const gantt = 'gantt\n  dateFormat HH:mm\n  Deploy : 10:00, 45m\n  Verify : 30m'
+  for (const source of [pie, gantt]) expect(Math.max(...mermaidText(source, 50)!.split('\n').map(width)) <= 48).toBe(true)
+  expect(mermaidText(gantt, 80)).toContain('10:00')
+})
+
+const longCode = (n: number) => `\`\`\`text\n${Array.from({ length: n }, (_, i) => `step ${i + 1}`).join('\n')}\n\`\`\``
+
+test('code blocks draw through the native Code element off the terminal', async $ => {
+  const ui = await $.ui.mount({ ...reply('```ts\nconst name = "shop"\n  return name\n```'), surface: 'desktop' })
+  const code = await ui.find({ type: 'Code' })
+  expect(code?.props.source).toBe('const name = "shop"\n  return name')
+  expect(code?.props.language).toBe('ts')
+  expect(code?.props.startLine).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /^const$/ })).toBeUndefined()
+  await ui.unmount()
+  const long = await $.ui.mount({ ...reply(longCode(12)), surface: 'desktop' })
+  expect((await long.find({ type: 'Code' }))?.props.startLine).toBe(1)
+  expect(await long.find({ type: 'Text', text: /^ 1  $/ })).toBeUndefined()
+  await long.unmount()
+  const term = await $.ui.mount(reply('```ts\nconst name = "shop"\n```'))
+  expect(await term.find({ type: 'Code' })).toBeUndefined()
+  await term.unmount()
+})
+
+test('a long native code block folds to 20 lines and copies every line', async ($, on) => {
+  const copied: string[] = []
+  on('ui.copy', (_, e) => {
+    copied.push(e.text)
+    return { value: { isCopied: true as const } }
+  })
+  const ui = await $.ui.mount({ ...reply(longCode(45)), surface: 'desktop' })
+  const shown = async () => String((await ui.find({ type: 'Code' }))!.props.source).split('\n').length
+  expect(await shown()).toBe(20)
+  await ui.press({ key: 'copy0' })
+  expect(copied.at(-1)).toBe(Array.from({ length: 45 }, (_, i) => `step ${i + 1}`).join('\n'))
+  await ui.press({ key: 'fold0' })
+  expect(await shown()).toBe(45)
+  await ui.unmount()
 })
