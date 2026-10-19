@@ -16,7 +16,7 @@ Mods that draw the same row do not stack, so turn off any other mod that draws r
 ## What it draws
 
 - **Replies:** a blank line before each part, headings in lavender with a heavy rule under H1, boxed tables with a double line under the header, `[ ]` and `[✓]` task lists, and version numbers and file paths in color. Each color has one job: mauve marks who is talking, red marks only failures.
-- **Code:** a rounded box with the language and a copy button above it, Prism colors for 25 languages, and `console` blocks with the `$` lines colored as commands. Their copy button copies the commands only. In the desktop app, VS Code and the phone app, code goes through the app's own code element, so indentation holds.
+- **Code:** a rounded box with the language and a copy button above it, Prism colors for 25 languages, and `console` blocks with the `$` lines colored as commands. Their copy button copies the commands only. In the desktop app, VS Code and the phone app, code goes through the app's own code element, so indentation holds; `console` blocks there take the app's colors.
 - **Mermaid:** flowcharts, charts and other diagrams drawn as box art. Each series of a chart gets its own color, and the legend shows its name. A diagram that does not fit shows its source with a note.
 - **Copy buttons:** `⧉ copy` on code, lists and quotes. Tables get `⧉ md`, `⧉ art` and, on macOS outside SSH, `⧉ html`, which pastes as a real table in Docs, Notion or email.
 - **Tool calls:** one dim row each (`Ran gh pr view 12`, `Read ~/src/app.ts`) under a bold `└─`. Bash and MCP output in columns shows as a boxed table with a row count and the run time.
