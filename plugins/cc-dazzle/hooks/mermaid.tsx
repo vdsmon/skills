@@ -1,5 +1,7 @@
 import type { ElementTable, RenderElement } from 'claude-code'
 
+import type { ChartArt } from './charts'
+import { ganttText, pieText } from './charts'
 import { cells, graphemes, remember, width } from './text'
 import type { Style, Theme } from './theme'
 import { DIAGRAM_HUES } from './theme'
@@ -55,11 +57,23 @@ const labelBars = (art: string, source: string): string => {
 
 const SIDEWAYS = /^(\s*(?:flowchart|graph)[ \t]+)(LR|RL)\b/
 
-const SUPPORTED = /^(flowchart|graph|statediagram(-v2)?|xychart(-beta)?|sequencediagram|classdiagram|erdiagram)$/i
+const SUPPORTED = /^(flowchart|graph|statediagram(-v2)?|xychart(-beta)?|sequencediagram|classdiagram|erdiagram|pie|gantt)$/i
+
+const kindOf = (source: string) => source.replace(/^(\s*%%[^\n]*\n)+/, '').trim().split(/\s/)[0] ?? ''
 
 export const unsupportedKind = (source: string): string | undefined => {
-  const kind = source.replace(/^(\s*%%[^\n]*\n)+/, '').trim().split(/\s/)[0] ?? ''
+  const kind = kindOf(source)
   return kind && !SUPPORTED.test(kind) ? kind : undefined
+}
+
+// Pies and gantts are drawn here, not by beautiful-mermaid. A pie is round while each slice can take
+// its own diagram hue, and falls back to one bar per slice past that or in a narrow terminal.
+const OWN: Record<string, (source: string, columns: number) => ChartArt | null> = {
+  pie: (source, columns) => pieText(source, false, columns, DIAGRAM_HUES.length),
+  gantt: (source, columns) => {
+    const text = ganttText(source, false, columns)
+    return text === null ? null : { text }
+  },
 }
 
 const INLINE_TAG = /<\/?(?:b|i|u|s|em|strong|del|code|small|sub|sup|span|mark)\b[^<>\n]*>/gi
@@ -71,17 +85,21 @@ export const inlineMarks = (source: string): [string[], Mark][] =>
   [...source.matchAll(/<(i|em|b|strong|u|s|del)\b[^<>\n]*>([^<\n]+)<\/\1\s*>/gi)]
     .map(m => [cells(m[2]!.trim()), { [TAG_MARK[m[1]!.toLowerCase()]!]: true }] as [string[], Mark])
 
-const fitted = new Map<string, string | null>()
+const fitted = new Map<string, ChartArt | null>()
 
-export const mermaidText = (source: string, columns: number): string | null =>
+export const mermaidArt = (source: string, columns: number): ChartArt | null =>
   remember(fitted, `${columns}:${source}`, () => {
     source = source.replace(INLINE_TAG, '')
     if (source.length > 8000 || source.split('\n').length > MAX_LINES) return null
+    const own = OWN[kindOf(source).toLowerCase()]
+    if (own) return own(source, columns)
     const art = draw(source, columns)
     const fits = (a: string) => a.split('\n').every(l => width(l) <= columns - 2)
-    if (art === null || fits(art) || !SIDEWAYS.test(source)) return art
-    return draw(source.replace(SIDEWAYS, '$1TD'), columns) ?? art
+    const text = art === null || fits(art) || !SIDEWAYS.test(source) ? art : (draw(source.replace(SIDEWAYS, '$1TD'), columns) ?? art)
+    return text === null ? null : { text }
   })
+
+export const mermaidText = (source: string, columns: number): string | null => mermaidArt(source, columns)?.text ?? null
 
 const prepared = (padded: string) => unquoteCategories(padded.replace(/^(\s*%%[^\n]*\n)+/, '')).replace(/(-->|-\.->|==>|---|-\.-|===)[ \t]+\|/g, '$1|')
 
@@ -208,13 +226,33 @@ const paint = (art: string, style: Style, series?: number[][]): (string | undefi
   return color
 }
 
+// Each cell of a round pie takes the hue of the slice it draws, or of the legend line it sits on.
+const paintPie = (art: string, slices: number[][], style: Style): (string | undefined)[][] =>
+  art.split('\n').map((row, r) => cells(row).map((_, c) => {
+    const slice = slices[r]?.[c] ?? -1
+    return slice < 0 ? style.theme.diagramText : DIAGRAM_HUES[slice % DIAGRAM_HUES.length]
+  }))
+
 type Painted = { grid: string[][]; colors: (string | undefined)[][] }
 const painted = new WeakMap<Theme, Map<string, Painted>>()
+// Two pies can draw the same art and split it differently, so a pie is painted by its slices.
+const piePainted = new WeakMap<Theme, WeakMap<number[][], Painted>>()
 
-export const boxArt = ({ Box, Text }: ElementTable, style: Style, art: string, key: string, marks: [string[], Mark][] = [], series?: number[][]): RenderElement => {
-  const cache = painted.get(style.theme) ?? new Map<string, Painted>()
-  painted.set(style.theme, cache)
-  const { grid, colors } = remember(cache, art, () => ({ grid: art.split('\n').map(cells), colors: paint(art, style, series) }))
+const painting = (style: Style, art: string, slices?: number[][], series?: number[][]): Painted => {
+  if (!slices) {
+    const cache = painted.get(style.theme) ?? new Map<string, Painted>()
+    painted.set(style.theme, cache)
+    return remember(cache, art, () => ({ grid: art.split('\n').map(cells), colors: paint(art, style, series) }))
+  }
+  const cache = piePainted.get(style.theme) ?? new WeakMap<number[][], Painted>()
+  piePainted.set(style.theme, cache)
+  const done = cache.get(slices) ?? { grid: art.split('\n').map(cells), colors: paintPie(art, slices, style) }
+  cache.set(slices, done)
+  return done
+}
+
+export const boxArt = ({ Box, Text }: ElementTable, style: Style, art: string, key: string, marks: [string[], Mark][] = [], slices?: number[][], series?: number[][]): RenderElement => {
+  const { grid, colors } = painting(style, art, slices, series)
   return (
     <Box key={key} flexDirection="column" paddingLeft={2}>
       {grid.map((chars, i) => {

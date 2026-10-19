@@ -1,6 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import { tableArt } from './blocks'
+import { pieText } from './charts'
 import type { Block } from './markdown'
 import { parse } from './markdown'
 import { inlineMarks, mermaidText } from './mermaid'
@@ -219,6 +220,81 @@ test('grouped bars take one color per series, not one per bar', async $ => {
   const hues = new Set((await ui.findAll({ type: 'Text', text: /^[█▄▀]+$/ })).map(b => b.props.color))
   expect(hues.size).toBe(2)
   await ui.unmount()
+})
+
+test('a bar pie draws one bar per slice, largest first, with its share', () => {
+  const art = pieText('pie showData title Pets\n  "Cats" : 85\n  "Dogs" : 386\n  "Rats" : 0\n  "Mice" : 0.5', false, 80)!.text.split('\n')
+  expect(art[0]).toBe('Pets')
+  expect(art.slice(1).map(l => l.split(' ')[0])).toEqual(['Dogs', 'Cats', 'Mice', 'Rats'])
+  expect(art[1]).toMatch(/█ 386  82%$/)
+  expect(art[3]).toMatch(/<1%$/)
+  expect(art[4]).not.toContain('█')
+  expect(new Set(art.slice(1).map(l => width(l))).size).toBe(1)
+})
+
+test('a pie draws a round circle with a legend, largest slice first', () => {
+  const art = mermaidText('pie showData title Pets\n  "Cats" : 85\n  "Dogs" : 386\n  "Rats" : 15', 80)!.split('\n')
+  expect(art[0]).toBe('Pets')
+  expect(art).toHaveLength(13)
+  expect(art[1]).toMatch(/^ +▄▄▟█+▙▄▄$/)
+  expect(art[12]).toMatch(/^ +▀▀▜█+▛▀▀$/)
+  expect(art.slice(5, 8).map(l => l.split('   ██ ')[1])).toEqual(['Dogs 386  79%', 'Cats  85  17%', 'Rats  15   3%'])
+})
+
+test('a round pie falls back to bars past seven slices and when the terminal is too narrow', () => {
+  const pie = 'pie\n  "Dogs" : 386\n  "Cats" : 85'
+  const many = `pie\n${[1, 2, 3, 4, 5, 6, 7, 8].map(n => `  "s${n}" : ${n}`).join('\n')}`
+  for (const [source, columns] of [[many, 80], [pie, 30]] as const) expect(mermaidText(source, columns)).toBe(pieText(source, false, columns)!.text)
+  expect(mermaidText(pie, 80)).toContain('▟')
+})
+
+test('each round pie slice and its legend swatch share one color', async $ => {
+  const ui = await $.ui.mount(reply('```mermaid\npie title Pets\n  "Dogs" : 386\n  "Cats" : 85\n  "Rats" : 15\n```'))
+  const texts = await ui.findAll({ type: 'Text' })
+  const swatches = [' Dogs 79%', ' Cats 17%', ' Rats  3%'].map(label => texts[texts.findIndex(n => n.text === label) - 1]?.props.color)
+  expect(new Set(swatches).size).toBe(3)
+  expect((await ui.find({ type: 'Text', text: /^▜█+▛$/ }))?.props.color).toBe(swatches[0])
+  await ui.unmount()
+})
+
+test('two pies that draw the same art but split it differently each keep their own slice colors', async $ => {
+  const pie = (a: number, b: number) => '```mermaid\npie\n  "A" : ' + a + '\n  "B" : ' + b + '\n```'
+  const drawn: string[][] = []
+  for (const [a, b] of [[5103, 4897], [5104, 4896], [5103, 4897]] as const) {
+    const ui = await $.ui.mount(reply(pie(a, b)))
+    drawn.push((await ui.findAll({ type: 'Text' })).map(n => `${n.text}|${n.props.color}`))
+    await ui.unmount()
+  }
+  expect(drawn[0]!.filter(r => !r.includes('|undefined')).join()).not.toBe(drawn[1]!.filter(r => !r.includes('|undefined')).join())
+  expect(drawn[2]).toEqual(drawn[0])
+})
+
+test('a gantt chart places each task on a shared time axis', () => {
+  const art = mermaidText('gantt\n  dateFormat YYYY-MM-DD\n  section Build\n  Parse :p, 2026-10-01, 7d\n  Draw :after p, 7d\n  Ship :milestone, 2026-10-15, 0d', 80)!.split('\n')
+  expect(art[0]!.trim().startsWith('10-01')).toBe(true)
+  expect(art[1]!.trim()).toMatch(/^▏(─+▏)+$/)
+  const span = (line: string) => [line.indexOf('█'), line.lastIndexOf('█')]
+  const [parse, draw] = [span(art[3]!), span(art[4]!)]
+  expect(draw[0]).toBe(parse[1]! + 1)
+  expect(draw[1]! - draw[0]!).toBe(parse[1]! - parse[0]!)
+  expect(art[5]!.indexOf('◆')).toBe(draw[1])
+  expect(art[2]).toBe('Build')
+})
+
+test('pie and gantt sources the chart cannot read show a failure note, not a broken chart', async $ => {
+  for (const source of ['pie\n  "a" : -1', 'pie\n  "a" : 0', 'gantt\n  Task : 3d', 'gantt\n  dateFormat X\n  Task : 1, 2', 'gantt\n  Task : after nope, 1d']) {
+    expect(mermaidText(source, 80)).toBeNull()
+    const ui = await $.ui.mount(reply('```mermaid\n' + source + '\n```'))
+    expect(await ui.find({ type: 'Text', text: /diagram failed to render/ })).toBeDefined()
+    await ui.unmount()
+  }
+})
+
+test('pie and gantt charts shrink to a narrow terminal', () => {
+  const pie = 'pie\n  "A very long slice label that goes on" : 3\n  "b" : 1'
+  const gantt = 'gantt\n  dateFormat HH:mm\n  Deploy : 10:00, 45m\n  Verify : 30m'
+  for (const source of [pie, gantt]) expect(Math.max(...mermaidText(source, 50)!.split('\n').map(width)) <= 48).toBe(true)
+  expect(mermaidText(gantt, 80)).toContain('10:00')
 })
 
 const longCode = (n: number) => `\`\`\`text\n${Array.from({ length: n }, (_, i) => `step ${i + 1}`).join('\n')}\n\`\`\``

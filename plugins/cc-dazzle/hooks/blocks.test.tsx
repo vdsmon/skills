@@ -278,11 +278,11 @@ test('a code block still streaming draws without error', async ($, on) => {
 })
 
 test('a half-streamed diagram shows no note until its fence closes', async $ => {
-  const open = await $.ui.mount(reply('```mermaid\npie\n  "a" : 3'))
+  const open = await $.ui.mount(reply('```mermaid\nmindmap\n  root'))
   expect(await open.find({ type: 'Text', text: /diagram|draw as source/ })).toBeUndefined()
   await open.unmount()
-  const closed = await $.ui.mount(reply('```mermaid\npie\n  "a" : 3\n```'))
-  expect(await closed.find({ type: 'Text', text: /^pie diagrams draw as source for now$/ })).toBeDefined()
+  const closed = await $.ui.mount(reply('```mermaid\nmindmap\n  root\n```'))
+  expect(await closed.find({ type: 'Text', text: /^mindmap diagrams draw as source for now$/ })).toBeDefined()
   await closed.unmount()
 })
 
