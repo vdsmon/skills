@@ -9,7 +9,8 @@ export const renderUserPrompt = (el: ElementTable, style: Style, text: string, t
   const accent = waiting ? t.codeComment : t.accent
   const body = (
     <Box flexDirection="column">
-      {text.split('\n').map((line, i) => <Text key={`p${i}`} color={color} bold={false}>{line}</Text>)}
+      {/* A run of blank lines keeps one; an empty Text takes no row, so a blank line draws a space. */}
+      {text.replace(/\n(?:[ \t]*\n){2,}/g, '\n\n').split('\n').map((line, i) => <Text key={`p${i}`} color={color} bold={false}>{line.trim() === '' ? ' ' : line}</Text>)}
     </Box>
   )
   const bubble = <Box borderStyle="round" borderColor={accent} paddingX={1} alignSelf="flex-start">{body}</Box>
