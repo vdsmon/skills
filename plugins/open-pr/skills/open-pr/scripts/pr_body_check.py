@@ -263,7 +263,7 @@ def check(text, base=None):
     for i, para in enumerate(paras):
         for n, _, t in para:
             for m in MENTION.finditer(INLINE_CODE.sub("", t)):
-                f.append(("FAIL", "mention", n, f"@{m.group(1)}: nobody acts on a GitHub ping here, write the name without @"))
+                f.append(("FAIL", "mention", n, f"@{m.group(1)}: write the name without @"))
             if i >= 2 and ASK.search(t):
                 f.append(("WARN", "ask-late", n, "an ask to the reader sits low in the body: move it to the line after the opening"))
 

@@ -42,7 +42,7 @@ Leave out a section that would be empty. A small fix gets the opening and "Teste
 6. No labels in bold, no em or en dashes, no curly quotes or arrows, no semicolons in prose, and no lines wrapped by hand. [checked]
 7. No local paths (`/Users/...`, `/home/...`, `~/...`, temp folders) and no attribution footer. [checked]
 8. Backticked repo paths exist at HEAD or in the diff. [warned]
-9. "I" for your own work, "we" for team decisions. Name a person in plain words, never as an `@handle`: the team hears about a PR through other channels, so a GitHub ping does no work. [checked: an @mention fails]
+9. "I" for your own work, "we" for team decisions. Write names without `@`. [checked]
 10. Test counts add nothing: "`<check command>` passes" is enough.
 
 ## Variants

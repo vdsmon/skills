@@ -23,7 +23,7 @@ A PR description has one reader: a teammate with a minute to spare. They want to
 
 ## 2. Ask only what the diff cannot show
 
-Most of the story is in the conversation and the commits. In one message, ask the user only for what is still missing: what asked for this change (a review, a decision, a bug, a run result), what stays open and who decides it, and whether someone needs a heads-up. Do not ask what you already know.
+Most of the story is in the conversation and the commits. In one message, ask the user only for what is still missing: what asked for this change (a review, a decision, a bug, a run result), and what stays open and who decides it. Do not ask what you already know.
 
 ## 3. Write the title and the body
 
