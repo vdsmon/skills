@@ -2,6 +2,8 @@
 
 Plugins here that copy code from another project, and the last upstream version we read for ideas. Update the row after each review: read upstream's changelog from the "Last checked" version on, then move the row forward.
 
+Port every fix and every useful or cool feature. Leave a change out only when it cannot apply (it lives in a part cc-dazzle dropped, such as themes, LaTeX or right-to-left text) or when it fights a fixed design choice (such as cc-dazzle's fixed colors), and write down why. Porting effort, a needed rewrite, or an existing button that does the same job are never reasons to leave a feature out.
+
 | Plugin | Upstream | Copied from | Last checked | Checked on |
 |---|---|---|---|---|
 | cc-dazzle | [NahumLitvin/prismantis](https://github.com/NahumLitvin/prismantis) | fork `vdsmon/prismantis` 0.15.19, which split from upstream at 0.15.1 (`af067b6`) | 0.32.1 (`b90c326`) | 2026-10-20 |
@@ -20,11 +22,11 @@ Ported: a line holding only an HTML-like tag (`<tldr>`) drawn dim on its own (#2
 
 Left out on purpose:
 
-- A click anywhere on a folded card opens it (#236): it needs each card redrawn as one padded Text inside a Button. The `+N more lines` and `show N lines` buttons do the same. A good next port.
-- A wrapped diff line repeating its mark on each row (#234): it needs the surface width split into rows by hand; lines wrap under their code as before.
 - Diff colors from the theme, the darker light-theme greens, `diffStyle` and the preview hover band (#234, #236): cc-dazzle draws diffs in Claude Code's own colors, Mocha only.
-- The WSL `file://wsl.localhost` rewrite (#238): cc-dazzle dropped Linux and Windows clipboard paths. Paths in stretchtext replies do not link yet: `stretch/layout.ts` draws them.
+- The WSL `file://wsl.localhost` rewrite (#238): cc-dazzle dropped Linux and Windows clipboard paths.
 - Figures (#171, #243, #248), including figure role markup outside figures: cc-dazzle has no figure prompt, so Claude never writes that markup.
+
+Ported later, in cc-dazzle 1.9.0, after first being left out for their porting effort, which is no reason: a click anywhere on a folded card opens it, from Claude Code 2.1.295 on the terminal, with a deleted file's header as its button and a band under a new file's preview (#236); a wrapped diff line repeats its mark and tint on each row, breaking at a space and drawing tabs to the next stop of 8 (#234); and paths and `file://` links in stretchtext replies follow the same rules as in other replies.
 
 ## cc-stretch 0.5.1 to 0.5.2
 

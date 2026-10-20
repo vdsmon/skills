@@ -4,6 +4,7 @@ import type { EngineInterface, On, RenderElement, RenderInput, SessionMessage } 
 import { GUIDE } from './guide'
 import { closeAfter, codeSpan, hideLongForms, isLinkable, isOpenable, KEY_SEPARATOR, newStreamState, paragraphsOf, parse, stretches } from './parse'
 import type { Segment, StreamState, Stretch } from './parse'
+import type { Reach } from '../links'
 import { THEME } from '../theme'
 import { FRESH, namesOf, openedOf, targetsIn } from './layout'
 import type { Action, OpenedStretch } from './layout'
@@ -270,7 +271,7 @@ let notedRequest: string | undefined
  * way cc-dazzle does; in the fullscreen terminal a paragraph holding a stretch is drawn by a Client.
  * `framed` says the body draws the reply's gutter itself, as a Client marks rows in it.
  */
-export async function stretchBody($: EngineInterface, e: RenderInput & { props: { text: string; isFirstOfReply?: boolean; onScreen?: unknown } }, draw: (text: string) => RenderElement[]): Promise<{ body: RenderElement[]; framed: boolean } | undefined> {
+export async function stretchBody($: EngineInterface, e: RenderInput & { props: { text: string; isFirstOfReply?: boolean; onScreen?: unknown } }, draw: (text: string) => RenderElement[], links: Reach = {}): Promise<{ body: RenderElement[]; framed: boolean } | undefined> {
   if (!e.props.text.includes('{{')) return undefined
   const parts = parse(e.props.text)
   const all = stretches(parts)
@@ -325,7 +326,7 @@ export async function stretchBody($: EngineInterface, e: RenderInput & { props: 
         const tints = tintsOf(order, key, newest === e.requestId ? count - 1 : -1)
         const keys = Object.fromEntries((shown?.targets ?? []).filter(one => one.member === member).map(one => [one.key, one.letter]))
         const letters = shown === null ? null : { action: shown.action, keys }
-        return <Client key={key} module="./reply.tsx" props={{ text: paragraph.text, open, tints, dot, ask, letters } satisfies ReplyProps} width="100%" />
+        return <Client key={key} module="./reply.tsx" props={{ text: paragraph.text, open, tints, dot, ask, letters, reach: reachOf(links) } satisfies ReplyProps} width="100%" />
       }),
     )
     if (e.props.isFirstOfReply !== true) return { body, framed: true }
@@ -371,7 +372,7 @@ function tintsOf(order: Record<string, number>, paragraph: string, newest: numbe
 function linkedMarkdown(parts: Segment[], open: readonly string[], all: Stretch[], links: string[]): string {
   return parts
     .map(part => {
-      if (typeof part === 'string') return part
+      if (typeof part === 'string') return withoutFileLinks(part)
       if (!isOpenable(part) || part.long === undefined) return part.short
       if (!isLinkable(part)) return part.long.length === 0 ? part.short : linkedMarkdown(part.long, open, all, links)
       const index = all.indexOf(part)
@@ -385,6 +386,20 @@ function linkedMarkdown(parts: Segment[], open: readonly string[], all: Stretch[
       return `[${labelOf(part.short)}](${href})`
     })
     .join('')
+}
+
+/** The link and path rules a Client needs, without the rest of the style, so its props stay small. */
+function reachOf({ httpLinks, editorLinks, fileLinks, pathLinks, cwd, home }: Reach): Reach {
+  const reach: Reach = { httpLinks, editorLinks, fileLinks, pathLinks, cwd, home }
+  return Object.fromEntries(Object.entries(reach).filter(([, value]) => value !== undefined))
+}
+
+/**
+ * The desktop app opens a file link a reply draws outside Claude Code's permission prompts, and
+ * cc-dazzle's replies there draw file links as text, so these do too. Code spans keep theirs.
+ */
+function withoutFileLinks(markdown: string): string {
+  return markdown.replace(/(`+)[\s\S]*?\1|\[([^\]\n]+)\]\((file:[^)\s]+)\)/gi, (all, code: string | undefined, label: string, href: string) => (code ? all : `${label} (${href})`))
 }
 
 /** A short form as link text: outside code spans, a link becomes its text and target, and brackets and backslashes are escaped. */

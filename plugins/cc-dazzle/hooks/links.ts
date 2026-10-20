@@ -4,7 +4,7 @@ import type { Style } from './theme'
 // Which links and paths draw as clickable hyperlinks (prismantis #238, #240). A click on a file link
 // hands its target to the operating system, outside Claude Code's permission prompts.
 
-type Reach = Pick<Style, 'httpLinks' | 'editorLinks' | 'fileLinks' | 'pathLinks' | 'cwd' | 'home'>
+export type Reach = Pick<Style, 'httpLinks' | 'editorLinks' | 'fileLinks' | 'pathLinks' | 'cwd' | 'home'>
 
 export type TerminalEnv = Partial<Record<'FORCE_HYPERLINK' | 'TERM_PROGRAM' | 'TERM_PROGRAM_VERSION' | 'TERM' | 'WT_SESSION' | 'LC_TERMINAL' | 'VTE_VERSION' | 'TERMINAL_EMULATOR', string>>
 
@@ -143,10 +143,10 @@ const hidesFile = (reach: Reach, n: Extract<Inline, { kind: 'link' }>): boolean 
 }
 
 // A link Claude Code cannot open draws as its text and target, so nothing looks clickable that is not.
-const drawnLink = (n: Extract<Inline, { kind: 'link' }>, reach: Reach): Inline =>
+export const drawnLink = (n: Extract<Inline, { kind: 'link' }>, reach: Reach): Inline =>
   !isHyperlink(n.href, reach) || encodedLength(n.href) > LINK_MAX || hidesFile(reach, n) ? { kind: 'text', text: plainLink(n.text, n.href) } : n
 
-const drawnPath = (n: Extract<Inline, { kind: 'path' }>, reach: Reach): Inline => {
+export const drawnPath = (n: Extract<Inline, { kind: 'path' }>, reach: Reach): Inline => {
   const href = reach.pathLinks ? pathHref(reach, n.text) : undefined
   return href === undefined ? n : { ...n, href }
 }
