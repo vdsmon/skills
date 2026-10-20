@@ -5,15 +5,17 @@ import { GUIDE } from './guide'
 import { closeAfter, codeSpan, hideLongForms, isLinkable, isOpenable, KEY_SEPARATOR, newStreamState, paragraphsOf, parse, stretches } from './parse'
 import type { Segment, StreamState, Stretch } from './parse'
 import { THEME } from '../theme'
-import { FRESH, targetsIn } from './layout'
-import type { Action } from './layout'
+import { FRESH, namesOf, openedOf, targetsIn } from './layout'
+import type { Action, OpenedStretch } from './layout'
 import type { ReplyPost, ReplyProps, Tint } from './reply'
 
-// Stretchtext, ported from cc-stretch 0.3.3 (pro-vi/cc-stretch) with features up to 0.5.1. A reply's `{{short|long}}` stretches
+// Stretchtext, ported from cc-stretch 0.3.3 (pro-vi/cc-stretch) with features up to 0.5.2. A reply's `{{short|long}}` stretches
 // draw as their short forms; a press grows one in place and « shrinks it back.
 
 const openStretches = atom({ plugin: 'cc-dazzle', key: 'stretchOpen' } as const, [])
-const seen = atom({ plugin: 'cc-dazzle', key: 'stretchSeen' } as const, [])
+// Kept under a shape tag: before cc-stretch 0.5.2's names it held short forms, and as of Claude Code
+// 2.1.304 plugin state outlives a reload of the plugin's code; under the tag those read as absent.
+const seen = atom({ plugin: 'cc-dazzle', key: 'stretchSeen' } as const, [], { shape: 'opened-stretches' })
 const stretchOrder = atom({ plugin: 'cc-dazzle', key: 'stretchOrder' } as const, { order: {}, count: 0 })
 const newestReply = atom({ plugin: 'cc-dazzle', key: 'stretchNewest' } as const, '')
 const askedStretch = atom({ plugin: 'cc-dazzle', key: 'stretchAsk' } as const, null)
@@ -68,17 +70,24 @@ export function openText(text: string): string {
  */
 export async function stretchNote($: EngineInterface): Promise<string | undefined> {
   const opened = await read($, seen)
-  // A stretch that is not a link is drawn open, so it is neither opened nor unopened.
-  const written = stretches(parse(lastReply(await $.session.messages())))
-    .filter(isLinkable)
-    .map(stretch => stretch.short.trim())
-  const unopened = written.filter(short => !opened.includes(short))
+  // A stretch that is not a link is drawn open, so it is neither opened nor unopened. Each is named
+  // as its paragraph draws it, where a lone period is named with the words before it.
+  const written = paragraphsOf(lastReply(await $.session.messages()))
+    .filter(paragraph => paragraph.hasStretch)
+    .flatMap(({ text }) => {
+      const parts = parse(text)
+      const names = namesOf(parts)
+      return stretches(parts)
+        .filter(isLinkable)
+        .map(stretch => openedOf(stretch, names))
+    })
+  const unopened = written.filter(stretch => !opened.some(was => isSameStretch(was, stretch)))
   await update($, seen, () => [])
   await update($, newestReply, () => '')
   await update($, lettering, () => null)
   if (opened.length === 0 && unopened.length === 0) return undefined
 
-  const quote = (list: string[]) => list.map(s => `"${s}"`).join(', ')
+  const quote = (list: OpenedStretch[]) => list.map(stretch => `"${stretch.name}"`).join(', ')
   return opened.length > 0
     ? `Stretchtext: since your last reply the reader opened ${quote(opened)}.${unopened.length > 0 ? ` They did not open ${quote(unopened)}.` : ''}`
     : NO_CLICK
@@ -176,7 +185,7 @@ export function registerStretch(on: On): void {
     if (post === undefined) return next(e)
     await update($, memberOf(openStretches, { requestId: `${e.requestId}#${e.element}` }), () => post.open)
     const { opened } = post
-    if (opened !== undefined) await update($, seen, list => (list.includes(opened.short) ? list : [...list, opened.short]))
+    if (opened !== undefined) await update($, seen, list => (list.some(was => isSameStretch(was, opened)) ? list : [...list, { source: opened.source, name: opened.name }]))
 
     // Each open stretch keeps the count it was opened at, across the reply's paragraphs. The newest
     // is the open stretch with the reply's last count.
@@ -285,8 +294,8 @@ export async function stretchBody($: EngineInterface, e: RenderInput & { props: 
       }
       if (action !== 'open') return
       await update($, open, list => (list.includes(key) ? list : [...list, key]))
-      const short = stretch.short.trim()
-      await update($, seen, list => (list.includes(short) ? list : [...list, short]))
+      const opened = openedOf(stretch, namesOf(parts))
+      await update($, seen, list => (list.some(was => isSameStretch(was, opened)) ? list : [...list, opened]))
     }
     return { body: [<Markdown key="stretch" text={text} pressableLinks={links} onLinkPress={link => void press(link.href)} />], framed: false }
   }
@@ -396,6 +405,10 @@ function writeOpen(parts: Segment[]): string {
   return parts.map(part => (typeof part === 'string' ? part : part.long === undefined ? part.short : writeOpen(part.long))).join('')
 }
 
+function isSameStretch(a: OpenedStretch, b: OpenedStretch): boolean {
+  return a.source === b.source && a.name === b.name
+}
+
 /** A Client's post of text to copy, if it is one. */
 function copyOf(data: unknown): string | undefined {
   if (typeof data !== 'object' || data === null || !('copy' in data)) return undefined
@@ -406,10 +419,10 @@ function replyPostOf(data: unknown): ReplyPost | undefined {
   if (typeof data !== 'object' || data === null || !('open' in data) || !Array.isArray(data.open)) return undefined
   const open = data.open.filter((key): key is string => typeof key === 'string')
   const opened: unknown = 'opened' in data ? data.opened : undefined
-  if (typeof opened !== 'object' || opened === null || !('short' in opened) || !('key' in opened)) return { open }
-  const { short, key } = opened
+  if (typeof opened !== 'object' || opened === null || !('name' in opened) || !('source' in opened) || !('key' in opened)) return { open }
+  const { name, source, key } = opened
 
-  return typeof short === 'string' && typeof key === 'string' ? { open, opened: { short, key } } : { open }
+  return typeof name === 'string' && typeof source === 'string' && typeof key === 'string' ? { open, opened: { name, source, key } } : { open }
 }
 
 /** The text of the model's last reply: its rows after the person's last prompt. */

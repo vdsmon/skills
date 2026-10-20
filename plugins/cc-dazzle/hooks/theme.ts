@@ -37,5 +37,7 @@ export type Style = {
   nativeCode?: boolean
   httpLinks?: boolean
   editorLinks?: boolean
+  fileLinks?: boolean
+  pathLinks?: boolean
   noteKey?: string
 }

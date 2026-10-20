@@ -68,10 +68,11 @@ export const unsupportedKind = (source: string): string | undefined => {
 
 // Pies and gantts are drawn here, not by beautiful-mermaid. A pie is round while each slice can take
 // its own diagram hue, and falls back to one bar per slice past that or in a narrow terminal.
+// ganttText leaves 2 columns spare for upstream's frame; this box needs 6.
 const OWN: Record<string, (source: string, columns: number) => ChartArt | null> = {
   pie: (source, columns) => pieText(source, false, columns, DIAGRAM_HUES.length),
   gantt: (source, columns) => {
-    const text = ganttText(source, false, columns)
+    const text = ganttText(source, false, columns - 4)
     return text === null ? null : { text }
   },
 }
@@ -161,8 +162,18 @@ const draw = (source: string, columns: number): string | null => {
   })
 }
 
-const LINE = /[─-╿◇]/
+const LINE = /[─-╿◇▏]/
 const ARROW = /[►◄▲▼]/
+const PART = /[▐▏▎▍▌▋▊▉]/
+
+const barStart = (row: string[], c: number): number => {
+  const ch = row[c] ?? ''
+  const solid = BLOCK.test(ch) ? ch : PART.test(ch) && row[c + 1] === '█' ? '█' : PART.test(ch) && row[c - 1] === '█' ? '█' : ''
+  if (!solid) return -1
+  let start = BLOCK.test(ch) ? c : row[c + 1] === '█' ? c + 1 : c - 1
+  while (row[start - 1] === solid) start--
+  return start
+}
 
 const paint = (art: string, style: Style, series?: number[][]): (string | undefined)[][] => {
   const t = style.theme
@@ -212,11 +223,9 @@ const paint = (art: string, style: Style, series?: number[][]): (string | undefi
   grid.forEach((row, r) =>
     row.forEach((ch, c) => {
       if (color[r]![c] !== undefined) return
-      if (BLOCK.test(ch)) {
-        let start = c
-        while (row[start - 1] === ch) start--
-        color[r]![c] = barColor(bars.indexOf(start))
-      } else if (ch === '·') color[r]![c] = t.rule
+      const start = barStart(row, c)
+      if (start >= 0) color[r]![c] = barColor(bars.indexOf(start))
+      else if (ch === '·') color[r]![c] = t.rule
       else if (ARROW.test(ch)) color[r]![c] = t.accent
       else if (LINE.test(ch)) color[r]![c] = t.diagram
       else if (/^\d+[┤┼]/.test(row.slice(c).join(''))) color[r]![c] = t.number

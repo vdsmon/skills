@@ -4,15 +4,33 @@ Plugins here that copy code from another project, and the last upstream version 
 
 | Plugin | Upstream | Copied from | Last checked | Checked on |
 |---|---|---|---|---|
-| cc-dazzle | [NahumLitvin/prismantis](https://github.com/NahumLitvin/prismantis) | fork `vdsmon/prismantis` 0.15.19, which split from upstream at 0.15.1 (`af067b6`) | 0.31.0 (`354e11d`) | 2026-10-19 |
-| cc-dazzle (stretchtext) | [pro-vi/cc-stretch](https://github.com/pro-vi/cc-stretch) | 0.3.3 (`4466e11`) | 0.5.1 (`9aa56da`) | 2026-10-19 |
+| cc-dazzle | [NahumLitvin/prismantis](https://github.com/NahumLitvin/prismantis) | fork `vdsmon/prismantis` 0.15.19, which split from upstream at 0.15.1 (`af067b6`) | 0.32.1 (`b90c326`) | 2026-10-20 |
+| cc-dazzle (stretchtext) | [pro-vi/cc-stretch](https://github.com/pro-vi/cc-stretch) | 0.3.3 (`4466e11`) | 0.5.2 (`1de5f05`) | 2026-10-20 |
 
 To list what is new since the last check:
 
 ```console
 $ git clone https://github.com/NahumLitvin/prismantis && cd prismantis
-$ git log --oneline 354e11d..HEAD
+$ git log --oneline b90c326..HEAD
 ```
+
+## prismantis 0.31.0 to 0.32.1
+
+Ported: a line holding only an HTML-like tag (`<tldr>`) drawn dim on its own (#228); gantt bars that start on a half cell and end on an eighth (#224); from the diff-card work (#234), the no-newline marker as its own row, a dim `...` between hunks, each hunk highlighted apart with removed lines plain, and a node allowance that keeps an opened card under Claude Code's 20000-node ceiling; new, deleted, emptied and renamed files drawn as `Created`, `Deleted` and `Renamed` cards, an Edit that makes a file and a Write preview included, and a write held for review left to Claude Code (#236); clickable paths in replies, tool rows and edit card headers, with a `file://` link kept only when its label shows its own path and programs and launchers never linked (#238, #240); and the redraw when the html copy check lands (#238). While porting the gantt bars, cc-dazzle's gantt charts turned out never to fit under about 90 columns, because the box frame takes 4 more columns than upstream's; `mermaid.tsx` now sizes them for it.
+
+Left out on purpose:
+
+- A click anywhere on a folded card opens it (#236): it needs each card redrawn as one padded Text inside a Button. The `+N more lines` and `show N lines` buttons do the same. A good next port.
+- A wrapped diff line repeating its mark on each row (#234): it needs the surface width split into rows by hand; lines wrap under their code as before.
+- Diff colors from the theme, the darker light-theme greens, `diffStyle` and the preview hover band (#234, #236): cc-dazzle draws diffs in Claude Code's own colors, Mocha only.
+- The WSL `file://wsl.localhost` rewrite (#238): cc-dazzle dropped Linux and Windows clipboard paths. Paths in stretchtext replies do not link yet: `stretch/layout.ts` draws them.
+- Figures (#171, #243, #248), including figure role markup outside figures: cc-dazzle has no figure prompt, so Claude never writes that markup.
+
+## cc-stretch 0.5.1 to 0.5.2
+
+Ported: the words before a lone period, or any stretch with no words of its own, open its stretch; links act when the button comes up, so a drag from a link selects; a double-click on lead-in words still copies the word; the note to Claude names a wordless stretch by its lead-in words; a code span or markdown link never pairs across a pressable phrase's marks. `parse.ts`, `grow.ts` and `guide.ts` stay upstream's, unchanged.
+
+Left out on purpose: the bench and film scripts and docs, which never ship.
 
 ## prismantis 0.24.0 to 0.31.0
 
