@@ -23,7 +23,7 @@ A PR description has one reader: a teammate with a minute to spare. They want to
 
 ## 2. Ask only what the diff cannot show
 
-Most of the story is in the conversation and the commits. In one message, ask the user only for what is still missing: what asked for this change (a review, a decision, a bug, a run result), what stays open and who decides it, and whether someone needs a heads-up. Do not ask what you already know.
+Most of the story is in the conversation and the commits. In one message, ask the user only for what is still missing: what asked for this change (a review, a decision, a bug, a run result), and what stays open and who decides it. Do not ask what you already know.
 
 ## 3. Write the title and the body
 
@@ -36,7 +36,7 @@ Read `references/pr-template.md` (under this skill's base directory) and follow 
 ## 4. Run the check
 
 ```bash
-python3 "<skill-base-dir>/scripts/pr_body_check.py" <body-file> --base <base> --author "$(gh api user -q .login)"
+python3 "<skill-base-dir>/scripts/pr_body_check.py" <body-file> --base <base>
 ```
 
 `<skill-base-dir>` is this skill's base directory. Run it from the repo. Fix every FAIL and run it again until it passes. Read each WARN and fix the ones that are right. A WARN can be wrong, for example a path that exists only at run time.
@@ -49,7 +49,7 @@ python3 "<skill-base-dir>/scripts/pr_body_check.py" <body-file> --base <base> --
 
 ## 6. Show it, then publish
 
-Show the user the title and the body exactly as they will appear. List every `@mention` separately: a mention notifies that person as soon as the PR is visible, drafts included.
+Show the user the title and the body exactly as they will appear.
 
 Wait for a clear yes. That yes covers this push and this PR, nothing more.
 
