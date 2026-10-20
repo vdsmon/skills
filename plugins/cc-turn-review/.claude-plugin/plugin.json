@@ -1,0 +1,14 @@
+{
+  "name": "cc-turn-review",
+  "version": "1.0.0",
+  "description": "After each turn that changes files in a git repo, Haiku checks the diff for over-design and for comment and prose rules, and a band offers to fix what it finds.",
+  "author": {
+    "name": "Victor De Simone",
+    "email": "victorsmoliveira@gmail.com",
+    "url": "https://github.com/vdsmon"
+  },
+  "homepage": "https://github.com/vdsmon/skills",
+  "repository": "https://github.com/vdsmon/skills",
+  "license": "MIT",
+  "types": "./types/index.d.ts"
+}

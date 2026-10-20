@@ -1,0 +1,40 @@
+{
+  "name": "cc-wrap-up",
+  "version": "1.0.0",
+  "description": "Cues a wrap-up at a natural break in a long session, then compacts with prep-compact's message or hands off with prep-exit's resume prompt, with no copy-paste. Reads the context size at no cost and acts only when you press.",
+  "author": {
+    "name": "Victor De Simone",
+    "email": "victorsmoliveira@gmail.com",
+    "url": "https://github.com/vdsmon"
+  },
+  "homepage": "https://github.com/vdsmon/skills",
+  "repository": "https://github.com/vdsmon/skills",
+  "license": "MIT",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "startTokens": {
+      "type": "number",
+      "title": "Start watching at (tokens)",
+      "description": "Context size where the mod starts watching for a natural break (a commit or a clean tree) to offer a wrap-up.",
+      "default": 500000,
+      "min": 10000,
+      "max": 1000000
+    },
+    "stepTokens": {
+      "type": "number",
+      "title": "Step (tokens)",
+      "description": "How far Later moves the line, and how long the mod waits for a natural break before it offers the wrap-up anyway.",
+      "default": 100000,
+      "min": 1000,
+      "max": 1000000
+    },
+    "urgentTokens": {
+      "type": "number",
+      "title": "Urgent at (tokens)",
+      "description": "Context size where the offer turns urgent and sends a notification. Auto-compaction runs at 967k on a 1M window, with no audit.",
+      "default": 920000,
+      "min": 10000,
+      "max": 1000000
+    }
+  }
+}

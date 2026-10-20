@@ -18,10 +18,11 @@ plugins/<plugin>/
   skills/<skill>/agents/openai.yaml # GENERATED for user-only skills of non-cc- plugins
   skills/<skill>/scripts/*          # Optional helper scripts the skill calls
   hooks/*.sh                        # Optional event hooks declared in plugin.json (cc- only)
+  hooks/hooks.json + register.ts    # Or a mod: a hooks module Claude Code runs in-process (cc- only, e.g. cc-keepwarm)
   tests/test-*.sh                   # Optional offline test suite; tests/live-*.sh spend tokens
 scripts/                            # sync-codex.sh, bump-plugin.sh, check.py, test-offline.sh
 docs/                               # Repo notes that never ship, e.g. docs/experiments.md
-evals/<skill>/                      # Eval fixtures kept out of the shipped plugin; point skill-smith at them by path
+evals/<skill>/                      # Eval fixtures kept out of the shipped plugin
 ```
 
 You author `plugin.json` and the skills. `scripts/sync-codex.sh` (`mise run sync`) derives the rest, so never hand-edit a generated file:
@@ -41,7 +42,7 @@ To add, rename or remove a plugin, or to flip its cc- prefix: the dir name, the 
 - `mise run verify` runs sync, fails if a generated file changed, then runs `scripts/check.py`. check.py fails on a broken contract (above), a description over its cap, `when_to_use` on a user-only skill, a cc- feature in an unprefixed plugin, or prep-compact's and prep-exit's `baseline.sh` copies differing (change both together). It warns on a SKILL.md over 100 lines.
 - `mise run test` runs every offline suite (`plugins/*/tests/test-*.sh`). Run the suite of any plugin whose hooks or scripts you touch.
 - CI (`.github/workflows/ci.yml`, on macOS because the hooks use BSD `stat` and `date`) runs sync, check.py and the offline suites on every pull request and on main.
-- `mise run test:keepalive-live` is a live test: it spends tokens, so CI never runs it. Re-run it after a Claude Code upgrade, because it covers a failure that is silent and only shows up on the bill.
+- `mise run test:keepwarm`, `mise run test:autotitle`, `mise run test:wrap-up` and `mise run test:dazzle` run the cc-keepwarm, cc-autotitle, cc-wrap-up and cc-dazzle mods' validate and tests through the `claude` CLI, which CI does not have. Run one after touching its mod or upgrading Claude Code.
 
 ## Anatomy of a skill
 
@@ -63,7 +64,7 @@ The body is a prompt, not docs: second-person imperative. Keep this file and eve
 
 **Plugin description** (`plugin.json`): the first sentence must stand alone in 170 chars or fewer, because it becomes the README row. The whole description is 300 chars or fewer. Mechanics go in SKILL.md, not the description.
 
-**Progressive disclosure**: move reference content out of SKILL.md into sibling files (see `plugins/skill-smith/skills/skill-smith/references/`). Keep references one level deep: chains of `.md` -> `.md` -> `.md` cause partial reads. Aim for 100 lines or fewer in SKILL.md.
+**Progressive disclosure**: move reference content out of SKILL.md into sibling files (see `plugins/humanize/skills/humanize/references/`). Keep references one level deep: chains of `.md` -> `.md` -> `.md` cause partial reads. Aim for 100 lines or fewer in SKILL.md.
 
 **Helper scripts**: put deterministic logic in `skills/<skill>/scripts/` and have the skill call it (e.g. prep-compact's `scripts/baseline.sh`). Otherwise the model re-interprets the prose on every run.
 
@@ -75,12 +76,12 @@ The body is a prompt, not docs: second-person imperative. Keep this file and eve
 
 Hooks are cc- only. Rules for any new hook:
 
-- **Opt-in.** A hook must not spend tokens or schedule work on its own. Put that behind an explicit user action, such as a user-only skill (e.g. `/cc-cache-keepalive`). An always-on hook treats installing as the opt-in; give it an env kill switch, named like cc-cache-keepalive's `CC_KEEPALIVE_OFF=1`.
+- **Opt-in.** A hook must not spend tokens or schedule work on its own unless that is the plugin's whole job, as with cc-keepwarm, where installing is the opt-in. Otherwise put it behind an explicit user action, such as a user-only skill. Either way, give it an off switch (`/keepwarm off`, or an env kill switch for a shell hook).
 - **Output.** Hook stdout becomes a system reminder. Wrap it in a `<name-of-hook>` XML tag.
-- **Measure directive wording.** A hook that only asks the model to do something must have its wording measured, not guessed. Given an ordinary first prompt, a model answers the user and skips the aside: the keepalive directive scored 0/8 that way, created no cron at all, and showed no error. Lead with `REQUIRED SETUP`, order the steps ahead of the user's request, and keep it terse (a "why it matters" paragraph diluted it again). Re-measure any rewording with a live run, as `docs/experiments.md` #18 did.
+- **Measure directive wording.** A hook that only asks the model to do something must have its wording measured, not guessed. Given an ordinary first prompt, a model answers the user and skips the aside: the old cc-cache-keepalive directive scored 0/8 that way, created no cron at all, and showed no error. Lead with `REQUIRED SETUP`, order the steps ahead of the user's request, and keep it terse (a "why it matters" paragraph diluted it again). Re-measure any rewording with a live run, as `docs/experiments.md` #18 did.
 - **State.** Keep it under `~/.claude/.<plugin>/`, keyed by `session_id`. One unkeyed shared file leaks one session's state into another.
 - **Exit codes.** Use `set -u`, never `set -eu`, and an explicit `exit 0` on every path. A `Stop` hook that exits 2 blocks stopping; a `UserPromptSubmit` hook that exits non-zero errors on every prompt.
-- **Fail open, and write down which way that points** in a comment. For the keepalive pair, a wasted ping is cheap and a cold cache is not, so the guard matches the sentinel strictly (a false positive would block a real prompt) and the sensor matches loosely (a false positive costs one ping). Copying a similar hook verbatim gets this backwards.
+- **Fail open, and write down which way that points** in a comment. For cc-keepwarm, a wasted ping is cheap and a cold cache is not, so a failed ping retries while a retry can still land inside the cache lifetime, and a timer that fires past the lifetime holds instead of paying a full rewrite.
 - **`Stop`, never `SubagentStop`**, for a hook that should fire once per main-agent turn. `Stop` carries no `agent_id`, so it already fires for the main agent only.
 - **Record measurements** (cache TTLs, billing, directive compliance) as rows in `docs/experiments.md`, not in new notes.
 
@@ -88,9 +89,9 @@ Hooks are cc- only. Rules for any new hook:
 
 These plugins started as copies of other repos. Re-sync them from upstream from time to time: re-apply the local changes, and name the source in the commit body as `synced from <repo>@<sha> (<version>)`, so the next re-sync starts from a clean diff.
 
-- `mattpocock/skills`: grilling, codebase-design, teach, and skill-smith's design vocabulary (`references/skill-design-*.md`).
-- `obra/superpowers`: brainstorming, systematic-debugging, and skill-smith's TDD-for-skills discipline (from writing-skills).
-- `anthropics/skills`: skill-smith's eval harness (from skill-creator).
+- `mattpocock/skills`: grilling, codebase-design, teach.
+- `obra/superpowers`: brainstorming, systematic-debugging.
+- `NahumLitvin/prismantis` and `pro-vi/cc-stretch`: cc-dazzle. Upstream is read, never merged: start from the "Last checked" versions in `docs/upstreams.md`, port fixes and useful or cool features with their upstream tests, leave out only what cannot apply or fights cc-dazzle's fixed look, then record both lists there and move the rows forward.
 
 ## Shipping a change
 

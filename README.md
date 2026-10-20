@@ -64,15 +64,19 @@ Generated from each plugin's `plugin.json` by `scripts/sync-codex.sh`, so do not
 |---|---|---|
 | `slack-draft` | any | Draft a Slack message for the user to send: Slack mrkdwn, lead-with-conclusion, backticked identifiers and domain values, ASCII punctuation. |
 | `skill-polish` | any | Post-mortem for any skill: finds friction in a session, traces it to the responsible skill file, and edits that file's source checkout, not the plugin install copy. |
-| `cc-cache-keepalive` | CC only | Keeps Claude Code's prompt cache warm on Max plans with a silent cron you arm per session. |
-| `cc-usage-guard` | CC only | Pauses Claude Code before it hits the 5-hour or weekly usage limit and auto-resumes when the window resets, on every surface including the desktop app. |
+| `cc-keepwarm` | CC only | Keeps Claude Code's prompt cache warm in every session with a silent background ping timed from your last request, and skips the ping once the cache is already gone. |
+| `cc-timeline` | CC only | A side pane that draws each Claude Code turn as a timeline: every tool call is a colored bar on the turn's time axis, with subagent calls under their Agent call. |
+| `cc-wrap-up` | CC only | Cues a wrap-up at a natural break in a long session, then compacts with prep-compact's message or hands off with prep-exit's resume prompt, with no copy-paste. |
+| `cc-pitstop` | CC only | Pauses Claude Code before the 5-hour or weekly usage limit, across every session on the machine, and resumes the paused work on its own when the window resets. |
+| `cc-quiet-watch` | CC only | Watches long jobs on a timer and asks Haiku only when the output changed. It wakes the session only when the job is done, failed, stuck or needs you. |
+| `cc-turn-review` | CC only | After each turn that changes files in a git repo, Haiku checks the diff for over-design and for comment and prose rules, and a band offers to fix what it finds. |
+| `cc-changes` | CC only | A side pane that lists every file the Claude Code session created, edited or deleted, with net line counts, and shows a file's diff when you press it. |
 | `prep-compact` | any | Audit in-flight session state before compaction truncates history, and save what would be lost. |
 | `prep-exit` | any | Save what only the conversation knows before a session ends, so a fresh session can pick up the work. |
 | `prep-goal` | any | Interrogate a rough objective into a tight, verifiable /goal completion condition before handing it to an autonomous goal loop. |
 | `humanize` | any | Strip AI-writing tells from text. Detects em-dash overuse, AI vocabulary, inflated significance, rule-of-three, sycophancy, compound coinages, and 20+ more patterns. |
 | `brainstorming` | any | Design-before-code gate that sizes each request as a spike, a bounded change, or architectural work, and gets approval on a design before any code. |
 | `systematic-debugging` | any | Four-phase debugging discipline (root-cause investigation, pattern analysis, hypothesis, single-fix implementation). |
-| `skill-smith` | any | Build and test Agent Skills with a baseline-first eval loop (Sonnet runs, benchmark viewer) and a skill-design vocabulary. |
 | `git-cleanup` | any | Removes local git branches and worktrees that are safely merged into dev/develop/master/main, skipping dirty worktrees and the main checkout. |
 | `strip-migration-cruft` | any | Finds comments and docs that narrate past project history (phase, wave, story, migration notes), sorts cruft from live meaning, and strips the cruft after confirmation. |
 | `grilling` | any | Relentless interview that stress-tests a plan, decision, or idea one round of questions at a time, until you and the agent agree. |
@@ -81,6 +85,8 @@ Generated from each plugin's `plugin.json` by `scripts/sync-codex.sh`, so do not
 | `question` | any | Answer a genuine question in full, with no edits and no side effects. Treats 'why X and not Y?' as curiosity, not as a hidden request to switch to Y or an attack on X. |
 | `open-pr` | any | Write a short, plain pull request description a teammate reads in a minute: what changes, why now, what they must do. |
 | `start-work` | any | Start each job in its own git worktree, based on a fresh fetch of the remote, without switching the main checkout. |
+| `cc-autotitle` | CC only | Names each Claude Code session on its own: after a few turns it picks a short kebab-case name from the whole session, and renames it again when the work moves on. |
+| `cc-dazzle` | CC only | Draws Claude Code's transcript in Catppuccin Mocha: boxed code blocks, box tables, Mermaid diagrams, diff cards in Claude's colors, compact tool rows and timed prompts. |
 <!-- END PLUGINS -->
 
 ## Layout

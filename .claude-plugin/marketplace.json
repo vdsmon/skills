@@ -22,28 +22,58 @@
       "version": "1.5.0"
     },
     {
-      "name": "cc-cache-keepalive",
-      "source": "./plugins/cc-cache-keepalive",
-      "description": "Keeps Claude Code's prompt cache warm on Max plans with a silent cron you arm per session. It cancels any tick that a recent real turn or an already-expired cache makes pointless. Claude Code only.",
-      "version": "2.3.0"
+      "name": "cc-keepwarm",
+      "source": "./plugins/cc-keepwarm",
+      "description": "Keeps Claude Code's prompt cache warm in every session with a silent background ping timed from your last request, and skips the ping once the cache is already gone. Claude Code only.",
+      "version": "1.0.0"
     },
     {
-      "name": "cc-usage-guard",
-      "source": "./plugins/cc-usage-guard",
-      "description": "Pauses Claude Code before it hits the 5-hour or weekly usage limit and auto-resumes when the window resets, on every surface including the desktop app. Claude Code only.",
-      "version": "0.11.0"
+      "name": "cc-timeline",
+      "source": "./plugins/cc-timeline",
+      "description": "A side pane that draws each Claude Code turn as a timeline: every tool call is a colored bar on the turn's time axis, with subagent calls under their Agent call. Claude Code only.",
+      "version": "1.0.0"
+    },
+    {
+      "name": "cc-wrap-up",
+      "source": "./plugins/cc-wrap-up",
+      "description": "Cues a wrap-up at a natural break in a long session, then compacts with prep-compact's message or hands off with prep-exit's resume prompt, with no copy-paste. Reads the context size at no cost and acts only when you press. Claude Code only.",
+      "version": "1.0.0"
+    },
+    {
+      "name": "cc-pitstop",
+      "source": "./plugins/cc-pitstop",
+      "description": "Pauses Claude Code before the 5-hour or weekly usage limit, across every session on the machine, and resumes the paused work on its own when the window resets. Claude Code only.",
+      "version": "1.0.0"
+    },
+    {
+      "name": "cc-quiet-watch",
+      "source": "./plugins/cc-quiet-watch",
+      "description": "Watches long jobs on a timer and asks Haiku only when the output changed. It wakes the session only when the job is done, failed, stuck or needs you. Claude Code only.",
+      "version": "1.0.0"
+    },
+    {
+      "name": "cc-turn-review",
+      "source": "./plugins/cc-turn-review",
+      "description": "After each turn that changes files in a git repo, Haiku checks the diff for over-design and for comment and prose rules, and a band offers to fix what it finds. Claude Code only.",
+      "version": "1.0.0"
+    },
+    {
+      "name": "cc-changes",
+      "source": "./plugins/cc-changes",
+      "description": "A side pane that lists every file the Claude Code session created, edited or deleted, with net line counts, and shows a file's diff when you press it. Claude Code only.",
+      "version": "1.0.0"
     },
     {
       "name": "prep-compact",
       "source": "./plugins/prep-compact",
       "description": "Audit in-flight session state before compaction truncates history, and save what would be lost. Commits real work locally, syncs stale plan and state files, and notes chat-only decisions, asking first only for risky items, then prints a paste-ready /compact message plus a queued follow-up. Portable across SKILL.md-native hosts.",
-      "version": "1.9.1"
+      "version": "1.10.0"
     },
     {
       "name": "prep-exit",
       "source": "./plugins/prep-exit",
       "description": "Save what only the conversation knows before a session ends, so a fresh session can pick up the work. Commits real work locally, syncs state files, writes a handoff note and a memory pointer, asks once only for risky items, and prints a paste-ready resume prompt. Portable across SKILL.md-native hosts.",
-      "version": "0.2.0"
+      "version": "0.3.0"
     },
     {
       "name": "prep-goal",
@@ -68,12 +98,6 @@
       "source": "./plugins/systematic-debugging",
       "description": "Four-phase debugging discipline (root-cause investigation, pattern analysis, hypothesis, single-fix implementation). No fixes before investigation; 3+ failed fixes means stop and question the architecture. For bugs in code you can run. Portable across SKILL.md-native hosts.",
       "version": "0.2.0"
-    },
-    {
-      "name": "skill-smith",
-      "source": "./plugins/skill-smith",
-      "description": "Build and test Agent Skills with a baseline-first eval loop (Sonnet runs, benchmark viewer) and a skill-design vocabulary. Portable across SKILL.md-native hosts.",
-      "version": "0.5.0"
     },
     {
       "name": "git-cleanup",
@@ -122,6 +146,18 @@
       "source": "./plugins/start-work",
       "description": "Start each job in its own git worktree, based on a fresh fetch of the remote, without switching the main checkout. Copies ignored files listed in .worktreeinclude, keeps the worktree folder out of git status, enters it, and runs the repo's setup. Portable across SKILL.md-native hosts.",
       "version": "0.1.0"
+    },
+    {
+      "name": "cc-autotitle",
+      "source": "./plugins/cc-autotitle",
+      "description": "Names each Claude Code session on its own: after a few turns it picks a short kebab-case name from the whole session, and renames it again when the work moves on. It never touches a name you set by hand. Claude Code only.",
+      "version": "1.0.0"
+    },
+    {
+      "name": "cc-dazzle",
+      "source": "./plugins/cc-dazzle",
+      "description": "Draws Claude Code's transcript in Catppuccin Mocha: boxed code blocks, box tables, Mermaid diagrams, diff cards in Claude's colors, compact tool rows and timed prompts. Optional stretchtext replies. Claude Code only.",
+      "version": "1.7.1"
     }
   ]
 }

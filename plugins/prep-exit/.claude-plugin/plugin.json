@@ -1,6 +1,6 @@
 {
   "name": "prep-exit",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Save what only the conversation knows before a session ends, so a fresh session can pick up the work. Commits real work locally, syncs state files, writes a handoff note and a memory pointer, asks once only for risky items, and prints a paste-ready resume prompt.",
   "author": {
     "name": "Victor De Simone",

@@ -1,0 +1,32 @@
+{
+  "name": "cc-dazzle",
+  "version": "1.7.1",
+  "description": "Draws Claude Code's transcript in Catppuccin Mocha: boxed code blocks, box tables, Mermaid diagrams, diff cards in Claude's colors, compact tool rows and timed prompts. Optional stretchtext replies.",
+  "author": {
+    "name": "Victor De Simone",
+    "email": "victorsmoliveira@gmail.com",
+    "url": "https://github.com/vdsmon"
+  },
+  "homepage": "https://github.com/vdsmon/skills",
+  "repository": "https://github.com/vdsmon/skills",
+  "license": "MIT",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "stretch": {
+      "type": "boolean",
+      "title": "Stretchtext replies",
+      "description": "Claude writes short replies whose phrases grow in place when you click them, and « shrinks them back. Clicks need the fullscreen terminal or the desktop app.",
+      "default": false
+    },
+    "copyButtonStyle": {
+      "type": "string",
+      "title": "Copy buttons",
+      "description": "inline: copy buttons always show beside their block. hover: they show only while the pointer is over the block, and take no space. The phone app always shows them inline.",
+      "options": [
+        "inline",
+        "hover"
+      ],
+      "default": "inline"
+    }
+  }
+}

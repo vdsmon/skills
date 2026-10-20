@@ -1,0 +1,46 @@
+{
+  "skill_name": "cc-autotitle",
+  "prompt_source": "plugins/cc-autotitle/hooks/register.ts (const PROMPT), asked after the fixture as the fork asks it after the session",
+  "evals": [
+    {
+      "id": 1,
+      "expected_output": "One bare kebab name about the feed cursor fix / PR #31, not about ruff",
+      "files": ["fixtures/drift.md"],
+      "name": "drift"
+    },
+    {
+      "id": 2,
+      "expected_output": "One bare kebab name for either thread: the batch 88 vs 90 cost comparison or the QA rubric v3 Slack post",
+      "files": ["fixtures/split.md"],
+      "name": "split"
+    },
+    {
+      "id": 3,
+      "expected_output": "One bare kebab name in English that keeps the ticket key rev-2210 and mentions uv",
+      "files": ["fixtures/portuguese.md"],
+      "name": "portuguese"
+    },
+    {
+      "id": 4,
+      "current_name": "pr-31-feed-cursor-fix",
+      "expected_output": "The current name back unchanged, since it still fits",
+      "files": ["fixtures/drift.md"],
+      "name": "keep"
+    },
+    {
+      "id": 5,
+      "current_name": "ruff-e501-per-file-ignores",
+      "expected_output": "A new name about the feed cursor fix, since the current one names the side question",
+      "files": ["fixtures/drift.md"],
+      "name": "move"
+    },
+    {
+      "id": 6,
+      "current_name": "pr-31-feed-cursor-fix",
+      "hint": "focus on the ruff question",
+      "expected_output": "A name about the ruff E501 question, since the hint wins over keeping the current name",
+      "files": ["fixtures/drift.md"],
+      "name": "hint"
+    }
+  ]
+}

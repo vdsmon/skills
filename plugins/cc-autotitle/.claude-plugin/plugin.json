@@ -1,0 +1,32 @@
+{
+  "name": "cc-autotitle",
+  "version": "1.0.0",
+  "description": "Names each Claude Code session on its own: after a few turns it picks a short kebab-case name from the whole session, and renames it again when the work moves on. It never touches a name you set by hand.",
+  "author": {
+    "name": "Victor De Simone",
+    "email": "victorsmoliveira@gmail.com",
+    "url": "https://github.com/vdsmon"
+  },
+  "homepage": "https://github.com/vdsmon/skills",
+  "repository": "https://github.com/vdsmon/skills",
+  "license": "MIT",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "firstAfterTurns": {
+      "type": "number",
+      "title": "First name after (turns)",
+      "description": "The turn after which the session gets its first name. Before that, Claude Code's own title stays.",
+      "default": 3,
+      "min": 1,
+      "max": 50
+    },
+    "recheckEveryTurns": {
+      "type": "number",
+      "title": "Re-check every (turns)",
+      "description": "Turns between checks of whether the name still fits the work; a compaction also triggers one. 0 names a session once and never re-checks.",
+      "default": 10,
+      "min": 0,
+      "max": 200
+    }
+  }
+}

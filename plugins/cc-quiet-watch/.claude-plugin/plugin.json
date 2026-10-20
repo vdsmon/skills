@@ -1,0 +1,14 @@
+{
+  "name": "cc-quiet-watch",
+  "version": "1.0.0",
+  "description": "Watches long jobs on a timer and asks Haiku only when the output changed. It wakes the session only when the job is done, failed, stuck or needs you.",
+  "author": {
+    "name": "Victor De Simone",
+    "email": "victorsmoliveira@gmail.com",
+    "url": "https://github.com/vdsmon"
+  },
+  "homepage": "https://github.com/vdsmon/skills",
+  "repository": "https://github.com/vdsmon/skills",
+  "license": "MIT",
+  "types": "./types/index.d.ts"
+}
