@@ -7,7 +7,7 @@ export type Inline =
   | { kind: 'math'; text: string }
   | { kind: 'link'; text: string; href: string }
   | { kind: 'number'; text: string }
-  | { kind: 'path'; text: string }
+  | { kind: 'path'; text: string; href?: string }
   | { kind: 'dim'; text: string }
   | { kind: 'footnote'; text: string; note?: number }
 
@@ -41,6 +41,7 @@ const TABLE_SEP = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/
 const LIST_ITEM = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/
 const FENCE = /^\s*(`{3,}|~{3,})\s*([\w+-]*)/
 const NOTE_DEF = /^\[\^([^\]\s]+)\]:\s*(.*)$/
+const TAG_LINE = /^\s*<\/?[a-z][\w-]*>\s*$/i
 const SUPERSCRIPT = '⁰¹²³⁴⁵⁶⁷⁸⁹'
 
 const splitRow = (line: string): string[] => {
@@ -177,7 +178,7 @@ const numberNotes = (blocks: Block[], defs: Map<string, string>, hl: Highlight):
 }
 
 // Whole escape sequences go, not just the escape byte, so their payload never becomes a link.
-const CONTROL = /\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)?|\u001b\[[0-?]*[ -/]*[@-~]|\u001b[@-_]?|[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g
+export const CONTROL = /\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)?|\u001b\[[0-?]*[ -/]*[@-~]|\u001b[@-_]?|[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g
 
 export const parse = (raw: string, hl: Highlight): Block[] => {
   const source = raw.replace(CONTROL, '')
@@ -260,6 +261,11 @@ const parseBlocks = (source: string, hl: Highlight, depth = 0): Block[] => {
     if (NOTE_DEF.test(line)) {
       flush(i)
       while (/^\s{2,}\S/.test(at(i + 1))) i++
+      continue
+    }
+    if (TAG_LINE.test(line)) {
+      flush(i)
+      add({ kind: 'paragraph', inline: [{ kind: 'dim', text: line.trim() }] }, i, i + 1)
       continue
     }
     const heading = /^(#{1,6})\s+(.*?)(?:\s+#+)?\s*$/.exec(line)

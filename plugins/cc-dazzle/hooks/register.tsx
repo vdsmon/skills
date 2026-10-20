@@ -6,6 +6,8 @@ import { instanceKey, noteTip, renderBlocks } from './blocks'
 import type { ClipboardBackend } from './clipboard'
 import { clipboardCommand } from './clipboard'
 import { clockText, promptKey, sentAt, withRecord } from './clock'
+import type { TerminalEnv } from './links'
+import { drawsHyperlinks } from './links'
 import type { Block } from './markdown'
 import { parse } from './markdown'
 import { boxArt, chartSeries, inlineMarks, mermaidArt, shortenEdgeLabels, unsupportedKind } from './mermaid'
@@ -54,17 +56,41 @@ const htmlBackend = async ($: EngineInterface): Promise<ClipboardBackend | null>
   return helper?.kind === 'file' ? 'macos' : null
 }
 
-type Reach = { http: boolean; editor: boolean; marks: boolean }
+type Reach = { http: boolean; editor: boolean; marks: boolean; files: boolean; paths: boolean }
 
 type Probes = { htmlCopy?: Promise<ClipboardBackend | null>; reach?: Promise<Reach> }
 
-// What this Claude Code release opens: plain http links, VS Code file links and clickable footnote marks.
-const reachOf = ($: EngineInterface, probes: Probes): Promise<Reach> =>
-  (probes.reach ??= $.session.version().then(v => ({ http: takesHttpLinks(v.base), editor: takesEditorLinks(v.base), marks: takesClickableMarks(v.base) }), () => ({ http: false, editor: false, marks: false })))
+const terminalEnv = async ($: EngineInterface): Promise<TerminalEnv> => ({
+  FORCE_HYPERLINK: await $.env.get('FORCE_HYPERLINK'),
+  TERM_PROGRAM: await $.env.get('TERM_PROGRAM'),
+  TERM_PROGRAM_VERSION: await $.env.get('TERM_PROGRAM_VERSION'),
+  TERM: await $.env.get('TERM'),
+  WT_SESSION: await $.env.get('WT_SESSION'),
+  LC_TERMINAL: await $.env.get('LC_TERMINAL'),
+  VTE_VERSION: await $.env.get('VTE_VERSION'),
+  TERMINAL_EMULATOR: await $.env.get('TERMINAL_EMULATOR'),
+})
 
+const overSsh = async ($: EngineInterface): Promise<boolean> => Boolean(await $.env.get('SSH_CONNECTION') || await $.env.get('SSH_TTY'))
+
+// What this Claude Code release opens: plain http links, VS Code file links, clickable footnote marks
+// and file links, read once. Over SSH a file link would open a file on the terminal's computer.
+const readReach = async ($: EngineInterface, style: Style): Promise<Reach> => {
+  const base = await $.session.version().then(v => v.base, () => undefined)
+  const http = takesHttpLinks(base)
+  if (http) await locate($, style)
+  const files = http && !(await overSsh($).catch(() => true))
+  return { http, editor: takesEditorLinks(base), marks: takesClickableMarks(base), files, paths: files && drawsHyperlinks(await terminalEnv($).catch(() => ({}))) }
+}
+
+const reachOf = ($: EngineInterface, probes: Probes, style: Style): Promise<Reach> => (probes.reach ??= readReach($, style))
+
+// Replies drawn before the check lands, as on resume, redraw to gain ⧉ html.
 const probe = async ($: EngineInterface, style: Style, probes: Probes): Promise<void> => {
   probes.htmlCopy ??= htmlBackend($)
+  const before = style.htmlCopy
   style.htmlCopy = await probes.htmlCopy
+  if (style.htmlCopy !== before) $.ui.invalidate('ui.render')
 }
 
 const copyTable = async ($: EngineInterface, html: string, text: string): Promise<string | null> => {
@@ -74,10 +100,10 @@ const copyTable = async ($: EngineInterface, html: string, text: string): Promis
   return result.exitCode === 0 ? null : result.stderr.trim() || command.failure
 }
 
-const folder = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolve']>, open?: string[]): Fold => (id, hidden, key) => {
+const folder = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolve']>, open?: string[]): Fold => (id, hidden, key, label) => {
   if (!open) return null
   const folded = !open.includes(id)
-  return { folded, element: <el.Button key={key} variant="secondary" label={folded ? `+${hidden} more lines` : 'show less'} onPress={() => update($, unfolded, ids => (folded ? [...ids, id].slice(-500) : ids.filter(x => x !== id)))} /> }
+  return { folded, element: <el.Button key={key} variant="secondary" label={folded ? (label ?? `+${hidden} more lines`) : 'show less'} onPress={() => update($, unfolded, ids => (folded ? [...ids, id].slice(-500) : ids.filter(x => x !== id)))} /> }
 }
 
 const drawMarkdown = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolve']>, style: Style, blocks: ReturnType<typeof parse>, columns: number, open?: string[], notes?: { id: string; press: boolean }): RenderElement[] => {
@@ -143,7 +169,7 @@ export const register: Register = (on, options) => {
   const parsed = new Map<string, ReturnType<typeof parse>>()
   const parseCached = (text: string) => remember(parsed, text, () => parse(text, { numbers: true, paths: true }))
   const forSurface = (base: Style, surface: RenderSurface, reach?: Reach): Style => {
-    const drawn = surface === 'terminal' ? (reach?.http || reach?.editor ? { ...base, httpLinks: reach.http, editorLinks: reach.editor } : base) : { ...base, htmlCopy: null, nativeCode: true }
+    const drawn = surface === 'terminal' ? (reach?.http || reach?.editor ? { ...base, httpLinks: reach.http, editorLinks: reach.editor, fileLinks: reach.files, pathLinks: reach.paths } : base) : { ...base, htmlCopy: null, nativeCode: true }
     // Off the terminal, Text is proportional and collapses spaces, so code goes to the app's own Code element.
     // The phone app has no pointer to hover with.
     return surface === 'mobile' && drawn.copyButtonStyle === 'hover' ? { ...drawn, copyButtonStyle: 'inline' } : drawn
@@ -175,7 +201,7 @@ export const register: Register = (on, options) => {
       for (const call of e.props.calls) if (call.tool_use_id) markExpanded(call.tool_use_id)
       return next(e)
     }
-    const row = renderToolGroup($.ui.resolve(e), style, e.props.calls, e.props.isActive)
+    const row = renderToolGroup($.ui.resolve(e), forSurface(style, e.surface, await reachOf($, probes, style)), e.props.calls, e.props.isActive)
     const found = e.props.calls.flatMap(call => {
       const table = call.isRunning || call.isErrored || call.isInterrupted ? null : toolTable(call.tool, call.output)
       return table === null ? [] : [{ call, table }]
@@ -195,15 +221,16 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
     await locate($, style)
     noteCommand(e.props.tool_use_id, e.props.tool, e.props.input)
-    if (!expandedCalls.has(e.props.tool_use_id)) return renderToolRow($.ui.resolve(e), style, e.props)
+    if (!expandedCalls.has(e.props.tool_use_id)) return renderToolRow($.ui.resolve(e), forSurface(style, e.surface, await reachOf($, probes, style)), e.props)
     const shell = e.props.tool === 'Bash' || e.props.tool === 'PowerShell'
     return shell && typeof e.props.output !== 'string' ? renderExpandedShell($.ui.resolve(e), style, e.props) : next(e)
   })
 
   on('ui.render', { component: 'ToolResult' }, async ($, e, next) => {
     if ((e.props.tool === 'Edit' || e.props.tool === 'Write') && !e.props.isErrored) {
+      await locate($, style)
       const el = $.ui.resolve(e)
-      return renderDiffCard(el, style, e.props.output, folder($, el, await read($, unfolded)), e.props.tool_use_id) ?? next(e)
+      return renderDiffCard(el, forSurface(style, e.surface, await reachOf($, probes, style)), e.props.output, folder($, el, await read($, unfolded)), e.props.tool_use_id) ?? next(e)
     }
     const edits = e.props.tool === 'Bash' && !e.props.isErrored ? bashEdits(e.props.output) : undefined
     if (edits) {
@@ -213,7 +240,7 @@ export const register: Register = (on, options) => {
       const above = hasShellOutput(output) ? await next({ ...e, props: { ...e.props, output } }) : null
       firstEdit ??= e.props.tool_use_id
       const notes = editNotes(edits, firstEdit === e.props.tool_use_id, shellCommands.get(e.props.tool_use_id))
-      const cards = renderBashEdits(el, style, edits, folder($, el, await read($, unfolded)), e.props.tool_use_id, above !== null, notes)
+      const cards = renderBashEdits(el, forSurface(style, e.surface, await reachOf($, probes, style)), edits, folder($, el, await read($, unfolded)), e.props.tool_use_id, above !== null, notes)
       return above === null ? cards : <el.Box flexDirection="column">{above}{cards}</el.Box>
     }
     if (!e.props.isErrored) {
@@ -258,7 +285,7 @@ export const register: Register = (on, options) => {
     const el = $.ui.resolve(e)
     const { Box } = el
     const open = await read($, unfolded)
-    return <Box flexDirection="column" rowGap={1}>{drawMarkdown($, el, forSurface(style, e.surface, await reachOf($, probes)), blocks, columnsOf(e.viewport), open)}</Box>
+    return <Box flexDirection="column" rowGap={1}>{drawMarkdown($, el, forSurface(style, e.surface, await reachOf($, probes, style)), blocks, columnsOf(e.viewport), open)}</Box>
   })
 
   on('ui.render', { component: 'UserMessage' }, async ($, e, next) => {
@@ -275,7 +302,7 @@ export const register: Register = (on, options) => {
     const el = $.ui.resolve(e)
     const { Box, Text } = el
     const open = await read($, unfolded)
-    const reach = await reachOf($, probes)
+    const reach = await reachOf($, probes, style)
     const notes = { id: e.requestId, press: reach.marks }
     const drawStyle = forSurface(style, e.surface, reach)
     const draw = (text: string) => drawMarkdown($, el, drawStyle, parseCached(text), columnsOf(e.viewport), open, notes)

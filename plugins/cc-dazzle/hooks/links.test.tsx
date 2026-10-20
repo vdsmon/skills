@@ -23,10 +23,11 @@ const engine = (on: On) =>
     return <Text>engine</Text>
   })
 
-test('only http and https links become terminal hyperlinks', async ($, on) => {
+test('only http, https and file links become terminal hyperlinks', async ($, on) => {
   claudeAt(on, '2.1.289')
-  const ui = await $.ui.mount(reply('[docs](https://example.com) [dev](http://localhost:3000) [plain](http://example.com) [mail](mailto:a@example.com) [run](javascript:alert(1)) [disk](file:///etc/passwd)'))
-  expect((await ui.findAll({ type: 'Link' })).map(l => l.props.href)).toEqual(['https://example.com', 'http://localhost:3000', 'http://example.com'])
+  mock.env(on, {})
+  const ui = await $.ui.mount(reply('[docs](https://example.com) [dev](http://localhost:3000) [plain](http://example.com) [mail](mailto:a@example.com) [run](javascript:alert(1)) [/etc/passwd](file:///etc/passwd)'))
+  expect((await ui.findAll({ type: 'Link' })).map(l => l.props.href)).toEqual(['https://example.com', 'http://localhost:3000', 'http://example.com', 'file:///etc/passwd'])
   expect(await ui.find({ type: 'Text', text: /^run \(javascript:alert\(1\)\)$/ })).toBeDefined()
   await ui.unmount()
 })
@@ -124,10 +125,10 @@ const shellEdit = (id: string, output: unknown, isErrored = false, surface: 'ter
   ({ plugin: 'cc-dazzle', surface, component: 'ToolResult' as const, props: { tool_use_id: id, tool: 'Bash', output, isErrored } })
 const said = (text: string) => ({ type: 'Text' as const, text: `(${text})` })
 
-test('shell edits read one diff per file and a count of files not shown', () => {
-  expect(bashEdits(bashEdit('', 3))?.files.map(f => [f.path, f.rows.map(r => `${r.num}${r.mark}${r.text}`)])).toEqual([
+test('shell edits read a diff per changed file, the lines of each new file, and a count of files not shown', () => {
+  expect(bashEdits(bashEdit('', 3))?.files.map(f => (f.kind === 'modified' ? [f.path, f.rows.map(r => `${r.num}${r.mark}${r.text}`)] : f))).toEqual([
     ['/home/demo/app/src/app.ts', ['4 const a = 1', '5-const b = 2', '5+const b = 3', '6+const c = 4']],
-    ['/home/demo/app/NOTES.md', ['1+one', '2+two']],
+    { kind: 'created', path: '/home/demo/app/NOTES.md', lines: ['one', 'two'] },
   ])
   expect(bashEdits(bashEdit('', 3))?.more).toBe(3)
   expect(bashEdits({ stdout: 'x' })).toBeUndefined()
@@ -137,13 +138,15 @@ test('shell edits read one diff per file and a count of files not shown', () => 
   expect(withoutBashEdits(bashEdit('hi'))).toEqual({ stdout: 'hi', stderr: '', interrupted: false })
 })
 
-test('shell edits draw the same diff card as the Edit tool, one per file', async ($, on) => {
+test('shell edits draw the same diff card as the Edit tool, one per changed file', async ($, on) => {
   engine(on)
   mock.env(on, { HOME: '/home/demo' })
   on('session.root', () => ({ value: '/home/demo/app' }))
   const ui = await $.ui.mount(shellEdit('s-1', bashEdit('', 2)))
   expect((await ui.find({ type: 'Text', text: /^src\/app\.ts $/ }))?.props.color).toBe(t.path)
-  expect((await ui.find({ type: 'Text', text: /^NOTES\.md $/ }))?.props.color).toBe(t.path)
+  expect(await ui.find({ type: 'Text', text: /^Created NOTES\.md \(2 lines\)$/ })).toBeDefined()
+  expect((await ui.find({ type: 'Text', text: /^NOTES\.md$/ }))?.props.color).toBe(t.path)
+  expect((await ui.find({ type: 'Box', text: /^2 \+ two$/ }))?.props.backgroundColor).toBe(CLAUDE_DIFF.dark.addBg)
   expect((await ui.find({ type: 'Text', text: /^\+2$/ }))?.props.color).toBe(CLAUDE_DIFF.dark.addMark)
   expect((await ui.find({ type: 'Text', text: /^−1$/ }))?.props.color).toBe(CLAUDE_DIFF.dark.delMark)
   expect((await ui.find({ type: 'Text', text: /^… \+2 more files$/ }))?.props.dimColor).toBe(true)

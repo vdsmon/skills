@@ -6,6 +6,7 @@ import type { Block } from './markdown'
 import { parse } from './markdown'
 import { inlineMarks, mermaidText } from './mermaid'
 import { width } from './text'
+import { THEME } from './theme'
 
 // Fixes ported from upstream prismantis 0.15.1 to 0.19.0, each with its upstream test.
 
@@ -281,6 +282,33 @@ test('a gantt chart places each task on a shared time axis', () => {
   expect(art[2]).toBe('Build')
 })
 
+test('a line holding only a tag draws dim on its own, never as a path or joined to the paragraph next to it', () => {
+  const blocks = parse('Answer text.\n\n<tldr>\n- First point, see /tmp/example.\n\nA closing sentence.\n</tldr>', hl)
+  expect(blocks.map(b => b.kind)).toEqual(['paragraph', 'paragraph', 'list', 'paragraph', 'paragraph'])
+  expect(blocks[1]).toMatchObject({ inline: [{ kind: 'dim', text: '<tldr>' }], raw: '<tldr>' })
+  expect(blocks[3]?.raw).toBe('A closing sentence.')
+  expect(blocks[4]).toMatchObject({ inline: [{ kind: 'dim', text: '</tldr>' }], raw: '</tldr>' })
+  expect(parse('a <b>bold</b> word\n<br/>', hl).map(b => b.kind === 'paragraph' && b.inline.some(n => n.kind === 'dim'))).toEqual([false])
+})
+
+const FINE_GANTT = 'gantt\n  dateFormat YYYY-MM-DD\n  section Build\n  Two days :a, 2026-10-01, 2d\n  Two and a bit :b, 2026-10-01, 2.4d\n  Two and a half :c, 2026-10-01, 2.5d\n  Rest :d, after a, 5d'
+
+test('gantt bars end on an eighth of a cell and start on a half, so close durations draw apart', () => {
+  const art = mermaidText(FINE_GANTT, 84)!.split('\n')
+  const bar = (name: string) => art.find(l => l.trimStart().startsWith(name))!.slice(18)
+  expect(new Set(['Two days', 'Two and a bit', 'Two and a half'].map(bar)).size).toBe(3)
+  expect(bar('Two days')).toMatch(/^█+[▎▍▌▋▊▉]$/)
+  expect(bar('Rest').trimStart()).toMatch(/^▐█+$/)
+})
+
+test('a gantt bar end drawn in part of a cell takes its bar color, while axis ticks keep theirs', async $ => {
+  const ui = await $.ui.mount(reply('```mermaid\n' + FINE_GANTT + '\n```', 84))
+  expect(await ui.find({ type: 'Text', text: /^█+[▎▍▌▋▊▉]$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^▐█+$/ })).toBeDefined()
+  expect((await ui.find({ type: 'Text', text: /^▏(─+▏)+─*$/ }))?.props.color).toBe(THEME.diagram)
+  await ui.unmount()
+})
+
 test('pie and gantt sources the chart cannot read show a failure note, not a broken chart', async $ => {
   for (const source of ['pie\n  "a" : -1', 'pie\n  "a" : 0', 'gantt\n  Task : 3d', 'gantt\n  dateFormat X\n  Task : 1, 2', 'gantt\n  Task : after nope, 1d']) {
     expect(mermaidText(source, 80)).toBeNull()
@@ -288,6 +316,13 @@ test('pie and gantt sources the chart cannot read show a failure note, not a bro
     expect(await ui.find({ type: 'Text', text: /diagram failed to render/ })).toBeDefined()
     await ui.unmount()
   }
+})
+
+test('a gantt chart fits an 80-column terminal', async $ => {
+  const ui = await $.ui.mount(reply('```mermaid\n' + FINE_GANTT + '\n```', 80))
+  expect(await ui.find({ type: 'Text', text: /terminal is/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /^█+/ })).toBeDefined()
+  await ui.unmount()
 })
 
 test('pie and gantt charts shrink to a narrow terminal', () => {

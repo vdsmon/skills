@@ -1,6 +1,7 @@
 import type { ElementTable, RenderElement } from 'claude-code'
 
 import { tableHtml, tableText } from './html'
+import { drawable } from './links'
 import type { Block, Inline } from './markdown'
 import { displayText, inlineText } from './markdown'
 import { graphemes, hasLink, longestWord, mostLines, remember, sliceInline, width, wrapInline, wrapRanges } from './text'
@@ -8,43 +9,6 @@ import type { Style, Theme } from './theme'
 import { ALERT_COLOR } from './theme'
 import type { PrismToken } from './vendor/prism.js'
 import { languages, tokenize } from './vendor/prism.js'
-
-const isHyperlink = (href: string, http: boolean, editor: boolean): boolean =>
-  (http ? /^https?:/i : /^(https:|http:\/\/localhost(:\d+)?([/?#]|$))/i).test(href) || (editor && /^vscode(-insiders)?:\/\/file\//i.test(href))
-
-const plainLink = (text: string, href: string): string => {
-  const target = href.replace(/^mailto:/i, '')
-  return text === target || `http://${text}` === target ? target : `${text} (${target})`
-}
-
-const unlink = (nodes: Inline[], http: boolean, editor: boolean): Inline[] =>
-  nodes.map(n => (n.kind === 'link' && !isHyperlink(n.href, http, editor) ? { kind: 'text', text: plainLink(n.text, n.href) } : 'children' in n ? { ...n, children: unlink(n.children, http, editor) } : n))
-
-const unlinkBlock = (block: Block, http: boolean, editor: boolean): Block => {
-  const plain = (nodes: Inline[]) => unlink(nodes, http, editor)
-  switch (block.kind) {
-    case 'heading':
-    case 'paragraph':
-      return { ...block, inline: plain(block.inline) }
-    case 'list':
-      return { ...block, items: block.items.map(item => ({ ...item, inline: plain(item.inline) })) }
-    case 'table':
-      return { ...block, header: block.header.map(plain), rows: block.rows.map(r => r.map(plain)) }
-    case 'notes':
-      return { ...block, notes: block.notes.map(note => ({ ...note, inline: plain(note.inline) })) }
-    default:
-      return block
-  }
-}
-
-const unlinked = new WeakMap<Block, Block[]>()
-
-// A link Claude Code cannot open draws as its text and target, so nothing looks clickable that is not.
-const drawable = (block: Block, http: boolean, editor: boolean): Block => {
-  const cached = unlinked.get(block) ?? []
-  unlinked.set(block, cached)
-  return (cached[+http + 2 * +editor] ??= unlinkBlock(block, http, editor))
-}
 
 const noteHover = (style: Style, note: number | undefined) =>
   note === undefined || style.noteKey === undefined ? {} : { hover: { scope: `fn:${style.noteKey}:${note}`, inverse: true } }
@@ -72,7 +36,7 @@ const renderInline = (el: ElementTable, style: Style, nodes: Inline[], keyBase: 
       case 'number':
         return <Text key={key} color={t.number}>{n.text}</Text>
       case 'path':
-        return <Text key={key} color={t.path}>{n.text}</Text>
+        return <Text key={key} color={t.path}>{n.href === undefined ? n.text : <el.Link href={n.href} label={n.text} />}</Text>
       case 'dim':
         return <Text key={key} dimColor>{n.text}</Text>
       case 'footnote':
@@ -496,7 +460,7 @@ const renderList = (el: ElementTable, style: Style, block: Extract<Block, { kind
 
 export type CopyButton = (text: string | (() => string), key: string, label?: string, html?: () => string) => RenderElement | null
 export type Drawn = Map<number, { element?: RenderElement; art?: string; note?: string }>
-export type Fold = (id: string, hidden: number, key: string) => { folded: boolean; element: RenderElement } | null
+export type Fold = (id: string, hidden: number, key: string, label?: string) =>{ folded: boolean; element: RenderElement } | null
 export type Tip = (note: number) => (() => void) | undefined
 
 export const instanceKey = (id: string): string => {
@@ -563,7 +527,7 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
     return { first, second, html }
   })
   const beside = (b: number) => (hover || !buttons[b]!.first ? columns : columns - reserved(buttons[b]!.first) - 2)
-  const shown = blocks.map(block => drawable(block, style.httpLinks === true, style.editorLinks === true))
+  const shown = blocks.map(block => drawable(block, style))
   const rendered = shown.map((block, b) => {
     const key = `b${b}`
     switch (block.kind) {

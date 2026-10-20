@@ -11,8 +11,12 @@ declare module 'claude-code' {
       took: StateFamily<number>
       /** Per paragraph of a reply drawn by a stretch Client: the keys of the stretches open in it. */
       stretchOpen: StateFamily<string[]>
-      /** Short forms of the stretches the reader opened since their last prompt. */
-      stretchSeen: string[]
+      /**
+       * The stretches the reader opened since their last prompt: each as written and by the name the
+       * note to Claude gives it, which together tell apart two with the same short form after
+       * different words.
+       */
+      stretchSeen: Shaped<{ source: string; name: string }[]>
       /** Per reply: the count each open stretch was opened at, which picks its colour, and the next count. */
       stretchOrder: StateFamily<{ order: Record<string, number>; count: number }>
       /** The request id of the reply in which a stretch was opened last, until the next prompt. */

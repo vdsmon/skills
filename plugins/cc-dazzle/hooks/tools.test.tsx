@@ -100,8 +100,8 @@ test('a .ts file diff gets Prism colors', async ($, on) => {
 
 test('a long diff folds behind a more-lines button that unfolds it through the unfolded state', async ($, on) => {
   engine(on)
-  const content = Array.from({ length: 25 }, (_, i) => `line ${i + 1}`).join('\n')
-  const ui = await $.ui.mount(result('Write', { type: 'create', filePath: '/tmp/new.txt', content }, 'w1'))
+  const patch = { filePath: '/tmp/new.txt', structuredPatch: [{ oldStart: 1, newStart: 1, lines: Array.from({ length: 25 }, (_, i) => `+line ${i + 1}`) }] }
+  const ui = await $.ui.mount(result('Edit', patch, 'w1'))
   expect(await ui.find({ type: 'Text', text: /^line 20$/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /^line 21$/ })).toBeUndefined()
   expect((await ui.find({ key: 'fold' }))?.props.label).toBe('+5 more lines')
@@ -109,7 +109,7 @@ test('a long diff folds behind a more-lines button that unfolds it through the u
   expect(await ui.find({ type: 'Text', text: /^line 25$/ })).toBeDefined()
   expect((await ui.find({ key: 'fold' }))?.props.label).toBe('show less')
   await ui.unmount()
-  const again = await $.ui.mount(result('Write', { type: 'create', filePath: '/tmp/new.txt', content }, 'w1'))
+  const again = await $.ui.mount(result('Edit', patch, 'w1'))
   expect(await again.find({ type: 'Text', text: /^line 25$/ })).toBeDefined()
   expect((await again.find({ key: 'fold' }))?.props.label).toBe('show less')
   await again.unmount()
