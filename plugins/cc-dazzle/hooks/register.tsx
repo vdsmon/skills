@@ -100,10 +100,16 @@ const copyTable = async ($: EngineInterface, html: string, text: string): Promis
   return result.exitCode === 0 ? null : result.stderr.trim() || command.failure
 }
 
-const folder = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolve']>, open?: string[]): Fold => (id, hidden, key, label) => {
+// faces: Buttons may hold Text (Claude Code 2.1.295, terminal), so a card or its header can be the toggle.
+const folder = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolve']>, open?: string[], faces = false): Fold => (id, hidden, key, look) => {
   if (!open) return null
   const folded = !open.includes(id)
-  return { folded, element: <el.Button key={key} variant="secondary" label={folded ? (label ?? `+${hidden} more lines`) : 'show less'} onPress={() => update($, unfolded, ids => (folded ? [...ids, id].slice(-500) : ids.filter(x => x !== id)))} /> }
+  const label = folded ? (look?.label ?? `+${hidden} more lines`) : 'show less'
+  const toggle = () => update($, unfolded, ids => (folded ? [...ids, id].slice(-500) : ids.filter(x => x !== id)))
+  const button = <el.Button key={key} variant="secondary" label={label} onPress={toggle} />
+  if (!faces) return { folded, element: button }
+  const element = look?.face ? <el.Button key={key} plain label={label} hover={{ inverse: false }} onPress={toggle}>{look.face()}</el.Button> : button
+  return { folded, faced: look?.face !== undefined, element, around: (rows, band) => <el.Button key={`${key}.rows`} plain label={label} hover={{ inverse: false, ...(band ? { backgroundColor: band } : {}) }} onPress={toggle}>{rows}</el.Button> }
 }
 
 const drawMarkdown = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolve']>, style: Style, blocks: ReturnType<typeof parse>, columns: number, open?: string[], notes?: { id: string; press: boolean }): RenderElement[] => {
@@ -230,7 +236,9 @@ export const register: Register = (on, options) => {
     if ((e.props.tool === 'Edit' || e.props.tool === 'Write') && !e.props.isErrored) {
       await locate($, style)
       const el = $.ui.resolve(e)
-      return renderDiffCard(el, forSurface(style, e.surface, await reachOf($, probes, style)), e.props.output, folder($, el, await read($, unfolded)), e.props.tool_use_id) ?? next(e)
+      const reach = await reachOf($, probes, style)
+      const fold = folder($, el, await read($, unfolded), e.surface === 'terminal' && reach.marks)
+      return renderDiffCard(el, forSurface(style, e.surface, reach), e.props.output, fold, e.props.tool_use_id, e.viewport?.columns) ?? next(e)
     }
     const edits = e.props.tool === 'Bash' && !e.props.isErrored ? bashEdits(e.props.output) : undefined
     if (edits) {
@@ -240,7 +248,9 @@ export const register: Register = (on, options) => {
       const above = hasShellOutput(output) ? await next({ ...e, props: { ...e.props, output } }) : null
       firstEdit ??= e.props.tool_use_id
       const notes = editNotes(edits, firstEdit === e.props.tool_use_id, shellCommands.get(e.props.tool_use_id))
-      const cards = renderBashEdits(el, forSurface(style, e.surface, await reachOf($, probes, style)), edits, folder($, el, await read($, unfolded)), e.props.tool_use_id, above !== null, notes)
+      const reach = await reachOf($, probes, style)
+      const fold = folder($, el, await read($, unfolded), e.surface === 'terminal' && reach.marks)
+      const cards = renderBashEdits(el, forSurface(style, e.surface, reach), edits, fold, e.props.tool_use_id, above !== null, notes, e.viewport?.columns)
       return above === null ? cards : <el.Box flexDirection="column">{above}{cards}</el.Box>
     }
     if (!e.props.isErrored) {
@@ -315,7 +325,7 @@ export const register: Register = (on, options) => {
       </Box>
     )
     const text = options.stretch === true && e.props.isSummary !== true ? await writtenText($, e.props.text) : e.props.text
-    const stretched = options.stretch === true && e.props.isSummary !== true ? await stretchBody($, { ...e, props: { ...e.props, text } }, draw) : undefined
+    const stretched = options.stretch === true && e.props.isSummary !== true ? await stretchBody($, { ...e, props: { ...e.props, text } }, draw, drawStyle) : undefined
     if (stretched?.framed) return <Box flexDirection="column" rowGap={1} marginTop={1}>{stretched.body}</Box>
     if (stretched !== undefined) return reply(stretched.body)
     const blocks = parseCached(openText(e.props.text))

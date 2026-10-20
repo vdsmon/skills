@@ -460,7 +460,10 @@ const renderList = (el: ElementTable, style: Style, block: Extract<Block, { kind
 
 export type CopyButton = (text: string | (() => string), key: string, label?: string, html?: () => string) => RenderElement | null
 export type Drawn = Map<number, { element?: RenderElement; art?: string; note?: string }>
-export type Fold = (id: string, hidden: number, key: string, label?: string) =>{ folded: boolean; element: RenderElement } | null
+export type FoldLook = { label?: string; face?: () => RenderElement }
+
+// faced: the element is the face itself as a button. around: wraps rows in one plain button, from 2.1.295 on the terminal.
+export type Fold = (id: string, hidden: number, key: string, look?: FoldLook) => { folded: boolean; element: RenderElement; faced?: boolean; around?: (rows: RenderElement, band?: string) => RenderElement } | null
 export type Tip = (note: number) => (() => void) | undefined
 
 export const instanceKey = (id: string): string => {

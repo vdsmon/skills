@@ -1,6 +1,7 @@
 import type { ClientModule, ClientPointerEvent, ClientSurface, TextProps } from 'claude-code'
 
 import { grow, lengthOf } from './grow'
+import type { Reach } from '../links'
 import { THEME } from '../theme'
 import { continuationOf, FRESH, isMarkup, layout, link, linkAt, namesOf, openedOf, targetsIn, tint, widthOf, withLeadIns } from './layout'
 import type { Action, OpenedStretch, Row, Run } from './layout'
@@ -28,7 +29,7 @@ export type Letters = { action: Action; keys: Record<string, string> }
  * The paragraph, the stretches the reader already has open in it, the tint of each, whether it opens
  * the reply, the last ask and its letters.
  */
-export type ReplyProps = { text: string; open: string[]; tints: Record<string, Tint>; dot?: boolean; ask?: Ask | null; letters?: Letters | null }
+export type ReplyProps = { text: string; open: string[]; tints: Record<string, Tint>; dot?: boolean; ask?: Ask | null; letters?: Letters | null; reach?: Reach }
 
 const GUTTER = 2
 
@@ -111,7 +112,7 @@ const Reply: ClientModule<ReplyProps, State> = (props, surface) => {
   if (ask !== null) asks.set(surface, ask)
   const state = surface.state ?? fresh
   const segments = parse(props.text)
-  const laid = layout(compose(segments, state, props.tints), textColumns(surface))
+  const laid = layout(compose(segments, state, props.tints), textColumns(surface), props.reach)
   const lettering = lettered(laid, props.letters ?? null)
   drawn.set(surface, { laid, rows: lettering, segments })
   const rows = state.selection === null ? lettering : selected(lettering, laid, state.selection)
@@ -511,9 +512,9 @@ function closed(open: string[], key: string): string[] {
 function styleOf(run: DrawnRun): TextProps {
   const color =
     run.code ? THEME.inlineCode
+    : run.kind === 'path' ? THEME.path
     : run.href !== undefined ? THEME.link
     : run.kind === 'number' ? THEME.number
-    : run.kind === 'path' ? THEME.path
     : run.color ?? (run.tint && run.tint !== FRESH ? run.tint : run.bold ? THEME.strong : run.italic ? THEME.emphasis : undefined)
   return {
     ...(run.bold && { bold: true }),

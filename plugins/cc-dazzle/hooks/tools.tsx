@@ -5,7 +5,8 @@ import { codeLine, highlightRows, isShellLang } from './blocks'
 import { toolHref, toolPath } from './links'
 import { CONTROL } from './markdown'
 import type { Style, Theme } from './theme'
-import { CLAUDE_DIFF } from './theme'
+import { CLAUDE_DIFF, PREVIEW_BAND } from './theme'
+import { graphemes, width } from './text'
 
 export type ToolRow = { tool: string; input: unknown; isRunning: boolean; isErrored: boolean; isInterrupted: boolean }
 
@@ -215,40 +216,169 @@ const paintRows = (style: Style, rows: readonly DiffLine[], lang: string | undef
   return out
 }
 
-const renderClaudeDiff = (el: ElementTable, style: Style, path: string | undefined, rows: DiffLine[], shown: DiffLine[], budget: Budget): RenderElement[] => {
-  const { Box, Text } = el
-  const t = style.theme
-  const c = isDark(t.codeText) ? CLAUDE_DIFF.dark : CLAUDE_DIFF.light
-  const gutter = String(Math.max(0, ...shown.map(r => r.num))).length
-  const painted = paintRows(style, shown, diffLang(path))
-  const ranges = changedRanges(rows).slice(0, shown.length)
-  return shown.flatMap((r, i) => {
-    const gap = i > 0 && r.hunk !== shown[i - 1]!.hunk ? [<Text key={`gap${i}`} dimColor>...</Text>] : []
-    if (r.mark === '\\') return [...gap, <Box key={`d${i}`} flexDirection="row"><Text>{' '.repeat(gutter + 3)}</Text><Text color={t.codeText}>{r.text}</Text></Box>]
-    const bg = r.mark === '+' ? c.addBg : r.mark === '-' ? c.delBg : undefined
-    const word = r.mark === '+' ? c.addWord : c.delWord
-    const mark = r.mark === '+' ? c.addMark : r.mark === '-' ? c.delMark : c.number
-    const plain: Segment = { text: r.text, color: t.codeText, italic: false }
-    const marked = markRange(painted[i] ?? [plain], ranges[i])
-    const segs = marked.length > 1 && !spend(budget, 2 * marked.length) ? [{ ...plain, hit: false }] : marked
-    const one = segs.length === 1 && !segs[0]!.hit ? segs[0]! : undefined
-    return [
-      ...gap,
-      <Box key={`d${i}`} flexDirection="row" {...(bg ? { backgroundColor: bg } : {})}>
-        <Text color={mark}>{`${String(r.num).padStart(gutter)} ${r.mark} `}</Text>
-        {one || segs.length === 0 ? (
-          <Text color={one?.color ?? t.codeText} italic={one?.italic}>{one?.text || ' '}</Text>
-        ) : (
-          <Text color={t.codeText}>
-            {segs.map((s, k) => <Text key={`d${i}.${k}`} color={s.color ?? t.codeText} italic={s.italic} {...(s.hit ? { backgroundColor: word } : {})}>{s.text}</Text>)}
-          </Text>
-        )}
-      </Box>,
-    ]
+type Piece = Segment & { hit: boolean }
+
+const TAB = 8
+
+// Tabs draw as spaces to the next stop of 8, as Claude Code draws them, so row widths add up.
+const tabbed = (pieces: Piece[]): Piece[] => {
+  let col = 0
+  return pieces.map(p => {
+    if (!p.text.includes('\t')) {
+      col += width(p.text)
+      return p
+    }
+    let text = ''
+    for (const g of graphemes(p.text)) {
+      const step = g === '\t' ? TAB - (col % TAB) : width(g)
+      text += g === '\t' ? ' '.repeat(step) : g
+      col += step
+    }
+    return { ...p, text }
   })
 }
 
-const diffBox = (el: ElementTable, style: Style, path: string | undefined, rows: DiffLine[], fold: Fold, id: string, key: string, budget: Budget, title?: string): RenderElement => {
+// A row fills to its last cell and breaks after a space where it can, inside a word wider than the row where it must.
+const rowStarts = (text: string, room: number): number[] => {
+  const starts = [0]
+  let [used, at, space, seen] = [0, 0, -1, false]
+  for (const g of /^[ -~]*$/.test(text) ? text : graphemes(text)) {
+    const step = width(g)
+    const from = starts[starts.length - 1]!
+    const blank = /\s/.test(g)
+    if (used + step > room && at > from) {
+      const cut = blank || space <= from ? at : space
+      starts.push(cut)
+      used = width(text.slice(cut, at))
+      seen = /\S/.test(text.slice(cut, at))
+      space = -1
+    }
+    at += g.length
+    used += step
+    if (!blank) seen = true
+    else if (seen) space = at
+  }
+  return starts
+}
+
+const splitRows = (pieces: Piece[], starts: number[]): Piece[][] => {
+  const rows: Piece[][] = starts.map(() => [])
+  let [at, r] = [0, 0]
+  for (const p of pieces) {
+    for (let from = 0; from < p.text.length; ) {
+      while (r + 1 < starts.length && starts[r + 1]! <= at + from) r++
+      const end = Math.min(p.text.length, (starts[r + 1] ?? Infinity) - at)
+      rows[r]!.push({ ...p, text: p.text.slice(from, end) })
+      from = end
+    }
+    at += p.text.length
+  }
+  return rows
+}
+
+const DIFF_ROOM = 8
+
+const visualRows = (pieces: Piece[], room: number | undefined): Piece[][] => {
+  const text = pieces.map(p => p.text).join('')
+  return room === undefined || room < DIFF_ROOM || width(text) <= room ? [pieces] : splitRows(pieces, rowStarts(text, room))
+}
+
+type Shaped = { r: DiffLine; i: number; parts: Piece[][]; gap: boolean }
+
+type Shape = { gutter: number; room: number | undefined; lines: Shaped[] }
+
+const isPlain = (part: Piece[]): boolean => part.length <= 1 && !part[0]?.hit
+
+// A row's Box, its prefix Text and string, and its code Text and string.
+const ROW_NODES = 5
+// A row drawn as Text inside a press adds its newline and its padding.
+const TEXT_ROW = 2
+
+const partCost = (part: Piece[]): number => (isPlain(part) ? 0 : 2 * part.length)
+
+// A line past the node allowance draws as one plain row, which the plain card already paid for.
+const afforded = (line: Shaped, budget: Budget, row: number): Shaped => {
+  if (line.r.mark === '\\' || spend(budget, line.parts.reduce((n, part, k) => n + (k ? ROW_NODES : 0) + row + partCost(part), 0))) return line
+  return { ...line, parts: [[{ text: line.r.text, italic: false, hit: false }]] }
+}
+
+// The room left for code after the row prefix, the card frame and the line's number and mark.
+const shapeRows = (style: Style, path: string | undefined, rows: DiffLine[], shown: DiffLine[], columns: number | undefined, budget: Budget, row: number): Shape => {
+  const gutter = String(Math.max(0, ...shown.map(r => r.num))).length
+  const room = columns === undefined ? undefined : columns - 5 - 4 - gutter - 3
+  const painted = paintRows(style, shown, diffLang(path))
+  const ranges = changedRanges(rows).slice(0, shown.length)
+  const lines = shown.map((r, i) => {
+    const plain: Segment = { text: r.text, italic: false }
+    const parts = r.mark === '\\' ? [[{ ...plain, hit: false }]] : visualRows(tabbed(markRange(painted[i] ?? [plain], ranges[i])), room)
+    return afforded({ r, i, parts, gap: i > 0 && r.hunk !== shown[i - 1]!.hunk }, budget, row)
+  })
+  return { gutter, room, lines }
+}
+
+const lineLook = (style: Style, r: DiffLine) => {
+  const c = isDark(style.theme.codeText) ? CLAUDE_DIFF.dark : CLAUDE_DIFF.light
+  return {
+    bg: r.mark === '+' ? c.addBg : r.mark === '-' ? c.delBg : undefined,
+    word: r.mark === '+' ? c.addWord : c.delWord,
+    mark: r.mark === '+' ? c.addMark : r.mark === '-' ? c.delMark : c.number,
+  }
+}
+
+// Only a line's first row carries its number; every row repeats its mark and tint.
+const prefixOf = (gutter: number, r: DiffLine, k: number): string =>
+  r.mark === '\\' ? ' '.repeat(gutter + 3) : `${k ? ' '.repeat(gutter) : String(r.num).padStart(gutter)} ${r.mark} `
+
+const codeOf = ({ Text }: ElementTable, style: Style, part: Piece[], word: string, key: string, on: { backgroundColor?: string }): RenderElement => {
+  const code = style.theme.codeText
+  if (isPlain(part)) return <Text key={key} color={part[0]?.color ?? code} italic={part[0]?.italic} {...on}>{part[0]?.text || ' '}</Text>
+  return (
+    <Text key={key} color={code} {...on}>
+      {part.map((s, k) => <Text key={`${key}.${k}`} color={s.color ?? code} italic={s.italic} {...(s.hit ? { backgroundColor: word } : {})}>{s.text}</Text>)}
+    </Text>
+  )
+}
+
+const gapRow = ({ Text }: ElementTable, key: string): RenderElement => <Text key={key} dimColor>...</Text>
+
+const boxRows = (el: ElementTable, style: Style, { gutter, lines }: Shape): RenderElement[] =>
+  lines.flatMap(({ r, i, parts, gap }) => {
+    const { bg, word, mark } = lineLook(style, r)
+    return [
+      ...(gap ? [gapRow(el, `gap${i}`)] : []),
+      ...parts.map((part, k) => (
+        <el.Box key={k ? `d${i}.${k}` : `d${i}`} flexDirection="row" {...(bg ? { backgroundColor: bg } : {})}>
+          <el.Text color={mark}>{prefixOf(gutter, r, k)}</el.Text>
+          {codeOf(el, style, part, word, `d${i}.${k}.c`, {})}
+        </el.Box>
+      )),
+    ]
+  })
+
+// Inside a press the rows are one Text, so each tinted row is padded to the widest row to read as a band.
+// With no known width, or too little room, no row is padded: padding to the longest line would wrap every row.
+const textRows = (el: ElementTable, style: Style, { gutter, room, lines }: Shape): RenderElement => {
+  const { Text } = el
+  const lead = gutter + 3
+  const used = (part: Piece[]) => lead + (part.length ? width(part.map(p => p.text).join('')) : 1)
+  const span = room !== undefined && room >= DIFF_ROOM ? Math.max(0, ...lines.flatMap(l => l.parts.map(used))) : 0
+  const rows = lines.flatMap(({ r, i, parts, gap }) => {
+    const { bg, word, mark } = lineLook(style, r)
+    const on = bg ? { backgroundColor: bg } : {}
+    return [
+      ...(gap ? [[gapRow(el, `t${i}.g`)]] : []),
+      ...parts.map((part, k) => [
+        <Text key={`t${i}.${k}.n`} color={mark} {...on}>{prefixOf(gutter, r, k)}</Text>,
+        codeOf(el, style, part, word, `t${i}.${k}.c`, on),
+        ...(bg && span > used(part) ? [<Text key={`t${i}.${k}.p`} {...on}>{' '.repeat(span - used(part))}</Text>] : []),
+      ]),
+    ]
+  })
+  return <Text key="rows">{rows.flatMap((row, n) => (n ? ['\n', ...row] : row))}</Text>
+}
+
+// From Claude Code 2.1.295 on the terminal, a folded card opens and closes with a click anywhere on it.
+const diffBox = (el: ElementTable, style: Style, path: string | undefined, rows: DiffLine[], fold: Fold, id: string, key: string, budget: Budget, columns: number | undefined, title?: string): RenderElement => {
   const { Box, Text } = el
   const t = style.theme
   const c = isDark(t.codeText) ? CLAUDE_DIFF.dark : CLAUDE_DIFF.light
@@ -258,15 +388,20 @@ const diffBox = (el: ElementTable, style: Style, path: string | undefined, rows:
   const toggle = n > DIFF_LINES ? fold?.(id, n - DIFF_LINES, `fold${key}`) : null
   const shown = firstLines(rows, toggle?.folded === false ? DIFF_MAX : DIFF_LINES)
   const hidden = n - realLines(shown)
+  const press = toggle?.around
+  const head = (
+    <Text key="head">
+      {title === undefined ? null : <Text color={t.path}>{press ? title : linkedPath(el, style, title, path)} </Text>}
+      <Text color={c.addMark} dimColor={added === 0}>{`+${added}`}</Text>
+      <Text> </Text>
+      <Text color={c.delMark} dimColor={removed === 0}>{`−${removed}`}</Text>
+    </Text>
+  )
   return (
     <Box key={`card${key}`} flexDirection="column" borderStyle="round" borderColor={t.rule} paddingX={1} flexShrink={1}>
-      <Text>
-        {title === undefined ? null : <Text color={t.path}>{linkedPath(el, style, title, path)} </Text>}
-        <Text color={c.addMark} dimColor={added === 0}>{`+${added}`}</Text>
-        <Text> </Text>
-        <Text color={c.delMark} dimColor={removed === 0}>{`−${removed}`}</Text>
-      </Text>
-      {renderClaudeDiff(el, style, path, rows, shown, budget)}
+      {press
+        ? press(<Text key="all">{head}{'\n'}{textRows(el, style, shapeRows(style, path, rows, shown, columns, budget, TEXT_ROW))}</Text>)
+        : [head, ...boxRows(el, style, shapeRows(style, path, rows, shown, columns, budget, 0))]}
       {hidden > 0 && toggle?.folded !== true ? <Text dimColor>{`… +${hidden} lines`}</Text> : null}
       {toggle?.element ?? null}
     </Box>
@@ -281,30 +416,39 @@ const lineCount = (n: number): string => (n === 0 ? 'empty' : `${n} ${n === 1 ? 
 
 // A new file shows its first 10 lines and a deleted one only its header; either opens to 400 lines.
 // Unmarked rows are Write's preview: numbered code with no diff marks, as Claude Code draws it.
-const wholeCard = (el: ElementTable, style: Style, file: WholeFile, fold: Fold, id: string, key: string, budget: Budget, marked: boolean): RenderElement => {
+// With a press, a new file opens from a click anywhere on it, and a deleted file's header is its button.
+const wholeCard = (el: ElementTable, style: Style, file: WholeFile, fold: Fold, id: string, key: string, budget: Budget, columns: number | undefined, marked: boolean): RenderElement => {
   const { Box, Text } = el
   const t = style.theme
   const n = file.lines.length
   const created = file.kind === 'created'
-  const toggle = created ? (n > PREVIEW_LINES ? fold?.(id, n - PREVIEW_LINES, `fold${key}`) : null) : n > 0 ? fold?.(id, n, `fold${key}`, `show ${lineCount(n)}`) : null
-  const shown = Math.min(n, toggle?.folded === false ? DIFF_MAX : created ? PREVIEW_LINES : 0)
-  const rest = n > shown && (toggle ? !toggle.folded : created)
-  const head = (
+  const head = (linked: boolean) => (
     <Text key="head">
       {created ? 'Created ' : 'Deleted '}
-      <Text color={t.path}>{linkedPath(el, style, shortPath(style, file.path), file.path)}</Text>
+      <Text color={t.path}>{linked ? linkedPath(el, style, shortPath(style, file.path), file.path) : shortPath(style, file.path)}</Text>
       <Text dimColor>{` (${lineCount(n)})`}</Text>
     </Text>
   )
-  if (shown === 0) return <Box key={`file${key}`} flexDirection="column" alignItems="flex-start">{head}{toggle?.element ?? null}</Box>
+  const toggle = created ? (n > PREVIEW_LINES ? fold?.(id, n - PREVIEW_LINES, `fold${key}`) : null) : n > 0 ? fold?.(id, n, `fold${key}`, { label: `show ${lineCount(n)}`, face: () => head(false) }) : null
+  const shown = Math.min(n, toggle?.folded === false ? DIFF_MAX : created ? PREVIEW_LINES : 0)
+  const rest = n > shown && (toggle ? !toggle.folded : created)
+  const top = toggle?.faced ? toggle.element : head(!toggle?.around)
+  const tail = toggle && !toggle.faced ? toggle.element : null
+  if (shown === 0) return <Box key={`file${key}`} flexDirection="column" alignItems="flex-start">{top}{tail}</Box>
   const mark = !marked ? ' ' : created ? '+' : '-'
-  const rows = file.lines.slice(0, shown).map((text, i): DiffLine => ({ mark, num: i + 1, text, hunk: 0 }))
+  const lines = file.lines.slice(0, shown).map((text, i): DiffLine => ({ mark, num: i + 1, text, hunk: 0 }))
+  const press = toggle?.around
+  const band = marked ? undefined : PREVIEW_BAND
+  const body = press
+    ? created
+      ? press(<Text key="all">{head(false)}{'\n'}{textRows(el, style, shapeRows(style, file.path, lines, lines, columns, budget, TEXT_ROW))}</Text>, band)
+      : [top, press(textRows(el, style, shapeRows(style, file.path, lines, lines, columns, budget, TEXT_ROW)), band)]
+    : [top, ...boxRows(el, style, shapeRows(style, file.path, lines, lines, columns, budget, 0))]
   return (
     <Box key={`file${key}`} flexDirection="column" borderStyle="round" borderColor={t.rule} paddingX={1} flexShrink={1}>
-      {head}
-      {renderClaudeDiff(el, style, file.path, rows, rows, budget)}
+      {body}
       {rest ? <Text dimColor>{`… +${n - shown} lines`}</Text> : null}
-      {toggle?.element ?? null}
+      {tail}
     </Box>
   )
 }
@@ -338,16 +482,16 @@ const written = (output: unknown): WholeFile | undefined => {
 }
 
 // A write held for review goes to Claude Code, so its "Staged for your review" line stays.
-export const renderDiffCard = (el: ElementTable, style: Style, output: unknown, fold: Fold, id: string): RenderElement | undefined => {
+export const renderDiffCard = (el: ElementTable, style: Style, output: unknown, fold: Fold, id: string, columns?: number): RenderElement | undefined => {
   if (output === null || typeof output !== 'object' || (output as { staged?: unknown }).staged === true) return undefined
   const budget = { left: DIFF_EXTRA }
   const write = written(output)
-  if (write) return diffRow(el, [wholeCard(el, style, write, fold, id, '', budget, false)], false)
+  if (write) return diffRow(el, [wholeCard(el, style, write, fold, id, '', budget, columns, false)], false)
   const rows = diffLines(output)
   if (rows === undefined) return undefined
   const made = editedIntoBeing(output, rows)
   const path = (output as { filePath?: unknown }).filePath
-  return diffRow(el, [made ? wholeCard(el, style, made, fold, id, '', budget, true) : diffBox(el, style, typeof path === 'string' ? path : undefined, rows, fold, id, '', budget)], false)
+  return diffRow(el, [made ? wholeCard(el, style, made, fold, id, '', budget, columns, true) : diffBox(el, style, typeof path === 'string' ? path : undefined, rows, fold, id, '', budget, columns)], false)
 }
 
 export type BashEdits = { files: FileChange[]; more: number; shared: boolean }
@@ -415,12 +559,12 @@ export const hasShellOutput = (output: unknown): boolean => {
   return lines(out.stdout).length + lines(out.stderr).length > 0
 }
 
-export const renderBashEdits = (el: ElementTable, style: Style, edits: BashEdits, fold: Fold, id: string, below = false, notes: readonly string[] = []): RenderElement => {
+export const renderBashEdits = (el: ElementTable, style: Style, edits: BashEdits, fold: Fold, id: string, below = false, notes: readonly string[] = [], columns?: number): RenderElement => {
   const budget = { left: DIFF_EXTRA }
   const cards = edits.files.map((file, i) =>
-    file.kind === 'modified' ? diffBox(el, style, file.path, file.rows, fold, `${id}:${i}`, String(i), budget, shortPath(style, file.path))
+    file.kind === 'modified' ? diffBox(el, style, file.path, file.rows, fold, `${id}:${i}`, String(i), budget, columns, shortPath(style, file.path))
     : file.kind === 'renamed' ? renamedLine(el, style, file.path, file.to, String(i))
-    : wholeCard(el, style, file, fold, `${id}:${i}`, String(i), budget, true))
+    : wholeCard(el, style, file, fold, `${id}:${i}`, String(i), budget, columns, true))
   const more = edits.more ? [<el.Text key="more" dimColor>{`… +${edits.more} more ${edits.more === 1 ? 'file' : 'files'}`}</el.Text>] : []
   const said = notes.map((note, i) => <el.Text key={`note${i}`} dimColor>{`(${note})`}</el.Text>)
   return diffRow(el, [...cards, ...more, ...said], below)

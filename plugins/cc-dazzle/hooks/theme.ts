@@ -27,6 +27,9 @@ export const CLAUDE_DIFF = {
   light: { addBg: '#d6f5d6', delBg: '#fbd5d5', addWord: '#a6e9a6', delWord: '#f5a3a3', addMark: '#2f8a2f', delMark: '#b33b3b', number: '#6b6b6b' },
 }
 
+// Catppuccin Mocha surface0: the band under a new file's preview while the pointer is over it.
+export const PREVIEW_BAND = '#313244'
+
 export type Style = {
   theme: Theme
   htmlCopy: ClipboardBackend | null

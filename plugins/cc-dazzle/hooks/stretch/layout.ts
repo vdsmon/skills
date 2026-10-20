@@ -2,6 +2,8 @@
 // runs, wrapped to the region's width, so a press can be matched to the phrase under it. It colors
 // what cc-dazzle's own renderer colors, so a paragraph looks the same with or without a stretch.
 
+import { drawnLink, drawnPath } from '../links'
+import type { Reach } from '../links'
 import { NUMBER, PATH } from '../markdown'
 import { THEME } from '../theme'
 import { closesFence, codeSpan, drawnAs, isLinkable, isRule, openingFence, stretches } from './parse'
@@ -362,8 +364,11 @@ export function targetsIn(parts: Segment[], open: readonly string[], action: Act
   })
 }
 
-/** The rows `text` takes in a region `columns` cells wide. */
-export function layout(text: string, columns: number): Row[] {
+/**
+ * The rows `text` takes in a region `columns` cells wide. `reach` says which links and paths open on
+ * a click, by the rules cc-dazzle's own replies follow; with none, only web links do.
+ */
+export function layout(text: string, columns: number, reach: Reach = {}): Row[] {
   const width = Math.max(10, columns)
   const rows: Row[] = []
   let fence: string | undefined
@@ -379,7 +384,7 @@ export function layout(text: string, columns: number): Row[] {
       fence = marker
       continue
     }
-    rows.push(...rowsOf(line, width))
+    rows.push(...rowsOf(line, width, reach))
   }
 
   return rows
@@ -487,9 +492,9 @@ function untint(marked: string): Line {
   return { text, tints }
 }
 
-function rowsOf({ text: line, tints }: Line, width: number): Row[] {
+function rowsOf({ text: line, tints }: Line, width: number, reach: Reach): Row[] {
   // The runs of the line's end from `rest` on.
-  const inlineOf = (rest: string, isBold = false) => inline(rest, tints.slice(line.length - rest.length), isBold)
+  const inlineOf = (rest: string, isBold = false) => inline(rest, tints.slice(line.length - rest.length), reach, isBold)
   if (line.trim() === '') return [[]]
   if (isRule(line)) return [[{ text: '─'.repeat(Math.min(width, 60)), color: THEME.rule }]]
   // A table row keeps its columns: written as is, cut where the region ends.
@@ -516,7 +521,7 @@ function rowsOf({ text: line, tints }: Line, width: number): Row[] {
 }
 
 /** A line's inline markdown as runs: bold, italic, code spans, links, pressable phrases, each character in its tint. */
-function inline(text: string, tints: Line['tints'], isBold = false): Run[] {
+function inline(text: string, tints: Line['tints'], reach: Reach, isBold = false): Run[] {
   const runs: Run[] = []
   let bold = isBold
   let italic = false
@@ -578,17 +583,17 @@ function inline(text: string, tints: Line['tints'], isBold = false): Run[] {
     if (markdownLink) {
       const label = markdownLink[1] ?? ''
       const href = markdownLink[2] ?? ''
-      // A target that opens the same from any folder is drawn as a link; any other keeps its target
-      // beside it.
-      const isFollowed = /^(https?|file):/.test(href)
+      // A link that opens is drawn as one; any other keeps its target beside it.
+      const isFollowed = drawnLink({ kind: 'link', text: label, href }, reach).kind === 'link'
       for (let k = 0; k < label.length; k++) emit(label[k] ?? '', i + 1 + k, isFollowed ? { href } : { underline: true })
-      if (!isFollowed) emit(` (${href})`, i + markdownLink[0].length - 1, { dim: true })
+      if (!isFollowed && label !== href) emit(` (${href})`, i + markdownLink[0].length - 1, { dim: true })
       i += markdownLink[0].length
       continue
     }
     const url = ch === 'h' && !/\w/.test(text[i - 1] ?? ' ') ? bareUrlAt(text, i) : undefined
     if (url !== undefined) {
-      for (let k = 0; k < url.length; k++) emit(url[k] ?? '', i + k, { href: url })
+      const isFollowed = drawnLink({ kind: 'link', text: url, href: url }, reach).kind === 'link'
+      for (let k = 0; k < url.length; k++) emit(url[k] ?? '', i + k, isFollowed ? { href: url } : {})
       i += url.length
       continue
     }
@@ -596,11 +601,18 @@ function inline(text: string, tints: Line['tints'], isBold = false): Run[] {
     i += 1
   }
 
-  return runs.flatMap(decorate)
+  return runs.flatMap(run => decorate(run, reach))
 }
 
-/** A plain run split where cc-dazzle colors a number or a path. */
-function decorate(run: Run): Run[] {
+/** The file a path opens, by the rules cc-dazzle's replies follow. A pressable phrase stays a press, never a file link. */
+function pathHref(run: Run, text: string, reach: Reach): string | undefined {
+  if (run.link !== undefined) return undefined
+  const drawn = drawnPath({ kind: 'path', text }, reach)
+  return drawn.kind === 'path' ? drawn.href : undefined
+}
+
+/** A plain run split where cc-dazzle colors a number or a path; a path that opens on a click carries its href. */
+function decorate(run: Run, reach: Reach): Run[] {
   if (run.code || run.dim || run.kind || run.href !== undefined) return [run]
   const marks: { start: number; end: number; kind: 'number' | 'path' }[] = []
   for (const m of run.text.matchAll(PATH)) marks.push({ start: m.index, end: m.index + m[0].length, kind: 'path' })
@@ -613,7 +625,9 @@ function decorate(run: Run): Run[] {
   let at = 0
   for (const m of marks) {
     if (m.start > at) out.push({ ...run, text: run.text.slice(at, m.start) })
-    out.push({ ...run, text: run.text.slice(m.start, m.end), kind: m.kind })
+    const piece = run.text.slice(m.start, m.end)
+    const href = m.kind === 'path' ? pathHref(run, piece, reach) : undefined
+    out.push({ ...run, text: piece, kind: m.kind, ...(href !== undefined && { href }) })
     at = m.end
   }
   if (at < run.text.length) out.push({ ...run, text: run.text.slice(at) })
