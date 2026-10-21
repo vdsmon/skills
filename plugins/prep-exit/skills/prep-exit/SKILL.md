@@ -2,7 +2,7 @@
 name: prep-exit
 disable-model-invocation: true
 description: Audits in-flight session state before the session ends, saves what only the conversation knows into files and persistent memory, and leaves a handoff note plus a paste-ready resume prompt for the next session.
-argument-hint: "[--note-only]"
+argument-hint: "[--note-only | --close]"
 allowed-tools:
   - Bash(git status *)
   - Bash(git log *)
@@ -24,6 +24,7 @@ A fresh session (a new conversation, another machine, another host) starts only 
 Raw input: `$ARGUMENTS`
 
 - Contains `--note-only` (or "just the note", "skip the audit"): skip steps 1 and 2. Write the handoff and the memory entry from what you already know, then print the resume prompt.
+- Contains `--close` (or "clean exit", "no handoff", "just wrap up"): no next session will pick this up. Run steps 1 and 2, then the `--close` variants of steps 3 and 4.
 - Otherwise: all four steps, in order.
 
 Honour overrides mid-conversation ("skip the audit, just write the note").
@@ -106,11 +107,18 @@ It writes `<state-dir>/HANDOFF.md` with the git baseline embedded and the sectio
 
 Then the memory entry, in the host's persistent memory. In Claude Code that is the memory directory named in your system prompt: one file per fact with its frontmatter, plus one pointer line in `MEMORY.md`, which the next session loads automatically. Write a `project` entry: the state of the work as of today's date, where `HANDOFF.md` is (absolute path), the next step, the gotchas. A preference the user stated is a separate `user` or `feedback` entry, because it outlives this piece of work. Keep the project entry short: the handoff holds the detail; memory holds the pointer plus what must survive even if the handoff is never opened. On a host with no persistent memory, the handoff is the memory: say so, and print its path.
 
+With `--close`: no `handoff.sh`, no handoff, no pointer to one. Put each finding where it lives for good: the project's own notes, docs or issue tracker when it has one, else memory; update the existing `project` entry to today's state. A held-back item with no yes still gets a durable home there. Then tie up without asking:
+- remove a worktree and its local branch once `git merge-base --is-ancestor <branch> <base>` confirms it is merged;
+- cancel the watches, crons and wake-ups this session armed, after saving what they were for;
+- read finished background output and save what it says. Stopping a job still running is ask-first; save what it wrote so far.
+
 ### 4. Hand over
 
 Print the format below and nothing else. Do not start new work after this; the next thing that happens is the exit.
 
 If a tool named `mcp__cc-wrap-up__ready` is listed (load it first if it is deferred), call it before you print, with `kind: handoff`, the resume prompt as `resumePrompt`, the absolute `HANDOFF.md` path as `handoffPath`, and `openQuestion: true` when **Needs your yes** holds a question.
+
+With `--close`: don't call `mcp__cc-wrap-up__ready`, and print the close format instead.
 
 If the user answers the held-back question before leaving: act on each yes, then edit the handoff (move the item from Pending to Done this session). Do not re-run `handoff.sh`, which starts a blank note. Reprint the resume prompt only if it changed, and then call the tool again.
 
@@ -135,10 +143,13 @@ Resume from <state-dir>/HANDOFF.md: [one sentence on where we are]. First: [the 
 The session can be closed.
 ```
 
+With `--close`, print the same format with **Saved** for **Saved before exit**, then **Tied up** (what was cleaned up) and **Still open** (each item and where it is now recorded), and no handoff, memory or resume prompt lines.
+
 ## Rationalizations to refuse
 
 | Thought | Answer |
 |---|---|
+| "No next session, so nothing to save" | Memory and the project's notes outlive this session. Run the audit anyway. |
 | "git status is clean, nothing to save" | Clean status says nothing about decisions, background results, crons, or messages. The last audit bullet is the one that bites. |
 | "I'll put it in the commit message" | A commit message describes a change. The next session reads memory and the handoff first. |
 | "The user will remember" | The user's memory is not the next session's. |
