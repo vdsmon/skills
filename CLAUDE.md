@@ -97,6 +97,7 @@ These plugins started as copies of other repos. Re-sync them from upstream from 
 
 - Every plugin change ships in the same pull request as its version bump: `mise run bump <plugin> [patch|minor|major]` (patch = fix or wording, minor = new behavior, new option or removed feature, major = breaking). Then run `mise run sync` and commit the plugin files together with the generated changes. A plugin edit without a bump is incomplete.
 - Work on a branch and open a pull request. Never push to main.
+- After a pull request merges, update the local install: `claude plugin marketplace update vdsmon-skills`, then `claude plugin update <plugin>@vdsmon-skills` for each plugin it changed, and tell the user to run `/reload-plugins`.
 - No docs inside plugins: SKILL.md is the prompt, and separate docs rot and cost context. One exception: a hook-only plugin may ship one `README.md`, since it has no SKILL.md to explain opt-in and config. Research notes, retros and experiment logs never ship; put them under `docs/` or another folder outside `plugins/`.
 
 ## Installing locally for testing
