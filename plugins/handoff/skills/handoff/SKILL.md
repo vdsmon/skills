@@ -1,5 +1,5 @@
 ---
-name: prep-exit
+name: handoff
 disable-model-invocation: true
 description: Audits in-flight session state before the session ends, saves what only the conversation knows into files and persistent memory, and leaves a handoff note plus a paste-ready resume prompt for the next session.
 argument-hint: "[--note-only | --close]"
@@ -13,11 +13,11 @@ allowed-tools:
   - Bash(git commit *)
 ---
 
-# Prep-Exit
+# Handoff
 
 A fresh session (a new conversation, another machine, another host) starts only from disk and from persistent memory. Nothing of this conversation reaches it: no summary, no background task output, no session-only cron, no task list. Resuming this same conversation (`claude --continue` or `--resume` in Claude Code) brings back the history and the crons that have not expired, but never background Bash or monitor output, and the user may never resume. So save as if the next session starts fresh. This skill audits what the conversation still holds, saves it where the next session will look, and leaves one resume prompt.
 
-`prep-compact` is the sibling for compaction, where a summary survives and carries context. Here plan for nothing surviving, so every finding becomes a file or a memory entry, never a message.
+`better-compact` is the sibling for compaction, where a summary survives and carries context. Here plan for nothing surviving, so every finding becomes a file or a memory entry, never a message.
 
 ## Modes
 
@@ -86,7 +86,7 @@ Commits:
 
 Ask once: one question batching every held-back item, recommended choice first for each, printed with the hand-over in step 4. Nothing waits on the answer: every held-back item goes into the handoff under **Pending** as awaiting a yes, so the question survives an exit with no reply. If the user said they will not be around ("just save everything", "I won't answer"), skip the question; Pending still lists the items.
 
-Exit prep saves state; it does not advance the work. A pending fix, a next step, a question from another session: record where it stands, do not do it now. Work done in the last minute lands unreviewed and the handoff then misreports where things are. Likewise, do not judge pending items closed (a benchmark "dead", a chip "moot"): record what you observed and leave the call to the next session.
+This skill saves state; it does not advance the work. A pending fix, a next step, a question from another session: record where it stands, do not do it now. Work done in the last minute lands unreviewed and the handoff then misreports where things are. Likewise, do not judge pending items closed (a benchmark "dead", a chip "moot"): record what you observed and leave the call to the next session.
 
 ### 3. Write the handoff and the memory entry
 
@@ -157,7 +157,7 @@ With `--close`, print the same format with **Saved** for **Saved before exit**, 
 | "The background job is still running, I'll leave it" | Its output dies with the session. Capture what it wrote and say it was unfinished. |
 | "This is scratch, but committing it is safer" | Scratch in history is noise the next session must undo. Name it in the handoff instead. |
 | "The handoff is enough, memory is redundant" | Nothing opens the handoff unless memory points at it. |
-| "I will finish the pending fix while I am here" | Exit prep records state; it does not advance the work. A last-minute change lands unreviewed, and the handoff then says the wrong thing about where the work stands. |
+| "I will finish the pending fix while I am here" | This skill records state; it does not advance the work. A last-minute change lands unreviewed, and the handoff then says the wrong thing about where the work stands. |
 | "The throwaway directory is gitignored, so I will delete it" | Deleting is destructive and nobody asked. Name it in the handoff as safe to delete. |
 | "One memory file per loose end keeps things tidy" | Memory holds one pointer and what must survive on its own; the handoff holds the detail. Several files per session bloat the index the next session loads. |
 | "The benchmark is dead, the chip is moot, I will close them" | Judgments about pending items belong to the next session. Record what you saw (the log stopped at size 2 of 3; the README has no badge) and leave the items open. |

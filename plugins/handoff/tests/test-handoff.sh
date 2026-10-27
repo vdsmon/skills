@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Offline checks for the prep-exit scripts: handoff.sh writes the note with the baseline
+# Offline checks for the handoff scripts: handoff.sh writes the note with the baseline
 # embedded and every section header, keeps the previous note, and never fails the caller.
 set -u
 here=$(cd "$(dirname "$0")" && pwd)
-scripts="$here/../skills/prep-exit/scripts"
+scripts="$here/../skills/handoff/scripts"
 fail=0
 check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; fail=1; fi; }
 
-tmp=$(mktemp -d "${TMPDIR:-/tmp}/prep-exit-test.XXXXXX")
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/handoff-test.XXXXXX")
 trap 'rm -rf "$tmp"' EXIT
 repo="$tmp/repo"; mkdir -p "$repo"
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.invalid GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.invalid HOME="$tmp"

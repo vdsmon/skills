@@ -23,7 +23,7 @@ function world(on: On) {
   const seen = {
     tokens: 0 as number | undefined,
     isDirty: false,
-    commands: ['prep-compact:prep-compact', 'prep-exit:prep-exit', 'compact', 'clear'],
+    commands: ['better-compact:better-compact', 'handoff:handoff', 'compact', 'clear'],
     gitRuns: 0,
     notified: 0,
     toasts: [] as string[],
@@ -376,7 +376,7 @@ test('a prep the user typed shows as preparing, and one that hands nothing over 
   const seen = world(on)
   await start($)
   const ui = await band($)
-  await typed($, 'prep-compact:prep-compact')
+  await typed($, 'better-compact:better-compact')
   expect(await lineText(ui)).toContain('Preparing to compact')
   expect(await buttons(ui)).toEqual([])
   await turn($, seen, 300_000)
@@ -388,7 +388,7 @@ test('a prep that hands over its result leaves the band ready after its turn', a
   const seen = world(on)
   await start($)
   const ui = await band($)
-  await typed($, 'prep-exit:prep-exit')
+  await typed($, 'handoff:handoff')
   expect(await lineText(ui)).toContain('Preparing the handoff')
   await ready($, HANDOFF)
   await turn($, seen, 700_000)
@@ -419,17 +419,17 @@ test('with an open question, the answer keeps the payload and the next prompt dr
   expect(await buttons(ui)).toEqual([])
 })
 
-test('Compact runs prep-compact and shows the prep as running', async ($, on) => {
+test('Compact runs better-compact and shows the prep as running', async ($, on) => {
   const seen = world(on)
   await start($)
   const ui = await band($)
   await turn($, seen, 520_000)
   await press(ui, 'compact')
-  expect(seen.ran).toEqual([{ command: 'prep-compact:prep-compact', args: '' }])
+  expect(seen.ran).toEqual([{ command: 'better-compact:better-compact', args: '' }])
   expect(await lineText(ui)).toContain('Preparing to compact')
 })
 
-test('without prep-compact installed, Compact compacts at once with no message', async ($, on) => {
+test('without better-compact installed, Compact compacts at once with no message', async ($, on) => {
   const seen = world(on)
   seen.commands = ['compact', 'clear']
   await start($)
@@ -467,6 +467,69 @@ test('a skipped compaction keeps the band and sends nothing', async ($, on) => {
   expect(await buttons(ui)).toEqual(['compact-now', 'edit', 'not-now'])
 })
 
+test('a payload with now compacts when the turn ends, then sends the follow-up, with no press', async ($, on) => {
+  const seen = world(on)
+  await start($)
+  const ui = await band($)
+  const r = await ready($, { ...COMPACT, now: true })
+  expect(String(r.result)).toContain('compacts with this message when your turn ends')
+  expect(seen.compactions).toEqual([])
+  await turn($, seen, 700_000)
+  await clock.settle()
+  expect(seen.compactions.map(c => c.instructions)).toEqual([COMPACT.message])
+  expect(seen.submits).toEqual([{ text: COMPACT.followUp, asUser: true }])
+  expect(await buttons(ui)).toEqual([])
+})
+
+test('now with an open question waits for a press', async ($, on) => {
+  const seen = world(on)
+  await start($)
+  const ui = await band($)
+  const r = await ready($, { ...COMPACT, now: true, openQuestion: true })
+  expect(String(r.result)).toContain('Print your usual blocks')
+  await turn($, seen, 700_000)
+  await clock.settle()
+  expect(seen.compactions).toEqual([])
+  expect(await buttons(ui)).toEqual(['compact-now', 'edit', 'not-now'])
+})
+
+test('now on an aborted turn waits for a press', async ($, on) => {
+  const seen = world(on)
+  await start($)
+  const ui = await band($)
+  await ready($, { ...COMPACT, now: true })
+  await turn($, seen, 700_000, { reason: 'aborted' })
+  await clock.settle()
+  expect(seen.compactions).toEqual([])
+  expect(await buttons(ui)).toEqual(['compact-now', 'edit', 'not-now'])
+})
+
+test('a prompt the user sends before the compaction starts calls it off', async ($, on) => {
+  const seen = world(on)
+  await start($)
+  const ui = await band($)
+  await ready($, { ...COMPACT, now: true })
+  await turn($, seen, 700_000)
+  await said($, 'wait, one more thing')
+  await clock.settle()
+  expect(seen.compactions).toEqual([])
+  expect(seen.submits.map(s => s.text)).toEqual(['wait, one more thing'])
+  expect(await buttons(ui)).toEqual([])
+})
+
+test('a skipped compaction with now keeps the band and sends nothing', async ($, on) => {
+  const seen = world(on)
+  seen.isCompactSkipped = true
+  await start($)
+  const ui = await band($)
+  await ready($, { ...COMPACT, now: true })
+  await turn($, seen, 700_000)
+  await clock.settle()
+  expect(seen.toasts.join('\n')).toContain('a hook said no')
+  expect(seen.submits).toEqual([])
+  expect(await buttons(ui)).toEqual(['compact-now', 'edit', 'not-now'])
+})
+
 test('Edit puts /compact with the message in the prompt box and keeps the band', async ($, on) => {
   const seen = world(on)
   await start($)
@@ -499,23 +562,23 @@ test('while a turn runs, the band offers nothing but a running prep', async ($, 
     props: { ...BAND, isWorking: true },
   })
   expect(await buttons(working)).toEqual([])
-  await typed($, 'prep-compact:prep-compact')
+  await typed($, 'better-compact:better-compact')
   expect(await lineText(working)).toContain('Preparing to compact')
 })
 
-test('Hand off runs prep-exit and shows the prep as running', async ($, on) => {
+test('Hand off runs handoff and shows the prep as running', async ($, on) => {
   const seen = world(on)
   await start($)
   const ui = await band($)
   await turn($, seen, 520_000)
   await press(ui, 'handoff')
-  expect(seen.ran).toEqual([{ command: 'prep-exit:prep-exit', args: '' }])
+  expect(seen.ran).toEqual([{ command: 'handoff:handoff', args: '' }])
   expect(await lineText(ui)).toContain('Preparing the handoff')
 })
 
-test('without prep-exit installed, there is no Hand off button', async ($, on) => {
+test('without handoff installed, there is no Hand off button', async ($, on) => {
   const seen = world(on)
-  seen.commands = ['prep-compact:prep-compact', 'compact', 'clear']
+  seen.commands = ['better-compact:better-compact', 'compact', 'clear']
   await start($)
   const ui = await band($)
   await turn($, seen, 520_000)

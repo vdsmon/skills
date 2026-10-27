@@ -1,7 +1,7 @@
 {
   "name": "cc-wrap-up",
-  "version": "1.0.0",
-  "description": "Cues a wrap-up at a natural break in a long session, then compacts with prep-compact's message or hands off with prep-exit's resume prompt, with no copy-paste. Reads the context size at no cost and acts only when you press.",
+  "version": "1.1.0",
+  "description": "Cues a wrap-up at a natural break in a long session, then compacts with better-compact's message or hands off with handoff's resume prompt, with no copy-paste. Reads the context size at no cost and acts only when you press or run a skill.",
   "author": {
     "name": "Victor De Simone",
     "email": "victorsmoliveira@gmail.com",

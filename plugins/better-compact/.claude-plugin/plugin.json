@@ -1,0 +1,14 @@
+{
+  "name": "better-compact",
+  "version": "2.0.0",
+  "description": "A better /compact: audit the session, save what compaction would lose, then compact with a focus message and resume with a follow-up. Commits real work locally, syncs stale state files and notes chat-only decisions, asking only for risky items; compacts in one shot with cc-wrap-up.",
+  "author": {
+    "name": "Victor De Simone",
+    "email": "victorsmoliveira@gmail.com",
+    "url": "https://github.com/vdsmon"
+  },
+  "homepage": "https://github.com/vdsmon/skills",
+  "repository": "https://github.com/vdsmon/skills",
+  "license": "MIT",
+  "skills": "./skills"
+}

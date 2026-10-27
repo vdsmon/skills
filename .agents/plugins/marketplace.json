@@ -29,10 +29,10 @@
       "category": "Engineering"
     },
     {
-      "name": "prep-compact",
+      "name": "better-compact",
       "source": {
         "source": "local",
-        "path": "./plugins/prep-compact"
+        "path": "./plugins/better-compact"
       },
       "policy": {
         "installation": "AVAILABLE",
@@ -41,10 +41,10 @@
       "category": "Engineering"
     },
     {
-      "name": "prep-exit",
+      "name": "handoff",
       "source": {
         "source": "local",
-        "path": "./plugins/prep-exit"
+        "path": "./plugins/handoff"
       },
       "policy": {
         "installation": "AVAILABLE",

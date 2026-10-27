@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# baseline.sh [dir]: the mechanical half of the prep-compact audit, in one call.
+# baseline.sh [dir]: the mechanical half of the better-compact and handoff audit, in one call.
 #
 # What git knows (branch and upstream, status with counts, the last five commits,
 # the stash), plus the one thing `git status` never shows and a compact message
@@ -51,7 +51,7 @@ stashes=$(git stash list 2>/dev/null | grep -c .)
 # (portable across BSD and GNU find, which disagree on -newermt).
 head_epoch=$(git log -1 --format=%ct 2>/dev/null)
 if [ -n "$head_epoch" ]; then
-  ref=$(mktemp "${TMPDIR:-/tmp}/prep-compact-ref.XXXXXX") || ref=""
+  ref=$(mktemp "${TMPDIR:-/tmp}/baseline-ref.XXXXXX") || ref=""
   if [ -n "$ref" ]; then
     stamp=$(date -r "$head_epoch" '+%Y%m%d%H%M.%S' 2>/dev/null || date -d "@$head_epoch" '+%Y%m%d%H%M.%S' 2>/dev/null)
     [ -n "$stamp" ] && touch -t "$stamp" "$ref" 2>/dev/null

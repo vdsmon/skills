@@ -3,9 +3,10 @@ export type Phase = 'idle' | 'armed' | 'cue' | 'urgent' | 'prepping' | 'ready-co
 
 export type PrepKind = 'compact' | 'handoff'
 
-/** What prep-compact or prep-exit handed over through the `ready` tool. */
+/** What better-compact or handoff handed over through the `ready` tool. */
 export type Payload =
-  | { kind: 'compact'; message: string; followUp: string; openQuestion: boolean }
+  /** `now`: compact when the turn ends, with no press. */
+  | { kind: 'compact'; message: string; followUp: string; openQuestion: boolean; now: boolean }
   | { kind: 'handoff'; resumePrompt: string; handoffPath: string; openQuestion: boolean }
 
 export type Wrap = {
