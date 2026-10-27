@@ -319,7 +319,7 @@ export const register: Register = (on, options) => {
     if (payload.kind === 'compact' && payload.now) {
       return {
         result:
-          'cc-wrap-up compacts with this message when your turn ends, then sends the follow-up. Print the Saved lines if any, then one line "Compacting now; then: <follow-up>", not the two blocks. End your turn.',
+          'cc-wrap-up compacts with this message when your turn ends, then sends the follow-up. Print the Saved lines if any, then one line "Compacting now; then: <follow-up>", and nothing else: not the two blocks, no new remarks. End your turn.',
       }
     }
     return { result: 'The wrap-up band now offers this to the user. Print your usual blocks too.' }

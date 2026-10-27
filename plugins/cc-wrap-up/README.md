@@ -65,7 +65,7 @@ Set them in `/config` under the plugin.
 
 ## What it costs
 
-Nothing until you press. Reading the context size makes no API call. Past the line, the mod runs `git status --porcelain` once per turn, and only until it finds a break. Compact and Hand off run the skills, which spend tokens the same as when you type them.
+Nothing until you press a button or run one of the skills. Reading the context size makes no API call. Past the line, the mod runs `git status --porcelain` once per turn, and only until it finds a break. Compact and Hand off run the skills, which spend tokens the same as when you type them.
 
 ## Tests
 
