@@ -55,11 +55,15 @@ Audit silently, and **do not** dump a summary recap. The recap is noise; the use
 **Workflow / task state**
 - State files, plan files, scratch notes session read/write: reflect current progress? The "ignored files changed after the last commit" list from the script is the starting point: each entry either reflects the current state or needs a sync before compacting.
 - Mid-task skill/agent invocations: next step clearly derivable from disk?
-- TaskList: in-progress tasks that will orphan? (TaskList session-local; won't survive compact.)
 
-**Background work**
-- Background Bash tasks running or recently completed with unread output.
-- Scheduled crons or wake-ups user should know about.
+**Running work, schedules, task list**
+
+Compaction keeps the session: what runs keeps running and firing into the compacted session, and the task list stays as it is. List them (the host's task, cron and watch listings; in Claude Code `TaskList`, `CronList`, the background tasks) and sort each item:
+- Background shell tasks, monitors, watches: still needed, finished with unread output, or stale?
+- Crons, wake-ups, loops: still needed, or stale?
+- Task list: items done but still open, items no longer wanted, real open work.
+
+Stale means a checkable fact says its purpose is done: the CI it polls finished, the PR it watches merged, the server it ran was for a check that passed, the reminder's time is past. "Probably not needed" is not stale; leave that item and name it in the compact message.
 
 **Conversation-only knowledge**
 - Verbal decisions not in any file: chosen approach, user preference, debug breakthrough. Always goes in compact message (step 3). Also a save (step 2) when the project keeps a plan / note / diary it belongs in, or it outlives the task (memory).
@@ -75,6 +79,11 @@ Save-actions are persistence only:
 - **Capture background output:** read a finished task, summarize it into the note or the compact message before the buffer is useless.
 - **Save a memory**, where the host has persistent memory, for what outlives this task (a stated preference, a standing rule).
 
+Tidy what step 1 found stale, without asking, after saving what each item was for:
+- **Stop** a stale monitor, watch, cron, wake-up or loop, and a background process this session started whose job is done.
+- **Fix the task list:** mark finished items done, delete the ones no longer wanted, so it lists only real open work.
+- **Keep** what is still needed, and name each by its id in the compact message, so the next turn knows what its notifications are.
+
 Not a save, never done here: fixing a bug, relaunching a job, a long or paid run, any next step of the work. It goes into the compact message as an open thread and into the follow-up as the next move. Compact prep saves state; it doesn't advance the work.
 
 Commits:
@@ -88,7 +97,8 @@ Commits:
 - anything a repo rule or standing user instruction forbids ("push nothing new", "never commit to main");
 - a commit that would include secrets, `.env`-like files or large generated artifacts (commit the rest; hold back those files);
 - uncommitted changes where real work vs. experimental cruft is unclear;
-- paid, long-running or background jobs.
+- paid, long-running or background jobs;
+- stopping something still doing work (a build, a test run, a long or paid job).
 
 Ask once: one question batching every held-back item, recommended choice first for each. Do everything else in the meantime; the saves never wait on the answer. On a yes, act, re-run the baseline, hand over again (step 3).
 
@@ -111,7 +121,7 @@ Hand over:
 
 ## Format
 
-No audit recap, no step narration. Saves done -> lead with **Saved before compacting**, one line per action with its evidence (commit hash and subject, file path, what the note holds). Something held back -> **Needs your yes** with the single batched question. Neither when nothing needed saving (the common case). Then the blocks, unless the mod compacts now and asks for its one line instead.
+No audit recap, no step narration. Saves or tidying done -> lead with **Saved before compacting**, one line per action with its evidence (commit hash and subject, file path, what the note holds, what was stopped and why it was stale). Something held back -> **Needs your yes** with the single batched question. Neither when nothing needed saving (the common case). Then the blocks, unless the mod compacts now and asks for its one line instead.
 
 ```
 **Saved before compacting**

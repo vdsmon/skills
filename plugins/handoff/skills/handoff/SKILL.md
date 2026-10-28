@@ -50,13 +50,15 @@ Audit silently; do not dump a recap. The audit feeds step 2. Check:
 **Workflow state**
 - Plan and state files the session read or wrote: do they say where the work stands now? The script's "ignored files changed after the last commit" list is the starting point. A plan file that still says "in progress" for a finished step misleads the next session.
 - A skill or agent mid-invocation: is the next step derivable from disk?
-- The host's task list or pending chips: session-local, a fresh session never sees them. List them.
+- The host's task list or pending chips: session-local, a fresh session never sees them. Sort each: done but still open, no longer wanted, or real open work.
 
 **Background work**
 - Background tasks running or finished with unread output: read the output now. The buffer dies with the session, and a finished job nobody read is a result lost.
 - A task still running: capture what it wrote so far and say it was unfinished.
 - Crons, wake-ups, reminders scheduled inside this session: a fresh session does not get them back. List the ones still wanted so the next session recreates them. Only the ones with their own re-arm hook come back on their own.
 - Messages from other sessions not yet answered: list them with what was asked.
+
+List what still runs or is scheduled (the host's task, cron and watch listings; in Claude Code `TaskList`, `CronList`, the background tasks) and sort each item: still needed, or stale. Stale means a checkable fact says its purpose is done: the CI it polls finished, the PR it watches merged, the server it ran was for a check that passed, the reminder's time is past. "Probably not needed" is not stale. A resume brings unexpired crons back, so a stale one would fire into it.
 
 **Conversation-only knowledge**
 - Decisions and why (the approach chosen, the approach rejected and what failed), preferences the user stated, debug findings, numbers, deadlines. With compaction these ride in the summary. Here they go into the handoff and into memory, or they are gone.
@@ -69,7 +71,11 @@ Save-actions are persistence only:
 - **Commit real work** locally, or **stash** it (`git stash push -m "<what state it's in>"`) when a commit doesn't fit. Scratch stays out.
 - **Sync plan and state files** to where the work stands.
 - **Capture background output** into the handoff (and into the state file it belongs to).
-- **List session-only crons, reminders, chips, and unanswered messages** for the handoff.
+- **List session-only crons, reminders, chips, and unanswered messages** still wanted, for the handoff.
+
+Tidy what step 1 found stale, without asking, after saving what each item was for:
+- **Stop** a stale monitor, watch, cron, wake-up or loop, and a background process this session started whose job is done.
+- **Fix the task list:** mark finished items done, delete the ones no longer wanted; the real open work goes under **Pending**.
 
 Commits:
 - Follow the repo's conventions: message style, attribution rules, branch. Message says what state the change is in (WIP, tests pending).
@@ -82,11 +88,12 @@ Commits:
 - anything a repo rule or standing user instruction forbids ("push nothing new", "never commit to main");
 - a commit that would include secrets, `.env`-like files or large generated artifacts (commit the rest; hold back those files);
 - uncommitted changes where real work vs. scratch is unclear;
-- paid, long-running or background jobs.
+- paid, long-running or background jobs;
+- stopping something still doing work (a build, a test run, a long or paid job).
 
 Ask once: one question batching every held-back item, recommended choice first for each, printed with the hand-over in step 4. Nothing waits on the answer: every held-back item goes into the handoff under **Pending** as awaiting a yes, so the question survives an exit with no reply. If the user said they will not be around ("just save everything", "I won't answer"), skip the question; Pending still lists the items.
 
-This skill saves state; it does not advance the work. A pending fix, a next step, a question from another session: record where it stands, do not do it now. Work done in the last minute lands unreviewed and the handoff then misreports where things are. Likewise, do not judge pending items closed (a benchmark "dead", a chip "moot"): record what you observed and leave the call to the next session.
+This skill saves state; it does not advance the work. A pending fix, a next step, a question from another session: record where it stands, do not do it now. Work done in the last minute lands unreviewed and the handoff then misreports where things are. Likewise, do not judge pending items closed on a hunch (a benchmark "dead", a chip "moot"): record what you observed and leave the call to the next session. Only a checkable fact closes one (the stale test in step 1).
 
 ### 3. Write the handoff and the memory entry
 
@@ -128,7 +135,7 @@ No audit recap and no step narration. Leave out **Saved before exit** when nothi
 
 ```
 **Saved before exit**
-- [action taken, with evidence: commit hash and subject, file path, what the note holds]
+- [action taken, with evidence: commit hash and subject, file path, what the note holds, what was stopped and why it was stale]
 
 **Needs your yes** (also under Pending in the handoff)
 [one question covering every held-back item, recommended choice first]
@@ -160,7 +167,7 @@ With `--close`, print the same format with **Saved** for **Saved before exit**, 
 | "I will finish the pending fix while I am here" | This skill records state; it does not advance the work. A last-minute change lands unreviewed, and the handoff then says the wrong thing about where the work stands. |
 | "The throwaway directory is gitignored, so I will delete it" | Deleting is destructive and nobody asked. Name it in the handoff as safe to delete. |
 | "One memory file per loose end keeps things tidy" | Memory holds one pointer and what must survive on its own; the handoff holds the detail. Several files per session bloat the index the next session loads. |
-| "The benchmark is dead, the chip is moot, I will close them" | Judgments about pending items belong to the next session. Record what you saw (the log stopped at size 2 of 3; the README has no badge) and leave the items open. |
+| "The benchmark is dead, the chip is moot, I will close them" | Only a checkable fact closes an item: the run finished, the PR merged. Judgments about pending items belong to the next session. Record what you saw (the log stopped at size 2 of 3; the README has no badge) and leave the items open. |
 | "I will answer the other session's question myself" | Record it as unanswered with the current status. The person answers. |
 | "The next step is really something else, I will re-scope it" | Write the next step as agreed. Put the observation under decisions and facts; the next session decides. |
 
