@@ -26,7 +26,7 @@ repo_abs=$(cd "$repo_dir" 2>/dev/null && pwd -P || printf '%s' "$repo_dir")
 {
   echo "# Handoff, $stamp"
   echo
-  echo "Written by prep-exit before the session ended. A fresh session starts from this file"
+  echo "Written by handoff before the session ended. A fresh session starts from this file"
   echo "and from persistent memory; nothing else of that session reaches it."
   echo
   echo "Repository: \`$repo_abs\`"

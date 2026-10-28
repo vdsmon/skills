@@ -7,7 +7,7 @@ const AUTO_COMPACT_AT = '967k'
 const COMMAND = 'wrap-up'
 const TOOL = 'ready'
 const TOOL_NAME = `mcp__cc-wrap-up__${TOOL}`
-const SKILL: Record<PrepKind, string> = { compact: 'prep-compact', handoff: 'prep-exit' }
+const SKILL: Record<PrepKind, string> = { compact: 'better-compact', handoff: 'handoff' }
 
 const IDLE: Wrap = {
   phase: 'idle',
@@ -214,7 +214,7 @@ async function runCommand($: EngineInterface, args: string) {
   }
   if (verb === 'send') {
     const to = rest.join(' ')
-    if (w.payload?.kind !== 'handoff') return 'No handoff is ready. Press Hand off, or run /prep-exit, first.'
+    if (w.payload?.kind !== 'handoff') return 'No handoff is ready. Press Hand off, or run /handoff, first.'
     if (to === '') return `Name the session: /${COMMAND} send <name>.`
     const r = await $.session.send({ to, text: w.payload.resumePrompt })
     return r.isDelivered ? `Sent the resume prompt to ${to}.` : `Could not send to ${to}: ${r.reason}`
@@ -225,13 +225,17 @@ async function runCommand($: EngineInterface, args: string) {
 const TOOL_SPEC = {
   name: TOOL,
   description:
-    'Hands the result of prep-compact or prep-exit to the wrap-up band, which offers the user to compact or to deliver the resume prompt.',
+    'Hands the result of better-compact or handoff to the wrap-up band, which compacts or offers the user to compact, or to deliver the resume prompt.',
   inputSchema: {
     type: 'object',
     properties: {
       kind: { enum: ['compact', 'handoff'] },
       message: { type: 'string', description: 'Required for compact: the focus message, without the /compact prefix' },
       followUp: { type: 'string', description: 'Required for compact: the follow-up, the next action sent as a prompt after compaction' },
+      now: {
+        type: 'boolean',
+        description: 'Compact only: true to compact as soon as this turn ends, with no press; leave it out when a question is held back or you advise against compacting',
+      },
       resumePrompt: { type: 'string', description: 'Required for handoff: the resume prompt, the first message for the next session' },
       handoffPath: { type: 'string', description: 'Required for handoff: the absolute path of HANDOFF.md' },
       openQuestion: { type: 'boolean', description: 'true when a question was held back for the user' },
@@ -249,7 +253,13 @@ function payloadOf(e: Record<string, unknown>): Payload | string {
   if (e.kind === 'compact') {
     const gone = missing(['message', 'followUp'])
     if (gone.length > 0) return `missing ${gone.join(' and ')}`
-    return { kind: 'compact', message: text('message').replace(/^\/compact\s+/, ''), followUp: text('followUp'), openQuestion }
+    return {
+      kind: 'compact',
+      message: text('message').replace(/^\/compact\s+/, ''),
+      followUp: text('followUp'),
+      openQuestion,
+      now: e.now === true && !openQuestion,
+    }
   }
   if (e.kind === 'handoff') {
     const gone = missing(['resumePrompt', 'handoffPath'])
@@ -261,6 +271,16 @@ function payloadOf(e: Record<string, unknown>): Payload | string {
 
 async function onTurnEnd($: EngineInterface, reason: string) {
   const w = await read($, wrap)
+  if (reason === 'answer' && w.phase === 'ready-compact' && w.payload?.kind === 'compact' && w.payload.now) {
+    const { message, followUp } = w.payload
+    soon($, async () => {
+      // A prompt the user sent since the turn ended has made the result stale.
+      const cur = await read($, wrap)
+      if (cur.phase !== 'ready-compact' || cur.payload?.kind !== 'compact' || cur.payload.message !== message) return
+      await compactNow($, message, followUp)
+    })
+    return
+  }
   if (w.phase === 'prepping') {
     await update($, wrap, cur => (cur.phase === 'prepping' ? dismissed(cur) : cur))
     const skill = SKILL[w.prepKind ?? 'compact']
@@ -296,6 +316,12 @@ export const register: Register = (on, options) => {
       payload,
       prepKind: null,
     }))
+    if (payload.kind === 'compact' && payload.now) {
+      return {
+        result:
+          'cc-wrap-up compacts with this message when your turn ends, then sends the follow-up. Print the Saved lines if any, then one line "Compacting now; then: <follow-up>", and nothing else: not the two blocks, no new remarks. End your turn.',
+      }
+    }
     return { result: 'The wrap-up band now offers this to the user. Print your usual blocks too.' }
   }).catch(() => ({ deny: 'cc-wrap-up failed to take the result. Print your usual blocks.' }))
 

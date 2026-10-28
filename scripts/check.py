@@ -16,10 +16,10 @@ SKILL_DESC_MAX = 280
 PLUGIN_DESC_MAX = 300
 FIRST_SENTENCE_MAX = 170
 SKILL_LINES_AIM = 100
-# prep-exit ships its own copy of prep-compact's audit script; they must not diverge.
+# handoff ships its own copy of better-compact's audit script; they must not diverge.
 IDENTICAL_COPIES = [
-    ("plugins/prep-compact/skills/prep-compact/scripts/baseline.sh",
-     "plugins/prep-exit/skills/prep-exit/scripts/baseline.sh"),
+    ("plugins/better-compact/skills/better-compact/scripts/baseline.sh",
+     "plugins/handoff/skills/handoff/scripts/baseline.sh"),
 ]
 
 # Claude-Code-only features that an unprefixed (portable) plugin must not use.

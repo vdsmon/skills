@@ -18,7 +18,7 @@ plugins/<plugin>/
   skills/<skill>/agents/openai.yaml # GENERATED for user-only skills of non-cc- plugins
   skills/<skill>/scripts/*          # Optional helper scripts the skill calls
   hooks/*.sh                        # Optional event hooks declared in plugin.json (cc- only)
-  hooks/hooks.json + register.ts    # Or a mod: a hooks module Claude Code runs in-process (cc- only, e.g. cc-keepwarm)
+  hooks/hooks.json + register.ts(x) # Or a mod: a hooks module Claude Code runs in-process (cc- only, e.g. cc-keepwarm)
   tests/test-*.sh                   # Optional offline test suite; tests/live-*.sh spend tokens
 scripts/                            # sync-codex.sh, bump-plugin.sh, check.py, test-offline.sh
 docs/                               # Repo notes that never ship, e.g. docs/experiments.md
@@ -39,7 +39,7 @@ To add, rename or remove a plugin, or to flip its cc- prefix: the dir name, the 
 
 ## Checks and tests
 
-- `mise run verify` runs sync, fails if a generated file changed, then runs `scripts/check.py`. check.py fails on a broken contract (above), a description over its cap, `when_to_use` on a user-only skill, a cc- feature in an unprefixed plugin, or prep-compact's and prep-exit's `baseline.sh` copies differing (change both together). It warns on a SKILL.md over 100 lines.
+- `mise run verify` runs sync, fails if a generated file changed, then runs `scripts/check.py`. check.py fails on a broken contract (above), a description over its cap, `when_to_use` on a user-only skill, a cc- feature in an unprefixed plugin, or better-compact's and handoff's `baseline.sh` copies differing (change both together). It warns on a SKILL.md over 100 lines.
 - `mise run test` runs every offline suite (`plugins/*/tests/test-*.sh`). Run the suite of any plugin whose hooks or scripts you touch.
 - CI (`.github/workflows/ci.yml`, on macOS because the hooks use BSD `stat` and `date`) runs sync, check.py and the offline suites on every pull request and on main.
 - `mise run test:keepwarm`, `mise run test:autotitle`, `mise run test:wrap-up` and `mise run test:dazzle` run the cc-keepwarm, cc-autotitle, cc-wrap-up and cc-dazzle mods' validate and tests through the `claude` CLI, which CI does not have. Run one after touching its mod or upgrading Claude Code.
@@ -66,7 +66,7 @@ The body is a prompt, not docs: second-person imperative. Keep this file and eve
 
 **Progressive disclosure**: move reference content out of SKILL.md into sibling files (see `plugins/humanize/skills/humanize/references/`). Keep references one level deep: chains of `.md` -> `.md` -> `.md` cause partial reads. Aim for 100 lines or fewer in SKILL.md.
 
-**Helper scripts**: put deterministic logic in `skills/<skill>/scripts/` and have the skill call it (e.g. prep-compact's `scripts/baseline.sh`). Otherwise the model re-interprets the prose on every run.
+**Helper scripts**: put deterministic logic in `skills/<skill>/scripts/` and have the skill call it (e.g. better-compact's `scripts/baseline.sh`). Otherwise the model re-interprets the prose on every run.
 
 **Dynamic context injection** (cc- only): `` !`cmd` `` inline or `` ```! `` fenced blocks in the skill body run shell commands, and their output replaces the placeholder before the model reads the skill. Use `${CLAUDE_SKILL_DIR}` for script paths, `$ARGUMENTS` / `$0` for user args.
 

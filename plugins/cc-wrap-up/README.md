@@ -1,19 +1,19 @@
 # cc-wrap-up
 
-Offers to wrap up a long Claude Code session at a natural break, then does the last step for you: it compacts with `prep-compact`'s message, or it hands the work off with `prep-exit`'s resume prompt. You do not copy or paste anything.
+Offers to wrap up a long Claude Code session at a natural break, then does the last step for you: it compacts with `better-compact`'s message, or it hands the work off with `handoff`'s resume prompt. You do not copy or paste anything.
 
-It is a mod: a hooks module that Claude Code runs inside each session. It reads the context size after each turn at no cost, and it acts only when you press a button or run `/wrap-up`.
+It is a mod: a hooks module that Claude Code runs inside each session. It reads the context size after each turn at no cost, and it acts only when you press a button, run `/wrap-up`, or run one of the two skills.
 
 ## Install
 
 ```
 /plugin marketplace add vdsmon/skills
 /plugin install cc-wrap-up@vdsmon-skills
-/plugin install prep-compact@vdsmon-skills
-/plugin install prep-exit@vdsmon-skills
+/plugin install better-compact@vdsmon-skills
+/plugin install handoff@vdsmon-skills
 ```
 
-The two skills are optional. Without `prep-compact`, Compact compacts at once with no message. Without `prep-exit`, there is no Hand off button.
+The two skills are optional. Without `better-compact`, Compact compacts at once with no message. Without `handoff`, there is no Hand off button.
 
 ## When it offers a wrap-up
 
@@ -28,13 +28,15 @@ It never shows during a running turn, in a subagent, or in a `claude -p` run.
 
 ## What the buttons do
 
-**Compact** runs `/prep-compact`. The skill saves what would be lost and hands its message to the mod. The band then offers:
+**Compact** runs `/better-compact`; typing the command yourself works the same. The skill saves what would be lost and hands its message to the mod, which compacts as soon as the skill's turn ends, then sends the follow-up as your next prompt. A prompt you send before that calls it off.
+
+When the skill held back a question, or advises against compacting, the band waits instead and offers:
 
 - **Compact now**: compacts with the message, then sends the follow-up as your next prompt.
 - **Edit**: puts `/compact <message>` in the prompt box for you to change. The follow-up is still sent after compaction.
 - **Not now**: closes the band.
 
-**Hand off** runs `/prep-exit`. The skill writes `HANDOFF.md`, a memory entry and a resume prompt. The band then offers:
+**Hand off** runs `/handoff`. The skill writes `HANDOFF.md`, a memory entry and a resume prompt. The band then offers:
 
 - **Fresh session here**: runs `/clear`, then sends the resume prompt as the first message.
 - **Copy prompt**: copies the resume prompt, for Codex or another host.
@@ -63,7 +65,7 @@ Set them in `/config` under the plugin.
 
 ## What it costs
 
-Nothing until you press. Reading the context size makes no API call. Past the line, the mod runs `git status --porcelain` once per turn, and only until it finds a break. Compact and Hand off run the skills, which spend tokens the same as when you type them.
+Nothing until you press a button or run one of the skills. Reading the context size makes no API call. Past the line, the mod runs `git status --porcelain` once per turn, and only until it finds a break. Compact and Hand off run the skills, which spend tokens the same as when you type them.
 
 ## Tests
 

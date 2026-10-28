@@ -52,9 +52,9 @@ run = "claude plugin validate plugins/cc-wrap-up && claude plugin test plugins/c
 description = "Run the cc-dazzle mod tests (needs the claude CLI, so CI does not run them)"
 run = "claude plugin validate plugins/cc-dazzle && claude plugin test plugins/cc-dazzle"
 
-[tasks."test:prep-exit"]
-description = "Run the prep-exit script checks (handoff.sh and baseline.sh, offline)"
-run = "bash plugins/prep-exit/tests/test-prep-exit.sh"
+[tasks."test:handoff"]
+description = "Run the handoff script checks (handoff.sh and baseline.sh, offline)"
+run = "bash plugins/handoff/tests/test-handoff.sh"
 
 [tasks."test:open-pr"]
 description = "Run the open-pr body checker tests (offline)"
