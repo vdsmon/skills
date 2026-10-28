@@ -18,7 +18,7 @@ plugins/<plugin>/
   skills/<skill>/agents/openai.yaml # GENERATED for user-only skills of non-cc- plugins
   skills/<skill>/scripts/*          # Optional helper scripts the skill calls
   hooks/*.sh                        # Optional event hooks declared in plugin.json (cc- only)
-  hooks/hooks.json + register.ts    # Or a mod: a hooks module Claude Code runs in-process (cc- only, e.g. cc-keepwarm)
+  hooks/hooks.json + register.ts(x) # Or a mod: a hooks module Claude Code runs in-process (cc- only, e.g. cc-keepwarm)
   tests/test-*.sh                   # Optional offline test suite; tests/live-*.sh spend tokens
 scripts/                            # sync-codex.sh, bump-plugin.sh, check.py, test-offline.sh
 docs/                               # Repo notes that never ship, e.g. docs/experiments.md
