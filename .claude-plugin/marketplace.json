@@ -67,13 +67,13 @@
       "name": "better-compact",
       "source": "./plugins/better-compact",
       "description": "A better /compact: audit the session, save what compaction would lose, then compact with a focus message and resume with a follow-up. Commits real work locally, syncs stale state files and notes chat-only decisions, asking only for risky items; compacts in one shot with cc-wrap-up. Portable across SKILL.md-native hosts.",
-      "version": "2.0.0"
+      "version": "2.1.0"
     },
     {
       "name": "handoff",
       "source": "./plugins/handoff",
       "description": "Save what only the conversation knows before a session ends, so a fresh session can pick up the work. Commits real work locally, syncs state files, writes a handoff note and a memory pointer, and prints a resume prompt; --close instead ties up loose ends for a clean exit. Portable across SKILL.md-native hosts.",
-      "version": "1.0.0"
+      "version": "1.1.0"
     },
     {
       "name": "prep-goal",
