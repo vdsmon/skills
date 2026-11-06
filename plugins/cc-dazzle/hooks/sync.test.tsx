@@ -1,4 +1,4 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, mock, test } from 'claude-code/testing'
 
 import { tableArt } from './blocks'
 import { tableHtml, tableText } from './html'
@@ -61,6 +61,23 @@ test('a long unbroken word after a <br> wraps on its own line', async () => {
 
 test('control characters inside a <br> cell are dropped and the break still applies', async () => {
   expect(inlineText(tableOf('| a |\n|-|\n| one\x1b[31m<br>two\x07 |').rows[0]![0]!)).toBe('one\ntwo')
+})
+
+test('a footnote mark and a clickable path inside a <br> cell keep working on their own line', async ($, on) => {
+  on('session.version', () => ({ value: { version: '2.1.295', base: '2.1.295' } }))
+  mock.env(on, { FORCE_HYPERLINK: '1', HOME: '/home/me' })
+  on('session.root', () => ({ value: '/work/app' }))
+  const probe = await $.ui.mount(reply('[/x.md](file:///x.md)'))
+  const links = (await probe.findAll({ type: 'Link' })).length > 0
+  await probe.unmount()
+  if (!links) return
+  const ui = await $.ui.mount(reply('| Step | Detail |\n|---|---|\n| Fix | Edit ~/notes/todo.md<br>then rerun[^r] |\n\n[^r]: Twice.'))
+  expect((await ui.findAll({ type: 'Link' })).map(l => String(l.props.href))).toEqual(['file:///home/me/notes/todo.md'])
+  expect(await ui.find({ type: 'Text', text: /^¹ Twice\.$/ })).toBeDefined()
+  const cells = (await ui.findAll({ type: 'Box' })).filter(b => typeof b.props.width === 'number' && b.props.flexShrink === 0).map(b => b.text ?? '')
+  expect(cells.some(text => text.replace(/\s+/g, ' ').includes('then rerun¹'))).toBe(true)
+  expect(cells.some(text => text.includes('~/notes/todo.md') && !text.includes('then'))).toBe(true)
+  await ui.unmount()
 })
 
 test('copying a table keeps a <br> cell as one cell: a <br> in HTML, a quoted multi-line cell in TSV', async () => {

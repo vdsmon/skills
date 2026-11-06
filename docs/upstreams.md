@@ -18,7 +18,7 @@ $ git log --oneline 36d6c6c..HEAD
 
 ## prismantis 0.32.1 to 0.44.0
 
-Ported, each with its upstream test (in `hooks/sync*.test.tsx`, `png.test.tsx` and the tests they changed):
+Ported, each with its upstream test (in `hooks/*sync*.test.tsx`, `png.test.tsx` and the tests they changed):
 
 - Markdown: `<br>` in table cells, measured by the widest line and kept in every copy (#283); a soft break before a tinted translation line, the tint drawn (#368); hard line breaks in paragraphs and list items (#408, #413); HTML entities outside code (#412); an unterminated OSC escape strips only itself (#414); linear parse on long backtick cells and unclosed `$$` lines (#415).
 - Links and paths: one-part paths like `/config` stay text (#242); paths without `./` and drive paths link once a stat finds them, stat-ed once a session in batches of 200, misses kept across read-only calls and a refused write retried (#275, #425, #440), with prismantis's read-only call check in `readonly.ts`; Orca draws hyperlinks (#275); an extensionless file never links and a folder links once stat-ed (#424); Obsidian (#300) and Cursor, Windsurf and Zed links (#304); spoofed labels draw as text and target (#427, #438); prompt links take the same checks (#436).
