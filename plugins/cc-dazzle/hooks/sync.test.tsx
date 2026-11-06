@@ -4,6 +4,7 @@ import { tableArt } from './blocks'
 import { tableHtml, tableText } from './html'
 import type { Block } from './markdown'
 import { displayText, inlineText, parse } from './markdown'
+import { mermaidText } from './mermaid'
 import { width } from './text'
 import { THEME } from './theme'
 
@@ -146,6 +147,22 @@ test('parse cost grows linearly on long backtick cells and unclosed $$ lines', a
     const large = best(() => parse(make(5000), hl))
     expect(large < small * 40).toBe(true)
   }
+})
+
+test('a two-node cycle with an outgoing edge falls back to its source instead of hanging', async $ => {
+  const source = 'flowchart TD\n  A --> B\n  B --> A\n  B --> C'
+  expect(mermaidText(source, 97)).toBeNull()
+  const ui = await $.ui.mount(reply('```mermaid\n' + source + '\n```', 101))
+  expect(await ui.find({ type: 'Text', text: /B --> C/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('Prism colors PHP variables, properties and comments', async $ => {
+  const ui = await $.ui.mount(reply('```php\n$total = $order->sum; // app\n```'))
+  expect((await ui.find({ type: 'Text', text: /^\$total$/ }))?.props.color).toBe(THEME.emphasis)
+  expect((await ui.find({ type: 'Text', text: /^sum$/ }))?.props.color).toBe(THEME.link)
+  expect((await ui.find({ type: 'Text', text: /^\/\/ app$/ }))?.props.italic).toBe(true)
+  await ui.unmount()
 })
 
 const nodeCount = (n: unknown): number =>
