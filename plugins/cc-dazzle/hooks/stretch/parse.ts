@@ -1,7 +1,8 @@
 // A reply is markdown in which `{{short|long}}` marks a stretch: the reader
 // sees `short`, and opening it puts `long` in its place. `long` may hold
 // further stretches. Code spans and fences are copied as written, so braces in
-// code never open a stretch.
+// code never open a stretch; inside a long form, a fence's closing line may
+// carry the `}}` that closes the stretches around the block.
 
 export type Segment = string | Stretch
 
@@ -97,8 +98,9 @@ export function parse(text: string): Segment[] {
   while (i < text.length) {
     const frame = stack.at(-1)
     const isInShort = frame !== undefined && frame.stretch.long === undefined
+    const isInLong = frame !== undefined && !isInShort
 
-    const fenceStop = i === 0 || text[i - 1] === '\n' ? fenceEnd(text, i) : undefined
+    const fenceStop = i === 0 || text[i - 1] === '\n' ? fenceEnd(text, i, isInLong) : undefined
     if (fenceStop !== undefined) {
       write(text.slice(i, fenceStop))
       i = fenceStop
@@ -158,8 +160,11 @@ function keyOf(short: string, parent: Frame | undefined, rootSiblings: Map<strin
   return parent ? `${parent.stretch.key}${KEY_SEPARATOR}${own}` : own
 }
 
-/** Where a fenced code block opening at `start` ends (past its closing line), or undefined when no fence opens there. */
-function fenceEnd(text: string, start: number): number | undefined {
+/**
+ * Where a fenced code block opening at `start` ends (past its closing line, or where the braces after
+ * its closing fence begin, inside a long form), or undefined when no fence opens there.
+ */
+function fenceEnd(text: string, start: number, isInLong: boolean): number | undefined {
   const lineEnd = (from: number) => {
     const end = text.indexOf('\n', from)
     return end === -1 ? text.length : end
@@ -168,7 +173,10 @@ function fenceEnd(text: string, start: number): number | undefined {
   if (opening === undefined) return undefined
 
   for (let at = lineEnd(start) + 1; at < text.length; at = lineEnd(at) + 1) {
-    if (closesFence(text.slice(at, lineEnd(at)), opening)) return Math.min(lineEnd(at) + 1, text.length)
+    const line = text.slice(at, lineEnd(at))
+    const close = fenceCloseOn(line, opening, isInLong)
+    if (close === line.length) return Math.min(lineEnd(at) + 1, text.length)
+    if (close !== undefined) return at + close
   }
 
   return text.length
@@ -183,6 +191,20 @@ export function openingFence(line: string): string | undefined {
 export function closesFence(line: string, fence: string): boolean {
   const trimmed = line.trim()
   return trimmed.startsWith(fence) && trimmed === fence.charAt(0).repeat(trimmed.length)
+}
+
+/**
+ * Where the code fence `fence` opened closes on `line`: at the line's end when the line is only the
+ * fence. Inside a long form (`isInLong`) a closing fence followed by nothing but `}}`, once or more,
+ * spaces between allowed, also closes it, where the braces begin, so they close the stretches around
+ * the block. Undefined when the line does not close it.
+ */
+function fenceCloseOn(line: string, fence: string, isInLong: boolean): number | undefined {
+  if (closesFence(line, fence)) return line.length
+  if (!isInLong) return undefined
+  const braces = line.indexOf('}}')
+  if (braces === -1 || !/^(?:\}\}[ \t]*)+$/.test(line.slice(braces))) return undefined
+  return closesFence(line.slice(0, braces), fence) ? braces : undefined
 }
 
 /** Every stretch, outermost first, in the order the reply writes them. */
@@ -212,14 +234,18 @@ export function hideLongForms(lines: string, state: StreamState): string {
     .split('\n')
     .flatMap(line => {
       const fence = state.fence === undefined && state.span === undefined ? openingFence(line) : undefined
+      // Past a closing fence followed by braces, the braces are read as outside the block.
+      let start = 0
       if (state.fence !== undefined || fence !== undefined) {
         const isShown = state.open.length === 0 || (state.open.length === 1 && state.open[0]?.isLong === false)
+        const close = state.fence === undefined ? undefined : fenceCloseOn(line, state.fence, state.open.at(-1)?.isLong === true)
         if (state.fence === undefined) state.fence = fence
-        else if (closesFence(line, state.fence)) state.fence = undefined
-        return isShown ? [line] : []
+        else if (close !== undefined) state.fence = undefined
+        if (close === undefined || close === line.length) return isShown ? [line] : []
+        start = close
       }
       let out = ''
-      for (let i = 0; i < line.length; i++) {
+      for (let i = start; i < line.length; i++) {
         const top = state.open.at(-1)
         const isShown = state.open.length === 0 || (state.open.length === 1 && top?.isLong === false)
         if (state.span !== undefined || line[i] === '`') {
@@ -260,7 +286,11 @@ export function paragraphsOf(text: string): Paragraph[] {
   let fence: string | undefined
   for (const line of text.split('\n')) {
     if (fence !== undefined) {
-      if (closesFence(line, fence)) fence = undefined
+      const close = fenceCloseOn(line, fence, depth > 0)
+      if (close !== undefined) {
+        fence = undefined
+        ;({ depth, span } = depthAfter(line.slice(close), depth, span))
+      }
       current.push(line)
       continue
     }

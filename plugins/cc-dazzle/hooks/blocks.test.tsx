@@ -110,7 +110,7 @@ test('a table draws boxed with a double line under the header and md, art and ht
   expect(under.length).toBe(top.length)
   expect((await ui.find({ type: 'Text', text: /^└[─┴]+┘$/ }))?.text.length).toBe(top.length)
   expect((await ui.find({ type: 'Text', text: /^Name$/ }))?.props.color).toBe(t.tableHeader)
-  expect(await labels(ui)).toEqual(['⧉ md', '⧉ art', '⧉ html'])
+  expect(await labels(ui)).toEqual(['⧉ md', '⧉ art', '⧉ html', '▣ png'])
   await ui.unmount()
 })
 

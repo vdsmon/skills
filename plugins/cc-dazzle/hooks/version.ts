@@ -2,6 +2,8 @@
 export const HTTP_LINKS_FROM = [2, 1, 289]
 export const EDITOR_LINKS_FROM = [2, 1, 294]
 export const CLICKABLE_MARKS_FROM = [2, 1, 295]
+// 2.1.296 refuses Text's mono prop, and the engine then draws the whole reply itself.
+export const MONO_TEXT_FROM = [2, 1, 299]
 
 export const releaseFrom = (from: readonly number[]) => (base?: string): boolean => {
   const m = /^(\d+)\.(\d+)\.(\d+)/.exec(base ?? '')
@@ -16,3 +18,5 @@ export const takesHttpLinks = releaseFrom(HTTP_LINKS_FROM)
 export const takesEditorLinks = releaseFrom(EDITOR_LINKS_FROM)
 
 export const takesClickableMarks = releaseFrom(CLICKABLE_MARKS_FROM)
+
+export const takesMonoText = releaseFrom(MONO_TEXT_FROM)

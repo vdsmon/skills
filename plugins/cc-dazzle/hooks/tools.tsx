@@ -2,7 +2,7 @@ import type { ElementTable, RenderElement } from 'claude-code'
 
 import type { Fold, Segment } from './blocks'
 import { codeLine, highlightRows, isShellLang } from './blocks'
-import { toolHref, toolPath } from './links'
+import { opens, toolHref, toolPath } from './links'
 import { CONTROL } from './markdown'
 import type { Style, Theme } from './theme'
 import { CLAUDE_DIFF, PREVIEW_BAND } from './theme'
@@ -19,12 +19,13 @@ const field = (input: unknown, ...keys: string[]): string | undefined => {
   if (input === null || typeof input !== 'object') return undefined
   for (const k of keys) {
     const v = (input as Record<string, unknown>)[k]
-    if (typeof v === 'string' && v.trim() !== '') return v
+    // The engine refuses a tree whose Text holds an escape (OSC 52, ESC[2J), and drops the whole row.
+    if (typeof v === 'string' && v.trim() !== '') return v.replace(CONTROL, '')
   }
   return undefined
 }
 
-const TARGET_FIELDS = ['file_path', 'notebook_path', 'path', 'pattern', 'url', 'query', 'description']
+const TARGET_FIELDS = ['file_path', 'notebook_path', 'path', 'pattern', 'url', 'query', 'description', 'skill']
 
 const statusColor = (t: Theme, row: ToolRow) =>
   row.isErrored ? t.error : row.isInterrupted ? t.codeComment : row.isRunning ? t.accent : t.success
@@ -65,7 +66,7 @@ const targetOf = (style: Style, input: unknown, fields: string[]): { target?: st
 // The short text stays the label, so widths and truncation are unchanged; the href opens the whole path.
 const linkedPath = (el: ElementTable, style: Style, text: string, path: string | undefined): string | RenderElement => {
   const href = path === undefined ? undefined : toolHref(style, path)
-  return href === undefined ? text : <el.Link key="path" href={href} label={text} />
+  return href === undefined || !opens(style, href) ? text : <el.Link key="path" href={href} label={text} />
 }
 
 const DIFF_LINES = 20

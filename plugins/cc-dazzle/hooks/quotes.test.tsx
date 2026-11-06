@@ -88,7 +88,7 @@ test('an alert keeps a list in its body', async ($, on) => {
   const buttons = await ui.findAll({ type: 'Button' })
   expect(buttons.map(b => b.props.label)).toEqual(['⧉ copy'])
   await ui.press({ key: buttons[0]!.key! })
-  expect(copied).toEqual(['[!NOTE]\nBefore you merge:\n- run the tests\n- update the CHANGELOG'])
+  expect(copied).toEqual(['Before you merge:\n- run the tests\n- update the CHANGELOG'])
   await ui.unmount()
 })
 

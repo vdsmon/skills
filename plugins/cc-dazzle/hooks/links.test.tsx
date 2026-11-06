@@ -26,8 +26,8 @@ const engine = (on: On) =>
 test('only http, https and file links become terminal hyperlinks', async ($, on) => {
   claudeAt(on, '2.1.289')
   mock.env(on, {})
-  const ui = await $.ui.mount(reply('[docs](https://example.com) [dev](http://localhost:3000) [plain](http://example.com) [mail](mailto:a@example.com) [run](javascript:alert(1)) [/etc/passwd](file:///etc/passwd)'))
-  expect((await ui.findAll({ type: 'Link' })).map(l => l.props.href)).toEqual(['https://example.com', 'http://localhost:3000', 'http://example.com', 'file:///etc/passwd'])
+  const ui = await $.ui.mount(reply('[docs](https://example.com) [dev](http://localhost:3000) [plain](http://example.com) [mail](mailto:a@example.com) [run](javascript:alert(1)) [/etc/hosts.txt](file:///etc/hosts.txt)'))
+  expect((await ui.findAll({ type: 'Link' })).map(l => l.props.href)).toEqual(['https://example.com', 'http://localhost:3000', 'http://example.com', 'file:///etc/hosts.txt'])
   expect(await ui.find({ type: 'Text', text: /^run \(javascript:alert\(1\)\)$/ })).toBeDefined()
   await ui.unmount()
 })

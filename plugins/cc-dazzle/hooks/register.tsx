@@ -1,17 +1,19 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderElement, RenderInput, RenderSurface } from 'claude-code'
 
-import type { Drawn, Fold } from './blocks'
+import type { Drawn, Fold, Hues } from './blocks'
 import { instanceKey, noteTip, renderBlocks } from './blocks'
-import type { ClipboardBackend } from './clipboard'
-import { clipboardCommand } from './clipboard'
+import type { ClipboardBackend, HelperCommand } from './clipboard'
+import { clipboardCommand, imageCommand } from './clipboard'
 import { clockText, promptKey, sentAt, withRecord } from './clock'
 import type { TerminalEnv } from './links'
-import { drawsHyperlinks } from './links'
+import { drawsHyperlinks, pathsToProbe, toolPathsToProbe } from './links'
+import { isReadOnlyCall } from './readonly'
 import type { Block } from './markdown'
 import { parse } from './markdown'
-import { boxArt, chartSeries, inlineMarks, mermaidArt, shortenEdgeLabels, unsupportedKind } from './mermaid'
-import { renderUserPrompt } from './prompt'
+import { artHues, boxArt, chartSeries, inlineMarks, mermaidArt, shortenEdgeLabels, unsupportedKind } from './mermaid'
+import type { DrawPaste } from './prompt'
+import { pasteLang, renderUserPrompt } from './prompt'
 import { openText, registerStretch, stretchBody, stretchNote, writtenText } from './stretch/index'
 import { deliveredText, isQueued, withQueued, withoutDelivered } from './queue'
 import type { Table } from './tables'
@@ -20,7 +22,7 @@ import { remember, width } from './text'
 import type { Style } from './theme'
 import { THEME } from './theme'
 import { bashEdits, editNotes, hasShellOutput, renderBashEdits, renderDiffCard, renderExpandedShell, renderToolGroup, renderToolRow, withoutBashEdits } from './tools'
-import { takesClickableMarks, takesEditorLinks, takesHttpLinks } from './version'
+import { takesClickableMarks, takesEditorLinks, takesHttpLinks, takesMonoText } from './version'
 
 const expandedCalls = new Set<string>()
 
@@ -30,7 +32,14 @@ const markExpanded = (id: string) => {
   if (expandedCalls.size > 500) expandedCalls.delete(expandedCalls.values().next().value!)
 }
 
-const columnsOf = (viewport?: { columns?: number }) => Math.max(20, (viewport?.columns ?? 100) - 4)
+// The desktop app counts columns in cells of its code font, but sets each monospaced cell about 1.19
+// times wider, so art laid out to the reported columns would run past the reply.
+const DESKTOP_ROOM = 0.84
+
+const columnsOf = (viewport: { columns?: number } | undefined, style: Pick<Style, 'monoFace'>) => {
+  const reported = viewport?.columns ?? 100
+  return Math.max(20, (style.monoFace ? Math.floor(reported * DESKTOP_ROOM) : reported) - 4)
+}
 
 const unfolded = atom({ plugin: 'cc-dazzle', key: 'unfolded' } as const, [] as string[])
 const sent = atom({ plugin: 'cc-dazzle', key: 'sent' } as const, [])
@@ -56,7 +65,7 @@ const htmlBackend = async ($: EngineInterface): Promise<ClipboardBackend | null>
   return helper?.kind === 'file' ? 'macos' : null
 }
 
-type Reach = { http: boolean; editor: boolean; marks: boolean; files: boolean; paths: boolean }
+type Reach = { http: boolean; editor: boolean; marks: boolean; mono: boolean; files: boolean; paths: boolean }
 
 type Probes = { htmlCopy?: Promise<ClipboardBackend | null>; reach?: Promise<Reach> }
 
@@ -80,7 +89,7 @@ const readReach = async ($: EngineInterface, style: Style): Promise<Reach> => {
   const http = takesHttpLinks(base)
   if (http) await locate($, style)
   const files = http && !(await overSsh($).catch(() => true))
-  return { http, editor: takesEditorLinks(base), marks: takesClickableMarks(base), files, paths: files && drawsHyperlinks(await terminalEnv($).catch(() => ({}))) }
+  return { http, editor: takesEditorLinks(base), marks: takesClickableMarks(base), mono: takesMonoText(base), files, paths: files && drawsHyperlinks(await terminalEnv($).catch(() => ({}))) }
 }
 
 const reachOf = ($: EngineInterface, probes: Probes, style: Style): Promise<Reach> => (probes.reach ??= readReach($, style))
@@ -93,11 +102,26 @@ const probe = async ($: EngineInterface, style: Style, probes: Probes): Promise<
   if (style.htmlCopy !== before) $.ui.invalidate('ui.render')
 }
 
-const copyTable = async ($: EngineInterface, html: string, text: string): Promise<string | null> => {
-  const command = clipboardCommand(html, text)
+const runHelper = async ($: EngineInterface, command: HelperCommand): Promise<string | null> => {
   const result = await $.process.run(command.argv, { stdin: command.stdin, timeoutMs: 5000 }).catch(() => null)
   if (!result) return command.failure
   return result.exitCode === 0 ? null : result.stderr.trim() || command.failure
+}
+
+// Mocha base, the background the png copy draws on.
+const PNG_BACKGROUND = '#1e1e2e'
+
+const richCommand = (style: Style, content: string, rich: (() => string) | 'png', hues?: Hues): HelperCommand => rich === 'png'
+  ? imageCommand(content, { foreground: style.theme.diagramText ?? style.theme.codeText, background: PNG_BACKGROUND }, hues)
+  : clipboardCommand(rich(), content)
+
+// A failed helper falls back to plain text, with the reason in the toast.
+const copyOut = async ($: EngineInterface, style: Style, content: string, surface: RenderSurface, rich?: (() => string) | 'png', hues?: Hues): Promise<string> => {
+  const failure = rich && style.htmlCopy ? await runHelper($, richCommand(style, content, rich, hues)) : undefined
+  if (failure === null) return rich === 'png' ? 'Copied as image' : 'Copied formatted table'
+  const result = await $.ui.copy({ text: content, surface })
+  if (!result.isCopied) return `Copy failed: ${result.reason}`
+  return failure ? `Copied as plain text (${failure})` : 'Copied'
 }
 
 // faces: Buttons may hold Text (Claude Code 2.1.295, terminal), so a card or its header can be the toggle.
@@ -114,16 +138,9 @@ const folder = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolv
 
 const drawMarkdown = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolve']>, style: Style, blocks: ReturnType<typeof parse>, columns: number, open?: string[], notes?: { id: string; press: boolean }): RenderElement[] => {
   const { Button } = el
-  const copy = (text: string | (() => string), key: string, label = '⧉ copy', html?: () => string) => {
-    const copied = async (surface: RenderSurface): Promise<string> => {
-      const content = typeof text === 'function' ? text() : text
-      const failure = html && style.htmlCopy ? await copyTable($, html(), content) : undefined
-      if (failure === null) return 'Copied formatted table'
-      const result = await $.ui.copy({ text: content, surface })
-      if (!result.isCopied) return `Copy failed: ${result.reason}`
-      return failure ? `Copied as plain text (${failure})` : 'Copied'
-    }
-    return !html || style.htmlCopy ? (
+  const copy = (text: string | (() => string), key: string, label = '⧉ copy', rich?: (() => string) | 'png', hues?: () => Hues) => {
+    const copied = (surface: RenderSurface) => copyOut($, style, typeof text === 'function' ? text() : text, surface, rich, hues?.())
+    return !rich || style.htmlCopy ? (
       <Button
         key={key}
         variant="primary"
@@ -143,7 +160,8 @@ const drawMarkdown = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['
       const wide = art === null ? Infinity : Math.max(...art.text.split('\n').map(width))
       narrowest = Math.min(narrowest, wide)
       if (art === null || wide > columns - 6) continue
-      drawn.set(i, { element: boxArt(el, style, art.text, `b${i}`, inlineMarks(source), art.slices, chartSeries(text, columns)), art: art.text })
+      const series = chartSeries(text, columns)
+      drawn.set(i, { element: boxArt(el, style, art.text, `b${i}`, inlineMarks(source), art.slices, series), art: art.text, hues: () => artHues(style, art.text, art.slices, series) })
       break
     }
     if (!drawn.has(i) && !block.isOpen) {
@@ -162,9 +180,97 @@ const toolTableView = async ($: EngineInterface, e: RenderInput, style: Style, b
   return (
     <Box key={`table-${id ?? caption ?? ''}`} flexDirection="column">
       {caption === undefined ? null : <Text color={style.theme.codeComment} wrap="truncate-end">{caption}</Text>}
-      {drawMarkdown($, el, style, blocks, columnsOf(e.viewport))}
+      {drawMarkdown($, el, style, blocks, columnsOf(e.viewport, style))}
       <Text color={style.theme.codeComment}>{tableFooter(table.rows.length, shown, ms)}</Text>
     </Box>
+  )
+}
+
+// Bare paths link once a stat finds them. A render cannot write state, so it queues the unseen
+// spellings and a timer stats each once per session; the render reads foundPaths and redraws.
+const foundPaths = atom({ plugin: 'cc-dazzle', key: 'foundPaths' } as const, [] as string[])
+
+type PathChecks = { asked: Set<string>; batch: string[]; list?: readonly string[]; found: ReadonlySet<string> }
+
+const MAX_FOUND = 2000
+const MAX_BATCH = 200
+const MAX_ASKED = 5000
+const FOUND_TRIES = 20
+const FOUND_RETRY_MS = 50
+
+const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
+
+const writtenPath = (call: Record<string, unknown>): string | undefined => {
+  const path = call.file_path ?? call.notebook_path
+  return WRITE_TOOLS.has(String(call.tool)) && typeof path === 'string' ? path.replace(/\\/g, '/') : undefined
+}
+
+// A read-only call keeps the misses, a file write forgets the misses on its path, anything else may
+// have made files anywhere and forgets them all.
+const forgetMisses = (checks: PathChecks, call: Record<string, unknown>) => {
+  if (checks.asked.size < MAX_ASKED && isReadOnlyCall(String(call.tool), call)) return
+  const path = checks.asked.size < MAX_ASKED ? writtenPath(call) : undefined
+  if (path === undefined) checks.asked = new Set(checks.found)
+  else for (let at = path; at.includes('/'); at = at.slice(0, at.lastIndexOf('/'))) checks.asked.delete(at)
+}
+
+const statPaths = async ($: EngineInterface, paths: string[]): Promise<void> => {
+  const kinds = await Promise.all(paths.map(path => $.fs.stat(path).then(stat => stat.kind, () => 'other')))
+  const hits = paths.flatMap((path, i) => (kinds[i] === 'dir' ? [path, `${path}/`] : kinds[i] === 'file' ? [path] : []))
+  if (hits.length) saveFound($, hits, FOUND_TRIES)
+}
+
+// A stat often lands while a render is dispatching, and the engine refuses a state write then.
+const saveFound = ($: EngineInterface, hits: string[], tries: number): void => {
+  void update($, foundPaths, list => [...list, ...hits].slice(-MAX_FOUND)).catch(() => {
+    if (tries > 1) $.clock.after(FOUND_RETRY_MS, () => saveFound($, hits, tries - 1))
+  })
+}
+
+const askPaths = ($: EngineInterface, checks: PathChecks, paths: string[]) => {
+  for (const path of paths) {
+    if (checks.asked.has(path)) continue
+    if (checks.batch.length >= MAX_BATCH) return
+    if (checks.batch.length === 0) {
+      $.clock.after(0, () => {
+        const batch = checks.batch
+        checks.batch = []
+        void statPaths($, batch).catch(() => undefined)
+      })
+    }
+    checks.asked.add(path)
+    checks.batch.push(path)
+  }
+}
+
+const withFound = async ($: EngineInterface, checks: PathChecks, style: Style, paths: string[]): Promise<Style> => {
+  if (paths.length === 0) return style
+  askPaths($, checks, paths)
+  const list = await read($, foundPaths)
+  if (list !== checks.list) {
+    checks.list = list
+    checks.found = new Set(list)
+  }
+  return { ...style, found: checks.found }
+}
+
+const linked = ($: EngineInterface, checks: PathChecks, style: Style, blocks: Block[]) => withFound($, checks, style, pathsToProbe(blocks, style))
+
+const toolLinked = ($: EngineInterface, checks: PathChecks, style: Style, inputs: unknown[]) => withFound($, checks, style, toolPathsToProbe(style, inputs))
+
+// Older engine types have no isExpanded on a tool row, so it is read through a guard.
+const expandedRow = (props: object): boolean => 'isExpanded' in props && props.isExpanded === true
+
+const pasteFrame = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolve']>, style: Style, open: string[], id: string, columns: number): DrawPaste => (body, key) => {
+  const lines = body.split('\n')
+  const title = `pasted text · ${lines.length} lines`
+  const toggle = folder($, el, open)(`${id}:${key}`, lines.length, key, { label: title })
+  const opened = toggle?.folded === false
+  return (
+    <el.Box key={key} borderStyle="double" borderColor={style.theme.codeComment} paddingX={1} flexDirection="column" alignSelf="flex-start">
+      {opened ? <el.Box key="head" flexDirection="row" justifyContent="space-between" columnGap={4}><el.Text color={style.theme.codeComment}>{title}</el.Text>{toggle.element}</el.Box> : toggle?.element ?? null}
+      {opened ? drawMarkdown($, el, style, [{ kind: 'code', lang: pasteLang(body), lines, raw: body }], columns - 8, open) : null}
+    </el.Box>
   )
 }
 
@@ -174,8 +280,9 @@ export const register: Register = (on, options) => {
   const style: Style = { theme: THEME, htmlCopy: null, cwd: '', home: '', copyButtonStyle: options.copyButtonStyle === 'hover' ? 'hover' : 'inline' }
   const parsed = new Map<string, ReturnType<typeof parse>>()
   const parseCached = (text: string) => remember(parsed, text, () => parse(text, { numbers: true, paths: true }))
-  const forSurface = (base: Style, surface: RenderSurface, reach?: Reach): Style => {
-    const drawn = surface === 'terminal' ? (reach?.http || reach?.editor ? { ...base, httpLinks: reach.http, editorLinks: reach.editor, fileLinks: reach.files, pathLinks: reach.paths } : base) : { ...base, htmlCopy: null, nativeCode: true }
+  // In fullscreen Claude Code opens only allowlisted schemes, which obsidian: is not.
+  const forSurface = (base: Style, { surface, viewport }: { surface: RenderSurface; viewport?: { isFullscreen?: boolean } }, reach?: Reach): Style => {
+    const drawn = surface === 'terminal' ? (reach?.http || reach?.editor ? { ...base, httpLinks: reach.http, editorLinks: reach.editor, obsidianLinks: reach.editor && viewport?.isFullscreen === false, fileLinks: reach.files, pathLinks: reach.paths } : base) : { ...base, htmlCopy: null, nativeCode: true, gridFace: surface === 'desktop', monoFace: surface === 'desktop' && reach?.mono === true }
     // Off the terminal, Text is proportional and collapses spaces, so code goes to the app's own Code element.
     // The phone app has no pointer to hover with.
     return surface === 'mobile' && drawn.copyButtonStyle === 'hover' ? { ...drawn, copyButtonStyle: 'inline' } : drawn
@@ -192,12 +299,18 @@ export const register: Register = (on, options) => {
   let firstEdit: string | undefined
   if (options.stretch === true) registerStretch(on)
 
+  const pathChecks: PathChecks = { asked: new Set(), batch: [], found: new Set() }
+
   on('tool.call', async ($, e, next) => {
-    if (!isTabular(e.tool)) return next(e)
-    const start = await $.clock.now()
-    const ran = await next(e)
-    await $.state.set({ plugin: 'cc-dazzle', key: 'took', id: e.tool_use_id }, (await $.clock.now()) - start)
-    return ran
+    try {
+      if (!isTabular(e.tool)) return await next(e)
+      const start = await $.clock.now()
+      const ran = await next(e)
+      await $.state.set({ plugin: 'cc-dazzle', key: 'took', id: e.tool_use_id }, (await $.clock.now()) - start)
+      return ran
+    } finally {
+      forgetMisses(pathChecks, e as unknown as Record<string, unknown>)
+    }
   }).catch(($, e, next) => next(e))
 
   on('ui.render', { component: 'ToolGroup' }, async ($, e, next) => {
@@ -207,7 +320,7 @@ export const register: Register = (on, options) => {
       for (const call of e.props.calls) if (call.tool_use_id) markExpanded(call.tool_use_id)
       return next(e)
     }
-    const row = renderToolGroup($.ui.resolve(e), forSurface(style, e.surface, await reachOf($, probes, style)), e.props.calls, e.props.isActive)
+    const row = renderToolGroup($.ui.resolve(e), await toolLinked($, pathChecks, forSurface(style, e, await reachOf($, probes, style)), e.props.calls.map(call => call.input)), e.props.calls, e.props.isActive)
     const found = e.props.calls.flatMap(call => {
       const table = call.isRunning || call.isErrored || call.isInterrupted ? null : toolTable(call.tool, call.output)
       return table === null ? [] : [{ call, table }]
@@ -215,7 +328,7 @@ export const register: Register = (on, options) => {
     if (found.length === 0) return row
     const { Box } = $.ui.resolve(e)
     const alone = e.props.calls.length === 1
-    const tables = await Promise.all(found.map(({ call, table }) => toolTableView($, e, forSurface(style, e.surface), parseCached(markdownTable(table, Math.min(table.rows.length, PREVIEW_ROWS))), table, call.tool_use_id, Math.min(table.rows.length, PREVIEW_ROWS), alone ? undefined : captionOf(call.tool, call.input))))
+    const tables = await Promise.all(found.map(({ call, table }) => toolTableView($, e, forSurface(style, e), parseCached(markdownTable(table, Math.min(table.rows.length, PREVIEW_ROWS))), table, call.tool_use_id, Math.min(table.rows.length, PREVIEW_ROWS), alone ? undefined : captionOf(call.tool, call.input))))
     return (
       <Box flexDirection="column">
         {row}
@@ -227,7 +340,9 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
     await locate($, style)
     noteCommand(e.props.tool_use_id, e.props.tool, e.props.input)
-    if (!expandedCalls.has(e.props.tool_use_id)) return renderToolRow($.ui.resolve(e), forSurface(style, e.surface, await reachOf($, probes, style)), e.props)
+    // In the ctrl+o transcript the engine draws the whole row, so shell output draws once.
+    if (expandedRow(e.props)) return next(e)
+    if (!expandedCalls.has(e.props.tool_use_id)) return renderToolRow($.ui.resolve(e), await toolLinked($, pathChecks, forSurface(style, e, await reachOf($, probes, style)), [e.props.input]), e.props)
     const shell = e.props.tool === 'Bash' || e.props.tool === 'PowerShell'
     return shell && typeof e.props.output !== 'string' ? renderExpandedShell($.ui.resolve(e), style, e.props) : next(e)
   })
@@ -238,7 +353,7 @@ export const register: Register = (on, options) => {
       const el = $.ui.resolve(e)
       const reach = await reachOf($, probes, style)
       const fold = folder($, el, await read($, unfolded), e.surface === 'terminal' && reach.marks)
-      return renderDiffCard(el, forSurface(style, e.surface, reach), e.props.output, fold, e.props.tool_use_id, e.viewport?.columns) ?? next(e)
+      return renderDiffCard(el, forSurface(style, e, reach), e.props.output, fold, e.props.tool_use_id, e.viewport?.columns) ?? next(e)
     }
     const edits = e.props.tool === 'Bash' && !e.props.isErrored ? bashEdits(e.props.output) : undefined
     if (edits) {
@@ -250,12 +365,12 @@ export const register: Register = (on, options) => {
       const notes = editNotes(edits, firstEdit === e.props.tool_use_id, shellCommands.get(e.props.tool_use_id))
       const reach = await reachOf($, probes, style)
       const fold = folder($, el, await read($, unfolded), e.surface === 'terminal' && reach.marks)
-      const cards = renderBashEdits(el, forSurface(style, e.surface, reach), edits, fold, e.props.tool_use_id, above !== null, notes, e.viewport?.columns)
+      const cards = renderBashEdits(el, forSurface(style, e, reach), edits, fold, e.props.tool_use_id, above !== null, notes, e.viewport?.columns)
       return above === null ? cards : <el.Box flexDirection="column">{above}{cards}</el.Box>
     }
     if (!e.props.isErrored) {
       const table = toolTable(e.props.tool, e.props.output)
-      if (table !== null && table.rows.length <= MAX_ROWS) return toolTableView($, e, forSurface(style, e.surface), parseCached(markdownTable(table)), table, e.props.tool_use_id, table.rows.length)
+      if (table !== null && table.rows.length <= MAX_ROWS) return toolTableView($, e, forSurface(style, e), parseCached(markdownTable(table)), table, e.props.tool_use_id, table.rows.length)
     }
     return next(e)
   })
@@ -295,17 +410,21 @@ export const register: Register = (on, options) => {
     const el = $.ui.resolve(e)
     const { Box } = el
     const open = await read($, unfolded)
-    return <Box flexDirection="column" rowGap={1}>{drawMarkdown($, el, forSurface(style, e.surface, await reachOf($, probes, style)), blocks, columnsOf(e.viewport), open)}</Box>
+    const drawn = await linked($, pathChecks, forSurface(style, e, await reachOf($, probes, style)), blocks)
+    return <Box flexDirection="column" rowGap={1}>{drawMarkdown($, el, drawn, blocks, columnsOf(e.viewport, drawn), open)}</Box>
   })
 
   on('ui.render', { component: 'UserMessage' }, async ($, e, next) => {
     const kind = e.props.origin.kind
-    const own = isOwn(kind) || (kind === 'unclassified' && !e.props.from && !e.props.task)
+    // The desktop app drives the engine as an SDK host and stamps its rows sdk.
+    const own = isOwn(kind) || ((kind === 'unclassified' || kind === 'sdk') && !e.props.from && !e.props.task)
     if (!own) return next(e)
     const at = sentAt(await read($, sent), e.props.text, await firstDrawn($, e.requestId))
     const time = at === undefined ? undefined : clockText(at, await $.clock.now())
     const waiting = isQueued(await read($, queued), e.props.text)
-    return renderUserPrompt($.ui.resolve(e), style, e.props.text, time, waiting)
+    const el = $.ui.resolve(e)
+    const drawn = forSurface(style, e, await reachOf($, probes, style))
+    return renderUserPrompt(el, drawn, e.props.text, time, waiting, pasteFrame($, el, drawn, await read($, unfolded), e.requestId, columnsOf(e.viewport, drawn)))
   })
 
   on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
@@ -314,8 +433,8 @@ export const register: Register = (on, options) => {
     const open = await read($, unfolded)
     const reach = await reachOf($, probes, style)
     const notes = { id: e.requestId, press: reach.marks }
-    const drawStyle = forSurface(style, e.surface, reach)
-    const draw = (text: string) => drawMarkdown($, el, drawStyle, parseCached(text), columnsOf(e.viewport), open, notes)
+    const drawStyle = await linked($, pathChecks, forSurface(style, e, reach), parseCached(openText(e.props.text)))
+    const draw = (text: string) => drawMarkdown($, el, drawStyle, parseCached(text), columnsOf(e.viewport, drawStyle), open, notes)
     const reply = (body: RenderElement[]) => (
       <Box flexDirection="row" marginTop={1}>
         <Box width={2} flexShrink={0}>
@@ -330,6 +449,6 @@ export const register: Register = (on, options) => {
     if (stretched !== undefined) return reply(stretched.body)
     const blocks = parseCached(openText(e.props.text))
     if (blocks.length === 0) return next(e)
-    return reply(drawMarkdown($, el, drawStyle, blocks, columnsOf(e.viewport), open, notes))
+    return reply(drawMarkdown($, el, drawStyle, blocks, columnsOf(e.viewport, drawStyle), open, notes))
   })
 }

@@ -1,0 +1,265 @@
+import { expect, mock, test } from 'claude-code/testing'
+
+import { tableArt } from './blocks'
+import { tableHtml, tableText } from './html'
+import type { Block } from './markdown'
+import { displayText, inlineText, parse } from './markdown'
+import { mermaidText } from './mermaid'
+import { width } from './text'
+import { THEME } from './theme'
+
+// Fixes ported from upstream prismantis 0.32.1 to 0.44.0, each with its upstream test.
+
+const hl = { numbers: true, paths: true }
+const plain = { numbers: false, paths: false }
+const tableOf = (text: string) => {
+  const [table] = parse(text, hl)
+  if (table?.kind !== 'table') throw new Error('not a table')
+  return table as Extract<Block, { kind: 'table' }>
+}
+const reply = (text: string, columns = 100, surface: 'terminal' | 'desktop' = 'terminal') => ({
+  plugin: 'cc-dazzle',
+  surface,
+  component: 'AssistantMessage' as const,
+  props: { text, isFirstOfReply: true },
+  viewport: { columns, rows: 40 },
+})
+const texts = (b: Block | undefined) => (b && 'inline' in b ? b.inline.map(n => ('text' in n ? n.text : '')).join('') : '')
+const best = (run: () => unknown) => {
+  let fastest = Infinity
+  for (let i = 0; i < 5; i++) {
+    const start = performance.now()
+    run()
+    fastest = Math.min(fastest, performance.now() - start)
+  }
+  return fastest
+}
+
+test('a <br> in a table cell parses as a line break, but not inside a code span', async () => {
+  const table = tableOf('| a |\n|---|\n| Then:<br/>• one<BR>• two `x<br>y` |')
+  expect(inlineText(table.rows[0]![0]!)).toBe('Then:\n• one\n• two x<br>y')
+})
+
+for (const surface of ['terminal', 'desktop'] as const) test(`a <br> in a table cell starts a new row of the cell on ${surface}`, async $ => {
+  const ui = await $.ui.mount(reply('| Step | Detail |\n|---|---|\n| Prevent | Then:<br/>• Run `brew install gnu-sed` |', 100, surface))
+  expect(await ui.find({ type: 'Text', text: /<br/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /^Then:$/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('table art breaks a cell at <br> and sizes the column by its widest line', async () => {
+  const lines = tableArt(tableOf('| a |\n|---|\n| short<br>a longer line |')).split('\n')
+  expect(lines.filter(l => l.startsWith('│ ')).map(l => l.slice(2, -2).trim())).toEqual(['a', 'short', 'a longer line'])
+  expect(lines[1]).toBe('┌───────────────┐')
+})
+
+test('a long unbroken word after a <br> wraps on its own line', async () => {
+  const lines = tableArt(tableOf(`| h |\n|-|\n| short<br>${'x'.repeat(250)} |`)).split('\n').filter(l => l.startsWith('│ ')).map(l => l.slice(2, -2).trim())
+  expect(lines[1]).toBe('short')
+  expect(lines.slice(2).join('')).toBe('x'.repeat(250))
+})
+
+test('control characters inside a <br> cell are dropped and the break still applies', async () => {
+  expect(inlineText(tableOf('| a |\n|-|\n| one\x1b[31m<br>two\x07 |').rows[0]![0]!)).toBe('one\ntwo')
+})
+
+test('a footnote mark and a clickable path inside a <br> cell keep working on their own line', async ($, on) => {
+  on('session.version', () => ({ value: { version: '2.1.295', base: '2.1.295' } }))
+  mock.env(on, { FORCE_HYPERLINK: '1', HOME: '/home/me' })
+  on('session.root', () => ({ value: '/work/app' }))
+  const probe = await $.ui.mount(reply('[/x.md](file:///x.md)'))
+  const links = (await probe.findAll({ type: 'Link' })).length > 0
+  await probe.unmount()
+  if (!links) return
+  const ui = await $.ui.mount(reply('| Step | Detail |\n|---|---|\n| Fix | Edit ~/notes/todo.md<br>then rerun[^r] |\n\n[^r]: Twice.'))
+  expect((await ui.findAll({ type: 'Link' })).map(l => String(l.props.href))).toEqual(['file:///home/me/notes/todo.md'])
+  expect(await ui.find({ type: 'Text', text: /^¹ Twice\.$/ })).toBeDefined()
+  const cells = (await ui.findAll({ type: 'Box' })).filter(b => typeof b.props.width === 'number' && b.props.flexShrink === 0).map(b => b.text ?? '')
+  expect(cells.some(text => text.replace(/\s+/g, ' ').includes('then rerun¹'))).toBe(true)
+  expect(cells.some(text => text.includes('~/notes/todo.md') && !text.includes('then'))).toBe(true)
+  await ui.unmount()
+})
+
+test('copying a table keeps a <br> cell as one cell: a <br> in HTML, a quoted multi-line cell in TSV', async () => {
+  const table = tableOf('| a | b |\n|-|-|\n| one<br>**two** | x |')
+  expect(tableHtml(table)).toContain('<td style="text-align: left">one<br><strong>two</strong></td>')
+  expect(tableText(table)).toBe('a\tb\n"one\ntwo"\tx')
+})
+
+test('a line break stays only before a tinted translation line', async () => {
+  const gray = (s: string) => `\u001b[90m${s}\u001b[39m`
+  const [one, para, list] = parse(`one\ntwo\n\nHello world.\n${gray('你好世界。')}\n\n- item\n  ${gray('项目')}\n  more`, plain)
+  if (one?.kind !== 'paragraph' || para?.kind !== 'paragraph' || list?.kind !== 'list') throw new Error('unexpected blocks')
+  expect(one.inline).toEqual([{ kind: 'text', text: 'one two' }])
+  expect(para.inline.map(n => ('text' in n ? n.text : ''))).toEqual(['Hello world.\n', '你好世界。'])
+  expect(list.items[0]?.inline.map(n => ('text' in n ? n.text : ''))).toEqual(['item\n', '项目', ' more'])
+})
+
+test('translation colors from BBilingual survive, other escape codes do not', async () => {
+  const gray = (s: string) => `\u001b[90m${s}\u001b[39m`
+  const [para, heading, other] = parse(`Hi **all**.\n${gray('你好')}**${gray('大家')}**\n\n## Results / ${gray('结果')}\n\nkeep \u001b[31mred\u001b[0m \u001b[36mcyan\u001b[39m`, plain)
+  if (para?.kind !== 'paragraph' || heading?.kind !== 'heading' || other?.kind !== 'paragraph') throw new Error('unexpected blocks')
+  expect(para.inline.at(-2)).toEqual({ kind: 'dim', text: '你好', tint: 'gray' })
+  expect(para.inline.at(-1)).toEqual({ kind: 'strong', children: [{ kind: 'dim', text: '大家', tint: 'gray' }] })
+  expect(heading.inline.at(-1)).toEqual({ kind: 'dim', text: '结果', tint: 'gray' })
+  expect(other.inline).toEqual([{ kind: 'text', text: 'keep red ' }, { kind: 'dim', text: 'cyan', tint: 'cyan' }])
+  expect(JSON.stringify([para, heading, other])).not.toMatch(/[\u001b-]/)
+  expect(para.raw).toBe('Hi **all**.\n你好**大家**')
+})
+
+test('a tinted translation is drawn in its color', async $ => {
+  for (const [code, look] of [['90', { color: 'gray' }], ['36', { color: 'cyan' }], ['3', { italic: true }], ['2', { dimColor: true }]] as const) {
+    const ui = await $.ui.mount(reply(`Hello.\n\u001b[${code}m你好\u001b[${code === '2' ? '22' : code === '3' ? '23' : '39'}m`))
+    expect((await ui.find({ type: 'Text', text: /^你好$/ }))?.props).toMatchObject(look)
+    await ui.unmount()
+  }
+})
+
+test('two trailing spaces or a backslash end a paragraph line', async $ => {
+  const [spaces, slash, soft] = parse('🟩🟩  \n ✅ DELIVERED  \n🟩🟩\n\none\\\ntwo\n\nthree  \nfour\\', plain)
+  expect([texts(spaces), texts(slash), texts(soft)]).toEqual(['🟩🟩\n✅ DELIVERED\n🟩🟩', 'one\ntwo', 'three\nfour\\'])
+  expect(spaces?.raw).toBe('🟩🟩  \n ✅ DELIVERED  \n🟩🟩')
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount(reply('🟩🟩  \n✅ DELIVERED  \n🟩🟩', 100, surface))
+    expect(await ui.find({ type: 'Text', text: /^🟩🟩\n✅ DELIVERED\n🟩🟩$/ })).toBeTruthy()
+    await ui.unmount()
+  }
+})
+
+test('two trailing spaces or a backslash end a list item line', async $ => {
+  const [list] = parse('- one  \n  two\\\n  three\n  four\n- five\n  ```\n  c\n  ```\n  para  \n  next', plain)
+  if (list?.kind !== 'list') throw new Error('not a list')
+  expect(list.items.map(it => displayText(it.inline))).toEqual(['one\ntwo\nthree four', 'five'])
+  const para = list.items[1]?.blocks?.[1]
+  expect(para?.kind === 'paragraph' && displayText(para.inline)).toBe('para\nnext')
+  const ui = await $.ui.mount(reply('- one  \n  two\n- three'))
+  expect(await ui.find({ type: 'Text', text: /^one\ntwo$/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('HTML entities decode in text but not in code, and never make a control character', async () => {
+  const [para] = parse('a &amp; b &lt;x&gt; &quot;&apos;&nbsp;&#65;&#x42; &bogus; `&amp;` x&#27;[31my&#0;', plain)
+  if (para?.kind !== 'paragraph') throw new Error('not a paragraph')
+  expect(para.inline).toEqual([{ kind: 'text', text: 'a & b <x> "\' AB &bogus; ' }, { kind: 'code', text: '&amp;' }, { kind: 'text', text: ' xy�' }])
+  expect(para.raw).toBe('a &amp; b &lt;x&gt; &quot;&apos;&nbsp;&#65;&#x42; &bogus; `&amp;` x&#27;[31my&#0;')
+  const [link] = parse('[a &amp; b](https://x.io) [`&amp;`](https://x.io)', hl)
+  expect(link?.kind === 'paragraph' && link.inline.map(n => ('text' in n ? n.text : ''))).toEqual(['a & b', ' ', '&amp;'])
+  const table = tableOf('| a |\n|--|\n| &amp; &lt;b&gt; |')
+  expect(tableHtml(table)).toContain('<td style="text-align: left">&amp; &lt;b&gt;</td>')
+  expect(tableText(table)).toBe('a\n& <b>')
+})
+
+test('an unterminated OSC escape strips only itself, not the rest of the reply', () => {
+  const blocks = parse('before \u001b]8;;x rest\n\nsecond\n\n| a |\n|---|\n| 1 |', plain)
+  expect(blocks.map(b => b.kind)).toEqual(['paragraph', 'paragraph', 'table'])
+  expect(blocks.map(b => b.raw).join('\n')).not.toMatch(/[\u001b\u0007]/)
+})
+
+test('parse cost grows linearly on long backtick cells and unclosed $$ lines', async () => {
+  const cell = (n: number) => `| a |\n|---|\n| ${'`'.repeat(n * 6)} |`
+  const unclosed = (n: number) => Array.from({ length: n }, () => '$$x').join('\n')
+  for (const make of [cell, unclosed]) {
+    parse(make(500), hl)
+    const small = Math.max(best(() => parse(make(500), hl)), 0.05)
+    const large = best(() => parse(make(5000), hl))
+    expect(large < small * 40).toBe(true)
+  }
+})
+
+test('a two-node cycle with an outgoing edge falls back to its source instead of hanging', async $ => {
+  const source = 'flowchart TD\n  A --> B\n  B --> A\n  B --> C'
+  expect(mermaidText(source, 97)).toBeNull()
+  const ui = await $.ui.mount(reply('```mermaid\n' + source + '\n```', 101))
+  expect(await ui.find({ type: 'Text', text: /B --> C/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('Prism colors PHP variables, properties and comments', async $ => {
+  const ui = await $.ui.mount(reply('```php\n$total = $order->sum; // app\n```'))
+  expect((await ui.find({ type: 'Text', text: /^\$total$/ }))?.props.color).toBe(THEME.emphasis)
+  expect((await ui.find({ type: 'Text', text: /^sum$/ }))?.props.color).toBe(THEME.link)
+  expect((await ui.find({ type: 'Text', text: /^\/\/ app$/ }))?.props.italic).toBe(true)
+  await ui.unmount()
+})
+
+const nodeCount = (n: unknown): number =>
+  n == null || n === false ? 0 : Array.isArray(n) ? n.reduce((a: number, c) => a + nodeCount(c), 0) : typeof n !== 'object' ? 1 : 1 + nodeCount((n as { children?: unknown[] }).children)
+const textIn = (n: unknown): number =>
+  Array.isArray(n) ? n.reduce((a: number, c) => a + textIn(c), 0) : typeof n === 'string' ? n.length : n !== null && typeof n === 'object' ? textIn((n as { children?: unknown }).children) : 0
+
+test('bidi marks take no column, so a table cell that holds one is not drawn a column too wide', async () => {
+  expect(width('‏13/10')).toBe(5)
+  expect(width('‎kubectl‎')).toBe(7)
+  expect(tableArt(tableOf('| day | result |\n|---|---|\n| ‏13/10 | ok |')).split('\n')[1]!.split('┬')[0]).toBe(`┌${'─'.repeat(7)}`)
+})
+
+const DIAGRAM = ['why prod runs a new chart', '', 'A prod app is two knobs.', '      ┌──────────────┐', '      │ chart ref    │', '      └──────┬───────┘', 'moves when the branch tip moves', '             ▼'].join('\n')
+
+test('an untagged block holding a box diagram draws no line in shell colors', async $ => {
+  const ui = await $.ui.mount(reply(['```', DIAGRAM, '```'].join('\n')))
+  const inks = (await ui.findAll({ type: 'Text' })).map(n => n.props.color)
+  expect(inks).not.toContain(THEME.codeCommand)
+  for (const line of ['why prod runs a new chart', 'A prod app is two knobs.', 'moves when the branch tip moves']) {
+    expect((await ui.find({ type: 'Text', text: new RegExp(`^${line}$`) }))?.props.color).toBe(THEME.codeText)
+  }
+  await ui.unmount()
+})
+
+test('a tagged shell block keeps its command color when a box glyph shares the block, and an untagged one without a glyph reads as shell', async $ => {
+  for (const [text, word] of [['```bash\ntree src\n├── a.ts\n└── b.ts\n```', /^tree$/], ['```\nnpm run build --silent\n```', /^npm$/]] as const) {
+    const ui = await $.ui.mount(reply(text))
+    expect((await ui.find({ type: 'Text', text: word }))?.props.color).toBe(THEME.codeCommand)
+    await ui.unmount()
+  }
+})
+
+test('a highlighted code line draws each run of one color as one span', async $ => {
+  const ui = await $.ui.mount(reply('```ts\nconst name = await fetch("/api/0", { retries: 1 }) // app\n```'))
+  expect((await ui.find({ type: 'Text', text: /^ name = $/ }))?.props.color).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /^, \{ retries: $/ })).toBeDefined()
+  expect((await ui.find({ type: 'Text', text: /^"\/api\/0"$/ }))?.props.color).toBe(THEME.codeString)
+  await ui.unmount()
+})
+
+const hugeCode = (name = 'v') => `\`\`\`ts\n${Array.from({ length: 900 }, (_, i) => `const ${name}${i} = await fetch("/api/${i}", { retries: ${i % 5}, cache: false })`).join('\n')}\n\`\`\``
+
+test('an opened 900-line code block shows 400 lines, counts the rest and keeps show less under the node ceiling', async $ => {
+  const ui = await $.ui.mount(reply(hugeCode('terminal')))
+  await ui.press({ key: 'fold0' })
+  expect(nodeCount(await ui.drawn())).toBeLessThan(20000)
+  expect((await ui.find({ key: 'fold0' }))?.props.label).toBe('show less')
+  expect(await ui.find({ type: 'Text', text: /^… \+500 lines$/ })).toBeDefined()
+  expect([!!(await ui.find({ type: 'Text', text: /^const terminal399 / })), !!(await ui.find({ type: 'Text', text: /^const terminal400 / }))]).toEqual([true, false])
+  await ui.unmount()
+})
+
+test('a folded code block colors its last shown line from the whole block, so a string that runs past the fold stays a string', async $ => {
+  const lines = [...Array.from({ length: 19 }, (_, i) => `let a${i} = ${i}`), 'const s = `line twenty', ...Array.from({ length: 20 }, (_, i) => `more ${i}`), 'end`']
+  const ui = await $.ui.mount(reply(`\`\`\`ts\n${lines.join('\n')}\n\`\`\``))
+  expect((await ui.findAll({ type: 'Text' })).filter(n => n.props.color === THEME.codeString && /line twenty/.test(n.text ?? '')).length).toBe(1)
+  await ui.unmount()
+})
+
+test('a reply past the node budget draws its remaining blocks as dim source and stays under the engine ceilings', async $ => {
+  const items = (n: number, mark: string, gap: string) => Array.from({ length: n }, (_, i) => `${mark}**item** ${i} with \`code\` and some words`).join(gap)
+  for (const [surface, n, mark, gap] of [['terminal', 3000, '- ', '\n'], ['desktop', 3000, '- ', '\n'], ['terminal', 5000, '', '\n\n']] as const) {
+    const ui = await $.ui.mount(reply(`# Inventory\n\n${items(n, mark, gap)}`, 100, surface))
+    const drawn = await ui.drawn()
+    expect(nodeCount(drawn)).toBeLessThan(20000)
+    expect(textIn(drawn)).toBeLessThan(60000)
+    expect(await ui.find({ type: 'Text', text: /^Inventory$/ })).toBeDefined()
+    const texts = await ui.findAll({ type: 'Text' })
+    expect(texts[texts.length - 1]!.text).toMatch(/^… \+\d+ lines not drawn$/)
+    expect(Math.max(...texts.map(t => (t.text ?? '').length))).toBeLessThanOrEqual(10000)
+    await ui.unmount()
+  }
+})
+
+test('a deeply nested list stops indenting at half the width, so its deepest items keep room for their text', async $ => {
+  const nest = Array.from({ length: 50 }, (_, i) => `${'  '.repeat(i)}- level ${i + 1}`).join('\n')
+  const ui = await $.ui.mount(reply(nest, 64))
+  const pads = (await ui.findAll({ type: 'Box' })).map(b => Number(b.props.paddingLeft ?? 0))
+  expect(Math.max(...pads)).toBeLessThanOrEqual(30)
+  expect(await ui.find({ type: 'Text', text: /^level 50$/ })).toBeDefined()
+  await ui.unmount()
+})

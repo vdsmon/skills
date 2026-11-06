@@ -4,7 +4,8 @@ import { tableHtml, tableText } from './html'
 import { drawable } from './links'
 import type { Block, Inline } from './markdown'
 import { displayText, inlineText } from './markdown'
-import { graphemes, hasLink, longestWord, mostLines, remember, sliceInline, width, wrapInline, wrapRanges } from './text'
+import type { Ink } from './clipboard'
+import { cells, graphemes, hasLink, longestWord, mostLines, remember, sliceInline, widestLine, width, wrapInline, wrapRanges } from './text'
 import type { Style, Theme } from './theme'
 import { ALERT_COLOR } from './theme'
 import type { PrismToken } from './vendor/prism.js'
@@ -13,7 +14,10 @@ import { languages, tokenize } from './vendor/prism.js'
 const noteHover = (style: Style, note: number | undefined) =>
   note === undefined || style.noteKey === undefined ? {} : { hover: { scope: `fn:${style.noteKey}:${note}`, inverse: true } }
 
-const renderInline = (el: ElementTable, style: Style, nodes: Inline[], keyBase: string): RenderElement[] => {
+const tintLook = (tint: string | undefined): { italic?: true; color?: string; dimColor?: true } =>
+  tint === 'italic' ? { italic: true } : tint && tint !== 'dim' ? { color: tint } : { dimColor: true }
+
+export const renderInline = (el: ElementTable, style: Style, nodes: Inline[], keyBase: string): RenderElement[] => {
   const { Text } = el
   const t = style.theme
   return nodes.map((n, i) => {
@@ -28,7 +32,7 @@ const renderInline = (el: ElementTable, style: Style, nodes: Inline[], keyBase: 
       case 'strike':
         return <Text key={key} strikethrough dimColor>{renderInline(el, style, n.children, key)}</Text>
       case 'code':
-        return <Text key={key} color={t.inlineCode}>{n.text}</Text>
+        return <Text key={key} color={t.inlineCode}>{n.href === undefined ? n.text : <el.Link href={n.href} label={n.text} />}</Text>
       case 'math':
         return <Text key={key} italic color={t.emphasis}>{n.text}</Text>
       case 'link':
@@ -38,7 +42,7 @@ const renderInline = (el: ElementTable, style: Style, nodes: Inline[], keyBase: 
       case 'path':
         return <Text key={key} color={t.path}>{n.href === undefined ? n.text : <el.Link href={n.href} label={n.text} />}</Text>
       case 'dim':
-        return <Text key={key} dimColor>{n.text}</Text>
+        return <Text key={key} {...tintLook(n.tint)}>{n.text}</Text>
       case 'footnote':
         return <Text key={key} color={t.accent} {...noteHover(style, n.note)}>{n.text}</Text>
     }
@@ -145,26 +149,38 @@ const grammarFor = (lang: string) => {
   return grammar !== null && typeof grammar === 'object' ? grammar : undefined
 }
 
-export const highlightRows = (style: Style, lines: string[], lang: string): Segment[][] | null => {
+// Neighbouring tokens of one color draw as one span: fullscreen re-renders edge messages on every
+// wheel step, at a cost that grows with the node count.
+const mergeRuns = (row: Segment[]): Segment[] =>
+  row.reduce<Segment[]>((runs, seg) => {
+    const last = runs[runs.length - 1]
+    if (last && last.color === seg.color && last.italic === seg.italic) runs[runs.length - 1] = { ...last, text: last.text + seg.text }
+    else runs.push(seg)
+    return runs
+  }, [])
+
+// Rows are built only for the shown lines. A closed block still tokenizes in full, because grammars
+// carry state across lines; a streaming one tokenizes only its shown lines, so its cache key settles.
+export const highlightRows = (style: Style, lines: string[], lang: string, shown = lines.length, isOpen = false): Segment[][] | null => {
   const grammar = grammarFor(lang)
   if (!grammar) return null
-  const code = lines.join('\n')
+  const code = (isOpen ? lines.slice(0, shown) : lines).join('\n')
   const cache = highlighted.get(style.theme) ?? new Map<string, Segment[][]>()
   highlighted.set(style.theme, cache)
-  return remember(cache, `${lang}\0${code}`, () => {
+  return remember(cache, `${lang}\0${shown}\0${code}`, () => {
     const out: Segment[][] = [[]]
     for (const seg of flatten(tokenize(code, grammar), style)) {
-      seg.text.split('\n').forEach((piece, i) => {
-        if (i > 0) out.push([])
+      for (const [i, piece] of seg.text.split('\n').entries()) {
+        if (i > 0 && out.push([]) > shown) return out.slice(0, shown).map(mergeRuns)
         if (piece) out[out.length - 1]!.push({ ...seg, text: piece })
-      })
+      }
     }
-    return out
+    return out.map(mergeRuns)
   })
 }
 
-export const highlightBlock = ({ Text }: ElementTable, style: Style, lines: string[], lang: string, key: string): RenderElement[] | null => {
-  const rows = highlightRows(style, lines, lang)
+export const highlightBlock = ({ Text }: ElementTable, style: Style, lines: string[], lang: string, key: string, shown?: number, isOpen?: boolean): RenderElement[] | null => {
+  const rows = highlightRows(style, lines, lang, shown, isOpen)
   if (!rows) return null
   return rows.map((row, r) => (
     <Text key={`${key}.${r}`} color={style.theme.codeText}>
@@ -197,11 +213,14 @@ const sessionLine = (el: ElementTable, style: Style, line: string, key: string):
 
 export const isShellLang = (lang: string) => lang === '' || /^(sh|bash|zsh|shell|console|fish|powershell|ps1)$/i.test(lang)
 
-export const codeLine = (el: ElementTable, style: Style, line: string, lang: string, key: string): RenderElement => {
+// A box-drawing glyph in an untagged block means the shell guess is wrong, so the whole block draws plain.
+export const plainBlock = (lang: string, lines: readonly string[]): boolean => lang === '' && lines.some(line => /[─-╿]/.test(line))
+
+export const codeLine = (el: ElementTable, style: Style, line: string, lang: string, key: string, plain = false): RenderElement => {
   const { Text } = el
   const t = style.theme
   const isShell = isShellLang(lang)
-  if (/[─-╿]/.test(line)) return <Text key={key} color={t.codeText}>{line}</Text>
+  if (plain || /[─-╿]/.test(line)) return <Text key={key} color={t.codeText}>{line || ' '}</Text>
   if (!isShell) return <Text key={key} color={t.codeText}>{line || ' '}</Text>
   if (/^\s*#/.test(line)) return <Text key={key} color={t.codeComment}>{line}</Text>
   const parts = line.split(/("[^"]*"|'[^']*'|\s+)/).filter(p => p !== '')
@@ -252,12 +271,13 @@ export const columnWidths = (natural: number[], available: number, gap: number, 
 
 const ART_WIDTH = 100
 
-const textRows = (text: string, w: number): number => (width(text) <= w ? 1 : mostLines(text, Math.max(1, w)))
+const textRows = (text: string, w: number): number =>
+  text.split('\n').reduce((sum, line) => sum + (width(line) <= w ? 1 : mostLines(line, Math.max(1, w))), 0)
 
 const heightOf = (blocks: Block[], w: number): number => blocks.reduce((sum, block, b) => sum + (b ? 1 : 0) + blockHeight(block, w), 0)
 
 const tableSize = (block: Extract<Block, { kind: 'table' }>) => ({
-  natural: block.header.map((h, c) => Math.max(width(displayText(h)), ...block.rows.map(r => width(displayText(r[c] ?? []))))),
+  natural: block.header.map((h, c) => Math.max(widestLine(displayText(h)), ...block.rows.map(r => widestLine(displayText(r[c] ?? []))))),
   words: block.header.map((h, c) => Math.max(longestWord(displayText(h)), ...block.rows.map(r => longestWord(displayText(r[c] ?? []))))),
 })
 
@@ -309,7 +329,7 @@ const headerRuns = (nodes: Inline[]): Inline[] =>
 export const tableArt = (block: Extract<Block, { kind: 'table' }>): string => {
   const cells = [block.header, ...block.rows].map(r => block.header.map((_, c) => displayText(r[c] ?? [])))
   const widths = columnWidths(
-    block.header.map((_, c) => Math.max(...cells.map(r => width(r[c]!)))),
+    block.header.map((_, c) => Math.max(...cells.map(r => widestLine(r[c]!)))),
     ART_WIDTH - 4,
     3,
     block.header.map((_, c) => Math.max(...cells.map(r => longestWord(r[c]!)))),
@@ -329,6 +349,78 @@ export const tableArt = (block: Extract<Block, { kind: 'table' }>): string => {
   return ['```', ...art, '```'].join('\n')
 }
 
+type Face = Exclude<Ink, string | undefined>
+
+const own = (face: Face): Face => Object.fromEntries(Object.entries(face).filter(([, v]) => v !== undefined))
+
+const INLINE_FACE: Partial<Record<Inline['kind'], (t: Theme) => Face>> = {
+  strong: t => ({ color: t.strong, bold: true }),
+  emphasis: t => ({ color: t.emphasis, italic: true }),
+  math: t => ({ color: t.emphasis, italic: true }),
+  code: t => ({ color: t.inlineCode }),
+  link: t => ({ color: t.link }),
+  number: t => ({ color: t.number }),
+  path: t => ({ color: t.path }),
+  footnote: t => ({ color: t.accent }),
+}
+
+const cellInks = (t: Theme, nodes: Inline[], face: Face): Ink[] => nodes.flatMap(n => {
+  const inner = { ...face, ...own(INLINE_FACE[n.kind]?.(t) ?? {}) }
+  return 'children' in n ? cellInks(t, n.children, inner) : Array<Ink>(displayText([n]).length).fill(inner)
+})
+
+const glyphInks = (piece: string, from: number, paint: Ink[]): Ink[] => {
+  let at = from
+  return graphemes(piece).flatMap(g => {
+    const ink = paint[at]
+    at += g.length
+    return cells(g).map(() => ink)
+  })
+}
+
+// The png copy draws a table as the screen does: bold header, a double line under it, cells in their colors.
+const tablePicture = (block: Extract<Block, { kind: 'table' }>, t: Theme): { text: string; inks: Ink[][] } => {
+  const rows = [block.header, ...block.rows].map(r => block.header.map((_, c) => r[c] ?? []))
+  const texts = rows.map(r => r.map(displayText))
+  const { natural, words } = tableSize(block)
+  const widths = columnWidths(natural, ART_WIDTH - 4, 3, words)
+  const rule: Ink = own({ color: t.tableRule })
+  const header = own({ color: t.tableHeader, bold: true })
+  const lines: string[] = []
+  const inks: Ink[][] = []
+  const blank = (n: number): Ink[] => Array<Ink>(n).fill(undefined)
+  const line = (l: string, m: string, r: string, fill = '─') => {
+    const text = l + widths.map(w => fill.repeat(w + 2)).join(m) + r
+    lines.push(text)
+    inks.push(cells(text).map(() => rule))
+  }
+  const row = (i: number) => {
+    const paints = texts[i]!.map((text, c) => (i === 0 ? Array<Ink>(text.length).fill(header) : cellInks(t, rows[i]![c]!, {})))
+    const pieces = texts[i]!.map((text, c) => wrapRanges(text, widths[c]!))
+    for (let k = 0; k < Math.max(...pieces.map(p => p.length)); k++) {
+      const parts = pieces.map((p, c) => {
+        const [a, b] = p[k] ?? [0, 0]
+        const piece = texts[i]![c]!.slice(a, b)
+        const room = Math.max(0, widths[c]! - width(piece))
+        const align = block.align[c] ?? 'left'
+        const left = align === 'right' ? room : align === 'center' ? Math.floor(room / 2) : 0
+        return { text: ` ${' '.repeat(left)}${piece}${' '.repeat(room - left)} │`, ink: [...blank(left + 1), ...glyphInks(piece, a, paints[c]!), ...blank(room - left + 1), rule] }
+      })
+      lines.push(`│${parts.map(part => part.text).join('')}`)
+      inks.push([rule, ...parts.flatMap(part => part.ink)])
+    }
+  }
+  line('┌', '┬', '┐')
+  row(0)
+  for (let i = 1; i < rows.length; i++) {
+    if (i === 1) line('╞', '╪', '╡', '═')
+    else line('├', '┼', '┤')
+    row(i)
+  }
+  line('└', '┴', '┘')
+  return { text: lines.join('\n'), inks }
+}
+
 const renderTable = (el: ElementTable, style: Style, block: Extract<Block, { kind: 'table' }>, columns: number, key: string, tip?: Tip) => {
   const { Box, Text } = el
   const t = style.theme
@@ -341,8 +433,9 @@ const renderTable = (el: ElementTable, style: Style, block: Extract<Block, { kin
     <Text key={k} color={t.tableRule} dimColor={!t.tableRule}>{Array.from({ length: lines }, () => text).join('\n')}</Text>
   )
   const clipped = (lines: number) => (k: string, text: string) => clip(el, width(text), bar(`${k}.b`, text, lines), k)
+  const shares = percentShares(widths)
   const edge = (k: string, [left, fill, mid, right]: string) =>
-    bar(k, left + widths.map(w => fill!.repeat(w + 2)).join(mid) + right)
+    style.gridFace ? laidEdge(el, style, k, fill === '═') : bar(k, left + widths.map(w => fill!.repeat(w + 2)).join(mid) + right)
 
   const row = (cells: Inline[][], k: string, isHeader: boolean, border: (k: string, text: string) => RenderElement = bar) => (
     <Box key={k} flexDirection="row" columnGap={0} alignItems="stretch">
@@ -351,7 +444,7 @@ const renderTable = (el: ElementTable, style: Style, block: Extract<Block, { kin
         const content = cells[c] ?? []
         const runs = isHeader ? headerRuns(content) : content
         const cellBox = (
-          <Box key={`${k}.${c}`} width={w} flexShrink={0} justifyContent={justify(c)}>
+          <Box key={`${k}.${c}`} {...tableColumn(style, w, shares[c]!, words[c]!)} {...(style.gridFace ? { alignItems: 'flex-start' as const, paddingY: 1 } : {})} justifyContent={justify(c)}>
             {pressInline(el, style, runs, w, `${k}.${c}.p`, tip, isHeader ? { bold: true, color: t.tableHeader } : {}, { justifyContent: justify(c) })
               ?? (isHeader
                 ? <Text bold color={t.tableHeader}>{runs.some(n => n.kind === 'footnote') ? renderInline(el, style, runs, `${k}.${c}`) : inlineText(runs)}</Text>
@@ -365,10 +458,11 @@ const renderTable = (el: ElementTable, style: Style, block: Extract<Block, { kin
   )
 
   const wrappedRow = (cells: Inline[][], k: string, isHeader: boolean) => {
+    if (style.gridFace) return [row(cells, k, isHeader, laidWall(el, style))]
     if (!isHeader && cells.some(hasLink)) return [row(cells, k, isHeader, clipped(Math.max(1, ...widths.map((w, c) => mostLines(displayText(cells[c] ?? []), w)))))]
     const wrapped = widths.map((w, c) => {
       const content = cells[c] ?? []
-      if (natural[c]! <= w) return [content]
+      if (natural[c]! <= w && !inlineText(content).includes('\n')) return [content]
       return wrapInline(isHeader ? headerRuns(content) : content, w)
     })
     return Array.from({ length: Math.max(...wrapped.map(l => l.length)) }, (_, i) =>
@@ -381,8 +475,56 @@ const renderTable = (el: ElementTable, style: Style, block: Extract<Block, { kin
     lines.push(...wrappedRow(r, `${key}.r${i}`, false))
   })
   lines.push(edge(`${key}.b`, '└─┴┘'))
-  return <Box key={key} flexDirection="column">{lines}</Box>
+  return <Box key={key} flexDirection="column" {...(style.gridFace ? { alignSelf: 'flex-start' as const } : {})}>{lines}</Box>
 }
+
+// The desktop app sets text in a proportional face, where runs of box characters counted for a
+// terminal run wider than their columns and wrap. There every rule and wall is a thin colored box,
+// and columns take whole-percent shares of the table, at least their longest word.
+const HAIRLINE = 0.06
+const WALL_WIDTH = 0.12
+
+const ruleInk = (style: Style) => style.theme.tableRule ?? 'gray'
+
+const percentShares = (widths: number[]): number[] => {
+  const total = widths.reduce((sum, w) => sum + w, 0) || 1
+  const exact = widths.map(w => (100 * w) / total)
+  const shares = exact.map(Math.floor)
+  const left = 100 - shares.reduce((sum, n) => sum + n, 0)
+  exact.map((x, i) => ({ i, rest: x - shares[i]! })).sort((a, b) => b.rest - a.rest).slice(0, left).forEach(({ i }) => shares[i]!++)
+  return shares
+}
+
+const tableColumn = (style: Style, w: number, share: number, word: number) =>
+  style.gridFace ? { width: `${share}%`, flexShrink: 1, minWidth: Math.min(word, w) } : { width: w, flexShrink: 0 }
+
+const laidEdge = ({ Box }: ElementTable, style: Style, key: string, double: boolean) => {
+  const line = (k: string) => <Box key={k} height={HAIRLINE} flexShrink={0} backgroundColor={ruleInk(style)} />
+  if (!double) return line(key)
+  return <Box key={key} flexDirection="column" justifyContent="space-between" height={0.3} flexShrink={0}>{line(`${key}.a`)}{line(`${key}.b`)}</Box>
+}
+
+const laidWall = ({ Box }: ElementTable, style: Style) => (key: string, text: string) => (
+  <Box key={key} width={WALL_WIDTH} flexShrink={0} backgroundColor={ruleInk(style)} {...(text.startsWith(' ') ? { marginLeft: 1 } : {})} {...(text.endsWith(' ') ? { marginRight: 1 } : {})} />
+)
+
+const thematicBreak = ({ Box, Text }: ElementTable, style: Style, columns: number, key: string) => {
+  const length = Math.max(8, Math.min(columns, 80))
+  if (!style.gridFace) return <Text key={key} color={style.theme.rule} dimColor={!style.theme.rule}>{'─'.repeat(length)}</Text>
+  return (
+    <Box key={key} flexDirection="row" height={1} alignItems="center">
+      <Box width={length} flexShrink={1} minWidth={0} height={HAIRLINE} backgroundColor={style.theme.rule ?? 'gray'} />
+    </Box>
+  )
+}
+
+// A box of no width of its own that grows to the heading's width, so the rule ends where the title does.
+const headingRule = ({ Box, Text }: ElementTable, style: Style, color: string | undefined, label: string) =>
+  style.gridFace ? (
+    <Box flexDirection="row" height={0.5} alignItems="center">
+      <Box width={0} flexGrow={1} height={2 * HAIRLINE} backgroundColor={color ?? 'gray'} />
+    </Box>
+  ) : <Text color={color}>{'━'.repeat(width(label))}</Text>
 
 const renderHeading = (el: ElementTable, style: Style, block: Extract<Block, { kind: 'heading' }>, key: string) => {
   const { Box, Text } = el
@@ -390,7 +532,7 @@ const renderHeading = (el: ElementTable, style: Style, block: Extract<Block, { k
   const color = block.level <= 2 ? t.heading : t.strong
   const inline = block.inline
   return block.level === 1
-    ? <Box key={key} flexDirection="column" alignSelf="flex-start"><Text bold color={color}>{renderInline(el, style, inline, key)}</Text><Text color={color}>{'━'.repeat(width(inlineText(inline)))}</Text></Box>
+    ? <Box key={key} flexDirection="column" alignSelf="flex-start"><Text bold color={color}>{renderInline(el, style, inline, key)}</Text>{headingRule(el, style, color, inlineText(inline))}</Box>
     : <Text key={key} bold color={color}>{renderInline(el, style, inline, key)}</Text>
 }
 
@@ -402,7 +544,7 @@ const renderParagraph = (el: ElementTable, style: Style, block: Extract<Block, {
 }
 
 const renderNested = (el: ElementTable, style: Style, blocks: Block[], columns: number, key: string, copy?: CopyButton, fold?: Fold, tip?: Tip) =>
-  renderBlocks(el, style, blocks, columns, new Map(), copy && ((text, id, label, html) => copy(text, `${key}.${id}`, label, html)), fold && ((id, hidden, k) => fold(id, hidden, `${key}.${k}`)), tip)
+  renderBlocks(el, style, blocks, columns, new Map(), copy && ((text, id, label, rich, hues) => copy(text, `${key}.${id}`, label, rich, hues)), fold && ((id, hidden, k) => fold(id, hidden, `${key}.${k}`)), tip)
 
 const quoteBar = (el: ElementTable, text: string, color: string | undefined, lines: number) =>
   lines <= 1 ? <el.Text color={color}>{text}</el.Text> : clip(el, width(text), <el.Text color={color}>{Array.from({ length: lines }, () => text).join('\n')}</el.Text>)
@@ -436,13 +578,16 @@ const renderList = (el: ElementTable, style: Style, block: Extract<Block, { kind
   const t = style.theme
   return (
     <Box key={key} flexDirection="column">
-      {block.items.map((item, i) => {
+      {block.items.map((full, i) => {
+        // The indent stops growing at half the list's width, so the deepest items keep room for text.
+        const item = { ...full, depth: Math.min(full.depth, Math.floor(columns / 4)) }
         const k = `${key}.${i}`
         const glyph = item.task !== undefined ? TASK_GLYPHS[item.task ? 1 : 0] : /\d/.test(item.marker) ? item.marker : item.depth ? '◦' : '•'
         const pad = item.depth * 2 + glyph.length + 1
         const row = (
-          <Box key={k} flexDirection="row" paddingLeft={item.depth * 2}>
-            <Text color={t.bullet}>{`${glyph} `}</Text>
+          <Box key={k} flexDirection="row" paddingLeft={item.depth * 2} {...(style.gridFace ? { alignItems: 'flex-start' as const } : {})}>
+            {/* The desktop app centers a Text set straight in a row, so a wrapped item's marker would sit between its lines. */}
+            {style.gridFace ? <Box flexShrink={0}><Text color={t.bullet}>{`${glyph} `}</Text></Box> : <Text color={t.bullet}>{`${glyph} `}</Text>}
             {pressInline(el, style, item.inline, columns - pad, `${k}.i`, tip, { ...(item.task === true ? { dimColor: true, strikethrough: true } : {}), ...prose(style) }) ?? <Text dimColor={item.task === true} strikethrough={item.task === true} {...prose(style)}>{renderInline(el, style, item.inline, k)}</Text>}
           </Box>
         )
@@ -458,8 +603,10 @@ const renderList = (el: ElementTable, style: Style, block: Extract<Block, { kind
   )
 }
 
-export type CopyButton = (text: string | (() => string), key: string, label?: string, html?: () => string) => RenderElement | null
-export type Drawn = Map<number, { element?: RenderElement; art?: string; note?: string }>
+// rich: a function gives the html copy; 'png' copies the text as a picture, in hues, one ink per cell.
+export type CopyButton = (text: string | (() => string), key: string, label?: string, rich?: (() => string) | 'png', hues?: () => Hues) => RenderElement | null
+export type Hues = Ink[][]
+export type Drawn = Map<number, { element?: RenderElement; art?: string; hues?: () => Hues; note?: string }>
 export type FoldLook = { label?: string; face?: () => RenderElement }
 
 // faced: the element is the face itself as a button. around: wraps rows in one plain button, from 2.1.295 on the terminal.
@@ -496,13 +643,60 @@ const codeId = (lines: string[]): string => {
   return `${lines.length}:${(h >>> 0).toString(36)}`
 }
 
+// An alert copies as its text without the [!WARNING] tag line, as a quote copies.
+const unquoted = (block: Extract<Block, { kind: 'quote' | 'alert' }>): string[] => {
+  const lines = block.raw.split('\n').map(line => line.replace(/^\s*>\s?/, ''))
+  return block.kind === 'alert' ? lines.filter((line, i) => i > 0 || !/^\s*\[![A-Za-z]+\]\s*$/.test(line)) : lines
+}
+
 const copySource = (style: Style, block: Block): string | undefined =>
   block.kind === 'code' ? block.lines.join('\n')
   : block.kind === 'table' ? block.raw
   : style.inside ? undefined
   : block.kind === 'list' ? block.raw
-  : block.kind === 'quote' || block.kind === 'alert' ? block.raw.split('\n').map(line => line.replace(/^\s*>\s?/, '')).join('\n')
+  : block.kind === 'quote' || block.kind === 'alert' ? unquoted(block).join('\n')
   : undefined
+
+// Claude Code refuses a tree past 20000 nodes and draws its own text, so an opened code block stops at
+// 400 lines, and a reply's blocks past the budget draw as dim source, kept under its 100000-character text cap.
+const CODE_MAX = 400
+const NODE_BUDGET = 19800
+const REST_ROOM = 59000
+const REST_CHUNK = 8000
+
+const codeRest = ({ Text }: ElementTable, total: number, shown: number, key: string): RenderElement[] => (shown === CODE_MAX && total > shown ? [<Text key={`${key}.rest`} dimColor>{`… +${total - shown} lines`}</Text>] : [])
+
+const nodesIn = (n: unknown): number =>
+  Array.isArray(n) ? n.reduce<number>((sum, c) => sum + nodesIn(c), 0) : n !== null && typeof n === 'object' ? 1 + nodesIn((n as { children?: unknown }).children) : typeof n === 'string' ? 1 : 0
+
+const textIn = (n: unknown): number =>
+  Array.isArray(n) ? n.reduce<number>((sum, c) => sum + textIn(c), 0) : typeof n === 'string' ? n.length : n !== null && typeof n === 'object' ? textIn((n as { children?: unknown }).children) : 0
+
+const budgetCut = (elements: RenderElement[]): number => {
+  let left = NODE_BUDGET
+  const cut = elements.findIndex(element => (left -= nodesIn(element)) < 0)
+  return cut < 0 ? elements.length : cut
+}
+
+const chunks = (text: string): string[] =>
+  text.split('\n').reduce<string[]>((out, line) => {
+    for (let at = 0; at < Math.max(line.length, 1); at += REST_CHUNK) {
+      const piece = line.slice(at, at + REST_CHUNK)
+      const last = out.length - 1
+      if (at === 0 && last >= 0 && out[last]!.length + piece.length + 1 <= REST_CHUNK) out[last] += `\n${piece}`
+      else out.push(piece)
+    }
+    return out
+  }, [])
+
+const restSource = ({ Text }: ElementTable, rest: Block[], room: number): RenderElement[] => {
+  if (!rest.length) return []
+  const lines = rest.map(block => block.raw).join('\n\n').split('\n')
+  const fit = lines.findIndex(line => (room -= line.length + 1) < 0)
+  const kept = fit < 0 ? lines : lines.slice(0, fit)
+  const text = kept.length ? chunks(kept.join('\n').trimEnd()).map((piece, i) => <Text key={`rest${i}`} dimColor>{piece}</Text>) : []
+  return fit < 0 ? text : [...text, <Text key="restMore" dimColor>{`… +${lines.length - fit} lines not drawn`}</Text>]
+}
 
 const opensWithCopy = (block: Block): boolean =>
   block.kind === 'quote' && (block.blocks[0]?.kind === 'code' || block.blocks[0]?.kind === 'table' || (block.blocks[0] !== undefined && opensWithCopy(block.blocks[0])))
@@ -510,16 +704,38 @@ const opensWithCopy = (block: Block): boolean =>
 const holdsOnlyEmptyCode = (block: Block): boolean =>
   block.kind === 'quote' && block.blocks.length === 1 && ((block.blocks[0]!.kind === 'code' && block.blocks[0]!.lines.length === 0) || holdsOnlyEmptyCode(block.blocks[0]!))
 
+// The hover ⧉ marker's column, the dim ⧉ and the gap before it.
+export const MARK = 2
+
+type Float = { needs: number; marker: RenderElement; element: RenderElement }
+
 export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], columns: number, drawn: Drawn = new Map(), copy?: CopyButton, fold?: Fold, tip?: Tip): RenderElement[] => {
   const { Box, Text } = el
   const t = style.theme
   const hover = style.copyButtonStyle === 'hover'
-  // With hover, a block's buttons float over its top-right corner, out of the flow, and show only
-  // while the pointer is over the block. They cover only their own cells: the block reserves their
-  // width, so they never run off its left edge.
-  const floating = (button: RenderElement | null, low = false) => (button ? <Box position="absolute" {...(low ? { bottom: 0 } : { top: 0 })} right={0} display="none" hover={{ display: 'flex' }}>{button}</Box> : null)
   const reserved = (button: RenderElement | null | undefined): number => (button?.type === 'Button' ? width(`[ ${button.props.label} ]`) : 0)
   const reservedAll = (row: (RenderElement | null | undefined)[]): number => row.reduce<number>((w, button) => (reserved(button) ? w + (w ? 1 : 0) + reserved(button) : w), 0)
+  // Buttons a narrow terminal has no room for drop from the end, keeping the first.
+  const fitted = (parts: (RenderElement | null | undefined)[]): RenderElement[] =>
+    parts.reduce<RenderElement[]>((kept, part) => (part && (!kept.length || reservedAll([...kept, part]) <= columns) ? [...kept, part] : kept), [])
+  // With hover, each block keeps a dim ⧉ in a column of its own, and only the pointer on that ⧉ draws
+  // the block's buttons over it, toward the block. The ⧉ and its buttons share a hover scope and
+  // nothing else does, so the buttons stay up while the pointer moves onto them. The gap between two
+  // buttons is a drawn space, since a column gap would let the text under it show through.
+  const floating = (kept: RenderElement[], low = false): Float => {
+    const first = kept[0] as { key?: unknown; props?: { key?: unknown } } | undefined
+    const scope = `copy:${style.noteKey ?? ''}:${String(first?.key ?? first?.props?.key ?? '')}`
+    return {
+      needs: reservedAll(kept),
+      marker: <Box flexShrink={0} alignSelf={low ? 'flex-end' : 'flex-start'} hover={{ scope }}><Text dimColor>⧉</Text></Box>,
+      element: <Box position="absolute" {...(low ? { bottom: 0 } : { top: 0 })} right={0} display="none" hover={{ scope, display: 'flex' }}>{kept.flatMap((button, i) => (i ? [<Text key={`gap${i}`}> </Text>, button] : [button]))}</Box>,
+    }
+  }
+  const head = (label: string, button: RenderElement | null): RenderElement | null => {
+    if (!hover || !button) return button
+    const float = floating([button])
+    return <Box flexDirection="row" flexShrink={0} minWidth={Math.min(columns - width(label) - 1, float.needs)} justifyContent="flex-end">{float.marker}{float.element}</Box>
+  }
   const buttons = blocks.map((block, b) => {
     const text = hover && holdsOnlyEmptyCode(block) ? undefined : copySource(style, block)
     const isPlainCode = block.kind === 'code' && !drawn.get(b)?.element
@@ -527,9 +743,13 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
     const first = text === undefined || isPlainCode ? null : copy?.(text, `copy${b}`, block.kind === 'table' ? '⧉ md' : art === undefined ? undefined : '⧉ source')
     const second = first && art !== undefined ? copy?.(art, `art${b}`, '⧉ art') : null
     const html = first && block.kind === 'table' ? copy?.(() => tableText(block), `html${b}`, '⧉ html', () => tableHtml(block)) : null
-    return { first, second, html }
+    const grid = drawn.get(b)?.art ?? (block.kind === 'table' ? () => tablePicture(block, t).text : undefined)
+    const hues = drawn.get(b)?.hues ?? (block.kind === 'table' ? () => tablePicture(block, t).inks : undefined)
+    const png = second && grid !== undefined ? copy?.(grid, `png${b}`, '▣ png', 'png', hues) : null
+    return { first, second, html: html ?? null, png: png ?? null }
   })
-  const beside = (b: number) => (hover || !buttons[b]!.first ? columns : columns - reserved(buttons[b]!.first) - 2)
+  const room = (b: number) => (hover && buttons[b]!.first ? columns - MARK : columns)
+  const beside = (b: number) => (!buttons[b]!.first ? columns : hover ? columns - MARK : columns - reserved(buttons[b]!.first) - 2)
   const shown = blocks.map(block => drawable(block, style))
   const rendered = shown.map((block, b) => {
     const key = `b${b}`
@@ -543,34 +763,35 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
       case 'alert':
         return renderAlert(el, style, block, beside(b), key, copy, fold, tip)
       case 'rule':
-        return <Text key={key} color={t.rule} dimColor={!t.rule}>{'─'.repeat(Math.max(8, Math.min(columns, 80)))}</Text>
+        return thematicBreak(el, style, columns, key)
       case 'code': {
         const done = drawn.get(b)?.element
         if (done) return done
         const note = drawn.get(b)?.note
         const lines = block.lines
         const toggle = lines.length > FOLD_AT ? fold?.(codeId(lines), lines.length - FOLD_SHOW, `fold${b}`) : null
-        const shown = toggle?.folded ? FOLD_SHOW : lines.length
+        const shown = toggle?.folded ? FOLD_SHOW : Math.min(lines.length, CODE_MAX)
         const session = isSessionLang(block.lang)
         const numbered = lines.length >= NUMBER_AT && lines.length <= NUMBER_MAX
-        const rows = style.nativeCode
+        const plain = plainBlock(block.lang, lines)
+        const rows = [...(style.nativeCode
           ? [<el.Code key="code" source={lines.slice(0, shown).join('\n') || ' '} {...(block.lang ? { language: block.lang } : {})} {...(numbered ? { startLine: 1 } : {})} />]
           : session
           ? lines.slice(0, shown).map((line, i) => sessionLine(el, style, line, `${key}.${i}`))
-          : (isShellLang(block.lang) ? null : highlightBlock(el, style, lines, block.lang, key))?.slice(0, shown) ?? lines.slice(0, shown).map((line, i) => codeLine(el, style, line, block.lang, `${key}.${i}`))
+          : (isShellLang(block.lang) ? null : highlightBlock(el, style, lines, block.lang, key, shown, block.isOpen)) ?? lines.slice(0, shown).map((line, i) => codeLine(el, style, line, block.lang, `${key}.${i}`, plain))), ...codeRest(el, lines.length, shown, key)]
         const gutter = String(lines.length).length
         const source = session ? sessionCommands(lines) : lines.join('\n')
         const button = copy?.(source, `copy${b}`) ?? null
         const body = !numbered || style.nativeCode ? rows : rows.map((row, i) => row.type === 'Text' ? <Box key={`n${i}`} flexDirection="row"><Text color={t.codeComment} dimColor>{`${String(i + 1).padStart(gutter)}  `}</Text>{row}</Box> : row)
+        const label = ` ${block.lang || 'code'}`
         return (
-          <Box key={key} flexDirection="column" {...(hover ? { minWidth: reserved(button) } : {})}>
+          <Box key={key} flexDirection="column">
             {note ? <Text color={t.codeComment}>{note}</Text> : null}
-            <Box flexDirection="row" justifyContent="space-between" columnGap={2}>
-              <Text color={t.codeComment}>{` ${block.lang || 'code'}`}</Text>
-              {hover ? null : button}
+            <Box flexDirection="row" justifyContent="space-between" columnGap={hover ? 1 : 2}>
+              <Text color={t.codeComment}>{label}</Text>
+              {head(label, button)}
             </Box>
             <Box flexDirection="column" borderStyle="round" borderColor={t.rule} paddingX={1}>
-              {hover ? floating(button) : null}
               <Box flexDirection="column">{body}</Box>
               {toggle?.element ?? null}
             </Box>
@@ -578,9 +799,9 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
         )
       }
       case 'list':
-        return renderList(el, style, block, columns, key, copy, fold, tip)
+        return renderList(el, style, block, room(b), key, copy, fold, tip)
       case 'table':
-        return renderTable(el, style, block, columns, key, tip)
+        return renderTable(el, style, block, room(b), key, tip)
       case 'notes':
         return (
           <Box key={key} flexDirection="column">
@@ -592,23 +813,25 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
   })
   const copied = rendered.map((element, b) => {
     const block = blocks[b]
-    const { first, second, html } = buttons[b]!
+    const { first, second, html, png } = buttons[b]!
     const button = second ? (
       <el.Box key={`copies${b}`} flexDirection="row" columnGap={1}>
         {first}
         {second}
         {html}
+        {png}
       </el.Box>
     ) : first
     if (!button) return element
     if (block?.kind === 'code' && drawn.get(b)?.art !== undefined) {
+      const label = ` ${block.lang || 'diagram'}`
+      const float = hover ? floating(fitted([first, second, html, png])) : null
       return (
-        <Box key={`c${b}`} flexDirection="column" alignSelf="flex-start" {...(hover ? { minWidth: reservedAll([first, second, html]) } : {})}>
-          <Box flexDirection="row" justifyContent="space-between" columnGap={2}>
-            <el.Text color={style.theme.codeComment}>{` ${block.lang || 'diagram'}`}</el.Text>
-            {hover ? null : button}
+        <Box key={`c${b}`} flexDirection="column" alignSelf="flex-start">
+          <Box flexDirection="row" justifyContent="space-between" columnGap={hover ? 1 : 2}>
+            <el.Text color={style.theme.codeComment}>{label}</el.Text>
+            {float ? <Box flexDirection="row" flexShrink={0} minWidth={Math.min(columns - width(label) - 1, float.needs)} justifyContent="flex-end">{float.marker}{float.element}</Box> : button}
           </Box>
-          {hover ? floating(button) : null}
           <Box flexDirection="column" borderStyle="round" borderColor={style.theme.rule} paddingX={1}>
             {element}
           </Box>
@@ -616,10 +839,14 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
       )
     }
     if (hover) {
+      const float = floating(fitted([first, second, html, png]), block !== undefined && opensWithCopy(block))
       return (
-        <Box key={`c${b}`} flexDirection="column" alignSelf="flex-start" minWidth={reservedAll([first, second, html])}>
-          {element}
-          {floating(button, block !== undefined && opensWithCopy(block))}
+        <Box key={`c${b}`} flexDirection="column" alignSelf="flex-start">
+          <Box flexDirection="row" columnGap={1} minWidth={float.needs}>
+            {element}
+            {float.marker}
+            {float.element}
+          </Box>
         </Box>
       )
     }
@@ -635,9 +862,10 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
       </Box>
     )
   })
-  const isFigure = (b: number) => blocks[b]?.kind === 'table' || drawn.get(b)?.art !== undefined
+  const cut = budgetCut(copied)
+  const isFigure = (b: number) => b < cut && (blocks[b]?.kind === 'table' || drawn.get(b)?.art !== undefined)
   const out: RenderElement[] = []
-  for (let b = 0; b < rendered.length; b++) {
+  for (let b = 0; b < cut; b++) {
     if (!isFigure(b) || !isFigure(b + 1)) {
       out.push(copied[b]!)
       continue
@@ -650,5 +878,5 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
       </Box>,
     )
   }
-  return out
+  return [...out, ...restSource(el, blocks.slice(cut), REST_ROOM - textIn(out))]
 }

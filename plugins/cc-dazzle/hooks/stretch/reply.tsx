@@ -3,7 +3,7 @@ import type { ClientModule, ClientPointerEvent, ClientSurface, TextProps } from 
 import { grow, lengthOf } from './grow'
 import type { Reach } from '../links'
 import { THEME } from '../theme'
-import { continuationOf, FRESH, isMarkup, layout, link, linkAt, namesOf, openedOf, targetsIn, tint, widthOf, withLeadIns } from './layout'
+import { continuationOf, FRESH, hrefAt, isMarkup, isWebLink, layout, link, linkAt, namesOf, openedOf, targetsIn, tint, widthOf, withLeadIns } from './layout'
 import type { Action, OpenedStretch, Row, Run } from './layout'
 import { closeAfter, isLinkable, KEY_SEPARATOR, parse } from './parse'
 import type { Segment, Stretch } from './parse'
@@ -42,6 +42,9 @@ export type ReplyPost = { open: string[]; opened?: OpenedStretch & { key: string
 /** What the instance posts to the hooks module when the reader selects its text: the text, for the clipboard. */
 export type CopyPost = { copy: string }
 
+/** What the instance posts when the reader ctrl- or alt-clicks a hyperlink: where it goes, for the hooks module to open. */
+export type FollowPost = { follow: string }
+
 /**
  * A run as drawn: a letter over the first character of a short form or a «, or the rest of that
  * text after it; or text the reader selected.
@@ -56,7 +59,7 @@ type Cell = { x: number; y: number }
  * the link the press went down on, which its release acts on unless the pointer `hasMoved` to another
  * cell first.
  */
-type Selection = { anchor: Cell; head: Cell; isDragging: boolean; isWord?: true; link?: Run['link']; hasMoved?: true }
+type Selection = { anchor: Cell; head: Cell; isDragging: boolean; isWord?: true; link?: Run['link']; follow?: string; hasMoved?: true }
 /**
  * One cell a double-click looks through for a word: what it shows, and where. `startsApart` marks
  * the first cell of a row that no word runs onto from the row before.
@@ -203,7 +206,8 @@ function lettered(rows: Row[], letters: Letters | null): DrawnRun[][] {
  * meanwhile, so a drag from anywhere, a link included, selects here: the cells it crosses are
  * highlighted, and on release their text goes to the clipboard. A double-click selects here too,
  * taking the URL or word under it at once, except on a short form or a «, which the first click acted
- * on. `event` is in the text's cells, the gutter left out.
+ * on. A ctrl- or alt-click on a web link posts it for the hooks module to open as the button comes up,
+ * and a ctrl- or alt-drag from one selects. `event` is in the text's cells, the gutter left out.
  */
 function pointer(surface: ClientSurface<State>, event: ClientPointerEvent) {
   const state = surface.state
@@ -211,7 +215,10 @@ function pointer(surface: ClientSurface<State>, event: ClientPointerEvent) {
   if (state === undefined || shown === undefined) return
   const { selection } = state
   if (event.type === 'down' && event.button === 'left') {
-    const target = linkAt(shown.rows, event.x, event.y)
+    const href = event.ctrl === true || event.alt === true ? hrefAt(shown.rows, event.x, event.y) : undefined
+    const follow = href !== undefined && isWebLink(href) ? href : undefined
+    // A web link inside a short form is the link's under ctrl or alt, not the stretch's.
+    const target = follow === undefined ? linkAt(shown.rows, event.x, event.y) : undefined
     const leadInKey = target?.isLeadIn === true ? target.key : undefined
     const cell = clamped(shown.rows, event)
     const at = performance.now()
@@ -227,7 +234,7 @@ function pointer(surface: ClientSurface<State>, event: ClientPointerEvent) {
     if (pendingOpens.get(surface)?.isReleased === true && !isDouble) openPending(surface)
     const latest = surface.state ?? state
     // A double-click picks a word in text and in lead-in words, not on a short form or a «.
-    const word = isDouble && (target === undefined || leadInKey !== undefined) ? wordAt(shown.laid, cell) : undefined
+    const word = follow === undefined && isDouble && (target === undefined || leadInKey !== undefined) ? wordAt(shown.laid, cell) : undefined
     presses.set(surface, { ...cell, at, ...(leadInKey !== undefined && { key: leadInKey }) })
     if (word !== undefined) {
       pendingOpens.delete(surface)
@@ -238,7 +245,7 @@ function pointer(surface: ClientSurface<State>, event: ClientPointerEvent) {
       return
     }
     if (leadInKey !== undefined) pendingOpens.set(surface, { key: leadInKey, framesLeft: DOUBLE_CLICK_FRAMES, isReleased: false })
-    surface.setState({ ...latest, selection: { anchor: cell, head: cell, isDragging: true, ...(target !== undefined && { link: target }) } })
+    surface.setState({ ...latest, selection: { anchor: cell, head: cell, isDragging: true, ...(target !== undefined && { link: target }), ...(follow !== undefined && { follow }) } })
     return
   }
   // A selection left on screen goes once the pointer moves off the paragraph: as of Claude Code
@@ -255,8 +262,13 @@ function pointer(surface: ClientSurface<State>, event: ClientPointerEvent) {
     return
   }
   if (event.type !== 'up') return
-  const { link: pressed } = selection
+  const { link: pressed, follow } = selection
   // A press that moved to another cell was a drag, which selects; one that did not is a click on its link.
+  if (follow !== undefined && selection.hasMoved !== true) {
+    surface.setState({ ...state, selection: null })
+    surface.post({ follow } satisfies FollowPost)
+    return
+  }
   if (pressed !== undefined && selection.hasMoved !== true) {
     surface.setState({ ...state, selection: null })
     // A click on lead-in words opens at a frame once a double-click can no longer follow.

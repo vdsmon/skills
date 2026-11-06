@@ -3,12 +3,12 @@ export type Inline =
   | { kind: 'strong'; children: Inline[] }
   | { kind: 'emphasis'; children: Inline[] }
   | { kind: 'strike'; children: Inline[] }
-  | { kind: 'code'; text: string }
+  | { kind: 'code'; text: string; href?: string }
   | { kind: 'math'; text: string }
   | { kind: 'link'; text: string; href: string }
   | { kind: 'number'; text: string }
   | { kind: 'path'; text: string; href?: string }
-  | { kind: 'dim'; text: string }
+  | { kind: 'dim'; text: string; tint?: string }
   | { kind: 'footnote'; text: string; note?: number }
 
 export type Note = { mark: string; inline: Inline[]; note: number }
@@ -64,11 +64,35 @@ const splitRow = (line: string): string[] => {
   return cells
 }
 
+const CELL_BREAK = /(`+)(?!`).+?(?<!`)\1(?!`)|<br\s*\/?>/gi
+
+// GFM cells hold no newline, so models stack lines in a cell with <br>; inside a code span it stays literal.
+const parseCell = (text: string, hl: Highlight): Inline[] => {
+  if (text.length > MAX_INLINE) return parseInline(text, hl)
+  const out: Inline[] = []
+  let at = 0
+  for (const m of text.matchAll(CELL_BREAK)) {
+    if (m[1] !== undefined) continue
+    out.push(...parseInline(text.slice(at, m.index).trim(), hl), { kind: 'text', text: '\n' })
+    at = m.index + m[0].length
+  }
+  return at ? [...out, ...parseInline(text.slice(at).trim(), hl)] : parseInline(text, hl)
+}
+
 const INLINE = /(`+)(?!`)(.+?)(?<!`)\1(?!`)|\[([^\]]+)\]\(((?:[^()\s]|\([^()\s]*\))+)\)|\*\*(?!\s)((?:[^*]|\*[^*\s][^*]*?(?<!\s)\*)+?)(?<!\s)\*\*|(?<![\w_])__(?!\s)([^_]+?)(?<!\s)__(?![\w_])|~~([^~]+?)~~|(?<![\w*])\*([^*\s][^*]*?)(?<!\s)\*(?!\w)|(?<![\w_])_([^_\s][^_]*?)(?<!\s)_(?!\w)|(https?:\/\/(?:[^\s<>()]|\([^\s<>()]*\))*(?:[^\s<>().,;:!?'"]|\([^\s<>()]*\)))|(?<![\\$\w])\$(?=\S)((?:\\.|[^$\n\\])+?)(?<=\S)\$(?![\w$])|\[\^([^\]\s]+)\]/g
 export const NUMBER = /(?<![\w.#/-])(v?\d+(?:[.,:]\d+)*(?:%|ms|s|m|h|d|Gi|Mi|GB|MB|KB|x)?)(?![\w/])/g
 export const PATH = /(?<![\w/.:])((?:~|\.{1,2})?\/[\w.@+-]+(?:\/[\w.@+-]*)*)/g
 
-const decorate = (text: string, hl: Highlight): Inline[] => {
+const NAMED: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0' }
+const ENTITY = /&(?:#(\d{1,7})|#[xX]([\da-fA-F]{1,6})|(amp|lt|gt|quot|apos|nbsp));/g
+const codePoint = (n: number) => String.fromCodePoint(n > 0 && n <= 0x10ffff && (n < 0xd800 || n > 0xdfff) ? n : 0xfffd)
+// Decoded text goes through the control strip again, so &#27; cannot smuggle an escape in.
+const decodeEntities = (text: string): string =>
+  text.includes('&') ? text.replace(ENTITY, (_, dec?: string, hex?: string, name?: string) => (name ? NAMED[name]! : codePoint(dec ? Number(dec) : parseInt(hex!, 16)))).replace(CONTROL, '') : text
+const linkText = (text: string) => (/^`[^`]+`$/.test(text) ? text.slice(1, -1) : decodeEntities(text))
+
+const decorate = (raw: string, hl: Highlight): Inline[] => {
+  const text = decodeEntities(raw)
   if (!hl.numbers && !hl.paths) return [{ kind: 'text', text }]
   const marks: { start: number; end: number; kind: 'number' | 'path' }[] = []
   if (hl.paths) for (const m of text.matchAll(PATH)) marks.push({ start: m.index, end: m.index + m[0].length, kind: 'path' })
@@ -93,13 +117,13 @@ const decorate = (text: string, hl: Highlight): Inline[] => {
 }
 
 export const parseInline = (text: string, hl: Highlight): Inline[] => {
-  if (text.length > MAX_INLINE) return [{ kind: 'text', text }]
+  if (text.length > MAX_INLINE) return [{ kind: 'text', text: dropTints(text) }]
   const out: Inline[] = []
   let at = 0
   for (const m of text.matchAll(INLINE)) {
-    if (m.index > at) out.push(...decorate(text.slice(at, m.index), hl))
+    if (m.index > at) out.push(...tinted(text.slice(at, m.index), hl))
     if (m[2] !== undefined) out.push({ kind: 'code', text: m[2] })
-    else if (m[3] !== undefined) out.push({ kind: 'link', text: m[3].replace(/^`([^`]+)`$/, '$1'), href: m[4]! })
+    else if (m[3] !== undefined) out.push({ kind: 'link', text: linkText(m[3]), href: m[4]! })
     else if (m[5] !== undefined || m[6] !== undefined) out.push({ kind: 'strong', children: parseInline(m[5] ?? m[6] ?? "", hl) })
     else if (m[7] !== undefined) out.push({ kind: 'strike', children: parseInline(m[7], hl) })
     else if (m[8] !== undefined || m[9] !== undefined) out.push({ kind: 'emphasis', children: parseInline(m[8] ?? m[9] ?? "", hl) })
@@ -108,7 +132,7 @@ export const parseInline = (text: string, hl: Highlight): Inline[] => {
     else if (m[12] !== undefined) out.push({ kind: 'footnote', text: m[12] })
     at = m.index + m[0].length
   }
-  if (at < text.length) out.push(...decorate(text.slice(at), hl))
+  if (at < text.length) out.push(...tinted(text.slice(at), hl))
   return out
 }
 
@@ -129,19 +153,19 @@ const texText = (tex: string) =>
 export const inlineText = (inline: Inline[]): string =>
   inline.map(n => ('children' in n ? inlineText(n.children) : n.text)).join('')
 
-const mathAt = (lines: string[], start: number): { lines: string[]; end: number } | null => {
+const mathAt = (lines: string[], start: number, miss: { end: number }): { lines: string[]; end: number } | null => {
   const trimmed = (n: number) => (lines[n] ?? '').trim()
   const first = trimmed(start)
-  if (!first.startsWith('$$')) return null
+  if (start < miss.end || !first.startsWith('$$')) return null
   const open = first.slice(2)
   let end = start
   if (!(open.length >= 2 && open.endsWith('$$'))) {
     end = start + 1
     while (end < lines.length && !trimmed(end).endsWith('$$')) {
-      if (trimmed(end) === '') return null
+      if (trimmed(end) === '') return (miss.end = end, null)
       end++
     }
-    if (end === lines.length) return null
+    if (end === lines.length) return (miss.end = end, null)
   }
   const body = end === start ? [open.slice(0, -2)] : [open, ...lines.slice(start + 1, end), trimmed(end).slice(0, -2)]
   const tex = body.filter(line => line.trim() !== '').map((line, i, all) => (i === 0 || i === all.length - 1 ? line.trim() : line))
@@ -178,11 +202,49 @@ const numberNotes = (blocks: Block[], defs: Map<string, string>, hl: Highlight):
 }
 
 // Whole escape sequences go, not just the escape byte, so their payload never becomes a link.
-export const CONTROL = /\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)?|\u001b\[[0-?]*[ -/]*[@-~]|\u001b[@-_]?|[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g
+export const CONTROL = /\u001b\][^\u0007\u001b\n]{0,1024}(?:\u0007|\u001b\\)?|\u001b\[[0-?]*[ -/]*[@-~]|\u001b[@-_]?|[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g
+
+// The ANSI tints a display mod such as BBilingual puts on a translation line survive as placeholders
+// (U+E000 + tint, U+E001 to close) and become tinted dim runs; every other escape is removed.
+const TINT_ON: Record<string, string> = { '2': 'dim', '3': 'italic', '90': 'gray', '36': 'cyan', '32': 'green', '33': 'yellow' }
+const TINT_KEYS = Object.keys(TINT_ON)
+const keepTints = (raw: string): string =>
+  raw.replace(/\u001b\[(\d+)m/g, (m, code: string) =>
+    code in TINT_ON ? `\uE000${String.fromCharCode(0xe100 + TINT_KEYS.indexOf(code))}` : code === '22' || code === '23' || code === '39' ? '\uE001' : m)
+const TINTED = /\uE000([\uE100-\uE1FF])([^\uE000\uE001]*)\uE001?/g
+const breakBefore = (line: string) => (line.trimStart().startsWith('\uE000') ? '\n' : ' ')
+const joinLines = (lines: string[]) =>
+  lines.map((l, i) => {
+    const t = l.trim()
+    if (i === lines.length - 1) return t
+    return / {2,}$/.test(l) || t.endsWith('\\') ? `${t.replace(/\\$/, '')}\n` : `${t}${breakBefore(lines[i + 1]!)}`
+  }).join('')
+const dropTints = (text: string) => text.replace(/\uE000[\uE100-\uE1FF]?|\uE001/g, '')
+const tinted = (text: string, hl: Highlight): Inline[] => {
+  if (!text.includes('\uE000') && !text.includes('\uE001')) return decorate(text, hl)
+  const out: Inline[] = []
+  let at = 0
+  for (const m of text.matchAll(TINTED)) {
+    if (m.index > at) out.push(...decorate(dropTints(text.slice(at, m.index)), hl))
+    if (m[2]) out.push({ kind: 'dim', text: m[2], tint: TINT_ON[TINT_KEYS[m[1]!.charCodeAt(0) - 0xe100]!] })
+    at = m.index + m[0].length
+  }
+  if (at < text.length) out.push(...decorate(dropTints(text.slice(at)), hl))
+  return out
+}
+
+const untint = (b: Block): Block => {
+  const raw = dropTints(b.raw)
+  if (b.kind === 'code') return { ...b, raw, lines: b.lines.map(dropTints) }
+  if (b.kind === 'quote' || b.kind === 'alert') return { ...b, raw, blocks: b.blocks.map(untint) }
+  if (b.kind === 'list') return { ...b, raw, items: b.items.map(it => (it.blocks ? { ...it, blocks: it.blocks.map(untint) } : it)) }
+  return { ...b, raw }
+}
 
 export const parse = (raw: string, hl: Highlight): Block[] => {
-  const source = raw.replace(CONTROL, '')
-  const blocks = parseBlocks(source, hl)
+  const source = keepTints(raw).replace(CONTROL, '')
+  const parsed = parseBlocks(source, hl)
+  const blocks = /[\uE000\uE001]/.test(source) ? parsed.map(untint) : parsed
   return source.includes('[^') ? numberNotes(blocks, notesOf(source), hl) : blocks
 }
 
@@ -225,11 +287,12 @@ const parseBlocks = (source: string, hl: Highlight, depth = 0): Block[] => {
   const at = (n: number) => lines[n] ?? ''
   const blocks: Block[] = []
   const add = (block: Draft, from: number, to: number) => blocks.push({ ...block, raw: lines.slice(from, to).join('\n') } as Block)
+  const mathMiss = { end: -1 }
   let paraStart = 0
   let para: string[] = []
 
   const flush = (end: number) => {
-    if (para.length) add({ kind: 'paragraph', inline: parseInline(para.join(' '), hl) }, paraStart, end)
+    if (para.length) add({ kind: 'paragraph', inline: parseInline(joinLines(para), hl) }, paraStart, end)
     para = []
   }
 
@@ -247,7 +310,7 @@ const parseBlocks = (source: string, hl: Highlight, depth = 0): Block[] => {
       add({ kind: 'code', lang: fence[2] ?? '', lines: body, ...(i < lines.length ? {} : { isOpen: true as const }) }, start, i + 1)
       continue
     }
-    const math = mathAt(lines, i)
+    const math = mathAt(lines, i, mathMiss)
     if (math) {
       flush(i)
       add({ kind: 'code', lang: 'math', lines: math.lines }, i, math.end + 1)
@@ -290,9 +353,9 @@ const parseBlocks = (source: string, hl: Highlight, depth = 0): Block[] => {
       const rows: Inline[][][] = []
       while (i < lines.length && at(i).includes('|') && at(i).trim() !== '') {
         const cells = splitRow(at(i++))
-        rows.push(header.map((_, c) => parseInline(cells[c] ?? '', hl)))
+        rows.push(header.map((_, c) => parseCell(cells[c] ?? '', hl)))
       }
-      add({ kind: 'table', header: header.map(c => parseInline(c, { numbers: false, paths: false })), align, rows }, start, i)
+      add({ kind: 'table', header: header.map(c => parseCell(c, { numbers: false, paths: false })), align, rows }, start, i)
       i--
       continue
     }
@@ -318,13 +381,15 @@ const parseBlocks = (source: string, hl: Highlight, depth = 0): Block[] => {
       const ordered = /\d/.test(item[2] ?? '')
       const items: ListItem[] = []
       const contentIndent: number[] = []
+      const texts: string[][] = []
       while (i < lines.length) {
         const it = LIST_ITEM.exec(at(i))
         if (it) {
           const lead = indentOf(it[1] ?? '')
           contentIndent.push(lead + (it[2] ?? '').length + 1)
           const task = /^\[([ xX])\]\s+(.*)$/.exec(it[3] ?? '')
-          items.push({ marker: it[2] ?? '-', depth: Math.floor(lead / 2), ...(task ? { task: task[1] !== ' ' } : {}), inline: parseInline(task ? task[2]! : it[3] ?? '', hl) })
+          texts.push([task ? task[2]! : it[3] ?? ''])
+          items.push({ marker: it[2] ?? '-', depth: Math.floor(lead / 2), ...(task ? { task: task[1] !== ' ' } : {}), inline: parseInline(texts.at(-1)![0]!, hl) })
         } else if (/^\s{2,}\S/.test(at(i)) && items.length) {
           const indent = indentOf(at(i))
           let owner = items.length - 1
@@ -347,24 +412,25 @@ const parseBlocks = (source: string, hl: Highlight, depth = 0): Block[] => {
             }
             target.blocks = [...(target.blocks ?? []), { kind: 'code', lang: fence[2] ?? '', lines: body, ...(isOpen ? { isOpen: true as const } : {}), raw: lines.slice(from, i + 1).join('\n') }]
           } else if (last?.kind === 'paragraph') {
-            last.inline = [...last.inline, { kind: 'text', text: ' ' }, ...parseInline(at(i).trim(), hl)]
             last.raw += `\n${at(i)}`
+            last.inline = parseInline(joinLines(last.raw.split('\n')), hl)
           } else if (last) {
             target.blocks!.push({ kind: 'paragraph', inline: parseInline(at(i).trim(), hl), raw: at(i) })
           } else {
-            target.inline = [...target.inline, { kind: 'text', text: ' ' }, ...parseInline(at(i).trim(), hl)]
+            texts[owner]!.push(at(i))
           }
         } else {
           break
         }
         i++
       }
+      texts.forEach((t, k) => { if (t.length > 1) items[k]!.inline = parseInline(joinLines(t), hl) })
       add({ kind: 'list', ordered, items }, start, i)
       i--
       continue
     }
     if (!para.length) paraStart = i
-    para.push(line.trim())
+    para.push(line)
   }
   flush(lines.length)
   return blocks

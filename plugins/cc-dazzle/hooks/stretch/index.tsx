@@ -6,7 +6,7 @@ import { closeAfter, codeSpan, hideLongForms, isLinkable, isOpenable, KEY_SEPARA
 import type { Segment, StreamState, Stretch } from './parse'
 import type { Reach } from '../links'
 import { THEME } from '../theme'
-import { FRESH, namesOf, openedOf, targetsIn } from './layout'
+import { FRESH, isWebLink, namesOf, openedOf, targetsIn } from './layout'
 import type { Action, OpenedStretch } from './layout'
 import type { ReplyPost, ReplyProps, Tint } from './reply'
 
@@ -171,18 +171,26 @@ export function registerStretch(on: On): void {
     return { sections: [...composed.sections, { id: 'cc-dazzle:stretch-guide', text: GUIDE, scope: 'session' }] }
   })
 
-  // A paragraph's Client posts the stretches open in it whenever they change, and the one the reader
-  // just opened. Kept here, they survive a redraw, reach the next prompt and keep their colours.
+  // A paragraph's Client posts text the reader selected, a web link the reader ctrl- or alt-clicked,
+  // and the stretches open in it whenever they change, with the one the reader just opened. Kept
+  // here, the open stretches survive a redraw, reach the next prompt and keep their colours.
   on('ui.message', async ($, e, next) => {
+    if (!e.module.endsWith('reply.tsx')) return next(e)
     // Text the reader selected in a paragraph, where as of Claude Code 2.1.302 the transcript selects
     // nothing itself.
-    const copy = e.module.endsWith('reply.tsx') ? copyOf(e.data) : undefined
+    const copy = copyOf(e.data)
     if (copy !== undefined) {
       const copied = await $.ui.copy({ text: copy, surface: e.surface })
       if (!copied.isCopied) $.ui.toast(`cc-dazzle: the selection was not copied: ${copied.reason}`)
       return next(e)
     }
-    const post = e.module.endsWith('reply.tsx') ? replyPostOf(e.data) : undefined
+    // Opened without holding the post's chain on another program.
+    const followed = followOf(e.data)
+    if (followed !== undefined) {
+      void follow($, followed)
+      return next(e)
+    }
+    const post = replyPostOf(e.data)
     if (post === undefined) return next(e)
     await update($, memberOf(openStretches, { requestId: `${e.requestId}#${e.element}` }), () => post.open)
     const { opened } = post
@@ -216,9 +224,11 @@ export function registerStretch(on: On): void {
   })
 
   // A change to the prompt box that is not an edit, such as a recalled history entry or a clear,
-  // puts the letters away too.
-  on('prompt.change', async ($, e, next) => {
-    if ((await read($, lettering)) !== null) await update($, lettering, () => null)
+  // puts the letters away too. As of Claude Code 2.1.295 a module that names an event the engine
+  // lacks is refused whole, and prompt.change came in 2.1.300, so this hook stands on prompt.* and
+  // acts on that event only.
+  on('prompt.*', async ($, e, next) => {
+    if (next.event === 'prompt.change' && (await read($, lettering)) !== null) await update($, lettering, () => null)
     return next(e)
   })
 }
@@ -425,6 +435,35 @@ function isSameStretch(a: OpenedStretch, b: OpenedStretch): boolean {
 }
 
 /** A Client's post of text to copy, if it is one. */
+/** A Client's post of a web link to open, if it is one. */
+function followOf(data: unknown): string | undefined {
+  if (typeof data !== 'object' || data === null || !('follow' in data)) return undefined
+  return typeof data.follow === 'string' && isWebLink(data.follow) ? data.follow : undefined
+}
+
+/**
+ * The command that opens a URL on this machine, the URL its last argument: `open` on macOS; on
+ * Windows, where no `uname` starts or Git Bash's or Cygwin's names itself, `rundll32
+ * url.dll,FileProtocolHandler`, which runs no shell, where `cmd /c start` would read an `&` in the
+ * URL as its own; elsewhere `xdg-open`, its output sent to /dev/null, since a browser it starts can
+ * keep those pipes, and `$.process.run` waits for them to close.
+ *
+ * As of Claude Code 2.1.306 a ctrl- or alt-click on a hyperlink in a paragraph a Client draws reaches
+ * the Client, and as of 2.1.302 a Client has no call that opens a URL, so the hooks module opens it.
+ */
+async function openerOf($: EngineInterface): Promise<readonly string[]> {
+  const system = await $.process.run(['uname', '-s']).then(({ stdout }) => stdout.trim(), () => undefined)
+  if (system === 'Darwin') return ['open']
+  if (system === undefined || /^(MINGW|MSYS|CYGWIN)/.test(system)) return ['rundll32', 'url.dll,FileProtocolHandler']
+  return ['sh', '-c', 'xdg-open "$1" </dev/null >/dev/null 2>&1', 'sh']
+}
+
+/** Opens `href` as the machine opens a URL, and says so in a toast when it could not. */
+async function follow($: EngineInterface, href: string): Promise<void> {
+  const isOpened = await $.process.run([...(await openerOf($)), href]).then(({ exitCode }) => exitCode === 0, () => false)
+  if (!isOpened) $.ui.toast(`cc-dazzle: could not open ${href}`)
+}
+
 function copyOf(data: unknown): string | undefined {
   if (typeof data !== 'object' || data === null || !('copy' in data)) return undefined
   return typeof data.copy === 'string' && data.copy !== '' ? data.copy : undefined
