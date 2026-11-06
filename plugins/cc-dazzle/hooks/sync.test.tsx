@@ -4,6 +4,8 @@ import { tableArt } from './blocks'
 import { tableHtml, tableText } from './html'
 import type { Block } from './markdown'
 import { displayText, inlineText, parse } from './markdown'
+import { width } from './text'
+import { THEME } from './theme'
 
 // Fixes ported from upstream prismantis 0.32.1 to 0.44.0, each with its upstream test.
 
@@ -144,4 +146,86 @@ test('parse cost grows linearly on long backtick cells and unclosed $$ lines', a
     const large = best(() => parse(make(5000), hl))
     expect(large < small * 40).toBe(true)
   }
+})
+
+const nodeCount = (n: unknown): number =>
+  n == null || n === false ? 0 : Array.isArray(n) ? n.reduce((a: number, c) => a + nodeCount(c), 0) : typeof n !== 'object' ? 1 : 1 + nodeCount((n as { children?: unknown[] }).children)
+const textIn = (n: unknown): number =>
+  Array.isArray(n) ? n.reduce((a: number, c) => a + textIn(c), 0) : typeof n === 'string' ? n.length : n !== null && typeof n === 'object' ? textIn((n as { children?: unknown }).children) : 0
+
+test('bidi marks take no column, so a table cell that holds one is not drawn a column too wide', async () => {
+  expect(width('‏13/10')).toBe(5)
+  expect(width('‎kubectl‎')).toBe(7)
+  expect(tableArt(tableOf('| day | result |\n|---|---|\n| ‏13/10 | ok |')).split('\n')[1]!.split('┬')[0]).toBe(`┌${'─'.repeat(7)}`)
+})
+
+const DIAGRAM = ['why prod runs a new chart', '', 'A prod app is two knobs.', '      ┌──────────────┐', '      │ chart ref    │', '      └──────┬───────┘', 'moves when the branch tip moves', '             ▼'].join('\n')
+
+test('an untagged block holding a box diagram draws no line in shell colors', async $ => {
+  const ui = await $.ui.mount(reply(['```', DIAGRAM, '```'].join('\n')))
+  const inks = (await ui.findAll({ type: 'Text' })).map(n => n.props.color)
+  expect(inks).not.toContain(THEME.codeCommand)
+  for (const line of ['why prod runs a new chart', 'A prod app is two knobs.', 'moves when the branch tip moves']) {
+    expect((await ui.find({ type: 'Text', text: new RegExp(`^${line}$`) }))?.props.color).toBe(THEME.codeText)
+  }
+  await ui.unmount()
+})
+
+test('a tagged shell block keeps its command color when a box glyph shares the block, and an untagged one without a glyph reads as shell', async $ => {
+  for (const [text, word] of [['```bash\ntree src\n├── a.ts\n└── b.ts\n```', /^tree$/], ['```\nnpm run build --silent\n```', /^npm$/]] as const) {
+    const ui = await $.ui.mount(reply(text))
+    expect((await ui.find({ type: 'Text', text: word }))?.props.color).toBe(THEME.codeCommand)
+    await ui.unmount()
+  }
+})
+
+test('a highlighted code line draws each run of one color as one span', async $ => {
+  const ui = await $.ui.mount(reply('```ts\nconst name = await fetch("/api/0", { retries: 1 }) // app\n```'))
+  expect((await ui.find({ type: 'Text', text: /^ name = $/ }))?.props.color).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /^, \{ retries: $/ })).toBeDefined()
+  expect((await ui.find({ type: 'Text', text: /^"\/api\/0"$/ }))?.props.color).toBe(THEME.codeString)
+  await ui.unmount()
+})
+
+const hugeCode = (name = 'v') => `\`\`\`ts\n${Array.from({ length: 900 }, (_, i) => `const ${name}${i} = await fetch("/api/${i}", { retries: ${i % 5}, cache: false })`).join('\n')}\n\`\`\``
+
+test('an opened 900-line code block shows 400 lines, counts the rest and keeps show less under the node ceiling', async $ => {
+  const ui = await $.ui.mount(reply(hugeCode('terminal')))
+  await ui.press({ key: 'fold0' })
+  expect(nodeCount(await ui.drawn())).toBeLessThan(20000)
+  expect((await ui.find({ key: 'fold0' }))?.props.label).toBe('show less')
+  expect(await ui.find({ type: 'Text', text: /^… \+500 lines$/ })).toBeDefined()
+  expect([!!(await ui.find({ type: 'Text', text: /^const terminal399 / })), !!(await ui.find({ type: 'Text', text: /^const terminal400 / }))]).toEqual([true, false])
+  await ui.unmount()
+})
+
+test('a folded code block colors its last shown line from the whole block, so a string that runs past the fold stays a string', async $ => {
+  const lines = [...Array.from({ length: 19 }, (_, i) => `let a${i} = ${i}`), 'const s = `line twenty', ...Array.from({ length: 20 }, (_, i) => `more ${i}`), 'end`']
+  const ui = await $.ui.mount(reply(`\`\`\`ts\n${lines.join('\n')}\n\`\`\``))
+  expect((await ui.findAll({ type: 'Text' })).filter(n => n.props.color === THEME.codeString && /line twenty/.test(n.text ?? '')).length).toBe(1)
+  await ui.unmount()
+})
+
+test('a reply past the node budget draws its remaining blocks as dim source and stays under the engine ceilings', async $ => {
+  const items = (n: number, mark: string, gap: string) => Array.from({ length: n }, (_, i) => `${mark}**item** ${i} with \`code\` and some words`).join(gap)
+  for (const [surface, n, mark, gap] of [['terminal', 3000, '- ', '\n'], ['desktop', 3000, '- ', '\n'], ['terminal', 5000, '', '\n\n']] as const) {
+    const ui = await $.ui.mount(reply(`# Inventory\n\n${items(n, mark, gap)}`, 100, surface))
+    const drawn = await ui.drawn()
+    expect(nodeCount(drawn)).toBeLessThan(20000)
+    expect(textIn(drawn)).toBeLessThan(60000)
+    expect(await ui.find({ type: 'Text', text: /^Inventory$/ })).toBeDefined()
+    const texts = await ui.findAll({ type: 'Text' })
+    expect(texts[texts.length - 1]!.text).toMatch(/^… \+\d+ lines not drawn$/)
+    expect(Math.max(...texts.map(t => (t.text ?? '').length))).toBeLessThanOrEqual(10000)
+    await ui.unmount()
+  }
+})
+
+test('a deeply nested list stops indenting at half the width, so its deepest items keep room for their text', async $ => {
+  const nest = Array.from({ length: 50 }, (_, i) => `${'  '.repeat(i)}- level ${i + 1}`).join('\n')
+  const ui = await $.ui.mount(reply(nest, 64))
+  const pads = (await ui.findAll({ type: 'Box' })).map(b => Number(b.props.paddingLeft ?? 0))
+  expect(Math.max(...pads)).toBeLessThanOrEqual(30)
+  expect(await ui.find({ type: 'Text', text: /^level 50$/ })).toBeDefined()
+  await ui.unmount()
 })

@@ -148,26 +148,38 @@ const grammarFor = (lang: string) => {
   return grammar !== null && typeof grammar === 'object' ? grammar : undefined
 }
 
-export const highlightRows = (style: Style, lines: string[], lang: string): Segment[][] | null => {
+// Neighbouring tokens of one color draw as one span: fullscreen re-renders edge messages on every
+// wheel step, at a cost that grows with the node count.
+const mergeRuns = (row: Segment[]): Segment[] =>
+  row.reduce<Segment[]>((runs, seg) => {
+    const last = runs[runs.length - 1]
+    if (last && last.color === seg.color && last.italic === seg.italic) runs[runs.length - 1] = { ...last, text: last.text + seg.text }
+    else runs.push(seg)
+    return runs
+  }, [])
+
+// Rows are built only for the shown lines. A closed block still tokenizes in full, because grammars
+// carry state across lines; a streaming one tokenizes only its shown lines, so its cache key settles.
+export const highlightRows = (style: Style, lines: string[], lang: string, shown = lines.length, isOpen = false): Segment[][] | null => {
   const grammar = grammarFor(lang)
   if (!grammar) return null
-  const code = lines.join('\n')
+  const code = (isOpen ? lines.slice(0, shown) : lines).join('\n')
   const cache = highlighted.get(style.theme) ?? new Map<string, Segment[][]>()
   highlighted.set(style.theme, cache)
-  return remember(cache, `${lang}\0${code}`, () => {
+  return remember(cache, `${lang}\0${shown}\0${code}`, () => {
     const out: Segment[][] = [[]]
     for (const seg of flatten(tokenize(code, grammar), style)) {
-      seg.text.split('\n').forEach((piece, i) => {
-        if (i > 0) out.push([])
+      for (const [i, piece] of seg.text.split('\n').entries()) {
+        if (i > 0 && out.push([]) > shown) return out.slice(0, shown).map(mergeRuns)
         if (piece) out[out.length - 1]!.push({ ...seg, text: piece })
-      })
+      }
     }
-    return out
+    return out.map(mergeRuns)
   })
 }
 
-export const highlightBlock = ({ Text }: ElementTable, style: Style, lines: string[], lang: string, key: string): RenderElement[] | null => {
-  const rows = highlightRows(style, lines, lang)
+export const highlightBlock = ({ Text }: ElementTable, style: Style, lines: string[], lang: string, key: string, shown?: number, isOpen?: boolean): RenderElement[] | null => {
+  const rows = highlightRows(style, lines, lang, shown, isOpen)
   if (!rows) return null
   return rows.map((row, r) => (
     <Text key={`${key}.${r}`} color={style.theme.codeText}>
@@ -200,11 +212,14 @@ const sessionLine = (el: ElementTable, style: Style, line: string, key: string):
 
 export const isShellLang = (lang: string) => lang === '' || /^(sh|bash|zsh|shell|console|fish|powershell|ps1)$/i.test(lang)
 
-export const codeLine = (el: ElementTable, style: Style, line: string, lang: string, key: string): RenderElement => {
+// A box-drawing glyph in an untagged block means the shell guess is wrong, so the whole block draws plain.
+export const plainBlock = (lang: string, lines: readonly string[]): boolean => lang === '' && lines.some(line => /[─-╿]/.test(line))
+
+export const codeLine = (el: ElementTable, style: Style, line: string, lang: string, key: string, plain = false): RenderElement => {
   const { Text } = el
   const t = style.theme
   const isShell = isShellLang(lang)
-  if (/[─-╿]/.test(line)) return <Text key={key} color={t.codeText}>{line}</Text>
+  if (plain || /[─-╿]/.test(line)) return <Text key={key} color={t.codeText}>{line || ' '}</Text>
   if (!isShell) return <Text key={key} color={t.codeText}>{line || ' '}</Text>
   if (/^\s*#/.test(line)) return <Text key={key} color={t.codeComment}>{line}</Text>
   const parts = line.split(/("[^"]*"|'[^']*'|\s+)/).filter(p => p !== '')
@@ -440,7 +455,9 @@ const renderList = (el: ElementTable, style: Style, block: Extract<Block, { kind
   const t = style.theme
   return (
     <Box key={key} flexDirection="column">
-      {block.items.map((item, i) => {
+      {block.items.map((full, i) => {
+        // The indent stops growing at half the list's width, so the deepest items keep room for text.
+        const item = { ...full, depth: Math.min(full.depth, Math.floor(columns / 4)) }
         const k = `${key}.${i}`
         const glyph = item.task !== undefined ? TASK_GLYPHS[item.task ? 1 : 0] : /\d/.test(item.marker) ? item.marker : item.depth ? '◦' : '•'
         const pad = item.depth * 2 + glyph.length + 1
@@ -500,13 +517,60 @@ const codeId = (lines: string[]): string => {
   return `${lines.length}:${(h >>> 0).toString(36)}`
 }
 
+// An alert copies as its text without the [!WARNING] tag line, as a quote copies.
+const unquoted = (block: Extract<Block, { kind: 'quote' | 'alert' }>): string[] => {
+  const lines = block.raw.split('\n').map(line => line.replace(/^\s*>\s?/, ''))
+  return block.kind === 'alert' ? lines.filter((line, i) => i > 0 || !/^\s*\[![A-Za-z]+\]\s*$/.test(line)) : lines
+}
+
 const copySource = (style: Style, block: Block): string | undefined =>
   block.kind === 'code' ? block.lines.join('\n')
   : block.kind === 'table' ? block.raw
   : style.inside ? undefined
   : block.kind === 'list' ? block.raw
-  : block.kind === 'quote' || block.kind === 'alert' ? block.raw.split('\n').map(line => line.replace(/^\s*>\s?/, '')).join('\n')
+  : block.kind === 'quote' || block.kind === 'alert' ? unquoted(block).join('\n')
   : undefined
+
+// Claude Code refuses a tree past 20000 nodes and draws its own text, so an opened code block stops at
+// 400 lines, and a reply's blocks past the budget draw as dim source, kept under its 100000-character text cap.
+const CODE_MAX = 400
+const NODE_BUDGET = 19800
+const REST_ROOM = 59000
+const REST_CHUNK = 8000
+
+const codeRest = ({ Text }: ElementTable, total: number, shown: number, key: string): RenderElement[] => (shown === CODE_MAX && total > shown ? [<Text key={`${key}.rest`} dimColor>{`… +${total - shown} lines`}</Text>] : [])
+
+const nodesIn = (n: unknown): number =>
+  Array.isArray(n) ? n.reduce<number>((sum, c) => sum + nodesIn(c), 0) : n !== null && typeof n === 'object' ? 1 + nodesIn((n as { children?: unknown }).children) : typeof n === 'string' ? 1 : 0
+
+const textIn = (n: unknown): number =>
+  Array.isArray(n) ? n.reduce<number>((sum, c) => sum + textIn(c), 0) : typeof n === 'string' ? n.length : n !== null && typeof n === 'object' ? textIn((n as { children?: unknown }).children) : 0
+
+const budgetCut = (elements: RenderElement[]): number => {
+  let left = NODE_BUDGET
+  const cut = elements.findIndex(element => (left -= nodesIn(element)) < 0)
+  return cut < 0 ? elements.length : cut
+}
+
+const chunks = (text: string): string[] =>
+  text.split('\n').reduce<string[]>((out, line) => {
+    for (let at = 0; at < Math.max(line.length, 1); at += REST_CHUNK) {
+      const piece = line.slice(at, at + REST_CHUNK)
+      const last = out.length - 1
+      if (at === 0 && last >= 0 && out[last]!.length + piece.length + 1 <= REST_CHUNK) out[last] += `\n${piece}`
+      else out.push(piece)
+    }
+    return out
+  }, [])
+
+const restSource = ({ Text }: ElementTable, rest: Block[], room: number): RenderElement[] => {
+  if (!rest.length) return []
+  const lines = rest.map(block => block.raw).join('\n\n').split('\n')
+  const fit = lines.findIndex(line => (room -= line.length + 1) < 0)
+  const kept = fit < 0 ? lines : lines.slice(0, fit)
+  const text = kept.length ? chunks(kept.join('\n').trimEnd()).map((piece, i) => <Text key={`rest${i}`} dimColor>{piece}</Text>) : []
+  return fit < 0 ? text : [...text, <Text key="restMore" dimColor>{`… +${lines.length - fit} lines not drawn`}</Text>]
+}
 
 const opensWithCopy = (block: Block): boolean =>
   block.kind === 'quote' && (block.blocks[0]?.kind === 'code' || block.blocks[0]?.kind === 'table' || (block.blocks[0] !== undefined && opensWithCopy(block.blocks[0])))
@@ -554,14 +618,15 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
         const note = drawn.get(b)?.note
         const lines = block.lines
         const toggle = lines.length > FOLD_AT ? fold?.(codeId(lines), lines.length - FOLD_SHOW, `fold${b}`) : null
-        const shown = toggle?.folded ? FOLD_SHOW : lines.length
+        const shown = toggle?.folded ? FOLD_SHOW : Math.min(lines.length, CODE_MAX)
         const session = isSessionLang(block.lang)
         const numbered = lines.length >= NUMBER_AT && lines.length <= NUMBER_MAX
-        const rows = style.nativeCode
+        const plain = plainBlock(block.lang, lines)
+        const rows = [...(style.nativeCode
           ? [<el.Code key="code" source={lines.slice(0, shown).join('\n') || ' '} {...(block.lang ? { language: block.lang } : {})} {...(numbered ? { startLine: 1 } : {})} />]
           : session
           ? lines.slice(0, shown).map((line, i) => sessionLine(el, style, line, `${key}.${i}`))
-          : (isShellLang(block.lang) ? null : highlightBlock(el, style, lines, block.lang, key))?.slice(0, shown) ?? lines.slice(0, shown).map((line, i) => codeLine(el, style, line, block.lang, `${key}.${i}`))
+          : (isShellLang(block.lang) ? null : highlightBlock(el, style, lines, block.lang, key, shown, block.isOpen)) ?? lines.slice(0, shown).map((line, i) => codeLine(el, style, line, block.lang, `${key}.${i}`, plain))), ...codeRest(el, lines.length, shown, key)]
         const gutter = String(lines.length).length
         const source = session ? sessionCommands(lines) : lines.join('\n')
         const button = copy?.(source, `copy${b}`) ?? null
@@ -639,9 +704,10 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
       </Box>
     )
   })
-  const isFigure = (b: number) => blocks[b]?.kind === 'table' || drawn.get(b)?.art !== undefined
+  const cut = budgetCut(copied)
+  const isFigure = (b: number) => b < cut && (blocks[b]?.kind === 'table' || drawn.get(b)?.art !== undefined)
   const out: RenderElement[] = []
-  for (let b = 0; b < rendered.length; b++) {
+  for (let b = 0; b < cut; b++) {
     if (!isFigure(b) || !isFigure(b + 1)) {
       out.push(copied[b]!)
       continue
@@ -654,5 +720,5 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
       </Box>,
     )
   }
-  return out
+  return [...out, ...restSource(el, blocks.slice(cut), REST_ROOM - textIn(out))]
 }
