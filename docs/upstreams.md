@@ -6,27 +6,42 @@ Port every fix and every useful or cool feature. Leave a change out only when it
 
 | Plugin | Upstream | Copied from | Last checked | Checked on |
 |---|---|---|---|---|
-| cc-dazzle | [NahumLitvin/prismantis](https://github.com/NahumLitvin/prismantis) | fork `vdsmon/prismantis` 0.15.19, which split from upstream at 0.15.1 (`af067b6`) | 0.32.1 (`b90c326`) | 2026-10-20 |
-| cc-dazzle (stretchtext) | [pro-vi/cc-stretch](https://github.com/pro-vi/cc-stretch) | 0.3.3 (`4466e11`) | 0.5.2 (`1de5f05`) | 2026-10-20 |
+| cc-dazzle | [NahumLitvin/prismantis](https://github.com/NahumLitvin/prismantis) | fork `vdsmon/prismantis` 0.15.19, which split from upstream at 0.15.1 (`af067b6`) | 0.44.0 (`36d6c6c`) | 2026-11-06 |
+| cc-dazzle (stretchtext) | [pro-vi/cc-stretch](https://github.com/pro-vi/cc-stretch) | 0.3.3 (`4466e11`) | 0.5.4 (`e8f08cb`) | 2026-11-06 |
 
 To list what is new since the last check:
 
 ```console
 $ git clone https://github.com/NahumLitvin/prismantis && cd prismantis
-$ git log --oneline b90c326..HEAD
+$ git log --oneline 36d6c6c..HEAD
 ```
 
 ## prismantis 0.32.1 to 0.44.0
 
-DRAFT (porting in progress). Planned ports: table cell `<br>` (#283), a soft break kept before a tinted translation line (#368), hard line breaks in paragraphs and list items (#408, #413), HTML entities outside code (#412), the OSC and backtick-cell parse bounds (#414, #415); one-part paths like `/config` as text (#242), bare paths linked once a stat finds them, and Orca (#275, #424, #425, #440), Obsidian links (#300), Cursor, Windsurf and Zed links (#304), spoofed link labels (#427, #438), prompt links through the same checks (#436); zero-width format marks (#256), untagged box diagrams (#394), merged color spans (#406), the 400-line opened code cap, shown-lines highlighting and the reply node budget (#417, #418, #419, #437), alert copy (#421), the deep list indent cap (#433), the hover `⧉` marker (#254), dim copy buttons (#387); the Skill row target (#351), control sequences stripped from tool rows (#426), whole rows handed back under ctrl+o (#439, #435); folded pastes in prompts (#260), prompt markdown (#318), blank prompt lines (#402), prompts in the desktop app (#385); desktop tables, rules, lists and mono art (#280, #333, #279); PNG copy (#276, #329, #358, #420); vendor fixes (#370, #373, #391).
+Ported, each with its upstream test (in `hooks/sync*.test.tsx`, `png.test.tsx` and the tests they changed):
 
-Left out on purpose (draft):
+- Markdown: `<br>` in table cells, measured by the widest line and kept in every copy (#283); a soft break before a tinted translation line, the tint drawn (#368); hard line breaks in paragraphs and list items (#408, #413); HTML entities outside code (#412); an unterminated OSC escape strips only itself (#414); linear parse on long backtick cells and unclosed `$$` lines (#415).
+- Links and paths: one-part paths like `/config` stay text (#242); paths without `./` and drive paths link once a stat finds them, stat-ed once a session in batches of 200, misses kept across read-only calls and a refused write retried (#275, #425, #440), with prismantis's read-only call check in `readonly.ts`; Orca draws hyperlinks (#275); an extensionless file never links and a folder links once stat-ed (#424); Obsidian (#300) and Cursor, Windsurf and Zed links (#304); spoofed labels draw as text and target (#427, #438); prompt links take the same checks (#436).
+- Blocks: bidi and format marks take no width (#256); an untagged block with box art draws plain (#394); one span per color run (#406); an opened code block stops at 400 lines and highlights only its shown lines (#417, #418); a reply's blocks past the node budget draw as dim source, under the text cap (#419, #437), ending on `… +N lines not drawn` since cc-dazzle has no copy command; an alert copies without its tag line (#421); a deep list stops indenting at half the width (#433); hover copy buttons open only from a dim `⧉` beside each block (#254).
+- Tool rows and prompts: the Skill row names its skill (#351); control sequences are stripped from tool targets and commands (#426); in the ctrl+o transcript a tool row goes to the engine whole (#439, the ctrl+o half of #435); a paste of 4 or more lines folds into a frame that opens as code (#260); prompt markdown (#318); the desktop app's `sdk` prompts draw in the box (#385). Blank prompt lines (#402) and the Link-in-Button fix of #260 were already in cc-dazzle, and cc-dazzle's prompt box already hugs its text off the terminal (#385's second half).
+- Desktop app: table lines, the H1 rule and thematic breaks as thin colored boxes, percent column widths, list markers at the top of their row (#280, #333); art in the mono face from Claude Code 2.1.299 and laid out to 84% of the reported columns (#333, #279).
+- PNG copy: `▣ png` on tables and diagrams, macOS only, drawn as the screen does in Mocha on its base color (#276, #329, #358, the gridline half of #420).
+- Vendor: upstream's builds whole, with the mermaid cycle hang fix and PHP (#370, #373, #391).
 
-- Right-to-left and Hebrew work (#255, #264, #265, #266, #271, #281, #282, #284, #285, #288, #289, #291, #299, #315, the Hebrew half of #420), LaTeX (#416, #423), figures (#293, #377), themes and presets (#277, #422, #429, #430), `/prismantis setup` (#253, #323, #380, #434): parts cc-dazzle does not have.
+Left out on purpose:
+
+- Right-to-left and Hebrew work (#255, #264, #265, #266, #271, #281, #282, #284, #285, #288, #289, #291, #299, #315, the Hebrew half of #420), LaTeX (#416, #423), figures (#293, #377), themes, presets and color fixes for them (#277, #422, #429, #430), `/prismantis setup`, demo and copy commands (#253, #323, #380, #434, the copy-code half of #421): parts cc-dazzle does not have.
 - The kitty and Ghostty pie picture (#305): it draws through the image path in `latex.ts`, which cc-dazzle dropped.
-- Look options whose default keeps today's look (#272, #320, #331, #332, #352, #353, #354, #355, #356, #357, #367, #404, #405, #432) and the chat bubble that became upstream's default prompt look with its chat-head dot (#309, #363): cc-dazzle's look is fixed, with its own prompt box.
+- PNG copy on Windows and Linux: cc-dazzle dropped those clipboard paths.
+- Look options whose default keeps upstream's look (#272, #320, #331, #332, #352, #353, #354, #355, #356, #357, #367, #404, #405, #432), the chat bubble that became upstream's default prompt with its chat-head dot (#309, #363), and dim copy buttons as the new default (#387): cc-dazzle's look is fixed, with its own prompt box and Mocha copy buttons.
 - The narrow-pane diagram hint (#326): cc-dazzle adds nothing to prompts while stretchtext is off.
-- The quiet tool-output mode of #435: cc-dazzle has none; its ctrl+o half is ported.
+- The quiet tool-output half of #435: cc-dazzle has no quiet mode.
+
+## cc-stretch 0.5.2 to 0.5.4
+
+Ported: a stretch closes on its code block's closing fence line (0.5.4); a ctrl- or alt-click on a web link in a stretch paragraph opens it with the machine's opener, and the module loads in Claude Code before 2.1.300 by standing on `prompt.*` (0.5.3). `parse.ts`, `grow.ts` and `guide.ts` are upstream's, unchanged.
+
+Left out on purpose: the bench guide variants and docs, which never ship.
 
 ## prismantis 0.31.0 to 0.32.1
 
