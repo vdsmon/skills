@@ -7,6 +7,7 @@ declare module 'claude-code' {
       unfolded: string[]
       sent: Sent[]
       queued: string[]
+      foundPaths: string[]
       drawn: StateFamily<number>
       took: StateFamily<number>
       /** Per paragraph of a reply drawn by a stretch Client: the keys of the stretches open in it. */
