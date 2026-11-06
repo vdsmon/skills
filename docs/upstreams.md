@@ -16,6 +16,18 @@ $ git clone https://github.com/NahumLitvin/prismantis && cd prismantis
 $ git log --oneline b90c326..HEAD
 ```
 
+## prismantis 0.32.1 to 0.44.0
+
+DRAFT (porting in progress). Planned ports: table cell `<br>` (#283), a soft break kept before a tinted translation line (#368), hard line breaks in paragraphs and list items (#408, #413), HTML entities outside code (#412), the OSC and backtick-cell parse bounds (#414, #415); one-part paths like `/config` as text (#242), bare paths linked once a stat finds them, and Orca (#275, #424, #425, #440), Obsidian links (#300), Cursor, Windsurf and Zed links (#304), spoofed link labels (#427, #438), prompt links through the same checks (#436); zero-width format marks (#256), untagged box diagrams (#394), merged color spans (#406), the 400-line opened code cap, shown-lines highlighting and the reply node budget (#417, #418, #419, #437), alert copy (#421), the deep list indent cap (#433), the hover `⧉` marker (#254), dim copy buttons (#387); the Skill row target (#351), control sequences stripped from tool rows (#426), whole rows handed back under ctrl+o (#439, #435); folded pastes in prompts (#260), prompt markdown (#318), blank prompt lines (#402), prompts in the desktop app (#385); desktop tables, rules, lists and mono art (#280, #333, #279); PNG copy (#276, #329, #358, #420); vendor fixes (#370, #373, #391).
+
+Left out on purpose (draft):
+
+- Right-to-left and Hebrew work (#255, #264, #265, #266, #271, #281, #282, #284, #285, #288, #289, #291, #299, #315, the Hebrew half of #420), LaTeX (#416, #423), figures (#293, #377), themes and presets (#277, #422, #429, #430), `/prismantis setup` (#253, #323, #380, #434): parts cc-dazzle does not have.
+- The kitty and Ghostty pie picture (#305): it draws through the image path in `latex.ts`, which cc-dazzle dropped.
+- Look options whose default keeps today's look (#272, #320, #331, #332, #352, #353, #354, #355, #356, #357, #367, #404, #405, #432) and the chat bubble that became upstream's default prompt look with its chat-head dot (#309, #363): cc-dazzle's look is fixed, with its own prompt box.
+- The narrow-pane diagram hint (#326): cc-dazzle adds nothing to prompts while stretchtext is off.
+- The quiet tool-output mode of #435: cc-dazzle has none; its ctrl+o half is ported.
+
 ## prismantis 0.31.0 to 0.32.1
 
 Ported: a line holding only an HTML-like tag (`<tldr>`) drawn dim on its own (#228); gantt bars that start on a half cell and end on an eighth (#224); from the diff-card work (#234), the no-newline marker as its own row, a dim `...` between hunks, each hunk highlighted apart with removed lines plain, and a node allowance that keeps an opened card under Claude Code's 20000-node ceiling; new, deleted, emptied and renamed files drawn as `Created`, `Deleted` and `Renamed` cards, an Edit that makes a file and a Write preview included, and a write held for review left to Claude Code (#236); clickable paths in replies, tool rows and edit card headers, with a `file://` link kept only when its label shows its own path and programs and launchers never linked (#238, #240); and the redraw when the html copy check lands (#238). While porting the gantt bars, cc-dazzle's gantt charts turned out never to fit under about 90 columns, because the box frame takes 4 more columns than upstream's; `mermaid.tsx` now sizes them for it.
