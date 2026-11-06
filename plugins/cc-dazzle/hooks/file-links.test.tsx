@@ -455,6 +455,6 @@ test('a table drawn before the html check lands gains ⧉ html when it lands', a
   expect(await labels()).toEqual(['⧉ md', '⧉ art'])
   release()
   await started
-  expect(await labels()).toEqual(['⧉ md', '⧉ art', '⧉ html'])
+  expect(await labels()).toEqual(['⧉ md', '⧉ art', '⧉ html', '▣ png'])
   await ui.unmount()
 })

@@ -260,6 +260,9 @@ const painting = (style: Style, art: string, slices?: number[][], series?: numbe
   return done
 }
 
+// The colors boxArt draws, one per cell, so the png copy keeps them.
+export const artHues = (style: Style, art: string, slices?: number[][], series?: number[][]): (string | undefined)[][] => painting(style, art, slices, series).colors
+
 export const boxArt = ({ Box, Text }: ElementTable, style: Style, art: string, key: string, marks: [string[], Mark][] = [], slices?: number[][], series?: number[][]): RenderElement => {
   const { grid, colors } = painting(style, art, slices, series)
   return (

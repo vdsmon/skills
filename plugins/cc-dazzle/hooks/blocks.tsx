@@ -4,7 +4,8 @@ import { tableHtml, tableText } from './html'
 import { drawable } from './links'
 import type { Block, Inline } from './markdown'
 import { displayText, inlineText } from './markdown'
-import { graphemes, hasLink, longestWord, mostLines, remember, sliceInline, widestLine, width, wrapInline, wrapRanges } from './text'
+import type { Ink } from './clipboard'
+import { cells, graphemes, hasLink, longestWord, mostLines, remember, sliceInline, widestLine, width, wrapInline, wrapRanges } from './text'
 import type { Style, Theme } from './theme'
 import { ALERT_COLOR } from './theme'
 import type { PrismToken } from './vendor/prism.js'
@@ -348,6 +349,78 @@ export const tableArt = (block: Extract<Block, { kind: 'table' }>): string => {
   return ['```', ...art, '```'].join('\n')
 }
 
+type Face = Exclude<Ink, string | undefined>
+
+const own = (face: Face): Face => Object.fromEntries(Object.entries(face).filter(([, v]) => v !== undefined))
+
+const INLINE_FACE: Partial<Record<Inline['kind'], (t: Theme) => Face>> = {
+  strong: t => ({ color: t.strong, bold: true }),
+  emphasis: t => ({ color: t.emphasis, italic: true }),
+  math: t => ({ color: t.emphasis, italic: true }),
+  code: t => ({ color: t.inlineCode }),
+  link: t => ({ color: t.link }),
+  number: t => ({ color: t.number }),
+  path: t => ({ color: t.path }),
+  footnote: t => ({ color: t.accent }),
+}
+
+const cellInks = (t: Theme, nodes: Inline[], face: Face): Ink[] => nodes.flatMap(n => {
+  const inner = { ...face, ...own(INLINE_FACE[n.kind]?.(t) ?? {}) }
+  return 'children' in n ? cellInks(t, n.children, inner) : Array<Ink>(displayText([n]).length).fill(inner)
+})
+
+const glyphInks = (piece: string, from: number, paint: Ink[]): Ink[] => {
+  let at = from
+  return graphemes(piece).flatMap(g => {
+    const ink = paint[at]
+    at += g.length
+    return cells(g).map(() => ink)
+  })
+}
+
+// The png copy draws a table as the screen does: bold header, a double line under it, cells in their colors.
+const tablePicture = (block: Extract<Block, { kind: 'table' }>, t: Theme): { text: string; inks: Ink[][] } => {
+  const rows = [block.header, ...block.rows].map(r => block.header.map((_, c) => r[c] ?? []))
+  const texts = rows.map(r => r.map(displayText))
+  const { natural, words } = tableSize(block)
+  const widths = columnWidths(natural, ART_WIDTH - 4, 3, words)
+  const rule: Ink = own({ color: t.tableRule })
+  const header = own({ color: t.tableHeader, bold: true })
+  const lines: string[] = []
+  const inks: Ink[][] = []
+  const blank = (n: number): Ink[] => Array<Ink>(n).fill(undefined)
+  const line = (l: string, m: string, r: string, fill = '─') => {
+    const text = l + widths.map(w => fill.repeat(w + 2)).join(m) + r
+    lines.push(text)
+    inks.push(cells(text).map(() => rule))
+  }
+  const row = (i: number) => {
+    const paints = texts[i]!.map((text, c) => (i === 0 ? Array<Ink>(text.length).fill(header) : cellInks(t, rows[i]![c]!, {})))
+    const pieces = texts[i]!.map((text, c) => wrapRanges(text, widths[c]!))
+    for (let k = 0; k < Math.max(...pieces.map(p => p.length)); k++) {
+      const parts = pieces.map((p, c) => {
+        const [a, b] = p[k] ?? [0, 0]
+        const piece = texts[i]![c]!.slice(a, b)
+        const room = Math.max(0, widths[c]! - width(piece))
+        const align = block.align[c] ?? 'left'
+        const left = align === 'right' ? room : align === 'center' ? Math.floor(room / 2) : 0
+        return { text: ` ${' '.repeat(left)}${piece}${' '.repeat(room - left)} │`, ink: [...blank(left + 1), ...glyphInks(piece, a, paints[c]!), ...blank(room - left + 1), rule] }
+      })
+      lines.push(`│${parts.map(part => part.text).join('')}`)
+      inks.push([rule, ...parts.flatMap(part => part.ink)])
+    }
+  }
+  line('┌', '┬', '┐')
+  row(0)
+  for (let i = 1; i < rows.length; i++) {
+    if (i === 1) line('╞', '╪', '╡', '═')
+    else line('├', '┼', '┤')
+    row(i)
+  }
+  line('└', '┴', '┘')
+  return { text: lines.join('\n'), inks }
+}
+
 const renderTable = (el: ElementTable, style: Style, block: Extract<Block, { kind: 'table' }>, columns: number, key: string, tip?: Tip) => {
   const { Box, Text } = el
   const t = style.theme
@@ -471,7 +544,7 @@ const renderParagraph = (el: ElementTable, style: Style, block: Extract<Block, {
 }
 
 const renderNested = (el: ElementTable, style: Style, blocks: Block[], columns: number, key: string, copy?: CopyButton, fold?: Fold, tip?: Tip) =>
-  renderBlocks(el, style, blocks, columns, new Map(), copy && ((text, id, label, html) => copy(text, `${key}.${id}`, label, html)), fold && ((id, hidden, k) => fold(id, hidden, `${key}.${k}`)), tip)
+  renderBlocks(el, style, blocks, columns, new Map(), copy && ((text, id, label, rich, hues) => copy(text, `${key}.${id}`, label, rich, hues)), fold && ((id, hidden, k) => fold(id, hidden, `${key}.${k}`)), tip)
 
 const quoteBar = (el: ElementTable, text: string, color: string | undefined, lines: number) =>
   lines <= 1 ? <el.Text color={color}>{text}</el.Text> : clip(el, width(text), <el.Text color={color}>{Array.from({ length: lines }, () => text).join('\n')}</el.Text>)
@@ -530,8 +603,10 @@ const renderList = (el: ElementTable, style: Style, block: Extract<Block, { kind
   )
 }
 
-export type CopyButton = (text: string | (() => string), key: string, label?: string, html?: () => string) => RenderElement | null
-export type Drawn = Map<number, { element?: RenderElement; art?: string; note?: string }>
+// rich: a function gives the html copy; 'png' copies the text as a picture, in hues, one ink per cell.
+export type CopyButton = (text: string | (() => string), key: string, label?: string, rich?: (() => string) | 'png', hues?: () => Hues) => RenderElement | null
+export type Hues = Ink[][]
+export type Drawn = Map<number, { element?: RenderElement; art?: string; hues?: () => Hues; note?: string }>
 export type FoldLook = { label?: string; face?: () => RenderElement }
 
 // faced: the element is the face itself as a button. around: wraps rows in one plain button, from 2.1.295 on the terminal.
@@ -668,7 +743,10 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
     const first = text === undefined || isPlainCode ? null : copy?.(text, `copy${b}`, block.kind === 'table' ? '⧉ md' : art === undefined ? undefined : '⧉ source')
     const second = first && art !== undefined ? copy?.(art, `art${b}`, '⧉ art') : null
     const html = first && block.kind === 'table' ? copy?.(() => tableText(block), `html${b}`, '⧉ html', () => tableHtml(block)) : null
-    return { first, second, html }
+    const grid = drawn.get(b)?.art ?? (block.kind === 'table' ? () => tablePicture(block, t).text : undefined)
+    const hues = drawn.get(b)?.hues ?? (block.kind === 'table' ? () => tablePicture(block, t).inks : undefined)
+    const png = second && grid !== undefined ? copy?.(grid, `png${b}`, '▣ png', 'png', hues) : null
+    return { first, second, html: html ?? null, png: png ?? null }
   })
   const room = (b: number) => (hover && buttons[b]!.first ? columns - MARK : columns)
   const beside = (b: number) => (!buttons[b]!.first ? columns : hover ? columns - MARK : columns - reserved(buttons[b]!.first) - 2)
@@ -735,18 +813,19 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
   })
   const copied = rendered.map((element, b) => {
     const block = blocks[b]
-    const { first, second, html } = buttons[b]!
+    const { first, second, html, png } = buttons[b]!
     const button = second ? (
       <el.Box key={`copies${b}`} flexDirection="row" columnGap={1}>
         {first}
         {second}
         {html}
+        {png}
       </el.Box>
     ) : first
     if (!button) return element
     if (block?.kind === 'code' && drawn.get(b)?.art !== undefined) {
       const label = ` ${block.lang || 'diagram'}`
-      const float = hover ? floating(fitted([first, second, html])) : null
+      const float = hover ? floating(fitted([first, second, html, png])) : null
       return (
         <Box key={`c${b}`} flexDirection="column" alignSelf="flex-start">
           <Box flexDirection="row" justifyContent="space-between" columnGap={hover ? 1 : 2}>
@@ -760,7 +839,7 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
       )
     }
     if (hover) {
-      const float = floating(fitted([first, second, html]), block !== undefined && opensWithCopy(block))
+      const float = floating(fitted([first, second, html, png]), block !== undefined && opensWithCopy(block))
       return (
         <Box key={`c${b}`} flexDirection="column" alignSelf="flex-start">
           <Box flexDirection="row" columnGap={1} minWidth={float.needs}>

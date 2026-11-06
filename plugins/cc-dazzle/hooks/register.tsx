@@ -1,17 +1,17 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderElement, RenderInput, RenderSurface } from 'claude-code'
 
-import type { Drawn, Fold } from './blocks'
+import type { Drawn, Fold, Hues } from './blocks'
 import { instanceKey, noteTip, renderBlocks } from './blocks'
-import type { ClipboardBackend } from './clipboard'
-import { clipboardCommand } from './clipboard'
+import type { ClipboardBackend, HelperCommand } from './clipboard'
+import { clipboardCommand, imageCommand } from './clipboard'
 import { clockText, promptKey, sentAt, withRecord } from './clock'
 import type { TerminalEnv } from './links'
 import { drawsHyperlinks, pathsToProbe, toolPathsToProbe } from './links'
 import { isReadOnlyCall } from './readonly'
 import type { Block } from './markdown'
 import { parse } from './markdown'
-import { boxArt, chartSeries, inlineMarks, mermaidArt, shortenEdgeLabels, unsupportedKind } from './mermaid'
+import { artHues, boxArt, chartSeries, inlineMarks, mermaidArt, shortenEdgeLabels, unsupportedKind } from './mermaid'
 import type { DrawPaste } from './prompt'
 import { pasteLang, renderUserPrompt } from './prompt'
 import { openText, registerStretch, stretchBody, stretchNote, writtenText } from './stretch/index'
@@ -102,11 +102,26 @@ const probe = async ($: EngineInterface, style: Style, probes: Probes): Promise<
   if (style.htmlCopy !== before) $.ui.invalidate('ui.render')
 }
 
-const copyTable = async ($: EngineInterface, html: string, text: string): Promise<string | null> => {
-  const command = clipboardCommand(html, text)
+const runHelper = async ($: EngineInterface, command: HelperCommand): Promise<string | null> => {
   const result = await $.process.run(command.argv, { stdin: command.stdin, timeoutMs: 5000 }).catch(() => null)
   if (!result) return command.failure
   return result.exitCode === 0 ? null : result.stderr.trim() || command.failure
+}
+
+// Mocha base, the background the png copy draws on.
+const PNG_BACKGROUND = '#1e1e2e'
+
+const richCommand = (style: Style, content: string, rich: (() => string) | 'png', hues?: Hues): HelperCommand => rich === 'png'
+  ? imageCommand(content, { foreground: style.theme.diagramText ?? style.theme.codeText, background: PNG_BACKGROUND }, hues)
+  : clipboardCommand(rich(), content)
+
+// A failed helper falls back to plain text, with the reason in the toast.
+const copyOut = async ($: EngineInterface, style: Style, content: string, surface: RenderSurface, rich?: (() => string) | 'png', hues?: Hues): Promise<string> => {
+  const failure = rich && style.htmlCopy ? await runHelper($, richCommand(style, content, rich, hues)) : undefined
+  if (failure === null) return rich === 'png' ? 'Copied as image' : 'Copied formatted table'
+  const result = await $.ui.copy({ text: content, surface })
+  if (!result.isCopied) return `Copy failed: ${result.reason}`
+  return failure ? `Copied as plain text (${failure})` : 'Copied'
 }
 
 // faces: Buttons may hold Text (Claude Code 2.1.295, terminal), so a card or its header can be the toggle.
@@ -123,16 +138,9 @@ const folder = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolv
 
 const drawMarkdown = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolve']>, style: Style, blocks: ReturnType<typeof parse>, columns: number, open?: string[], notes?: { id: string; press: boolean }): RenderElement[] => {
   const { Button } = el
-  const copy = (text: string | (() => string), key: string, label = '⧉ copy', html?: () => string) => {
-    const copied = async (surface: RenderSurface): Promise<string> => {
-      const content = typeof text === 'function' ? text() : text
-      const failure = html && style.htmlCopy ? await copyTable($, html(), content) : undefined
-      if (failure === null) return 'Copied formatted table'
-      const result = await $.ui.copy({ text: content, surface })
-      if (!result.isCopied) return `Copy failed: ${result.reason}`
-      return failure ? `Copied as plain text (${failure})` : 'Copied'
-    }
-    return !html || style.htmlCopy ? (
+  const copy = (text: string | (() => string), key: string, label = '⧉ copy', rich?: (() => string) | 'png', hues?: () => Hues) => {
+    const copied = (surface: RenderSurface) => copyOut($, style, typeof text === 'function' ? text() : text, surface, rich, hues?.())
+    return !rich || style.htmlCopy ? (
       <Button
         key={key}
         variant="primary"
@@ -152,7 +160,8 @@ const drawMarkdown = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['
       const wide = art === null ? Infinity : Math.max(...art.text.split('\n').map(width))
       narrowest = Math.min(narrowest, wide)
       if (art === null || wide > columns - 6) continue
-      drawn.set(i, { element: boxArt(el, style, art.text, `b${i}`, inlineMarks(source), art.slices, chartSeries(text, columns)), art: art.text })
+      const series = chartSeries(text, columns)
+      drawn.set(i, { element: boxArt(el, style, art.text, `b${i}`, inlineMarks(source), art.slices, series), art: art.text, hues: () => artHues(style, art.text, art.slices, series) })
       break
     }
     if (!drawn.has(i) && !block.isOpen) {
