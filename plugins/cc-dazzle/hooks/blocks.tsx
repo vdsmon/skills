@@ -31,7 +31,7 @@ const renderInline = (el: ElementTable, style: Style, nodes: Inline[], keyBase: 
       case 'strike':
         return <Text key={key} strikethrough dimColor>{renderInline(el, style, n.children, key)}</Text>
       case 'code':
-        return <Text key={key} color={t.inlineCode}>{n.text}</Text>
+        return <Text key={key} color={t.inlineCode}>{n.href === undefined ? n.text : <el.Link href={n.href} label={n.text} />}</Text>
       case 'math':
         return <Text key={key} italic color={t.emphasis}>{n.text}</Text>
       case 'link':

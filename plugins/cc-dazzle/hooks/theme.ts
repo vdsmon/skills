@@ -42,5 +42,7 @@ export type Style = {
   editorLinks?: boolean
   fileLinks?: boolean
   pathLinks?: boolean
+  obsidianLinks?: boolean
+  found?: ReadonlySet<string>
   noteKey?: string
 }

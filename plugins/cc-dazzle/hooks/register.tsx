@@ -7,7 +7,8 @@ import type { ClipboardBackend } from './clipboard'
 import { clipboardCommand } from './clipboard'
 import { clockText, promptKey, sentAt, withRecord } from './clock'
 import type { TerminalEnv } from './links'
-import { drawsHyperlinks } from './links'
+import { drawsHyperlinks, pathsToProbe, toolPathsToProbe } from './links'
+import { isReadOnlyCall } from './readonly'
 import type { Block } from './markdown'
 import { parse } from './markdown'
 import { boxArt, chartSeries, inlineMarks, mermaidArt, shortenEdgeLabels, unsupportedKind } from './mermaid'
@@ -168,14 +169,87 @@ const toolTableView = async ($: EngineInterface, e: RenderInput, style: Style, b
   )
 }
 
+// Bare paths link once a stat finds them. A render cannot write state, so it queues the unseen
+// spellings and a timer stats each once per session; the render reads foundPaths and redraws.
+const foundPaths = atom({ plugin: 'cc-dazzle', key: 'foundPaths' } as const, [] as string[])
+
+type PathChecks = { asked: Set<string>; batch: string[]; list?: readonly string[]; found: ReadonlySet<string> }
+
+const MAX_FOUND = 2000
+const MAX_BATCH = 200
+const MAX_ASKED = 5000
+const FOUND_TRIES = 20
+const FOUND_RETRY_MS = 50
+
+const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
+
+const writtenPath = (call: Record<string, unknown>): string | undefined => {
+  const path = call.file_path ?? call.notebook_path
+  return WRITE_TOOLS.has(String(call.tool)) && typeof path === 'string' ? path.replace(/\\/g, '/') : undefined
+}
+
+// A read-only call keeps the misses, a file write forgets the misses on its path, anything else may
+// have made files anywhere and forgets them all.
+const forgetMisses = (checks: PathChecks, call: Record<string, unknown>) => {
+  if (checks.asked.size < MAX_ASKED && isReadOnlyCall(String(call.tool), call)) return
+  const path = checks.asked.size < MAX_ASKED ? writtenPath(call) : undefined
+  if (path === undefined) checks.asked = new Set(checks.found)
+  else for (let at = path; at.includes('/'); at = at.slice(0, at.lastIndexOf('/'))) checks.asked.delete(at)
+}
+
+const statPaths = async ($: EngineInterface, paths: string[]): Promise<void> => {
+  const kinds = await Promise.all(paths.map(path => $.fs.stat(path).then(stat => stat.kind, () => 'other')))
+  const hits = paths.flatMap((path, i) => (kinds[i] === 'dir' ? [path, `${path}/`] : kinds[i] === 'file' ? [path] : []))
+  if (hits.length) saveFound($, hits, FOUND_TRIES)
+}
+
+// A stat often lands while a render is dispatching, and the engine refuses a state write then.
+const saveFound = ($: EngineInterface, hits: string[], tries: number): void => {
+  void update($, foundPaths, list => [...list, ...hits].slice(-MAX_FOUND)).catch(() => {
+    if (tries > 1) $.clock.after(FOUND_RETRY_MS, () => saveFound($, hits, tries - 1))
+  })
+}
+
+const askPaths = ($: EngineInterface, checks: PathChecks, paths: string[]) => {
+  for (const path of paths) {
+    if (checks.asked.has(path)) continue
+    if (checks.batch.length >= MAX_BATCH) return
+    if (checks.batch.length === 0) {
+      $.clock.after(0, () => {
+        const batch = checks.batch
+        checks.batch = []
+        void statPaths($, batch).catch(() => undefined)
+      })
+    }
+    checks.asked.add(path)
+    checks.batch.push(path)
+  }
+}
+
+const withFound = async ($: EngineInterface, checks: PathChecks, style: Style, paths: string[]): Promise<Style> => {
+  if (paths.length === 0) return style
+  askPaths($, checks, paths)
+  const list = await read($, foundPaths)
+  if (list !== checks.list) {
+    checks.list = list
+    checks.found = new Set(list)
+  }
+  return { ...style, found: checks.found }
+}
+
+const linked = ($: EngineInterface, checks: PathChecks, style: Style, blocks: Block[]) => withFound($, checks, style, pathsToProbe(blocks, style))
+
+const toolLinked = ($: EngineInterface, checks: PathChecks, style: Style, inputs: unknown[]) => withFound($, checks, style, toolPathsToProbe(style, inputs))
+
 const isOwn = (kind: string) => kind === 'composer' || kind === 'bridge'
 
 export const register: Register = (on, options) => {
   const style: Style = { theme: THEME, htmlCopy: null, cwd: '', home: '', copyButtonStyle: options.copyButtonStyle === 'hover' ? 'hover' : 'inline' }
   const parsed = new Map<string, ReturnType<typeof parse>>()
   const parseCached = (text: string) => remember(parsed, text, () => parse(text, { numbers: true, paths: true }))
-  const forSurface = (base: Style, surface: RenderSurface, reach?: Reach): Style => {
-    const drawn = surface === 'terminal' ? (reach?.http || reach?.editor ? { ...base, httpLinks: reach.http, editorLinks: reach.editor, fileLinks: reach.files, pathLinks: reach.paths } : base) : { ...base, htmlCopy: null, nativeCode: true }
+  // In fullscreen Claude Code opens only allowlisted schemes, which obsidian: is not.
+  const forSurface = (base: Style, { surface, viewport }: { surface: RenderSurface; viewport?: { isFullscreen?: boolean } }, reach?: Reach): Style => {
+    const drawn = surface === 'terminal' ? (reach?.http || reach?.editor ? { ...base, httpLinks: reach.http, editorLinks: reach.editor, obsidianLinks: reach.editor && viewport?.isFullscreen === false, fileLinks: reach.files, pathLinks: reach.paths } : base) : { ...base, htmlCopy: null, nativeCode: true }
     // Off the terminal, Text is proportional and collapses spaces, so code goes to the app's own Code element.
     // The phone app has no pointer to hover with.
     return surface === 'mobile' && drawn.copyButtonStyle === 'hover' ? { ...drawn, copyButtonStyle: 'inline' } : drawn
@@ -192,12 +266,18 @@ export const register: Register = (on, options) => {
   let firstEdit: string | undefined
   if (options.stretch === true) registerStretch(on)
 
+  const pathChecks: PathChecks = { asked: new Set(), batch: [], found: new Set() }
+
   on('tool.call', async ($, e, next) => {
-    if (!isTabular(e.tool)) return next(e)
-    const start = await $.clock.now()
-    const ran = await next(e)
-    await $.state.set({ plugin: 'cc-dazzle', key: 'took', id: e.tool_use_id }, (await $.clock.now()) - start)
-    return ran
+    try {
+      if (!isTabular(e.tool)) return await next(e)
+      const start = await $.clock.now()
+      const ran = await next(e)
+      await $.state.set({ plugin: 'cc-dazzle', key: 'took', id: e.tool_use_id }, (await $.clock.now()) - start)
+      return ran
+    } finally {
+      forgetMisses(pathChecks, e as unknown as Record<string, unknown>)
+    }
   }).catch(($, e, next) => next(e))
 
   on('ui.render', { component: 'ToolGroup' }, async ($, e, next) => {
@@ -207,7 +287,7 @@ export const register: Register = (on, options) => {
       for (const call of e.props.calls) if (call.tool_use_id) markExpanded(call.tool_use_id)
       return next(e)
     }
-    const row = renderToolGroup($.ui.resolve(e), forSurface(style, e.surface, await reachOf($, probes, style)), e.props.calls, e.props.isActive)
+    const row = renderToolGroup($.ui.resolve(e), await toolLinked($, pathChecks, forSurface(style, e, await reachOf($, probes, style)), e.props.calls.map(call => call.input)), e.props.calls, e.props.isActive)
     const found = e.props.calls.flatMap(call => {
       const table = call.isRunning || call.isErrored || call.isInterrupted ? null : toolTable(call.tool, call.output)
       return table === null ? [] : [{ call, table }]
@@ -215,7 +295,7 @@ export const register: Register = (on, options) => {
     if (found.length === 0) return row
     const { Box } = $.ui.resolve(e)
     const alone = e.props.calls.length === 1
-    const tables = await Promise.all(found.map(({ call, table }) => toolTableView($, e, forSurface(style, e.surface), parseCached(markdownTable(table, Math.min(table.rows.length, PREVIEW_ROWS))), table, call.tool_use_id, Math.min(table.rows.length, PREVIEW_ROWS), alone ? undefined : captionOf(call.tool, call.input))))
+    const tables = await Promise.all(found.map(({ call, table }) => toolTableView($, e, forSurface(style, e), parseCached(markdownTable(table, Math.min(table.rows.length, PREVIEW_ROWS))), table, call.tool_use_id, Math.min(table.rows.length, PREVIEW_ROWS), alone ? undefined : captionOf(call.tool, call.input))))
     return (
       <Box flexDirection="column">
         {row}
@@ -227,7 +307,7 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
     await locate($, style)
     noteCommand(e.props.tool_use_id, e.props.tool, e.props.input)
-    if (!expandedCalls.has(e.props.tool_use_id)) return renderToolRow($.ui.resolve(e), forSurface(style, e.surface, await reachOf($, probes, style)), e.props)
+    if (!expandedCalls.has(e.props.tool_use_id)) return renderToolRow($.ui.resolve(e), await toolLinked($, pathChecks, forSurface(style, e, await reachOf($, probes, style)), [e.props.input]), e.props)
     const shell = e.props.tool === 'Bash' || e.props.tool === 'PowerShell'
     return shell && typeof e.props.output !== 'string' ? renderExpandedShell($.ui.resolve(e), style, e.props) : next(e)
   })
@@ -238,7 +318,7 @@ export const register: Register = (on, options) => {
       const el = $.ui.resolve(e)
       const reach = await reachOf($, probes, style)
       const fold = folder($, el, await read($, unfolded), e.surface === 'terminal' && reach.marks)
-      return renderDiffCard(el, forSurface(style, e.surface, reach), e.props.output, fold, e.props.tool_use_id, e.viewport?.columns) ?? next(e)
+      return renderDiffCard(el, forSurface(style, e, reach), e.props.output, fold, e.props.tool_use_id, e.viewport?.columns) ?? next(e)
     }
     const edits = e.props.tool === 'Bash' && !e.props.isErrored ? bashEdits(e.props.output) : undefined
     if (edits) {
@@ -250,12 +330,12 @@ export const register: Register = (on, options) => {
       const notes = editNotes(edits, firstEdit === e.props.tool_use_id, shellCommands.get(e.props.tool_use_id))
       const reach = await reachOf($, probes, style)
       const fold = folder($, el, await read($, unfolded), e.surface === 'terminal' && reach.marks)
-      const cards = renderBashEdits(el, forSurface(style, e.surface, reach), edits, fold, e.props.tool_use_id, above !== null, notes, e.viewport?.columns)
+      const cards = renderBashEdits(el, forSurface(style, e, reach), edits, fold, e.props.tool_use_id, above !== null, notes, e.viewport?.columns)
       return above === null ? cards : <el.Box flexDirection="column">{above}{cards}</el.Box>
     }
     if (!e.props.isErrored) {
       const table = toolTable(e.props.tool, e.props.output)
-      if (table !== null && table.rows.length <= MAX_ROWS) return toolTableView($, e, forSurface(style, e.surface), parseCached(markdownTable(table)), table, e.props.tool_use_id, table.rows.length)
+      if (table !== null && table.rows.length <= MAX_ROWS) return toolTableView($, e, forSurface(style, e), parseCached(markdownTable(table)), table, e.props.tool_use_id, table.rows.length)
     }
     return next(e)
   })
@@ -295,7 +375,7 @@ export const register: Register = (on, options) => {
     const el = $.ui.resolve(e)
     const { Box } = el
     const open = await read($, unfolded)
-    return <Box flexDirection="column" rowGap={1}>{drawMarkdown($, el, forSurface(style, e.surface, await reachOf($, probes, style)), blocks, columnsOf(e.viewport), open)}</Box>
+    return <Box flexDirection="column" rowGap={1}>{drawMarkdown($, el, await linked($, pathChecks, forSurface(style, e, await reachOf($, probes, style)), blocks), blocks, columnsOf(e.viewport), open)}</Box>
   })
 
   on('ui.render', { component: 'UserMessage' }, async ($, e, next) => {
@@ -314,7 +394,7 @@ export const register: Register = (on, options) => {
     const open = await read($, unfolded)
     const reach = await reachOf($, probes, style)
     const notes = { id: e.requestId, press: reach.marks }
-    const drawStyle = forSurface(style, e.surface, reach)
+    const drawStyle = await linked($, pathChecks, forSurface(style, e, reach), parseCached(openText(e.props.text)))
     const draw = (text: string) => drawMarkdown($, el, drawStyle, parseCached(text), columnsOf(e.viewport), open, notes)
     const reply = (body: RenderElement[]) => (
       <Box flexDirection="row" marginTop={1}>

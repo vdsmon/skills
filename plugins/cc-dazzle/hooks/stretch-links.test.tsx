@@ -25,7 +25,7 @@ const filesAt = (on: On, base: string | undefined, env: Record<string, string> =
 
 // Claude Code 2.1.287 and 2.1.288 refuse a file: href and throw out the whole render.
 const linksFiles = ($: Engine): Promise<boolean> =>
-  $.ui.mount({ plugin: 'cc-dazzle', surface: 'terminal', component: 'AssistantMessage', props: { text: '[/x](file:///x)', isFirstOfReply: true }, viewport: FULLSCREEN }).then(async ui => (await ui.unmount(), true), () => false)
+  $.ui.mount({ plugin: 'cc-dazzle', surface: 'terminal', component: 'AssistantMessage', props: { text: '[/x.md](file:///x.md)', isFirstOfReply: true }, viewport: FULLSCREEN }).then(async ui => (await ui.unmount(), true), () => false)
 
 type Found = { findAll: (query: { type: 'Link' | 'Text'; in?: string }) => Promise<{ text?: string; props: Record<string, unknown> }[]> }
 const hrefs = async (ui: Found) => (await ui.findAll({ type: 'Link', in: FIRST })).map(l => String(l.props.href))
