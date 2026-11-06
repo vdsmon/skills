@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-// copyButtonStyle hover (prismantis #140), with its upstream tests.
+// copyButtonStyle hover (prismantis #140, and the ⧉ marker of #254), with their upstream tests.
 
 const reply = (text: string, surface: 'terminal' | 'mobile' = 'terminal') => ({
   plugin: 'cc-dazzle',
@@ -23,15 +23,24 @@ const floatingReveals = (node: DrawnNode): unknown[] => [
   ...(node.children ?? []).flatMap(child => (child && typeof child === 'object' ? floatingReveals(child as DrawnNode) : [])),
 ]
 
-test('copyButtonStyle hover floats every copy button out of the flow, shown only while its block is hovered', HOVER, async ($, on) => {
+const markerScopes = (node: DrawnNode): unknown[] => [
+  ...(node.props?.position !== 'absolute' && (node.hover as { scope?: string } | undefined)?.scope ? [(node.hover as { scope: string }).scope] : []),
+  ...(node.children ?? []).flatMap(child => (child && typeof child === 'object' ? markerScopes(child as DrawnNode) : [])),
+]
+
+test('copyButtonStyle hover floats every copy button out of the flow, shown only while the pointer is on its block\'s ⧉', HOVER, async ($, on) => {
   const copied: string[] = []
   on('ui.copy', (_, e) => {
     copied.push(e.text)
     return { value: { isCopied: true as const } }
   })
   const ui = await $.ui.mount(reply(SAMPLE))
-  expect(await floatingCopies(ui)).toEqual(['⧉ md⧉ art', '⧉ copy', '⧉ copy'])
-  expect(floatingReveals((await ui.drawn()) as DrawnNode)).toEqual(Array(3).fill({ display: 'flex' }))
+  expect(await floatingCopies(ui)).toEqual(['⧉ md ⧉ art', '⧉ copy', '⧉ copy'])
+  const reveals = floatingReveals((await ui.drawn()) as DrawnNode) as { scope?: string; display?: string }[]
+  expect(reveals.map(r => r.display)).toEqual(Array(3).fill('flex'))
+  const markers = markerScopes((await ui.drawn()) as DrawnNode)
+  expect(markers).toEqual(reveals.map(r => r.scope))
+  expect(new Set(markers).size).toBe(3)
   await ui.press({ key: 'copy1' })
   expect(copied).toEqual(['ls -la'])
   await ui.unmount()
@@ -40,7 +49,7 @@ test('copyButtonStyle hover floats every copy button out of the flow, shown only
 test('copyButtonStyle hover covers only its buttons\' cells, so the rest of the row stays drawn while they show', HOVER, async $ => {
   const ui = await $.ui.mount(reply(`${TABLE}\n\n\`\`\`bash\nls\n\`\`\`\n\n> \`\`\`bash\n> npm test\n> \`\`\`\n>\n> Run that first.`))
   const floats = (await ui.findAll({ type: 'Box' })).filter(b => b.props.position === 'absolute' && b.props.display === 'none')
-  expect(floats.map(b => b.text)).toEqual(['⧉ md⧉ art', '⧉ copy', '⧉ copy', '⧉ copy'])
+  expect(floats.map(b => b.text)).toEqual(['⧉ md ⧉ art', '⧉ copy', '⧉ copy', '⧉ copy'])
   for (const float of floats) {
     expect(float.props.right).toBe(0)
     expect(float.props.left).toBeUndefined()
@@ -49,10 +58,11 @@ test('copyButtonStyle hover covers only its buttons\' cells, so the rest of the 
   await ui.unmount()
 })
 
-test('copyButtonStyle hover makes a block at least as wide as its buttons, so buttons anchored right never run off its left edge', HOVER, async $ => {
+const markerRows = async (ui: Ui) => (await ui.findAll({ type: 'Box' })).filter(b => b.props.flexDirection === 'row' && typeof b.props.minWidth === 'number' && /⧉/.test(b.text ?? '')).map(b => b.props.minWidth)
+
+test('copyButtonStyle hover makes a block\'s marker row at least as wide as its buttons, so buttons anchored right never run off its left edge', HOVER, async $ => {
   const ui = await $.ui.mount(reply('| a |\n|---|\n| 1 |\n\n```\nx\n```'))
-  expect((await ui.find({ key: 'c0' }))?.props.minWidth).toBe('[ ⧉ md ] [ ⧉ art ]'.length)
-  expect((await ui.find({ key: 'b1' }))?.props.minWidth).toBe('[ ⧉ copy ]'.length)
+  expect(await markerRows(ui)).toEqual(['[ ⧉ md ] [ ⧉ art ]'.length, '[ ⧉ copy ]'.length])
   await ui.unmount()
 })
 
@@ -66,7 +76,7 @@ test('copyButtonStyle hover puts a quote\'s button on its last row when a nested
 
 test('copyButtonStyle hover reserves its buttons width beside a narrow table', HOVER, async $ => {
   const ui = await $.ui.mount(reply('| a | b |\n|---|---|\n| 1 | 2 |\n\n| c | d |\n|---|---|\n| 3 | 4 |'))
-  for (const key of ['c0', 'c1']) expect((await ui.find({ key }))?.props.minWidth).toBe('[ ⧉ md ] [ ⧉ art ]'.length)
+  expect(await markerRows(ui)).toEqual(Array(2).fill('[ ⧉ md ] [ ⧉ art ]'.length))
   await ui.unmount()
 })
 

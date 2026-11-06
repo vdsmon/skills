@@ -578,16 +578,38 @@ const opensWithCopy = (block: Block): boolean =>
 const holdsOnlyEmptyCode = (block: Block): boolean =>
   block.kind === 'quote' && block.blocks.length === 1 && ((block.blocks[0]!.kind === 'code' && block.blocks[0]!.lines.length === 0) || holdsOnlyEmptyCode(block.blocks[0]!))
 
+// The hover ⧉ marker's column, the dim ⧉ and the gap before it.
+export const MARK = 2
+
+type Float = { needs: number; marker: RenderElement; element: RenderElement }
+
 export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], columns: number, drawn: Drawn = new Map(), copy?: CopyButton, fold?: Fold, tip?: Tip): RenderElement[] => {
   const { Box, Text } = el
   const t = style.theme
   const hover = style.copyButtonStyle === 'hover'
-  // With hover, a block's buttons float over its top-right corner, out of the flow, and show only
-  // while the pointer is over the block. They cover only their own cells: the block reserves their
-  // width, so they never run off its left edge.
-  const floating = (button: RenderElement | null, low = false) => (button ? <Box position="absolute" {...(low ? { bottom: 0 } : { top: 0 })} right={0} display="none" hover={{ display: 'flex' }}>{button}</Box> : null)
   const reserved = (button: RenderElement | null | undefined): number => (button?.type === 'Button' ? width(`[ ${button.props.label} ]`) : 0)
   const reservedAll = (row: (RenderElement | null | undefined)[]): number => row.reduce<number>((w, button) => (reserved(button) ? w + (w ? 1 : 0) + reserved(button) : w), 0)
+  // Buttons a narrow terminal has no room for drop from the end, keeping the first.
+  const fitted = (parts: (RenderElement | null | undefined)[]): RenderElement[] =>
+    parts.reduce<RenderElement[]>((kept, part) => (part && (!kept.length || reservedAll([...kept, part]) <= columns) ? [...kept, part] : kept), [])
+  // With hover, each block keeps a dim ⧉ in a column of its own, and only the pointer on that ⧉ draws
+  // the block's buttons over it, toward the block. The ⧉ and its buttons share a hover scope and
+  // nothing else does, so the buttons stay up while the pointer moves onto them. The gap between two
+  // buttons is a drawn space, since a column gap would let the text under it show through.
+  const floating = (kept: RenderElement[], low = false): Float => {
+    const first = kept[0] as { key?: unknown; props?: { key?: unknown } } | undefined
+    const scope = `copy:${style.noteKey ?? ''}:${String(first?.key ?? first?.props?.key ?? '')}`
+    return {
+      needs: reservedAll(kept),
+      marker: <Box flexShrink={0} alignSelf={low ? 'flex-end' : 'flex-start'} hover={{ scope }}><Text dimColor>⧉</Text></Box>,
+      element: <Box position="absolute" {...(low ? { bottom: 0 } : { top: 0 })} right={0} display="none" hover={{ scope, display: 'flex' }}>{kept.flatMap((button, i) => (i ? [<Text key={`gap${i}`}> </Text>, button] : [button]))}</Box>,
+    }
+  }
+  const head = (label: string, button: RenderElement | null): RenderElement | null => {
+    if (!hover || !button) return button
+    const float = floating([button])
+    return <Box flexDirection="row" flexShrink={0} minWidth={Math.min(columns - width(label) - 1, float.needs)} justifyContent="flex-end">{float.marker}{float.element}</Box>
+  }
   const buttons = blocks.map((block, b) => {
     const text = hover && holdsOnlyEmptyCode(block) ? undefined : copySource(style, block)
     const isPlainCode = block.kind === 'code' && !drawn.get(b)?.element
@@ -597,7 +619,8 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
     const html = first && block.kind === 'table' ? copy?.(() => tableText(block), `html${b}`, '⧉ html', () => tableHtml(block)) : null
     return { first, second, html }
   })
-  const beside = (b: number) => (hover || !buttons[b]!.first ? columns : columns - reserved(buttons[b]!.first) - 2)
+  const room = (b: number) => (hover && buttons[b]!.first ? columns - MARK : columns)
+  const beside = (b: number) => (!buttons[b]!.first ? columns : hover ? columns - MARK : columns - reserved(buttons[b]!.first) - 2)
   const shown = blocks.map(block => drawable(block, style))
   const rendered = shown.map((block, b) => {
     const key = `b${b}`
@@ -631,15 +654,15 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
         const source = session ? sessionCommands(lines) : lines.join('\n')
         const button = copy?.(source, `copy${b}`) ?? null
         const body = !numbered || style.nativeCode ? rows : rows.map((row, i) => row.type === 'Text' ? <Box key={`n${i}`} flexDirection="row"><Text color={t.codeComment} dimColor>{`${String(i + 1).padStart(gutter)}  `}</Text>{row}</Box> : row)
+        const label = ` ${block.lang || 'code'}`
         return (
-          <Box key={key} flexDirection="column" {...(hover ? { minWidth: reserved(button) } : {})}>
+          <Box key={key} flexDirection="column">
             {note ? <Text color={t.codeComment}>{note}</Text> : null}
-            <Box flexDirection="row" justifyContent="space-between" columnGap={2}>
-              <Text color={t.codeComment}>{` ${block.lang || 'code'}`}</Text>
-              {hover ? null : button}
+            <Box flexDirection="row" justifyContent="space-between" columnGap={hover ? 1 : 2}>
+              <Text color={t.codeComment}>{label}</Text>
+              {head(label, button)}
             </Box>
             <Box flexDirection="column" borderStyle="round" borderColor={t.rule} paddingX={1}>
-              {hover ? floating(button) : null}
               <Box flexDirection="column">{body}</Box>
               {toggle?.element ?? null}
             </Box>
@@ -647,9 +670,9 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
         )
       }
       case 'list':
-        return renderList(el, style, block, columns, key, copy, fold, tip)
+        return renderList(el, style, block, room(b), key, copy, fold, tip)
       case 'table':
-        return renderTable(el, style, block, columns, key, tip)
+        return renderTable(el, style, block, room(b), key, tip)
       case 'notes':
         return (
           <Box key={key} flexDirection="column">
@@ -671,13 +694,14 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
     ) : first
     if (!button) return element
     if (block?.kind === 'code' && drawn.get(b)?.art !== undefined) {
+      const label = ` ${block.lang || 'diagram'}`
+      const float = hover ? floating(fitted([first, second, html])) : null
       return (
-        <Box key={`c${b}`} flexDirection="column" alignSelf="flex-start" {...(hover ? { minWidth: reservedAll([first, second, html]) } : {})}>
-          <Box flexDirection="row" justifyContent="space-between" columnGap={2}>
-            <el.Text color={style.theme.codeComment}>{` ${block.lang || 'diagram'}`}</el.Text>
-            {hover ? null : button}
+        <Box key={`c${b}`} flexDirection="column" alignSelf="flex-start">
+          <Box flexDirection="row" justifyContent="space-between" columnGap={hover ? 1 : 2}>
+            <el.Text color={style.theme.codeComment}>{label}</el.Text>
+            {float ? <Box flexDirection="row" flexShrink={0} minWidth={Math.min(columns - width(label) - 1, float.needs)} justifyContent="flex-end">{float.marker}{float.element}</Box> : button}
           </Box>
-          {hover ? floating(button) : null}
           <Box flexDirection="column" borderStyle="round" borderColor={style.theme.rule} paddingX={1}>
             {element}
           </Box>
@@ -685,10 +709,14 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
       )
     }
     if (hover) {
+      const float = floating(fitted([first, second, html]), block !== undefined && opensWithCopy(block))
       return (
-        <Box key={`c${b}`} flexDirection="column" alignSelf="flex-start" minWidth={reservedAll([first, second, html])}>
-          {element}
-          {floating(button, block !== undefined && opensWithCopy(block))}
+        <Box key={`c${b}`} flexDirection="column" alignSelf="flex-start">
+          <Box flexDirection="row" columnGap={1} minWidth={float.needs}>
+            {element}
+            {float.marker}
+            {float.element}
+          </Box>
         </Box>
       )
     }
