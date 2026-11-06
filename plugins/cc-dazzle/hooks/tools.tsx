@@ -19,12 +19,13 @@ const field = (input: unknown, ...keys: string[]): string | undefined => {
   if (input === null || typeof input !== 'object') return undefined
   for (const k of keys) {
     const v = (input as Record<string, unknown>)[k]
-    if (typeof v === 'string' && v.trim() !== '') return v
+    // The engine refuses a tree whose Text holds an escape (OSC 52, ESC[2J), and drops the whole row.
+    if (typeof v === 'string' && v.trim() !== '') return v.replace(CONTROL, '')
   }
   return undefined
 }
 
-const TARGET_FIELDS = ['file_path', 'notebook_path', 'path', 'pattern', 'url', 'query', 'description']
+const TARGET_FIELDS = ['file_path', 'notebook_path', 'path', 'pattern', 'url', 'query', 'description', 'skill']
 
 const statusColor = (t: Theme, row: ToolRow) =>
   row.isErrored ? t.error : row.isInterrupted ? t.codeComment : row.isRunning ? t.accent : t.success

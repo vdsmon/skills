@@ -16,7 +16,7 @@ const noteHover = (style: Style, note: number | undefined) =>
 const tintLook = (tint: string | undefined): { italic?: true; color?: string; dimColor?: true } =>
   tint === 'italic' ? { italic: true } : tint && tint !== 'dim' ? { color: tint } : { dimColor: true }
 
-const renderInline = (el: ElementTable, style: Style, nodes: Inline[], keyBase: string): RenderElement[] => {
+export const renderInline = (el: ElementTable, style: Style, nodes: Inline[], keyBase: string): RenderElement[] => {
   const { Text } = el
   const t = style.theme
   return nodes.map((n, i) => {

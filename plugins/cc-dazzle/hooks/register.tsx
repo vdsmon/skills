@@ -12,7 +12,8 @@ import { isReadOnlyCall } from './readonly'
 import type { Block } from './markdown'
 import { parse } from './markdown'
 import { boxArt, chartSeries, inlineMarks, mermaidArt, shortenEdgeLabels, unsupportedKind } from './mermaid'
-import { renderUserPrompt } from './prompt'
+import type { DrawPaste } from './prompt'
+import { pasteLang, renderUserPrompt } from './prompt'
 import { openText, registerStretch, stretchBody, stretchNote, writtenText } from './stretch/index'
 import { deliveredText, isQueued, withQueued, withoutDelivered } from './queue'
 import type { Table } from './tables'
@@ -241,6 +242,22 @@ const linked = ($: EngineInterface, checks: PathChecks, style: Style, blocks: Bl
 
 const toolLinked = ($: EngineInterface, checks: PathChecks, style: Style, inputs: unknown[]) => withFound($, checks, style, toolPathsToProbe(style, inputs))
 
+// Older engine types have no isExpanded on a tool row, so it is read through a guard.
+const expandedRow = (props: object): boolean => 'isExpanded' in props && props.isExpanded === true
+
+const pasteFrame = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['resolve']>, style: Style, open: string[], id: string, columns: number): DrawPaste => (body, key) => {
+  const lines = body.split('\n')
+  const title = `pasted text · ${lines.length} lines`
+  const toggle = folder($, el, open)(`${id}:${key}`, lines.length, key, { label: title })
+  const opened = toggle?.folded === false
+  return (
+    <el.Box key={key} borderStyle="double" borderColor={style.theme.codeComment} paddingX={1} flexDirection="column" alignSelf="flex-start">
+      {opened ? <el.Box key="head" flexDirection="row" justifyContent="space-between" columnGap={4}><el.Text color={style.theme.codeComment}>{title}</el.Text>{toggle.element}</el.Box> : toggle?.element ?? null}
+      {opened ? drawMarkdown($, el, style, [{ kind: 'code', lang: pasteLang(body), lines, raw: body }], columns - 8, open) : null}
+    </el.Box>
+  )
+}
+
 const isOwn = (kind: string) => kind === 'composer' || kind === 'bridge'
 
 export const register: Register = (on, options) => {
@@ -307,6 +324,8 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
     await locate($, style)
     noteCommand(e.props.tool_use_id, e.props.tool, e.props.input)
+    // In the ctrl+o transcript the engine draws the whole row, so shell output draws once.
+    if (expandedRow(e.props)) return next(e)
     if (!expandedCalls.has(e.props.tool_use_id)) return renderToolRow($.ui.resolve(e), await toolLinked($, pathChecks, forSurface(style, e, await reachOf($, probes, style)), [e.props.input]), e.props)
     const shell = e.props.tool === 'Bash' || e.props.tool === 'PowerShell'
     return shell && typeof e.props.output !== 'string' ? renderExpandedShell($.ui.resolve(e), style, e.props) : next(e)
@@ -380,12 +399,15 @@ export const register: Register = (on, options) => {
 
   on('ui.render', { component: 'UserMessage' }, async ($, e, next) => {
     const kind = e.props.origin.kind
-    const own = isOwn(kind) || (kind === 'unclassified' && !e.props.from && !e.props.task)
+    // The desktop app drives the engine as an SDK host and stamps its rows sdk.
+    const own = isOwn(kind) || ((kind === 'unclassified' || kind === 'sdk') && !e.props.from && !e.props.task)
     if (!own) return next(e)
     const at = sentAt(await read($, sent), e.props.text, await firstDrawn($, e.requestId))
     const time = at === undefined ? undefined : clockText(at, await $.clock.now())
     const waiting = isQueued(await read($, queued), e.props.text)
-    return renderUserPrompt($.ui.resolve(e), style, e.props.text, time, waiting)
+    const el = $.ui.resolve(e)
+    const drawn = forSurface(style, e, await reachOf($, probes, style))
+    return renderUserPrompt(el, drawn, e.props.text, time, waiting, pasteFrame($, el, drawn, await read($, unfolded), e.requestId, columnsOf(e.viewport)))
   })
 
   on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
