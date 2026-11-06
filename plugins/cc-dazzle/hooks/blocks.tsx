@@ -360,8 +360,9 @@ const renderTable = (el: ElementTable, style: Style, block: Extract<Block, { kin
     <Text key={k} color={t.tableRule} dimColor={!t.tableRule}>{Array.from({ length: lines }, () => text).join('\n')}</Text>
   )
   const clipped = (lines: number) => (k: string, text: string) => clip(el, width(text), bar(`${k}.b`, text, lines), k)
+  const shares = percentShares(widths)
   const edge = (k: string, [left, fill, mid, right]: string) =>
-    bar(k, left + widths.map(w => fill!.repeat(w + 2)).join(mid) + right)
+    style.gridFace ? laidEdge(el, style, k, fill === '═') : bar(k, left + widths.map(w => fill!.repeat(w + 2)).join(mid) + right)
 
   const row = (cells: Inline[][], k: string, isHeader: boolean, border: (k: string, text: string) => RenderElement = bar) => (
     <Box key={k} flexDirection="row" columnGap={0} alignItems="stretch">
@@ -370,7 +371,7 @@ const renderTable = (el: ElementTable, style: Style, block: Extract<Block, { kin
         const content = cells[c] ?? []
         const runs = isHeader ? headerRuns(content) : content
         const cellBox = (
-          <Box key={`${k}.${c}`} width={w} flexShrink={0} justifyContent={justify(c)}>
+          <Box key={`${k}.${c}`} {...tableColumn(style, w, shares[c]!, words[c]!)} {...(style.gridFace ? { alignItems: 'flex-start' as const, paddingY: 1 } : {})} justifyContent={justify(c)}>
             {pressInline(el, style, runs, w, `${k}.${c}.p`, tip, isHeader ? { bold: true, color: t.tableHeader } : {}, { justifyContent: justify(c) })
               ?? (isHeader
                 ? <Text bold color={t.tableHeader}>{runs.some(n => n.kind === 'footnote') ? renderInline(el, style, runs, `${k}.${c}`) : inlineText(runs)}</Text>
@@ -384,6 +385,7 @@ const renderTable = (el: ElementTable, style: Style, block: Extract<Block, { kin
   )
 
   const wrappedRow = (cells: Inline[][], k: string, isHeader: boolean) => {
+    if (style.gridFace) return [row(cells, k, isHeader, laidWall(el, style))]
     if (!isHeader && cells.some(hasLink)) return [row(cells, k, isHeader, clipped(Math.max(1, ...widths.map((w, c) => mostLines(displayText(cells[c] ?? []), w)))))]
     const wrapped = widths.map((w, c) => {
       const content = cells[c] ?? []
@@ -400,8 +402,56 @@ const renderTable = (el: ElementTable, style: Style, block: Extract<Block, { kin
     lines.push(...wrappedRow(r, `${key}.r${i}`, false))
   })
   lines.push(edge(`${key}.b`, '└─┴┘'))
-  return <Box key={key} flexDirection="column">{lines}</Box>
+  return <Box key={key} flexDirection="column" {...(style.gridFace ? { alignSelf: 'flex-start' as const } : {})}>{lines}</Box>
 }
+
+// The desktop app sets text in a proportional face, where runs of box characters counted for a
+// terminal run wider than their columns and wrap. There every rule and wall is a thin colored box,
+// and columns take whole-percent shares of the table, at least their longest word.
+const HAIRLINE = 0.06
+const WALL_WIDTH = 0.12
+
+const ruleInk = (style: Style) => style.theme.tableRule ?? 'gray'
+
+const percentShares = (widths: number[]): number[] => {
+  const total = widths.reduce((sum, w) => sum + w, 0) || 1
+  const exact = widths.map(w => (100 * w) / total)
+  const shares = exact.map(Math.floor)
+  const left = 100 - shares.reduce((sum, n) => sum + n, 0)
+  exact.map((x, i) => ({ i, rest: x - shares[i]! })).sort((a, b) => b.rest - a.rest).slice(0, left).forEach(({ i }) => shares[i]!++)
+  return shares
+}
+
+const tableColumn = (style: Style, w: number, share: number, word: number) =>
+  style.gridFace ? { width: `${share}%`, flexShrink: 1, minWidth: Math.min(word, w) } : { width: w, flexShrink: 0 }
+
+const laidEdge = ({ Box }: ElementTable, style: Style, key: string, double: boolean) => {
+  const line = (k: string) => <Box key={k} height={HAIRLINE} flexShrink={0} backgroundColor={ruleInk(style)} />
+  if (!double) return line(key)
+  return <Box key={key} flexDirection="column" justifyContent="space-between" height={0.3} flexShrink={0}>{line(`${key}.a`)}{line(`${key}.b`)}</Box>
+}
+
+const laidWall = ({ Box }: ElementTable, style: Style) => (key: string, text: string) => (
+  <Box key={key} width={WALL_WIDTH} flexShrink={0} backgroundColor={ruleInk(style)} {...(text.startsWith(' ') ? { marginLeft: 1 } : {})} {...(text.endsWith(' ') ? { marginRight: 1 } : {})} />
+)
+
+const thematicBreak = ({ Box, Text }: ElementTable, style: Style, columns: number, key: string) => {
+  const length = Math.max(8, Math.min(columns, 80))
+  if (!style.gridFace) return <Text key={key} color={style.theme.rule} dimColor={!style.theme.rule}>{'─'.repeat(length)}</Text>
+  return (
+    <Box key={key} flexDirection="row" height={1} alignItems="center">
+      <Box width={length} flexShrink={1} minWidth={0} height={HAIRLINE} backgroundColor={style.theme.rule ?? 'gray'} />
+    </Box>
+  )
+}
+
+// A box of no width of its own that grows to the heading's width, so the rule ends where the title does.
+const headingRule = ({ Box, Text }: ElementTable, style: Style, color: string | undefined, label: string) =>
+  style.gridFace ? (
+    <Box flexDirection="row" height={0.5} alignItems="center">
+      <Box width={0} flexGrow={1} height={2 * HAIRLINE} backgroundColor={color ?? 'gray'} />
+    </Box>
+  ) : <Text color={color}>{'━'.repeat(width(label))}</Text>
 
 const renderHeading = (el: ElementTable, style: Style, block: Extract<Block, { kind: 'heading' }>, key: string) => {
   const { Box, Text } = el
@@ -409,7 +459,7 @@ const renderHeading = (el: ElementTable, style: Style, block: Extract<Block, { k
   const color = block.level <= 2 ? t.heading : t.strong
   const inline = block.inline
   return block.level === 1
-    ? <Box key={key} flexDirection="column" alignSelf="flex-start"><Text bold color={color}>{renderInline(el, style, inline, key)}</Text><Text color={color}>{'━'.repeat(width(inlineText(inline)))}</Text></Box>
+    ? <Box key={key} flexDirection="column" alignSelf="flex-start"><Text bold color={color}>{renderInline(el, style, inline, key)}</Text>{headingRule(el, style, color, inlineText(inline))}</Box>
     : <Text key={key} bold color={color}>{renderInline(el, style, inline, key)}</Text>
 }
 
@@ -462,8 +512,9 @@ const renderList = (el: ElementTable, style: Style, block: Extract<Block, { kind
         const glyph = item.task !== undefined ? TASK_GLYPHS[item.task ? 1 : 0] : /\d/.test(item.marker) ? item.marker : item.depth ? '◦' : '•'
         const pad = item.depth * 2 + glyph.length + 1
         const row = (
-          <Box key={k} flexDirection="row" paddingLeft={item.depth * 2}>
-            <Text color={t.bullet}>{`${glyph} `}</Text>
+          <Box key={k} flexDirection="row" paddingLeft={item.depth * 2} {...(style.gridFace ? { alignItems: 'flex-start' as const } : {})}>
+            {/* The desktop app centers a Text set straight in a row, so a wrapped item's marker would sit between its lines. */}
+            {style.gridFace ? <Box flexShrink={0}><Text color={t.bullet}>{`${glyph} `}</Text></Box> : <Text color={t.bullet}>{`${glyph} `}</Text>}
             {pressInline(el, style, item.inline, columns - pad, `${k}.i`, tip, { ...(item.task === true ? { dimColor: true, strikethrough: true } : {}), ...prose(style) }) ?? <Text dimColor={item.task === true} strikethrough={item.task === true} {...prose(style)}>{renderInline(el, style, item.inline, k)}</Text>}
           </Box>
         )
@@ -634,7 +685,7 @@ export const renderBlocks = (el: ElementTable, style: Style, blocks: Block[], co
       case 'alert':
         return renderAlert(el, style, block, beside(b), key, copy, fold, tip)
       case 'rule':
-        return <Text key={key} color={t.rule} dimColor={!t.rule}>{'─'.repeat(Math.max(8, Math.min(columns, 80)))}</Text>
+        return thematicBreak(el, style, columns, key)
       case 'code': {
         const done = drawn.get(b)?.element
         if (done) return done

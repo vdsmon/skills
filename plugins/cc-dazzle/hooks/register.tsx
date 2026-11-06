@@ -22,7 +22,7 @@ import { remember, width } from './text'
 import type { Style } from './theme'
 import { THEME } from './theme'
 import { bashEdits, editNotes, hasShellOutput, renderBashEdits, renderDiffCard, renderExpandedShell, renderToolGroup, renderToolRow, withoutBashEdits } from './tools'
-import { takesClickableMarks, takesEditorLinks, takesHttpLinks } from './version'
+import { takesClickableMarks, takesEditorLinks, takesHttpLinks, takesMonoText } from './version'
 
 const expandedCalls = new Set<string>()
 
@@ -32,7 +32,14 @@ const markExpanded = (id: string) => {
   if (expandedCalls.size > 500) expandedCalls.delete(expandedCalls.values().next().value!)
 }
 
-const columnsOf = (viewport?: { columns?: number }) => Math.max(20, (viewport?.columns ?? 100) - 4)
+// The desktop app counts columns in cells of its code font, but sets each monospaced cell about 1.19
+// times wider, so art laid out to the reported columns would run past the reply.
+const DESKTOP_ROOM = 0.84
+
+const columnsOf = (viewport: { columns?: number } | undefined, style: Pick<Style, 'monoFace'>) => {
+  const reported = viewport?.columns ?? 100
+  return Math.max(20, (style.monoFace ? Math.floor(reported * DESKTOP_ROOM) : reported) - 4)
+}
 
 const unfolded = atom({ plugin: 'cc-dazzle', key: 'unfolded' } as const, [] as string[])
 const sent = atom({ plugin: 'cc-dazzle', key: 'sent' } as const, [])
@@ -58,7 +65,7 @@ const htmlBackend = async ($: EngineInterface): Promise<ClipboardBackend | null>
   return helper?.kind === 'file' ? 'macos' : null
 }
 
-type Reach = { http: boolean; editor: boolean; marks: boolean; files: boolean; paths: boolean }
+type Reach = { http: boolean; editor: boolean; marks: boolean; mono: boolean; files: boolean; paths: boolean }
 
 type Probes = { htmlCopy?: Promise<ClipboardBackend | null>; reach?: Promise<Reach> }
 
@@ -82,7 +89,7 @@ const readReach = async ($: EngineInterface, style: Style): Promise<Reach> => {
   const http = takesHttpLinks(base)
   if (http) await locate($, style)
   const files = http && !(await overSsh($).catch(() => true))
-  return { http, editor: takesEditorLinks(base), marks: takesClickableMarks(base), files, paths: files && drawsHyperlinks(await terminalEnv($).catch(() => ({}))) }
+  return { http, editor: takesEditorLinks(base), marks: takesClickableMarks(base), mono: takesMonoText(base), files, paths: files && drawsHyperlinks(await terminalEnv($).catch(() => ({}))) }
 }
 
 const reachOf = ($: EngineInterface, probes: Probes, style: Style): Promise<Reach> => (probes.reach ??= readReach($, style))
@@ -164,7 +171,7 @@ const toolTableView = async ($: EngineInterface, e: RenderInput, style: Style, b
   return (
     <Box key={`table-${id ?? caption ?? ''}`} flexDirection="column">
       {caption === undefined ? null : <Text color={style.theme.codeComment} wrap="truncate-end">{caption}</Text>}
-      {drawMarkdown($, el, style, blocks, columnsOf(e.viewport))}
+      {drawMarkdown($, el, style, blocks, columnsOf(e.viewport, style))}
       <Text color={style.theme.codeComment}>{tableFooter(table.rows.length, shown, ms)}</Text>
     </Box>
   )
@@ -266,7 +273,7 @@ export const register: Register = (on, options) => {
   const parseCached = (text: string) => remember(parsed, text, () => parse(text, { numbers: true, paths: true }))
   // In fullscreen Claude Code opens only allowlisted schemes, which obsidian: is not.
   const forSurface = (base: Style, { surface, viewport }: { surface: RenderSurface; viewport?: { isFullscreen?: boolean } }, reach?: Reach): Style => {
-    const drawn = surface === 'terminal' ? (reach?.http || reach?.editor ? { ...base, httpLinks: reach.http, editorLinks: reach.editor, obsidianLinks: reach.editor && viewport?.isFullscreen === false, fileLinks: reach.files, pathLinks: reach.paths } : base) : { ...base, htmlCopy: null, nativeCode: true }
+    const drawn = surface === 'terminal' ? (reach?.http || reach?.editor ? { ...base, httpLinks: reach.http, editorLinks: reach.editor, obsidianLinks: reach.editor && viewport?.isFullscreen === false, fileLinks: reach.files, pathLinks: reach.paths } : base) : { ...base, htmlCopy: null, nativeCode: true, gridFace: surface === 'desktop', monoFace: surface === 'desktop' && reach?.mono === true }
     // Off the terminal, Text is proportional and collapses spaces, so code goes to the app's own Code element.
     // The phone app has no pointer to hover with.
     return surface === 'mobile' && drawn.copyButtonStyle === 'hover' ? { ...drawn, copyButtonStyle: 'inline' } : drawn
@@ -394,7 +401,8 @@ export const register: Register = (on, options) => {
     const el = $.ui.resolve(e)
     const { Box } = el
     const open = await read($, unfolded)
-    return <Box flexDirection="column" rowGap={1}>{drawMarkdown($, el, await linked($, pathChecks, forSurface(style, e, await reachOf($, probes, style)), blocks), blocks, columnsOf(e.viewport), open)}</Box>
+    const drawn = await linked($, pathChecks, forSurface(style, e, await reachOf($, probes, style)), blocks)
+    return <Box flexDirection="column" rowGap={1}>{drawMarkdown($, el, drawn, blocks, columnsOf(e.viewport, drawn), open)}</Box>
   })
 
   on('ui.render', { component: 'UserMessage' }, async ($, e, next) => {
@@ -407,7 +415,7 @@ export const register: Register = (on, options) => {
     const waiting = isQueued(await read($, queued), e.props.text)
     const el = $.ui.resolve(e)
     const drawn = forSurface(style, e, await reachOf($, probes, style))
-    return renderUserPrompt(el, drawn, e.props.text, time, waiting, pasteFrame($, el, drawn, await read($, unfolded), e.requestId, columnsOf(e.viewport)))
+    return renderUserPrompt(el, drawn, e.props.text, time, waiting, pasteFrame($, el, drawn, await read($, unfolded), e.requestId, columnsOf(e.viewport, drawn)))
   })
 
   on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
@@ -417,7 +425,7 @@ export const register: Register = (on, options) => {
     const reach = await reachOf($, probes, style)
     const notes = { id: e.requestId, press: reach.marks }
     const drawStyle = await linked($, pathChecks, forSurface(style, e, reach), parseCached(openText(e.props.text)))
-    const draw = (text: string) => drawMarkdown($, el, drawStyle, parseCached(text), columnsOf(e.viewport), open, notes)
+    const draw = (text: string) => drawMarkdown($, el, drawStyle, parseCached(text), columnsOf(e.viewport, drawStyle), open, notes)
     const reply = (body: RenderElement[]) => (
       <Box flexDirection="row" marginTop={1}>
         <Box width={2} flexShrink={0}>
@@ -432,6 +440,6 @@ export const register: Register = (on, options) => {
     if (stretched !== undefined) return reply(stretched.body)
     const blocks = parseCached(openText(e.props.text))
     if (blocks.length === 0) return next(e)
-    return reply(drawMarkdown($, el, drawStyle, blocks, columnsOf(e.viewport), open, notes))
+    return reply(drawMarkdown($, el, drawStyle, blocks, columnsOf(e.viewport, drawStyle), open, notes))
   })
 }

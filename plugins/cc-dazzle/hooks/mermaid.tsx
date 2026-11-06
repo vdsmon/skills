@@ -279,7 +279,7 @@ export const boxArt = ({ Box, Text }: ElementTable, style: Style, art: string, k
           parts.push(<Text key={`t${parts.length}`} color={hue} {...mark}>{chars.slice(at, end).join('')}</Text>)
           at = end
         }
-        return <Text key={`${key}.${i}`}>{parts.length ? parts : ' '}</Text>
+        return <Text key={`${key}.${i}`} {...(style.monoFace ? { mono: true as const } : {})}>{parts.length ? parts : ' '}</Text>
       })}
     </Box>
   )

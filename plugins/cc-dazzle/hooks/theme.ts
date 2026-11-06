@@ -38,6 +38,9 @@ export type Style = {
   inside?: 'quote' | 'alert'
   copyButtonStyle?: 'inline' | 'hover'
   nativeCode?: boolean
+  // The desktop app: proportional text, so lines are thin boxes and art takes the mono face where it can.
+  gridFace?: boolean
+  monoFace?: boolean
   httpLinks?: boolean
   editorLinks?: boolean
   fileLinks?: boolean
