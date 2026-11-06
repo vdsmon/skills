@@ -4,7 +4,7 @@ import { tableHtml, tableText } from './html'
 import { drawable } from './links'
 import type { Block, Inline } from './markdown'
 import { displayText, inlineText } from './markdown'
-import { graphemes, hasLink, longestWord, mostLines, remember, sliceInline, width, wrapInline, wrapRanges } from './text'
+import { graphemes, hasLink, longestWord, mostLines, remember, sliceInline, widestLine, width, wrapInline, wrapRanges } from './text'
 import type { Style, Theme } from './theme'
 import { ALERT_COLOR } from './theme'
 import type { PrismToken } from './vendor/prism.js'
@@ -12,6 +12,9 @@ import { languages, tokenize } from './vendor/prism.js'
 
 const noteHover = (style: Style, note: number | undefined) =>
   note === undefined || style.noteKey === undefined ? {} : { hover: { scope: `fn:${style.noteKey}:${note}`, inverse: true } }
+
+const tintLook = (tint: string | undefined): { italic?: true; color?: string; dimColor?: true } =>
+  tint === 'italic' ? { italic: true } : tint && tint !== 'dim' ? { color: tint } : { dimColor: true }
 
 const renderInline = (el: ElementTable, style: Style, nodes: Inline[], keyBase: string): RenderElement[] => {
   const { Text } = el
@@ -38,7 +41,7 @@ const renderInline = (el: ElementTable, style: Style, nodes: Inline[], keyBase: 
       case 'path':
         return <Text key={key} color={t.path}>{n.href === undefined ? n.text : <el.Link href={n.href} label={n.text} />}</Text>
       case 'dim':
-        return <Text key={key} dimColor>{n.text}</Text>
+        return <Text key={key} {...tintLook(n.tint)}>{n.text}</Text>
       case 'footnote':
         return <Text key={key} color={t.accent} {...noteHover(style, n.note)}>{n.text}</Text>
     }
@@ -252,12 +255,13 @@ export const columnWidths = (natural: number[], available: number, gap: number, 
 
 const ART_WIDTH = 100
 
-const textRows = (text: string, w: number): number => (width(text) <= w ? 1 : mostLines(text, Math.max(1, w)))
+const textRows = (text: string, w: number): number =>
+  text.split('\n').reduce((sum, line) => sum + (width(line) <= w ? 1 : mostLines(line, Math.max(1, w))), 0)
 
 const heightOf = (blocks: Block[], w: number): number => blocks.reduce((sum, block, b) => sum + (b ? 1 : 0) + blockHeight(block, w), 0)
 
 const tableSize = (block: Extract<Block, { kind: 'table' }>) => ({
-  natural: block.header.map((h, c) => Math.max(width(displayText(h)), ...block.rows.map(r => width(displayText(r[c] ?? []))))),
+  natural: block.header.map((h, c) => Math.max(widestLine(displayText(h)), ...block.rows.map(r => widestLine(displayText(r[c] ?? []))))),
   words: block.header.map((h, c) => Math.max(longestWord(displayText(h)), ...block.rows.map(r => longestWord(displayText(r[c] ?? []))))),
 })
 
@@ -309,7 +313,7 @@ const headerRuns = (nodes: Inline[]): Inline[] =>
 export const tableArt = (block: Extract<Block, { kind: 'table' }>): string => {
   const cells = [block.header, ...block.rows].map(r => block.header.map((_, c) => displayText(r[c] ?? [])))
   const widths = columnWidths(
-    block.header.map((_, c) => Math.max(...cells.map(r => width(r[c]!)))),
+    block.header.map((_, c) => Math.max(...cells.map(r => widestLine(r[c]!)))),
     ART_WIDTH - 4,
     3,
     block.header.map((_, c) => Math.max(...cells.map(r => longestWord(r[c]!)))),
@@ -368,7 +372,7 @@ const renderTable = (el: ElementTable, style: Style, block: Extract<Block, { kin
     if (!isHeader && cells.some(hasLink)) return [row(cells, k, isHeader, clipped(Math.max(1, ...widths.map((w, c) => mostLines(displayText(cells[c] ?? []), w)))))]
     const wrapped = widths.map((w, c) => {
       const content = cells[c] ?? []
-      if (natural[c]! <= w) return [content]
+      if (natural[c]! <= w && !inlineText(content).includes('\n')) return [content]
       return wrapInline(isHeader ? headerRuns(content) : content, w)
     })
     return Array.from({ length: Math.max(...wrapped.map(l => l.length)) }, (_, i) =>

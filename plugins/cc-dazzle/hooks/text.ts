@@ -13,7 +13,11 @@ export const width = (s: string): number =>
   : s.length === 1 ? (/\p{M}/u.test(s) ? 0 : WIDE.test(s) ? 2 : 1)
   : graphemes(s).reduce((w, g) => (/^\p{M}+$/u.test(g) ? w : w + (WIDE.test(g) ? 2 : 1)), 0)
 
+export const widestLine = (text: string): number => Math.max(...text.split('\n').map(width))
+
 export const wrapRanges = (text: string, w: number): [number, number][] => {
+  const br = text.indexOf('\n')
+  if (br >= 0) return [...wrapRanges(text.slice(0, br), w), ...wrapRanges(text.slice(br + 1), w).map(([a, b]): [number, number] => [a + br + 1, b + br + 1])]
   if (width(text) <= w) return [[0, text.length]]
   const out: [number, number][] = []
   let line: [number, number] | undefined
@@ -76,7 +80,7 @@ export const mostLines = (text: string, w: number): number => (text.match(/\S+/g
 
 export const wrapInline = (nodes: Inline[], w: number): Inline[][] => {
   const text = inlineText(nodes)
-  return width(text) <= w ? [nodes] : wrapRanges(text, w).map(([a, b]) => sliceInline(nodes, a, b))
+  return width(text) <= w && !text.includes('\n') ? [nodes] : wrapRanges(text, w).map(([a, b]) => sliceInline(nodes, a, b))
 }
 
 export const longestWord = (text: string): number => Math.max(0, ...text.split(/\s+/).map(width))
