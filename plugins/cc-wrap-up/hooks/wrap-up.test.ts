@@ -35,10 +35,20 @@ function world(on: On) {
     sends: [] as { to: string; text: string }[],
     isCopyRefused: false,
     isCompactSkipped: false,
+    isRunRefused: false,
     registered: [] as { name: string; isDeferred: unknown }[],
     order: [] as string[],
     slash: [] as string[],
+    aborts: [] as string[],
   }
+  on('turn.abort', async (_$, e) => {
+    seen.aborts.push(e.turnId)
+    return { value: undefined }
+  })
+  // biome-ignore lint/correctness/useYield: the engine's stand-in answers without chunks
+  on('turn.step', async function* (_$, e) {
+    return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn' as const }
+  })
   on('session.start', async (_$, e) => ({ cwd: e.cwd }))
   on('session.end', async (_$, e) => ({ sessionId: e.sessionId }))
   on('command.register', async (_$, e) => {
@@ -91,6 +101,7 @@ function world(on: On) {
   on('command.run', async (_$, e) => {
     seen.ran.push({ command: e.command, args: e.args })
     seen.order.push(`run ${e.command}`)
+    if (seen.isRunRefused) throw new Error('a turn is running')
     return { text: '' }
   })
   on('prompt.fill', async (_$, e) => {
@@ -123,7 +134,7 @@ async function turn(
   $: Engine,
   seen: ReturnType<typeof world>,
   tokens: number | undefined,
-  opts: { commit?: 'ok' | 'fail'; agentId?: string; reason?: 'answer' | 'aborted' } = {},
+  opts: { commit?: 'ok' | 'fail'; agentId?: string; reason?: 'answer' | 'aborted'; turnId?: string } = {},
 ) {
   seen.tokens = tokens
   if (opts.commit) {
@@ -136,10 +147,31 @@ async function turn(
     answer: '',
     durationMs: 1,
     isAborted: reason === 'aborted',
-    turnId: `turn_${toolUses}`,
+    turnId: opts.turnId ?? `turn_${toolUses}`,
     agentId: opts.agentId,
     reason,
   })
+}
+
+const LIVE = 'turn_live'
+
+// One model request inside the running main-thread turn, with the context at `tokens`.
+async function step($: Engine, seen: ReturnType<typeof world>, tokens: number | undefined, agentId?: string) {
+  seen.tokens = tokens
+  let isDone = false
+  const done = (async () => {
+    for await (const _ of $.turn.step({ turnId: LIVE, index: 1, model: 'claude-opus-5-5', messageCount: 3, agentId }));
+    isDone = true
+  })()
+  // The mod holds the request until its abort timer has run.
+  for (let i = 0; i < 100 && !isDone; i++) await clock.settle()
+  await done
+}
+
+// The turn the mod stopped ends, and the prep it starts from a timer runs.
+async function stopped($: Engine, seen: ReturnType<typeof world>, tokens: number) {
+  await turn($, seen, tokens, { reason: 'aborted', turnId: LIVE })
+  await clock.settle()
 }
 
 async function press(ui: Awaited<ReturnType<typeof band>>, key: string) {
@@ -659,13 +691,163 @@ test('a skipped /compact sends no follow-up and keeps the band', async ($, on) =
   expect(await buttons(ui)).toEqual(['compact-now', 'edit', 'not-now'])
 })
 
-test('an auto compaction passes unchanged and sends nothing', async ($, on) => {
+test('an auto compaction gets the pending message and sends nothing', async ($, on) => {
   const seen = world(on)
   await start($)
+  const ui = await band($)
   await ready($, COMPACT)
   await $.session.compact({ trigger: 'auto', messages: KEPT })
-  expect(seen.compactions).toEqual([{ trigger: 'auto', instructions: undefined }])
+  expect(seen.compactions).toEqual([{ trigger: 'auto', instructions: COMPACT.message }])
   expect(seen.submits).toEqual([])
+  expect(await buttons(ui)).toEqual([])
+})
+
+test('an auto compaction with nothing pending passes unchanged', async ($, on) => {
+  const seen = world(on)
+  await start($)
+  await $.session.compact({ trigger: 'auto', messages: KEPT })
+  expect(seen.compactions).toEqual([{ trigger: 'auto', instructions: undefined }])
+})
+
+test('past the auto line inside a turn, the turn stops and better-compact runs unattended, then compacts', async ($, on) => {
+  const seen = world(on)
+  await start($)
+  const ui = await band($)
+  await step($, seen, 899_000)
+  expect(seen.aborts).toEqual([])
+  await step($, seen, 905_000)
+  expect(seen.aborts).toEqual([LIVE])
+  expect(seen.ran).toEqual([])
+  await stopped($, seen, 905_000)
+  expect(seen.toasts.join('\n')).toContain('Stopped the turn to run better-compact')
+  expect(seen.ran).toEqual([{ command: 'better-compact:better-compact', args: '--unattended' }])
+  expect(await lineText(ui)).toContain('Preparing to compact')
+  await ready($, { ...COMPACT, now: true })
+  await turn($, seen, 930_000)
+  await clock.settle()
+  expect(seen.compactions.map(c => c.instructions)).toEqual([COMPACT.message])
+  expect(seen.submits).toEqual([{ text: COMPACT.followUp, asUser: true }])
+  // A compaction that leaves the context over the line does not stop the next turn;
+  // the next crossing from under it does.
+  await step($, seen, 906_000)
+  expect(seen.aborts).toEqual([LIVE])
+  await step($, seen, 100_000)
+  await step($, seen, 906_000)
+  expect(seen.aborts).toEqual([LIVE, LIVE])
+})
+
+test('the automatic wrap-up leaves subagents, a session with no size yet, a pending prep and an off session alone', async ($, on) => {
+  const seen = world(on)
+  await start($)
+  await step($, seen, 950_000, 'agent_1')
+  await step($, seen, undefined)
+  await ready($, COMPACT)
+  await step($, seen, 950_000)
+  await press(await band($), 'not-now')
+  await typed($, 'wrap-up', 'off')
+  await step($, seen, 950_000)
+  expect(seen.aborts).toEqual([])
+  await typed($, 'wrap-up', 'on')
+  await step($, seen, 950_000)
+  expect(seen.aborts).toEqual([LIVE])
+})
+
+test('a non-interactive session never stops a turn', async ($, on) => {
+  const seen = world(on)
+  await start($, false)
+  await step($, seen, 950_000)
+  expect(seen.aborts).toEqual([])
+})
+
+test('without better-compact installed, no turn is stopped', async ($, on) => {
+  const seen = world(on)
+  seen.commands = ['compact', 'clear']
+  await start($)
+  await step($, seen, 950_000)
+  expect(seen.aborts).toEqual([])
+})
+
+test('autoTokens moves the auto line, and 0 turns it off', { options: { autoTokens: 50_000 } }, async ($, on) => {
+  const seen = world(on)
+  await start($)
+  await step($, seen, 49_000)
+  expect(seen.aborts).toEqual([])
+  await step($, seen, 51_000)
+  expect(seen.aborts).toEqual([LIVE])
+})
+
+test('autoTokens 0 never stops a turn', { options: { autoTokens: 0 } }, async ($, on) => {
+  const seen = world(on)
+  await start($)
+  await step($, seen, 990_000)
+  expect(seen.aborts).toEqual([])
+})
+
+test('an automatic prep that hands nothing over sends the task on, and is not tried again', async ($, on) => {
+  const seen = world(on)
+  await start($)
+  await step($, seen, 905_000)
+  await stopped($, seen, 905_000)
+  await turn($, seen, 910_000)
+  expect(seen.toasts.join('\n')).toContain('use the printed blocks')
+  expect(seen.submits.length).toBe(1)
+  expect(seen.submits[0]?.text).toContain('Carry on with the task')
+  expect(seen.submits[0]?.asUser).toBeUndefined()
+  await step($, seen, 915_000)
+  expect(seen.aborts).toEqual([LIVE])
+})
+
+test('an automatic prep that does not start sends the task on', async ($, on) => {
+  const seen = world(on)
+  seen.isRunRefused = true
+  await start($)
+  await step($, seen, 905_000)
+  await stopped($, seen, 905_000)
+  expect(seen.toasts.join('\n')).toContain('did not start')
+  expect(seen.submits.map(s => s.text)).toEqual([expect.stringContaining('Carry on with the task')])
+})
+
+test('an automatic wrap-up whose compaction is skipped sends the task on, and a later auto-compaction gets the message', async ($, on) => {
+  const seen = world(on)
+  seen.isCompactSkipped = true
+  await start($)
+  await step($, seen, 905_000)
+  await stopped($, seen, 905_000)
+  await ready($, { ...COMPACT, now: true })
+  await turn($, seen, 930_000)
+  await clock.settle()
+  expect(seen.toasts.join('\n')).toContain('a hook said no')
+  expect(seen.submits.map(s => s.text)).toEqual([expect.stringContaining('Carry on with the task')])
+  await step($, seen, 940_000)
+  expect(seen.aborts).toEqual([LIVE])
+  seen.isCompactSkipped = false
+  await $.session.compact({ trigger: 'auto', messages: KEPT })
+  expect(seen.compactions.at(-1)).toEqual({ trigger: 'auto', instructions: COMPACT.message })
+})
+
+test('an automatic prep the user interrupts sends nothing', async ($, on) => {
+  const seen = world(on)
+  await start($)
+  await step($, seen, 905_000)
+  await stopped($, seen, 905_000)
+  await turn($, seen, 910_000, { reason: 'aborted' })
+  expect(seen.submits).toEqual([])
+})
+
+test('an automatic prep that ends on a question notifies and waits for a press', async ($, on) => {
+  const seen = world(on)
+  await start($)
+  const ui = await band($)
+  await step($, seen, 905_000)
+  await stopped($, seen, 905_000)
+  await ready($, { ...COMPACT, openQuestion: true })
+  await turn($, seen, 910_000)
+  await clock.settle()
+  expect(seen.notified).toBe(1)
+  expect(seen.compactions).toEqual([])
+  expect(await buttons(ui)).toEqual(['compact-now', 'edit', 'not-now'])
+  await step($, seen, 915_000)
+  expect(seen.aborts).toEqual([LIVE])
 })
 
 test('a precompute is skipped while a prep result is pending, and runs otherwise', async ($, on) => {
