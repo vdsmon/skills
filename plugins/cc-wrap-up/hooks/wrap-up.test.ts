@@ -35,6 +35,7 @@ function world(on: On) {
     sends: [] as { to: string; text: string }[],
     isCopyRefused: false,
     isCompactSkipped: false,
+    isRunRefused: false,
     registered: [] as { name: string; isDeferred: unknown }[],
     order: [] as string[],
     slash: [] as string[],
@@ -100,6 +101,7 @@ function world(on: On) {
   on('command.run', async (_$, e) => {
     seen.ran.push({ command: e.command, args: e.args })
     seen.order.push(`run ${e.command}`)
+    if (seen.isRunRefused) throw new Error('a turn is running')
     return { text: '' }
   })
   on('prompt.fill', async (_$, e) => {
@@ -793,6 +795,34 @@ test('an automatic prep that hands nothing over sends the task on, and is not tr
   expect(seen.submits[0]?.asUser).toBeUndefined()
   await step($, seen, 915_000)
   expect(seen.aborts).toEqual([LIVE])
+})
+
+test('an automatic prep that does not start sends the task on', async ($, on) => {
+  const seen = world(on)
+  seen.isRunRefused = true
+  await start($)
+  await step($, seen, 905_000)
+  await stopped($, seen, 905_000)
+  expect(seen.toasts.join('\n')).toContain('did not start')
+  expect(seen.submits.map(s => s.text)).toEqual([expect.stringContaining('Carry on with the task')])
+})
+
+test('an automatic wrap-up whose compaction is skipped sends the task on, and a later auto-compaction gets the message', async ($, on) => {
+  const seen = world(on)
+  seen.isCompactSkipped = true
+  await start($)
+  await step($, seen, 905_000)
+  await stopped($, seen, 905_000)
+  await ready($, { ...COMPACT, now: true })
+  await turn($, seen, 930_000)
+  await clock.settle()
+  expect(seen.toasts.join('\n')).toContain('a hook said no')
+  expect(seen.submits.map(s => s.text)).toEqual([expect.stringContaining('Carry on with the task')])
+  await step($, seen, 940_000)
+  expect(seen.aborts).toEqual([LIVE])
+  seen.isCompactSkipped = false
+  await $.session.compact({ trigger: 'auto', messages: KEPT })
+  expect(seen.compactions.at(-1)).toEqual({ trigger: 'auto', instructions: COMPACT.message })
 })
 
 test('an automatic prep the user interrupts sends nothing', async ($, on) => {

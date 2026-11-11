@@ -26,7 +26,7 @@ Raw input: `$ARGUMENTS`
 
 - `$ARGUMENTS` contains `--message-only` (or `-m`, `message only`, `just the message`, `skip audit`) -> **message-only mode**: skip steps 1-2, jump straight to step 3. Still run `scripts/baseline.sh` (or the two git commands it wraps) so the message can cite branch + recent commits accurately, but no audit summary, no saves.
 - `$ARGUMENTS` contains `--propose` (or `-p`, `propose only`, `don't act`, `just list`) -> **propose mode**: step 2 lists the save-actions under **Action needed** instead of doing them, then the message, handed over without `now`. Do nothing until the user answers; on a go-ahead, run the approved saves, re-run the baseline, hand over again.
-- `$ARGUMENTS` contains `--unattended` -> **unattended mode**: nobody is at the keyboard. cc-wrap-up stopped a running turn because auto-compaction is near, and it runs with or without this audit. Full mode, with three changes: never ask (list what **Ask first** holds back under **Held back**, with no question, and name each item in the compact message); hand over with `now: true` and no `openQuestion`, even where you would advise against compacting; the follow-up resumes the stopped task at the step it was on.
+- `$ARGUMENTS` contains `--unattended` -> **unattended mode**: nobody is at the keyboard. cc-wrap-up stopped a running turn because auto-compaction is near, and it runs with or without this audit. Full mode, with these changes: run `git status --short` and `git log -5 --oneline` in place of the script, which may wait on an approval; never ask (list what **Ask first** holds back under **Held back**, with no question, and name each item in the compact message); hand over with `now: true` and no `openQuestion`, even where you would advise against compacting; the follow-up names the step the stopped task was on and says to carry the task through to its end, because nobody will send a second prompt.
 - Otherwise -> **full mode**: all three steps in order, saves carried out.
 
 Also honour natural language overrides mid-conversation: "skip audit, just give me the message" -> message-only without re-running; "don't do anything, just list it" before the saves ran -> propose.
@@ -101,7 +101,7 @@ Commits:
 - paid, long-running or background jobs;
 - stopping something still doing work (a build, a test run, a long or paid job).
 
-Ask once: one question batching every held-back item, recommended choice first for each. Do everything else in the meantime; the saves never wait on the answer. On a yes, act, re-run the baseline, hand over again (step 3).
+Unattended mode: hold these back and do not ask. Otherwise ask once: one question batching every held-back item, recommended choice first for each. Do everything else in the meantime; the saves never wait on the answer. On a yes, act, re-run the baseline, hand over again (step 3).
 
 After the saves, re-run `scripts/baseline.sh` so the compact message cites the state after them: new commit hashes, updated paths.
 
@@ -116,7 +116,7 @@ The summarizer that `/compact` runs reads the whole conversation; the message on
 
 Hand over:
 
-- If a tool named `mcp__cc-wrap-up__ready` is listed (load it first if it is deferred), call it with `kind: compact`, the message without the `/compact ` prefix as `message`, the follow-up as `followUp`, `openQuestion: true` when **Needs your yes** holds a question, and `now: true` unless a question is held back, propose mode waits for a go-ahead, or you advise against compacting (see Notes). With `now`, the mod compacts as soon as your turn ends, then sends the follow-up: print what the tool result asks and end the turn. Without `now`, it offers the user a band; print the blocks.
+- If a tool named `mcp__cc-wrap-up__ready` is listed (load it first if it is deferred), call it with `kind: compact`, the message without the `/compact ` prefix as `message`, the follow-up as `followUp`, `openQuestion: true` when **Needs your yes** holds a question, and `now: true` unless a question is held back, propose mode waits for a go-ahead, or you advise against compacting (see Notes). Unattended mode: always `now: true`, never `openQuestion`. With `now`, the mod compacts as soon as your turn ends, then sends the follow-up: print what the tool result asks and end the turn. Without `now`, it offers the user a band; print the blocks.
 - Without the tool, or when it refuses: print the two blocks below. Tell the user to send the compact block, then paste the follow-up at once so it queues and fires when compaction finishes.
 - After a yes to a held-back item: act, re-run the baseline, hand over again (with `now: true` once nothing waits).
 
@@ -154,4 +154,4 @@ Saved `4e1a9c2` wip(limiter): jittered backoff, regression test pending; summari
 ## Notes
 
 - Compact message is *yours*, so don't parrot user in-session. They compact because they trust you preserve what matters.
-- State genuinely chaotic (many unfinished threads, half-implementations): say so, recommend *against* compacting until sorted, even in message-only mode, and hand over without `now`. Save what's clearly real work anyway. Losing one session context cheap; losing track of in-flight work not.
+- State genuinely chaotic (many unfinished threads, half-implementations): say so, recommend *against* compacting until sorted, even in message-only mode, and hand over without `now` (unattended mode: say so in the compact message and hand over with `now`; auto-compaction would run anyway). Save what's clearly real work anyway. Losing one session context cheap; losing track of in-flight work not.

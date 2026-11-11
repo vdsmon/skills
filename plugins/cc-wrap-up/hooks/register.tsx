@@ -36,7 +36,7 @@ let stoppedTurn: string | null = null
 
 // Tells better-compact that nobody will answer, so that it never waits on a question.
 const UNATTENDED = '--unattended'
-const CARRY_ON = `${SKILL.compact} ran before auto-compaction and handed nothing over. Carry on with the task you were on before it.`
+const CARRY_ON = `${SKILL.compact} ran before auto-compaction, but no compaction followed. Carry on with the task you were on before it.`
 
 const BUSY: readonly Phase[] = ['prepping', 'ready-compact', 'ready-handoff']
 const COMMIT = /\bgit\b[^\n;&|]*\bcommit\b/
@@ -154,6 +154,15 @@ async function findPrep($: EngineInterface, kind: PrepKind) {
   }
 }
 
+/**
+ * An automatic wrap-up that ends with no compaction: nobody is there to pick the
+ * stopped task up again, so one prompt sends it on.
+ */
+async function carryOn($: EngineInterface) {
+  await update($, wrap, (w): Wrap => (w.auto === 'running' ? { ...w, auto: 'spent' } : w))
+  void $.prompt.submit({ text: CARRY_ON })
+}
+
 async function startPrep($: EngineInterface, kind: PrepKind, args?: string) {
   const command = await findPrep($, kind)
   if (command === null) {
@@ -165,22 +174,27 @@ async function startPrep($: EngineInterface, kind: PrepKind, args?: string) {
   try {
     await $.command.run(args === undefined ? { command } : { command, args })
   } catch (err) {
+    const isAuto = (await read($, wrap)).auto === 'running'
     await update($, wrap, dismissed)
     await $.ui.toast(`${SKILL[kind]} did not start: ${String(err)}`)
+    if (isAuto) await carryOn($)
   }
 }
 
 /** Compacts with the message, then sends the follow-up as the user's next prompt. */
 async function compactNow($: EngineInterface, message: string | undefined, followUp: string | undefined) {
+  const isAuto = (await read($, wrap)).auto === 'running'
   let r: Awaited<ReturnType<EngineInterface['session']['compact']>>
   try {
     r = await $.session.compact(message === undefined ? {} : { instructions: message })
   } catch (err) {
     await $.ui.toast(`Compaction did not run: ${String(err)}`)
+    if (isAuto) await carryOn($)
     return
   }
   if (r.skip !== undefined) {
     await $.ui.toast(`Compaction skipped: ${r.skip}`)
+    if (isAuto) await carryOn($)
     return
   }
   // The mod's own compaction never reaches its own session.compact hook.
@@ -251,7 +265,8 @@ const TOOL_SPEC = {
       followUp: { type: 'string', description: 'Required for compact: the follow-up, the next action sent as a prompt after compaction' },
       now: {
         type: 'boolean',
-        description: 'Compact only: true to compact as soon as this turn ends, with no press; leave it out when a question is held back or you advise against compacting',
+        description:
+          'Compact only: true to compact as soon as this turn ends, with no press; leave it out when a question is held back or you advise against compacting, except in unattended mode, where it is always true',
       },
       resumePrompt: { type: 'string', description: 'Required for handoff: the resume prompt, the first message for the next session' },
       handoffPath: { type: 'string', description: 'Required for handoff: the absolute path of HANDOFF.md' },
@@ -304,8 +319,9 @@ async function autoWrap($: EngineInterface, turnId: string) {
   if ((await findPrep($, 'compact')) === null) return
   await update($, wrap, (cur): Wrap => ({ ...cur, tokens, auto: 'running' }))
   stoppedTurn = turnId
-  // The hook waits for the abort, so the request it holds is never sent. The abort
-  // runs from a timer: a hook cannot stop the turn it is holding (experiment #37).
+  // The hook waits for the abort before it passes its request on. The abort runs from
+  // a timer, and the prep from the stopped turn's end: after a hook aborts the turn it
+  // holds, its later $ calls reject (experiment #37).
   await new Promise<void>(done => {
     $.clock.after(0, () => void $.turn.abort({ turnId }).catch(() => undefined).finally(done))
   })
@@ -327,8 +343,7 @@ async function onTurnEnd($: EngineInterface, reason: string) {
     await update($, wrap, cur => (cur.phase === 'prepping' ? dismissed(cur) : cur))
     const skill = SKILL[w.prepKind ?? 'compact']
     await $.ui.toast(`${skill} finished without handing its result to wrap-up; use the printed blocks.`)
-    // Nobody is there to pick the stopped task up again.
-    if (w.auto === 'running' && reason === 'answer') void $.prompt.submit({ text: CARRY_ON })
+    if (w.auto === 'running' && reason === 'answer') await carryOn($)
   } else if (w.auto === 'running') {
     // The automatic prep ended on something only the user can settle.
     await update($, wrap, (cur): Wrap => ({ ...cur, auto: 'spent' }))
@@ -418,8 +433,8 @@ export const register: Register = (on, options) => {
       try {
         if (e.turnId === stoppedTurn) {
           stoppedTurn = null
-          await $.ui.toast(`Stopped the turn to run ${SKILL.compact} before auto-compact runs at ${AUTO_COMPACT_AT}.`)
           soon($, () => startPrep($, 'compact', UNATTENDED))
+          await $.ui.toast(`Stopped the turn to run ${SKILL.compact} before auto-compact runs at ${AUTO_COMPACT_AT}.`)
         } else {
           await onTurnEnd($, e.reason)
         }

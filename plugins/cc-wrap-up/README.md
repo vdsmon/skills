@@ -30,7 +30,7 @@ It never shows during a running turn, in a subagent, or in a `claude -p` run.
 
 A long turn can run past every cue with nobody there, and auto-compaction then runs with no audit. So **from 900k tokens, inside a running turn**, the mod stops the turn before its next model request and runs `/better-compact --unattended`. The skill saves what would be lost, asks nothing, and hands over a message and a follow-up; the mod compacts when the skill's turn ends, and the follow-up resumes the stopped task.
 
-- It happens once per crossing: after it ran, the context must drop under the line before it can run again. If the skill hands nothing over, the mod sends one prompt to carry on with the task, and auto-compaction stays the guard.
+- It happens once per crossing: after it ran, the context must drop under the line before it can run again. If no compaction follows (the skill hands nothing over, or the compaction is refused), the mod sends one prompt to carry on with the task, and auto-compaction stays the guard.
 - It needs `better-compact` installed. It leaves subagents and `claude -p` runs alone.
 - `/wrap-up off` stops it in the session; `autoTokens` 0 turns it off for good.
 - A turn that ends between 900k and 920k still gets the band; the next turn is stopped at its first request.
