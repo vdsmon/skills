@@ -21,6 +21,12 @@ export type Wrap = {
   isOff: boolean
   /** The urgent notification of the current crossing went out. */
   isNotified: boolean
+  /**
+   * The automatic wrap-up of the current crossing of the auto line: `running` from
+   * the stopped turn until its prep ends, `spent` from there, or from a compaction,
+   * until the context is seen under the line.
+   */
+  auto: 'idle' | 'running' | 'spent'
 }
 
 declare module 'claude-code' {

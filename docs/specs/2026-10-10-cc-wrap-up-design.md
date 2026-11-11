@@ -204,4 +204,4 @@ The change ships as one pull request:
 - Merging prep-compact and prep-exit into one skill.
 - Running an audit without a press.
 - A list for picking a peer session; `/wrap-up send <name>` takes a name.
-- Changing what auto-compaction does when it runs with no audit. The urgent cue is the only guard.
+- Changing what auto-compaction does when it runs with no audit. The urgent cue was the only guard until 1.2.0, which stops a running turn at `autoTokens` (900k) and runs better-compact by itself (experiment #37).

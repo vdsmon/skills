@@ -2,7 +2,7 @@
 name: better-compact
 disable-model-invocation: true
 description: A better /compact. Audits in-flight session state, saves what compaction would lose (local commits, state files, notes), then compacts with a focus message and resumes with a follow-up, in one shot when cc-wrap-up is installed.
-argument-hint: "[--message-only | --propose]"
+argument-hint: "[--message-only | --propose | --unattended]"
 allowed-tools:
   - Bash(git status *)
   - Bash(git log *)
@@ -18,7 +18,7 @@ Compaction drops the conversation history and keeps only a summary. Anything not
 
 ## When to use
 
-Use it when the user wants to compact, or asks whether they should. This skill acts (commits, writes files, compacts), so it runs only when the user asks. To save state and stop without compacting, the user runs `/handoff` instead.
+Use it when the user wants to compact, or asks whether they should. This skill acts (commits, writes files, compacts), so it runs only when the user asks, or when cc-wrap-up runs it unattended. To save state and stop without compacting, the user runs `/handoff` instead.
 
 ## Modes
 
@@ -26,6 +26,7 @@ Raw input: `$ARGUMENTS`
 
 - `$ARGUMENTS` contains `--message-only` (or `-m`, `message only`, `just the message`, `skip audit`) -> **message-only mode**: skip steps 1-2, jump straight to step 3. Still run `scripts/baseline.sh` (or the two git commands it wraps) so the message can cite branch + recent commits accurately, but no audit summary, no saves.
 - `$ARGUMENTS` contains `--propose` (or `-p`, `propose only`, `don't act`, `just list`) -> **propose mode**: step 2 lists the save-actions under **Action needed** instead of doing them, then the message, handed over without `now`. Do nothing until the user answers; on a go-ahead, run the approved saves, re-run the baseline, hand over again.
+- `$ARGUMENTS` contains `--unattended` -> **unattended mode**: nobody is at the keyboard. cc-wrap-up stopped a running turn because auto-compaction is near, and it runs with or without this audit. Full mode, with three changes: never ask (list what **Ask first** holds back under **Held back**, with no question, and name each item in the compact message); hand over with `now: true` and no `openQuestion`, even where you would advise against compacting; the follow-up resumes the stopped task at the step it was on.
 - Otherwise -> **full mode**: all three steps in order, saves carried out.
 
 Also honour natural language overrides mid-conversation: "skip audit, just give me the message" -> message-only without re-running; "don't do anything, just list it" before the saves ran -> propose.

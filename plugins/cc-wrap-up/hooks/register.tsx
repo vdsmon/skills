@@ -17,18 +17,26 @@ const IDLE: Wrap = {
   prepKind: null,
   isOff: false,
   isNotified: false,
+  auto: 'idle',
 }
 
 const wrap = atom({ plugin: 'cc-wrap-up', key: 'wrap' } as const, IDLE)
 
 // Set from the plugin's options each time register runs.
-const cfg = { start: 500_000, step: 100_000, urgent: 920_000 }
+const cfg = { start: 500_000, step: 100_000, urgent: 920_000, auto: 900_000 }
 
 // A -p run or an SDK session has nobody to press a button.
 let isInteractive = true
 
 // A commit landed since the last answered main-thread turn.
 let isCommitSeen = false
+
+// The main-thread turn the automatic wrap-up is stopping; its end starts the prep.
+let stoppedTurn: string | null = null
+
+// Tells better-compact that nobody will answer, so that it never waits on a question.
+const UNATTENDED = '--unattended'
+const CARRY_ON = `${SKILL.compact} ran before auto-compaction and handed nothing over. Carry on with the task you were on before it.`
 
 const BUSY: readonly Phase[] = ['prepping', 'ready-compact', 'ready-handoff']
 const COMMIT = /\bgit\b[^\n;&|]*\bcommit\b/
@@ -42,6 +50,12 @@ const formatTokens = (n: number) =>
   n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${Math.round(n / 1000)}k` : String(n)
 
 const lineOf = (w: Wrap) => w.line ?? cfg.start
+
+/** The auto line, where 0 turns the automatic wrap-up off. */
+const autoOf = (value: unknown, fallback: number) => {
+  const n = Number(value)
+  return Number.isFinite(n) && n >= 0 ? n : fallback
+}
 
 /** Whether deciding this turn needs to know if it ended at a seam. */
 function needsSeam(w: Wrap, tokens: number) {
@@ -98,7 +112,9 @@ async function onAnswer($: EngineInterface) {
 
 /** Back to the start: after a compaction, a /clear, or a finished wrap-up. */
 async function reset($: EngineInterface) {
-  await update($, wrap, (w): Wrap => ({ ...IDLE, isOff: w.isOff }))
+  // The automatic wrap-up waits for a size under its line: a compaction that leaves
+  // the context over it would otherwise stop every turn again.
+  await update($, wrap, (w): Wrap => ({ ...IDLE, isOff: w.isOff, auto: 'spent' }))
 }
 
 /** Not now: hide the band and look again one step past the current size. */
@@ -108,6 +124,7 @@ const dismissed = (w: Wrap): Wrap => ({
   payload: null,
   prepKind: null,
   line: w.phase === 'urgent' ? w.line : (w.tokens ?? cfg.start) + cfg.step,
+  auto: w.auto === 'running' ? 'spent' : w.auto,
 })
 
 async function later($: EngineInterface) {
@@ -137,7 +154,7 @@ async function findPrep($: EngineInterface, kind: PrepKind) {
   }
 }
 
-async function startPrep($: EngineInterface, kind: PrepKind) {
+async function startPrep($: EngineInterface, kind: PrepKind, args?: string) {
   const command = await findPrep($, kind)
   if (command === null) {
     if (kind === 'compact') await compactNow($, undefined, undefined)
@@ -146,7 +163,7 @@ async function startPrep($: EngineInterface, kind: PrepKind) {
   // The mod's own command.run never reaches its own hook, so mark the prep here.
   await update($, wrap, (w): Wrap => ({ ...w, phase: 'prepping', prepKind: kind, payload: null }))
   try {
-    await $.command.run({ command })
+    await $.command.run(args === undefined ? { command } : { command, args })
   } catch (err) {
     await update($, wrap, dismissed)
     await $.ui.toast(`${SKILL[kind]} did not start: ${String(err)}`)
@@ -191,7 +208,7 @@ async function copyPrompt($: EngineInterface, text: string, surface: RenderSurfa
   )
 }
 
-const USAGE = `Use /${COMMAND} to open the band, /${COMMAND} off or /${COMMAND} on to pause or resume the cue, or /${COMMAND} send <name> to hand the resume prompt to another session.`
+const USAGE = `Use /${COMMAND} to open the band, /${COMMAND} off or /${COMMAND} on to pause or resume the cue and the automatic wrap-up, or /${COMMAND} send <name> to hand the resume prompt to another session.`
 
 async function runCommand($: EngineInterface, args: string) {
   const [verb = '', ...rest] = args.trim().split(/\s+/)
@@ -209,8 +226,8 @@ async function runCommand($: EngineInterface, args: string) {
       phase: isOff && !BUSY.includes(cur.phase) ? 'idle' : cur.phase,
     }))
     return isOff
-      ? `Wrap-up cue off in this session. /${COMMAND} still opens the band; /${COMMAND} on resumes the cue.`
-      : 'Wrap-up cue on in this session.'
+      ? `Wrap-up cue and automatic wrap-up off in this session. /${COMMAND} still opens the band; /${COMMAND} on resumes them.`
+      : 'Wrap-up cue and automatic wrap-up on in this session.'
   }
   if (verb === 'send') {
     const to = rest.join(' ')
@@ -269,6 +286,31 @@ function payloadOf(e: Record<string, unknown>): Payload | string {
   return 'kind must be compact or handoff'
 }
 
+/**
+ * Past the auto line inside a turn: stops the turn, so that better-compact runs
+ * before auto-compaction does. Once per crossing: after a prep that failed or a
+ * compaction, it waits for a size under the line.
+ */
+async function autoWrap($: EngineInterface, turnId: string) {
+  if (cfg.auto === 0 || stoppedTurn !== null) return
+  const tokens = (await $.session.usage()).context.tokens
+  if (tokens === undefined) return
+  const w = await read($, wrap)
+  if (tokens < cfg.auto) {
+    if (w.auto === 'spent') await update($, wrap, (cur): Wrap => ({ ...cur, auto: 'idle' }))
+    return
+  }
+  if (w.isOff || w.auto === 'running' || w.auto === 'spent' || BUSY.includes(w.phase)) return
+  if ((await findPrep($, 'compact')) === null) return
+  await update($, wrap, (cur): Wrap => ({ ...cur, tokens, auto: 'running' }))
+  stoppedTurn = turnId
+  // The hook waits for the abort, so the request it holds is never sent. The abort
+  // runs from a timer: a hook cannot stop the turn it is holding (experiment #37).
+  await new Promise<void>(done => {
+    $.clock.after(0, () => void $.turn.abort({ turnId }).catch(() => undefined).finally(done))
+  })
+}
+
 async function onTurnEnd($: EngineInterface, reason: string) {
   const w = await read($, wrap)
   if (reason === 'answer' && w.phase === 'ready-compact' && w.payload?.kind === 'compact' && w.payload.now) {
@@ -285,6 +327,12 @@ async function onTurnEnd($: EngineInterface, reason: string) {
     await update($, wrap, cur => (cur.phase === 'prepping' ? dismissed(cur) : cur))
     const skill = SKILL[w.prepKind ?? 'compact']
     await $.ui.toast(`${skill} finished without handing its result to wrap-up; use the printed blocks.`)
+    // Nobody is there to pick the stopped task up again.
+    if (w.auto === 'running' && reason === 'answer') void $.prompt.submit({ text: CARRY_ON })
+  } else if (w.auto === 'running') {
+    // The automatic prep ended on something only the user can settle.
+    await update($, wrap, (cur): Wrap => ({ ...cur, auto: 'spent' }))
+    await $.ui.notify(`${SKILL.compact} stopped the task before auto-compact and now waits for you.`)
   }
   if (reason === 'answer') await onAnswer($)
 }
@@ -293,13 +341,14 @@ export const register: Register = (on, options) => {
   cfg.start = tokensOf(options.startTokens, 500_000)
   cfg.step = tokensOf(options.stepTokens, 100_000)
   cfg.urgent = tokensOf(options.urgentTokens, 920_000)
+  cfg.auto = autoOf(options.autoTokens, 900_000)
 
   on('session.start', async ($, e, next) => {
     isInteractive = e.isInteractive
     await $.tool.register(TOOL_SPEC)
     await $.command.register({
       name: COMMAND,
-      description: 'Opens the wrap-up band to compact or hand off; off or on pauses or resumes the cue; send <name> hands the resume prompt to another session.',
+      description: 'Opens the wrap-up band to compact or hand off; off or on pauses or resumes the cue and the automatic wrap-up; send <name> hands the resume prompt to another session.',
       argumentHint: '[off|on|send <name>]',
     })
     return next(e)
@@ -353,10 +402,27 @@ export const register: Register = (on, options) => {
     return ran
   }).catch(($, e, next) => next(e))
 
+  on('turn.step', async function* ($, e, next) {
+    if (isInteractive && e.agentId === undefined) {
+      try {
+        await autoWrap($, e.turnId)
+      } catch {
+        // Fails open: the turn goes on, and auto-compaction still guards the window.
+      }
+    }
+    return yield* next(e)
+  })
+
   on('turn.complete', async ($, e, next) => {
     if (isInteractive && e.agentId === undefined) {
       try {
-        await onTurnEnd($, e.reason)
+        if (e.turnId === stoppedTurn) {
+          stoppedTurn = null
+          await $.ui.toast(`Stopped the turn to run ${SKILL.compact} before auto-compact runs at ${AUTO_COMPACT_AT}.`)
+          soon($, () => startPrep($, 'compact', UNATTENDED))
+        } else {
+          await onTurnEnd($, e.reason)
+        }
       } catch {
         // Fails silent: a missed cue comes back on the next turn.
       }
@@ -365,8 +431,9 @@ export const register: Register = (on, options) => {
   })
 
   // The user's own /compact (after Edit, or typed): it gets the pending message when
-  // it has none, and the follow-up goes once it stands. The mod's own compaction never
-  // reaches this hook.
+  // it has none, and the follow-up goes once it stands. An auto-compaction gets the
+  // message too, with no follow-up: its turn goes on by itself. The mod's own
+  // compaction never reaches this hook.
   on('session.compact', async ($, e, next) => {
     if (e.agentId !== undefined) return next(e)
     const w = await read($, wrap)
@@ -375,7 +442,8 @@ export const register: Register = (on, options) => {
       // A summary computed now, without the prep's message, could stand in for the real one.
       return w.phase === 'prepping' || pending !== null ? { skip: 'cc-wrap-up: a prep result is pending' } : next(e)
     }
-    const isFilled = e.trigger === 'manual' && pending !== null && (e.instructions ?? '').trim() === ''
+    const isFilled =
+      (e.trigger === 'manual' || e.trigger === 'auto') && pending !== null && (e.instructions ?? '').trim() === ''
     const r = await next(isFilled ? { ...e, instructions: pending.message } : e)
     if (r.skip !== undefined) return r
     await reset($)
