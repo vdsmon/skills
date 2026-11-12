@@ -44,7 +44,7 @@ A watch armed with `keep: true` is a tracker, for something with no end: a Slack
 - The output at arming is the baseline; no model is called then.
 - `everyMinutes` defaults to 2 and can go down to 0.5 (30 seconds). `stuckAfterMinutes` does not apply.
 - A changed output goes to Haiku with the previous output and its own prompt, which judges only what is new: "tell" when the new part is the news the goal asks for, "quiet" for anything else (edits, reactions, noise, or news that was already there).
-- On "tell" the session gets a prompt and the tracker keeps running. Only you stop it, with `/watches stop <name>`.
+- On "tell" the session gets a prompt and the tracker keeps running. Only you stop it: with `/watches stop <name>`, or by telling the model to.
 - After 3 failed checks in a row it wakes the session once and keeps running; it does not wake again for failures until a check succeeds. After 3 failed judgments it hands the output over once and moves on.
 
 ## MCP checks need an allow rule
