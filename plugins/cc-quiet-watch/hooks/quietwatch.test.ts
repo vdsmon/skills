@@ -260,3 +260,15 @@ test('a tracker judges only what is new: news already there does not wake it aga
   expect(seen.judgePrompts[0]).toContain('Latest output:\n{"status":"NEWS one, reacted"')
   expect(seen.prompts.length).toBe(0)
 })
+
+test('a job watch cannot take the name of a running tracker', async ($, on) => {
+  const { clock, seen } = world(on)
+  await start($)
+  await track($)
+  const r = (await arm($, { name: 'thread' })) as { deny: string }
+  expect(r.deny).toContain('A tracker named "thread" is running')
+  expect(seen.checks).toBe(1)
+  seen.status = 'NEWS one'
+  await clock.advance(2 * MIN)
+  expect(seen.prompts.length).toBe(1)
+})

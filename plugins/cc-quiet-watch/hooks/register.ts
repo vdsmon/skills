@@ -16,7 +16,8 @@ const TRACK_SYSTEM =
   'You judge a tracked source (a thread, a channel, a pull request, a page) from its previous and latest output. Judge only what is new in the latest output compared with the previous one. Reply with JSON only, no prose: ' +
   '{"status": "quiet" | "tell", "line": "<one short line a person reads at a glance: who, what>"}. ' +
   '"tell": the new part is something the goal says the user wants to hear about. ' +
-  '"quiet": anything else (edits, reactions, noise, or the goal\'s kind of content that was already in the previous output).'
+  '"quiet": anything else (edits, reactions, noise, or the goal\'s kind of content that was already in the previous output). ' +
+  'Also "tell" when the latest output is an error from the check itself (authentication, network, not found) where the previous output was content, so the user learns the tracker cannot see.'
 
 // One timer per watch, rebuilt from $.store on every session start or reload.
 const timers = new Map<string, Timer>()
@@ -132,10 +133,20 @@ async function wake($: EngineInterface, w: Watch, state: string, line: string, o
 }
 
 // A tracker goes on after telling; `after` records what was told. Not sent:
-// leave the tracker as it was, so the next check tells it again.
-async function tell($: EngineInterface, w: Watch, now: number, state: string, line: string, output: string, after: (x: Watch) => Watch) {
+// keep the hash and counts as they were, so the next check tells it again,
+// except what `unsent` resets.
+async function tell(
+  $: EngineInterface,
+  w: Watch,
+  now: number,
+  state: string,
+  line: string,
+  output: string,
+  after: (x: Watch) => Watch,
+  unsent?: (x: Watch) => Watch,
+) {
   const sent = await send($, w, state, line, output)
-  await reschedule($, w.name, now, sent ? after : undefined)
+  await reschedule($, w.name, now, sent ? after : unsent)
 }
 
 function schedule($: EngineInterface, w: Watch, now: number) {
@@ -172,13 +183,15 @@ async function check($: EngineInterface, name: string) {
   }
   const verdict = await judge($, w, out.text)
   const told = (x: Watch) => ({ ...x, errors: 0, judgeErrors: 0, lastHash: hash, lastChangeAt: now, line: verdict?.line ?? x.line, prev: out.text })
+  // The check itself succeeded, so a failed send still ends a run of failed checks.
+  const checked = (x: Watch) => ({ ...x, errors: 0 })
   // No verdict: keep the old hash, so the next check judges this output again,
   // and hand the output to Opus once the judge failed too often.
   if (!verdict && w.judgeErrors + 1 >= MAX_ERRORS) {
     const [state, line] = ['changed, but could not be judged', `the small model failed ${MAX_ERRORS} times; read the output below`]
-    return w.keep ? tell($, w, now, state, line, out.text, told) : wake($, w, state, line, out.text)
+    return w.keep ? tell($, w, now, state, line, out.text, told, checked) : wake($, w, state, line, out.text)
   }
-  if (w.keep && verdict?.status === 'tell') return tell($, w, now, 'has news', verdict.line, out.text, told)
+  if (w.keep && verdict?.status === 'tell') return tell($, w, now, 'has news', verdict.line, out.text, told, checked)
   if (!w.keep && verdict && verdict.status !== 'running') {
     return wake($, w, verdict.status === 'needs_you' ? 'waiting for you' : verdict.status, verdict.line, out.text)
   }
@@ -217,6 +230,9 @@ async function arm($: EngineInterface, input: ArmInput): Promise<{ result: strin
         : null
   if (!probe) return { deny: 'Give a check: either server + mcpTool (+ args) for an MCP read tool, or command as an argv array.' }
   const watches = await load($)
+  if (!keep && watches.some(w => w.name === name && w.keep)) {
+    return { deny: `A tracker named "${name}" is running, and only the user stops it. Use another name.` }
+  }
   if (!watches.some(w => w.name === name) && watches.length >= MAX_WATCHES) {
     return { deny: `This session already has ${MAX_WATCHES} watches. Stop one first (unwatch).` }
   }

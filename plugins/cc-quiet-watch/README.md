@@ -46,6 +46,9 @@ A watch armed with `keep: true` is a tracker, for something with no end: a Slack
 - A changed output goes to Haiku with the previous output and its own prompt, which judges only what is new: "tell" when the new part is the news the goal asks for, "quiet" for anything else (edits, reactions, noise, or news that was already there).
 - On "tell" the session gets a prompt and the tracker keeps running. Only you stop it: with `/watches stop <name>`, or by telling the model to.
 - After 3 failed checks in a row it wakes the session once and keeps running; it does not wake again for failures until a check succeeds. After 3 failed judgments it hands the output over once and moves on.
+- A command check that exits non-zero still counts as a check that ran. When its output turns from content into an error (authentication, network, not found), the judge answers "tell", so you learn the tracker cannot see.
+- A change that is only a time of day or a timestamp is not seen, because times are ignored when comparing outputs.
+- Output longer than 6,000 characters is compared by its first and last 3,000.
 
 ## MCP checks need an allow rule
 
