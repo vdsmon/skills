@@ -13,10 +13,10 @@ const JUDGE_SYSTEM =
   '"done": the goal is met. "failed": the goal can no longer be met (the job errored, was aborted, or the goal\'s failure condition holds). ' +
   '"needs_you": the job waits for a human decision or input. Otherwise "running".'
 const TRACK_SYSTEM =
-  'You judge changed output from a tracked source (a thread, a channel, a pull request, a page) against what the user wants to hear about. Reply with JSON only, no prose: ' +
+  'You judge a tracked source (a thread, a channel, a pull request, a page) from its previous and latest output. Judge only what is new in the latest output compared with the previous one. Reply with JSON only, no prose: ' +
   '{"status": "quiet" | "tell", "line": "<one short line a person reads at a glance: who, what>"}. ' +
-  '"tell": the change holds something the goal says the user wants to hear about. ' +
-  '"quiet": anything else (edits, reactions, noise, nothing new that the goal asks for).'
+  '"tell": the new part is something the goal says the user wants to hear about. ' +
+  '"quiet": anything else (edits, reactions, noise, or the goal\'s kind of content that was already in the previous output).'
 
 // One timer per watch, rebuilt from $.store on every session start or reload.
 const timers = new Map<string, Timer>()
@@ -78,14 +78,16 @@ async function runProbe($: EngineInterface, p: Probe): Promise<{ ok: true; text:
   }
 }
 
-async function judge($: EngineInterface, w: Pick<Watch, 'goal' | 'line' | 'keep'>, output: string): Promise<{ status: Status | News; line: string } | null> {
+async function judge($: EngineInterface, w: Pick<Watch, 'goal' | 'line' | 'keep' | 'prev'>, output: string): Promise<{ status: Status | News; line: string } | null> {
   const r = await $.model.complete({
     model: JUDGE_MODEL,
     effort: 'low',
     maxTokens: 1024,
     timeoutMs: 60_000,
     system: w.keep ? TRACK_SYSTEM : JUDGE_SYSTEM,
-    prompt: `Goal: ${w.goal}\nPrevious line: ${w.line || '(none yet)'}\nLatest output:\n${output}`,
+    prompt: w.keep
+      ? `Goal: ${w.goal}\nPrevious output:\n${w.prev ?? '(none)'}\nLatest output:\n${output}`
+      : `Goal: ${w.goal}\nPrevious line: ${w.line || '(none yet)'}\nLatest output:\n${output}`,
   })
   if (!r.isAnswered) return null
   try {
@@ -169,7 +171,7 @@ async function check($: EngineInterface, name: string) {
     return
   }
   const verdict = await judge($, w, out.text)
-  const told = (x: Watch) => ({ ...x, errors: 0, judgeErrors: 0, lastHash: hash, lastChangeAt: now, line: verdict?.line ?? x.line })
+  const told = (x: Watch) => ({ ...x, errors: 0, judgeErrors: 0, lastHash: hash, lastChangeAt: now, line: verdict?.line ?? x.line, prev: out.text })
   // No verdict: keep the old hash, so the next check judges this output again,
   // and hand the output to Opus once the judge failed too often.
   if (!verdict && w.judgeErrors + 1 >= MAX_ERRORS) {
@@ -182,7 +184,7 @@ async function check($: EngineInterface, name: string) {
   }
   const next = await patch($, name, x =>
     verdict
-      ? { ...x, errors: 0, judgeErrors: 0, lastHash: hash, lastChangeAt: now, line: verdict.line, nextAt: now + x.everyMs }
+      ? { ...x, errors: 0, judgeErrors: 0, lastHash: hash, lastChangeAt: now, line: verdict.line, nextAt: now + x.everyMs, ...(x.keep ? { prev: out.text } : {}) }
       : { ...x, errors: 0, judgeErrors: (x.judgeErrors ?? 0) + 1, nextAt: now + x.everyMs },
   )
   if (next) schedule($, next, now)
@@ -249,6 +251,7 @@ async function arm($: EngineInterface, input: ArmInput): Promise<{ result: strin
     createdAt: now,
     nextAt: now + everyMs,
     lastHash: keep || verdict ? hashOf(normalize(out.text)) : '',
+    ...(keep ? { prev: out.text } : {}),
     lastChangeAt: now,
     line: verdict?.line ?? '',
     errors: 0,

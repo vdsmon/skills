@@ -23,6 +23,8 @@ export type Watch = {
   nextAt: number
   /** Hash of the last output a judgment was made on. */
   lastHash: string
+  /** Tracker only: that output as captured, so the judge sees what is new. */
+  prev?: string
   lastChangeAt: number
   line: string
   /** Checks in a row that failed to run. */

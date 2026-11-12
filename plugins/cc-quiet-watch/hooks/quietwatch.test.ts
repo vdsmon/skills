@@ -9,7 +9,7 @@ const MIN = 60_000
 function world(on: On, store: Record<string, unknown> = {}) {
   const clock = mock.clock(on, { now: Date.parse('2026-10-10T12:00:00Z') })
   mock.store(on, store)
-  const seen = { status: 'running 10/500', checks: 0, judged: 0, prompts: [] as string[], refuse: false, broken: false, judgeDown: false }
+  const seen = { status: 'running 10/500', checks: 0, judged: 0, prompts: [] as string[], judgePrompts: [] as string[], refuse: false, broken: false, judgeDown: false }
   on('session.start', async (_$, e) => ({ cwd: e.cwd }))
   on('session.id', async () => ({ value: 's1' }))
   on('tool.register', async (_$, e) => ({ value: { tool: `mcp__cc-quiet-watch__${e.name}` } }) as never)
@@ -22,10 +22,14 @@ function world(on: On, store: Record<string, unknown> = {}) {
   })
   on('model.complete', async (_$, e) => {
     seen.judged += 1
+    seen.judgePrompts.push(String(e.prompt))
     if (seen.judgeDown) return { value: { isAnswered: false, reason: 'api-error', status: 529, error: 'overloaded_error', usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } } as never
     const out = String(e.prompt).split('Latest output:\n')[1] ?? ''
     const tracker = String(e.system).includes('"tell"')
-    const status = tracker ? (out.includes('NEWS') ? 'tell' : 'quiet') : out.includes('DONE') ? 'done' : out.includes('FAIL') ? 'failed' : 'running'
+    // A tracker's judge tells only on a NEWS item the previous output did not hold.
+    const prev = String(e.prompt).split('Previous output:\n')[1]?.split('\nLatest output:\n')[0] ?? ''
+    const fresh = (out.match(/NEWS \w+/g) ?? []).some(m => !prev.includes(m))
+    const status = tracker ? (fresh ? 'tell' : 'quiet') : out.includes('DONE') ? 'done' : out.includes('FAIL') ? 'failed' : 'running'
     const line = out.slice(0, 40)
     return { value: { isAnswered: true, text: JSON.stringify({ status, line }), usage: { input_tokens: 100, output_tokens: 20, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } } as never
   })
@@ -242,4 +246,17 @@ test('a watch saved without keep is a job watch', async ($, on) => {
   expect(seen.prompts[0]).not.toContain('tracker')
   await clock.advance(60 * MIN)
   expect(seen.checks).toBe(1)
+})
+
+test('a tracker judges only what is new: news already there does not wake it again', async ($, on) => {
+  const { clock, seen } = world(on)
+  seen.status = 'NEWS one'
+  await start($)
+  await track($)
+  seen.status = 'NEWS one, reacted'
+  await clock.advance(2 * MIN)
+  expect(seen.judged).toBe(1)
+  expect(seen.judgePrompts[0]).toContain('Previous output:\n{"status":"NEWS one"')
+  expect(seen.judgePrompts[0]).toContain('Latest output:\n{"status":"NEWS one, reacted"')
+  expect(seen.prompts.length).toBe(0)
 })
