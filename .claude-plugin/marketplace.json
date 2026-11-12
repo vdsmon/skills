@@ -30,8 +30,8 @@
     {
       "name": "cc-quiet-watch",
       "source": "./plugins/cc-quiet-watch",
-      "description": "Watches long jobs on a timer and asks Haiku only when the output changed. It wakes the session only when the job is done, failed, stuck or needs you. Claude Code only.",
-      "version": "1.0.0"
+      "description": "Watches long jobs on a timer and asks Haiku only when the output changed. It wakes the session only when the job is done, failed, stuck or needs you. Trackers keep watching a thread or page and wake it each time there is news. Claude Code only.",
+      "version": "1.1.0"
     },
     {
       "name": "better-compact",
