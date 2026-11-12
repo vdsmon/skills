@@ -58,7 +58,7 @@ Frontmatter fields that change behavior:
 - `disable-model-invocation: true`: user-only; it fires only on an explicit `/slash` call (on Codex, `$skill`, enforced by the generated `openai.yaml`).
 - `user-invocable: false`: hidden from the `/` menu (background knowledge only).
 
-Invocation policy: make misfire-prone or token-heavy skills user-only, so they fire only on an explicit call. Keep proactive guardrails (e.g. `brainstorming`) and friction-catchers (e.g. `skill-polish`) model-invocable. An edit or confirm gate inside the skill flow is not a reason to also block auto-fire.
+Invocation policy: make misfire-prone or token-heavy skills user-only, so they fire only on an explicit call. Keep skills that should fire on their own when the moment comes (e.g. `grilling`, `humanize`) model-invocable. An edit or confirm gate inside the skill flow is not a reason to also block auto-fire.
 
 The body is a prompt, not docs: second-person imperative. Keep this file and every SKILL.md concise, because each token is re-cached on every prefix invalidation.
 
@@ -89,8 +89,7 @@ Hooks are cc- only. Rules for any new hook:
 
 These plugins started as copies of other repos. Re-sync them from upstream from time to time: re-apply the local changes, and name the source in the commit body as `synced from <repo>@<sha> (<version>)`, so the next re-sync starts from a clean diff.
 
-- `mattpocock/skills`: grilling, codebase-design, teach.
-- `obra/superpowers`: brainstorming, systematic-debugging.
+- `mattpocock/skills`: grilling.
 - `NahumLitvin/prismantis` and `pro-vi/cc-stretch`: cc-dazzle. Upstream is read, never merged: start from the "Last checked" versions in `docs/upstreams.md`, port fixes and useful or cool features with their upstream tests, leave out only what cannot apply or fights cc-dazzle's fixed look, then record both lists there and move the rows forward. Porting effort, a needed rewrite, or an existing button that does the same job are never reasons to leave a feature out.
 
 ## Shipping a change

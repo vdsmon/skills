@@ -10,27 +10,9 @@
   },
   "plugins": [
     {
-      "name": "slack-draft",
-      "source": "./plugins/slack-draft",
-      "description": "Draft a Slack message for the user to send: Slack mrkdwn, lead-with-conclusion, backticked identifiers and domain values, ASCII punctuation. Defaults to English and a plain high-level register, or pass --tech for a code-reading peer. Draft only, never posts. Portable across SKILL.md-native hosts.",
-      "version": "0.3.4"
-    },
-    {
-      "name": "skill-polish",
-      "source": "./plugins/skill-polish",
-      "description": "Post-mortem for any skill: finds friction in a session, traces it to the responsible skill file, and edits that file's source checkout, not the plugin install copy. Portable across SKILL.md-native hosts.",
-      "version": "1.5.0"
-    },
-    {
       "name": "cc-keepwarm",
       "source": "./plugins/cc-keepwarm",
       "description": "Keeps Claude Code's prompt cache warm in every session with a silent background ping timed from your last request, and skips the ping once the cache is already gone. Claude Code only.",
-      "version": "1.0.0"
-    },
-    {
-      "name": "cc-timeline",
-      "source": "./plugins/cc-timeline",
-      "description": "A side pane that draws each Claude Code turn as a timeline: every tool call is a colored bar on the turn's time axis, with subagent calls under their Agent call. Claude Code only.",
       "version": "1.0.0"
     },
     {
@@ -52,12 +34,6 @@
       "version": "1.0.0"
     },
     {
-      "name": "cc-changes",
-      "source": "./plugins/cc-changes",
-      "description": "A side pane that lists every file the Claude Code session created, edited or deleted, with net line counts, and shows a file's diff when you press it. Claude Code only.",
-      "version": "1.0.0"
-    },
-    {
       "name": "better-compact",
       "source": "./plugins/better-compact",
       "description": "A better /compact: audit the session, save what compaction would lose, then compact with a focus message and resume with a follow-up. Commits real work locally, syncs stale state files and notes chat-only decisions, asking only for risky items; compacts in one shot with cc-wrap-up. Portable across SKILL.md-native hosts.",
@@ -70,28 +46,10 @@
       "version": "1.1.0"
     },
     {
-      "name": "prep-goal",
-      "source": "./plugins/prep-goal",
-      "description": "Interrogate a rough objective into a tight, verifiable /goal completion condition before handing it to an autonomous goal loop. Pins the end-state, a gate whose raw output the loop pastes, a scope fence, the forbidden cheat, and a turn cap. Portable across SKILL.md-native hosts.",
-      "version": "0.4.3"
-    },
-    {
       "name": "humanize",
       "source": "./plugins/humanize",
       "description": "Strip AI-writing tells from text. Detects em-dash overuse, AI vocabulary, inflated significance, rule-of-three, sycophancy, compound coinages, and 20+ more patterns. `--casual` also adds the small inconsistencies real writers have. Outputs only the corrected text and edits files in place. Portable across SKILL.md-native hosts.",
       "version": "1.6.1"
-    },
-    {
-      "name": "brainstorming",
-      "source": "./plugins/brainstorming",
-      "description": "Design-before-code gate that sizes each request as a spike, a bounded change, or architectural work, and gets approval on a design before any code. Only architectural work gets a written spec and a planning handoff. Portable across SKILL.md-native hosts.",
-      "version": "0.2.0"
-    },
-    {
-      "name": "systematic-debugging",
-      "source": "./plugins/systematic-debugging",
-      "description": "Four-phase debugging discipline (root-cause investigation, pattern analysis, hypothesis, single-fix implementation). No fixes before investigation; 3+ failed fixes means stop and question the architecture. For bugs in code you can run. Portable across SKILL.md-native hosts.",
-      "version": "0.2.0"
     },
     {
       "name": "git-cleanup",
@@ -100,28 +58,10 @@
       "version": "0.5.0"
     },
     {
-      "name": "strip-migration-cruft",
-      "source": "./plugins/strip-migration-cruft",
-      "description": "Finds comments and docs that narrate past project history (phase, wave, story, migration notes), sorts cruft from live meaning, and strips the cruft after confirmation. Portable across SKILL.md-native hosts.",
-      "version": "0.3.0"
-    },
-    {
       "name": "grilling",
       "source": "./plugins/grilling",
       "description": "Relentless interview that stress-tests a plan, decision, or idea one round of questions at a time, until you and the agent agree. Bundles grilling, grill-with-docs (grill and write docs as you go), and domain-modeling (sharpen project terms in GLOSSARY.md). Portable across SKILL.md-native hosts.",
       "version": "0.4.0"
-    },
-    {
-      "name": "teach",
-      "source": "./plugins/teach",
-      "description": "Stateful, multi-session teaching workspace that turns a topic into short HTML lessons built for long-term retention. Grounds each lesson in a MISSION.md and trusted RESOURCES.md, and tracks progress in learning records and a GLOSSARY.md. Portable across SKILL.md-native hosts.",
-      "version": "0.2.3"
-    },
-    {
-      "name": "codebase-design",
-      "source": "./plugins/codebase-design",
-      "description": "Shared vocabulary for designing deep modules: a lot of behaviour behind a small interface, placed at a clean seam, testable through that interface. Adds the deletion test, the one-adapter-vs-two seam rule, a deepening guide, and design-it-twice. Portable across SKILL.md-native hosts.",
-      "version": "0.1.5"
     },
     {
       "name": "question",
@@ -134,12 +74,6 @@
       "source": "./plugins/open-pr",
       "description": "Write a short, plain pull request description a teammate reads in a minute: what changes, why now, what they must do. A script checks length, file-list bullets, AI tells, local paths and attribution. The user approves the text before any push or PR. Use for 'open a PR' or 'update the PR body'. Portable across SKILL.md-native hosts.",
       "version": "0.3.0"
-    },
-    {
-      "name": "start-work",
-      "source": "./plugins/start-work",
-      "description": "Start each job in its own git worktree, based on a fresh fetch of the remote, without switching the main checkout. Copies ignored files listed in .worktreeinclude, keeps the worktree folder out of git status, enters it, and runs the repo's setup. Portable across SKILL.md-native hosts.",
-      "version": "0.1.0"
     },
     {
       "name": "cc-autotitle",
