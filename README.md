@@ -69,7 +69,6 @@ Generated from each plugin's `plugin.json` by `scripts/sync-codex.sh`, so do not
 | `cc-wrap-up` | CC only | Cues a wrap-up at a natural break in a long session, then compacts with better-compact's message or hands off with handoff's resume prompt, with no copy-paste. |
 | `cc-pitstop` | CC only | Pauses Claude Code before the 5-hour or weekly usage limit, across every session on the machine, and resumes the paused work on its own when the window resets. |
 | `cc-quiet-watch` | CC only | Watches long jobs on a timer and asks Haiku only when the output changed. It wakes the session only when the job is done, failed, stuck or needs you. |
-| `cc-turn-review` | CC only | After each turn that changes files in a git repo, Haiku checks the diff for over-design and for comment and prose rules, and a band offers to fix what it finds. |
 | `cc-changes` | CC only | A side pane that lists every file the Claude Code session created, edited or deleted, with net line counts, and shows a file's diff when you press it. |
 | `better-compact` | any | A better /compact: audit the session, save what compaction would lose, then compact with a focus message and resume with a follow-up. |
 | `handoff` | any | Save what only the conversation knows before a session ends, so a fresh session can pick up the work. |
