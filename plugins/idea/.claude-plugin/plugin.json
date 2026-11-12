@@ -1,0 +1,14 @@
+{
+  "name": "idea",
+  "version": "0.1.0",
+  "description": "Marks a message as a raw idea thought aloud: the agent checks the facts behind it, sharpens it and says what is still open, and builds nothing. For ideas thrown in mid-task that need refining before anyone decides.",
+  "author": {
+    "name": "Victor De Simone",
+    "email": "victorsmoliveira@gmail.com",
+    "url": "https://github.com/vdsmon"
+  },
+  "homepage": "https://github.com/vdsmon/skills",
+  "repository": "https://github.com/vdsmon/skills",
+  "license": "MIT",
+  "skills": "./skills"
+}
