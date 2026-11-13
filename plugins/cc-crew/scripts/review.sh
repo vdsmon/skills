@@ -96,10 +96,13 @@ cmd_plan() {
 
 cmd_diff() {
   [ $# -eq 5 ] || usage
-  local principle=$1 repo=$2 base=$3 head=$4 out=$5 base_sha head_sha folder
+  local principle=$1 repo=$2 base=$3 head=$4 out=$5 base_sha head_sha fork_sha folder
   readable "$principle" "principle file"
   base_sha=$(git -C "$repo" rev-parse --verify --quiet "$base^{commit}") || fail "not a commit in $repo: $base"
   head_sha=$(git -C "$repo" rev-parse --verify --quiet "$head^{commit}") || fail "not a commit in $repo: $head"
+  # Diff from where the branch left <base>, not from <base> as it is now: work
+  # that landed on <base> since would otherwise read as deleted by the change.
+  fork_sha=$(git -C "$repo" merge-base "$base_sha" "$head_sha") || fail "no common ancestor of $base and $head in $repo"
   folder=$(new_folder "$out" diff) || exit 4
   cp "$principle" "$folder/principle.md" || fail "cannot copy into $folder"
   # Objects only, never the working tree: archive the commit, diff two commits, and
@@ -107,9 +110,9 @@ cmd_diff() {
   mkdir "$folder/tree" || fail "cannot create $folder/tree"
   git -C "$repo" archive --format=tar "$head_sha" | tar -x -C "$folder/tree" \
     || fail "cannot archive $head ($head_sha) from $repo"
-  git -C "$repo" --attr-source="$head_sha" diff --no-ext-diff --no-textconv --no-color "$base_sha" "$head_sha" > "$folder/diff.patch" \
-    || fail "cannot diff $base..$head in $repo"
-  printf 'base %s %s\nhead %s %s\n' "$base" "$base_sha" "$head" "$head_sha" > "$folder/revs.txt"
+  git -C "$repo" --attr-source="$head_sha" diff --no-ext-diff --no-textconv --no-color "$fork_sha" "$head_sha" > "$folder/diff.patch" \
+    || fail "cannot diff $base...$head in $repo"
+  printf 'base %s %s\nfork %s\nhead %s %s\n' "$base" "$base_sha" "$fork_sha" "$head" "$head_sha" > "$folder/revs.txt"
   build_prompt review-prompt-diff.md "$principle" "$folder"
   run_codex "$folder" "$folder/answer.md" "$folder/codex.log" "$(cat "$folder/prompt.md")"
 }

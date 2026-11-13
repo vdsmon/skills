@@ -136,6 +136,13 @@ check "diff prompt uses the diff template and principle" 'prompt_of "$call" | gr
 check "diff runs read-only in the snapshot folder" 'has_args "$call" --sandbox read-only && has_args "$call" -C "$dfolder"'
 run ok diff "$tmp/principle.md" "$repo" "$base" no-such-rev "$tmp/out"
 check "unknown revision exits 4" '[ "$rc" -eq 4 ] && [ ! -e "$call" ]'
+# <base> has moved on since the branch was cut: its newer work is not this change's deletion.
+git clone -q "$repo" "$tmp/repo2"
+git -C "$tmp/repo2" checkout -q -b moved "$base"
+printf 'landed later\n' > "$tmp/repo2/movedon.txt" && git -C "$tmp/repo2" add movedon.txt && git -C "$tmp/repo2" commit -q -m "base moved on"
+run ok diff "$tmp/principle.md" "$tmp/repo2" moved "$head" "$tmp/out"
+mfolder=$(dirname "$last")
+check "work that landed on <base> since is not shown as deleted" '[ "$rc" -eq 0 ] && ! grep -q "movedon.txt" "$mfolder/diff.patch" && grep -q "^-doomed$" "$mfolder/diff.patch"'
 
 if [ "$fail" -ne 0 ]; then echo "test-review: FAILED"; exit 1; fi
 echo "test-review: all passed"
