@@ -47,6 +47,7 @@ Publish it privately, say which version of the plan it shows, and give him the l
 ## 5. While it is built
 
 - Every change to the plan file republishes the page.
-- Show each item's state on the page (briefed, built, reviewed, pushed) and refresh it at each handback and at the push.
+- Once approved, the page becomes the board for the work: move the work in order to the top, give each state its own colour (done, under way, next, not started), and fold away the sections he has already read.
+- Refresh each item's state at every handback and at the push.
 - A comment on the page that shows something is unclear: change the page, post nothing beyond the automatic reply, and resolve the thread.
 - Before the push, the combined diff goes to the reviewer with `review.sh diff`.
