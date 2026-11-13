@@ -48,8 +48,8 @@
     {
       "name": "handoff",
       "source": "./plugins/handoff",
-      "description": "Save what only the conversation knows before a session ends, so a fresh session can pick up the work. Commits real work locally, syncs state files, writes a handoff note and a memory pointer, and prints a resume prompt; --close instead ties up loose ends for a clean exit. Portable across SKILL.md-native hosts.",
-      "version": "1.1.0"
+      "description": "Save what only the conversation knows before a session ends, so a fresh session can pick up the work. Its /handoff commits real work and writes a handoff note, a memory pointer and a resume prompt; /close saves for good and stops a background session. Portable across SKILL.md-native hosts.",
+      "version": "1.2.0"
     },
     {
       "name": "humanize",
