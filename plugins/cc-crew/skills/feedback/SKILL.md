@@ -23,17 +23,13 @@ Take it from the conversation; you were there.
 ## 2. File it
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/feedback.sh" "<piece>" "${CLAUDE_SESSION_ID}" <<'EOF'
+"${CLAUDE_PLUGIN_ROOT}/scripts/feedback.sh" file "<piece>" "${CLAUDE_SESSION_ID}" <<'EOF'
 <the entry>
 EOF
 ```
 
-The script adds the time and the repository, and appends the entry to `~/.claude/.cc-crew/feedback.md`.
+The script adds the time and the repository, and writes the entry as its own file under `~/.claude/.cc-crew/feedback/open/`.
 
 ## 3. Say so and go on
 
-Tell him in one line that it is filed, then carry on with the work in hand. One complaint is not yet a change.
-
-## Applying the ledger
-
-When you are asked to work through the ledger, read all of it before changing anything. Group the entries by cause, not by piece, and weigh each group: would the text we would write from scratch already avoid this? Change the text once per cause. An entry is also a ready test case: add the ones that show a real failure to the crew's wording test.
+Tell him in one line that it is filed, then carry on with the work in hand. It is discussed and acted on later, in `/cc-crew:apply-feedback`.
