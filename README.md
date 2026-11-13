@@ -2,7 +2,7 @@
 
 Personal Agent Skills by [@vdsmon](https://github.com/vdsmon), packaged as a plugin marketplace. Most run on any SKILL.md-native host, and a few are Claude-Code-specific.
 
-Each skill ships as its own plugin so you can install only what you want.
+Each feature ships as one plugin, which may hold several skills.
 
 ## Naming convention
 

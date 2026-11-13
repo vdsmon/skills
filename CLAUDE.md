@@ -4,7 +4,7 @@ Guidance for Claude Code when it works in this repo.
 
 ## Repository purpose
 
-`vdsmon/skills` is a personal plugin marketplace for Claude Code and Codex. Each skill ships as its own plugin, so users install only what they want. There is no build and no package manager: plugins are Markdown skills, plus helper scripts and shell hooks where a plugin needs them. The one exception is cc-dazzle's vendor bundles, built on demand and committed.
+`vdsmon/skills` is a personal plugin marketplace for Claude Code and Codex. Each feature ships as one plugin, which may hold several skills (cc-wrap-up holds better-compact, handoff and close; thinking holds the modes of talking). It serves Victor's own workflows; others take it as inspiration, so a rename or merge needs no migration path. There is no build and no package manager: plugins are Markdown skills, plus helper scripts and shell hooks where a plugin needs them. The one exception is cc-dazzle's vendor bundles, built on demand and committed.
 
 ## Layout and the marketplace contract
 
