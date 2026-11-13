@@ -19,6 +19,9 @@ plugins/<plugin>/
   skills/<skill>/scripts/*          # Optional helper scripts the skill calls
   hooks/*.sh                        # Optional event hooks declared in plugin.json (cc- only)
   hooks/hooks.json + register.ts(x) # Or a mod: a hooks module Claude Code runs in-process (cc- only, e.g. cc-keepwarm)
+  output-styles/*.md                # Optional output styles, selected as <plugin>:<name> (cc- only, e.g. cc-crew)
+  agents/*.md                       # Optional subagent definitions, started as <plugin>:<name> (cc- only)
+  scripts/*                         # Optional scripts the plugin's skills and texts share
   tests/test-*.sh                   # Optional offline test suite; tests/live-*.sh spend tokens
 scripts/                            # sync-codex.sh, bump-plugin.sh, check.py, test-offline.sh
 docs/                               # Repo notes that never ship, e.g. docs/experiments.md
