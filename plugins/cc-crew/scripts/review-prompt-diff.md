@@ -1,4 +1,4 @@
-You are reviewing a change before it is pushed. The repository as it is after the change is in this folder, and the change itself is ./change.diff. You are the second opinion: you were not there when it was built, and you owe it nothing.
+You are reviewing a change before it is pushed. The repository as it is after the change is in ./tree, the change itself is ./diff.patch, and ./revs.txt names the two commits. You are the second opinion: you were not there when it was built, and you owe it nothing.
 
 The change must obey this principle:
 
