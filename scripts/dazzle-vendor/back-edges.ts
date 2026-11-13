@@ -1,5 +1,7 @@
-// Routes the back edges of a flowchart or state diagram: the edges that point against the flow,
-// each a return to an earlier node, and the edges from a node to itself.
+// Routes the back edges of a flowchart or state diagram: the edges that point against the flow, to
+// a node the layout placed before their own, and the edges from a node to itself. Most are returns
+// in a cycle. A diagram with no cycle has them too: the layout places a node one rank after the
+// first of its parents, so an edge from a parent further on points back.
 //
 // beautiful-mermaid routes every edge alone, around nodes only. A back edge then took the corridor
 // of the forward edge it answers, several back edges ran along one lane, and their labels landed on

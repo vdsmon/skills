@@ -2,9 +2,10 @@ import { expect, test } from 'claude-code/testing'
 
 import { mermaidText } from './mermaid'
 
-// A back edge points against the flow of a diagram: a return to an earlier node. Each one draws
-// whole, on a lane of its own, with its own label. A diagram with a back edge that has no free route
-// shows its source. The routing is scripts/dazzle-vendor/back-edges.ts, built into the vendor bundle.
+// A back edge points against the flow of a diagram, to a node drawn before its own: most often a
+// return in a cycle. Each one draws whole, on a lane of its own, with its own label. A diagram with
+// a back edge that has no free route shows its source. The routing is
+// scripts/dazzle-vendor/back-edges.ts, built into the vendor bundle.
 
 const reply = (text: string, columns = 100) => ({
   plugin: 'cc-dazzle',
@@ -161,12 +162,26 @@ test('a diagram with a back edge that has no free route shows its source', async
   }
 })
 
-test('an edge routed under the last row of nodes is drawn, not cut off', () => {
-  const rows = mermaidText('flowchart LR\n  A[Alpha] --> B[Beta] --> C[Gamma] --> D[Delta]\n  A -->|skip| D', 100)!
-  expect(rows).toMatch(/│ Delta │◄─+┘/)
+test('in a diagram with no cycle, an edge to a node laid out before its own draws whole too', () => {
+  expect(mermaidText('flowchart LR\n  A --> B --> C\n  A --> D\n  C --> D', 100)).toBe(art(
+    '┌───┐   ┌───┐   ┌───┐',
+    '│ A ├──►│ B ├──►│ C │',
+    '└─┬─┘   └───┘   └─┬─┘',
+    '  │     ┌───┐     │',
+    '  └────►│ D │◄────┘',
+    '        └───┘',
+  ))
 })
 
-test('a flowchart with no back edge draws as before', () => {
+test('a flowchart with no back edge draws as before, subgraphs included', () => {
+  expect(mermaidText('flowchart LR\n  subgraph one[First]\n    A[Alpha] --> B[Beta]\n  end\n  B --> C[Gamma]', 100)).toBe(art(
+    '┌──────────────────────┐',
+    '│        First         │',
+    '│ ┌───────┐   ┌──────┐ │ ┌───────┐',
+    '│ │ Alpha ├──►│ Beta ├─┼►│ Gamma │',
+    '│ └───────┘   └──────┘ │ └───────┘',
+    '└──────────────────────┘',
+  ))
   expect(mermaidText('flowchart LR\n  Q[Queue] --> A[One] & B[Two] & C[Three]\n  A & B & C --> D[Done]', 100)).toBe(art(
     '┌───────┐   ┌───────┐   ┌──────┐',
     '│ Queue ├──►│  One  ├──►│ Done │',

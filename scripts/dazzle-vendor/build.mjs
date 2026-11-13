@@ -1,13 +1,13 @@
 // Builds plugins/cc-dazzle/hooks/vendor. This is scripts/build-vendor.mjs of NahumLitvin/prismantis
 // at 36d6c6c (MIT, see plugins/cc-dazzle/NOTICE), changed only where a comment says cc-dazzle: the
-// output paths and the call to cc-dazzle's own patches in patches.mjs. With those patches left out,
-// it writes upstream's two bundles byte for byte.
+// output paths and the calls to cc-dazzle's own patches in patches.mjs. With --upstream-only, which
+// leaves those patches out, it writes upstream's two bundles byte for byte.
 
 import { build, transformSync } from 'esbuild'
 import { readFileSync } from 'node:fs'
 import { basename } from 'node:path'
 // cc-dazzle
-import { OWN_FILES, ownPatches } from './patches.mjs'
+import { OWN_FILES, checkOwnPatches, ownPatches } from './patches.mjs'
 
 const bundledPackages = new Set()
 const track = result => {
@@ -298,6 +298,9 @@ track(await build({
     },
   }],
 }))
+
+// cc-dazzle
+checkOwnPatches()
 
 for (const name of bundledPackages) {
   const { license } = JSON.parse(readFileSync(`node_modules/${name}/package.json`, 'utf8'))

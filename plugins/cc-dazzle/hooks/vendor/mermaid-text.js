@@ -2054,7 +2054,7 @@ function To(t, e) {
 }
 function Fn(t, e) {
   for (let n of e)
-    t.columnWidth.has(n.x) || t.columnWidth.set(n.x, Math.max(1, Math.floor(t.config.paddingX / 2))), t.rowHeight.has(n.y) || t.rowHeight.set(n.y, Math.max(1, Math.floor(t.config.paddingY / 2)));
+    t.columnWidth.has(n.x) || t.columnWidth.set(n.x, Math.floor(t.config.paddingX / 2)), t.rowHeight.has(n.y) || t.rowHeight.set(n.y, Math.floor(t.config.paddingY / 2));
 }
 function Ne(t, e) {
   return t.subgraphs.some((n) => n.nodes.includes(e));
