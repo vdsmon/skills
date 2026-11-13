@@ -23,7 +23,7 @@ const IDLE: Wrap = {
 const wrap = atom({ plugin: 'cc-wrap-up', key: 'wrap' } as const, IDLE)
 
 // Set from the plugin's options each time register runs.
-const cfg = { start: 500_000, step: 100_000, urgent: 920_000, auto: 900_000 }
+const cfg = { start: 500_000, step: 100_000, urgent: 750_000, auto: 800_000 }
 
 // A -p run or an SDK session has nobody to press a button.
 let isInteractive = true
@@ -50,6 +50,14 @@ const formatTokens = (n: number) =>
   n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${Math.round(n / 1000)}k` : String(n)
 
 const lineOf = (w: Wrap) => w.line ?? cfg.start
+
+/** What the urgent cue warns of: the automatic wrap-up while it can still run, else auto-compaction. */
+const comingUp = (w: Wrap) =>
+  cfg.auto <= 0 || w.auto !== 'idle'
+    ? `auto-compact runs at ${AUTO_COMPACT_AT}, with no audit`
+    : (w.tokens ?? 0) < cfg.auto
+      ? `${SKILL.compact} runs by itself at ${formatTokens(cfg.auto)}`
+      : `${SKILL.compact} runs by itself on the next turn`
 
 /** The auto line, where 0 turns the automatic wrap-up off. */
 const autoOf = (value: unknown, fallback: number) => {
@@ -106,7 +114,7 @@ async function onAnswer($: EngineInterface) {
   const { next, isNotify } = decide(w, tokens, isSeam)
   await update($, wrap, () => next)
   if (isNotify) {
-    await $.ui.notify(`${formatTokens(tokens)} tokens: wrap up before auto-compact runs at ${AUTO_COMPACT_AT}.`)
+    await $.ui.notify(`${formatTokens(tokens)} tokens: wrap up before ${comingUp(next)}.`)
   }
 }
 
@@ -355,8 +363,8 @@ async function onTurnEnd($: EngineInterface, reason: string) {
 export const register: Register = (on, options) => {
   cfg.start = tokensOf(options.startTokens, 500_000)
   cfg.step = tokensOf(options.stepTokens, 100_000)
-  cfg.urgent = tokensOf(options.urgentTokens, 920_000)
-  cfg.auto = autoOf(options.autoTokens, 900_000)
+  cfg.urgent = tokensOf(options.urgentTokens, 750_000)
+  cfg.auto = autoOf(options.autoTokens, 800_000)
 
   on('session.start', async ($, e, next) => {
     isInteractive = e.isInteractive
@@ -528,7 +536,7 @@ export const register: Register = (on, options) => {
     const handoff = hasHandoffPrep ? [<Button key="handoff" label="Hand off" hotkey="h" onPress={() => soon($, () => startPrep($, 'handoff'))} />] : []
     return row(
       w.phase === 'urgent'
-        ? `${size} · auto-compact runs at ${AUTO_COMPACT_AT}, with no audit`
+        ? `${size} · ${comingUp(w)}`
         : `${size} · good moment to wrap up`,
       w.phase === 'urgent' ? 'warning' : undefined,
       <Button key="compact" hotkey="c" label={hasCompactPrep ? 'Compact' : 'Compact now'} onPress={() => soon($, () => startPrep($, 'compact'))} />,

@@ -44,7 +44,7 @@ The mod works from main-thread turns only: a `turn.complete` with no `agentId` a
 **Lines** (each one is a setting, see "Settings"):
 
 - `line` begins at `startTokens` (500k). **Later** sets it to the current token count plus `stepTokens` (100k): Later at 530k moves the line to 630k.
-- `urgentTokens` (920k) is a fixed line about 50k below where auto-compaction runs.
+- `urgentTokens` (750k) is a fixed line 50k below `autoTokens` (800k), so the user gets one warning before the mod stops a turn by itself. Until 1.3.0 the lines were 920k and 900k, with urgent warning of auto-compaction. Victor moved them on 2026-11-13 for answer quality, which drops as the context grows in unattended sessions too; headroom before auto-compaction (167k instead of 67k) was the smaller reason. With `autoTokens` 0, or once the automatic wrap-up ran in a crossing, urgent warns of auto-compaction again.
 
 **A seam** is an answered turn that ended with either of these:
 
@@ -142,7 +142,8 @@ The settings are `userConfig` values in `plugin.json`, read in `register` the wa
 | --- | --- | --- |
 | `startTokens` | 500000 | The context size where the mod starts watching for a seam. |
 | `stepTokens` | 100000 | How far Later moves the line, and how long the mod waits for a seam before it shows the cue anyway. |
-| `urgentTokens` | 920000 | The context size where the cue becomes urgent. Auto-compaction runs at 967k on a 1M window. |
+| `urgentTokens` | 750000 | The context size where the cue becomes urgent, ahead of the automatic wrap-up. Auto-compaction runs at 967k on a 1M window. |
+| `autoTokens` | 800000 | The context size where the mod stops a running turn and runs better-compact by itself; 0 turns it off. |
 
 ## State
 
@@ -204,4 +205,4 @@ The change ships as one pull request:
 - Merging prep-compact and prep-exit into one skill.
 - Running an audit without a press.
 - A list for picking a peer session; `/wrap-up send <name>` takes a name.
-- Changing what auto-compaction does when it runs with no audit. The urgent cue was the only guard until 1.2.0, which stops a running turn at `autoTokens` (900k) and runs better-compact by itself (experiment #37).
+- Changing what auto-compaction does when it runs with no audit. The urgent cue was the only guard until 1.2.0, which stops a running turn at `autoTokens` (900k, 800k from 1.3.0) and runs better-compact by itself (experiment #37).

@@ -2,7 +2,7 @@
 
 Offers to wrap up a long Claude Code session at a natural break, then does the last step for you: it compacts with `better-compact`'s message, or it hands the work off with `handoff`'s resume prompt. You do not copy or paste anything.
 
-It is a mod: a hooks module that Claude Code runs inside each session. It reads the context size at no cost. It acts when you press a button, run `/wrap-up` or run one of the two skills, and once by itself: at 900k tokens, inside a turn that is still running.
+It is a mod: a hooks module that Claude Code runs inside each session. It reads the context size at no cost. It acts when you press a button, run `/wrap-up` or run one of the two skills, and once by itself: at 800k tokens, inside a turn that is still running.
 
 ## Install
 
@@ -22,18 +22,18 @@ The mod assumes a 1M context window.
 - **From 500k tokens**, it watches for a natural break: a turn that made a git commit, or a turn that ended with a clean tree. At the first one, a band above the prompt offers **[Compact] [Hand off] [Later]**.
 - **If no break comes within 100k**, the band shows anyway.
 - **Later** hides the band until the context grows another 100k.
-- **From 920k**, the band turns urgent and sends one notification. Auto-compaction runs at 967k, and it runs with no audit.
+- **From 750k**, the band turns urgent and sends one notification: at 800k the mod wraps up by itself (below). With that off, it warns of auto-compaction, which runs at 967k with no audit.
 
 It never shows during a running turn, in a subagent, or in a `claude -p` run.
 
 ## When it wraps up by itself
 
-A long turn can run past every cue with nobody there, and auto-compaction then runs with no audit. So **from 900k tokens, inside a running turn**, the mod stops the turn before its next model request and runs `/better-compact --unattended`. The skill saves what would be lost, asks nothing, and hands over a message and a follow-up; the mod compacts when the skill's turn ends, and the follow-up resumes the stopped task.
+A long turn can run past every cue with nobody there: answers get worse as the context grows, and auto-compaction, when it comes, runs with no audit. So **from 800k tokens, inside a running turn**, the mod stops the turn before its next model request and runs `/better-compact --unattended`. The skill saves what would be lost, asks nothing, and hands over a message and a follow-up; the mod compacts when the skill's turn ends, and the follow-up resumes the stopped task.
 
 - It happens once per crossing: after it ran, the context must drop under the line before it can run again. If no compaction follows (the skill hands nothing over, or the compaction is refused), the mod sends one prompt to carry on with the task, and auto-compaction stays the guard.
 - It needs `better-compact` installed. It leaves subagents and `claude -p` runs alone.
 - `/wrap-up off` stops it in the session; `autoTokens` 0 turns it off for good.
-- A turn that ends between 900k and 920k still gets the band; the next turn is stopped at its first request.
+- A turn that ends past 800k still gets the band; the next turn is stopped at its first request.
 
 ## What the buttons do
 
@@ -70,8 +70,8 @@ Set them in `/config` under the plugin.
 | --- | --- | --- |
 | `startTokens` | 500000 | Where the mod starts watching for a natural break |
 | `stepTokens` | 100000 | How far Later moves the line, and how long the mod waits for a break before it offers anyway |
-| `urgentTokens` | 920000 | Where the offer turns urgent and notifies |
-| `autoTokens` | 900000 | Where the mod stops a running turn and runs `better-compact` by itself; 0 turns it off |
+| `urgentTokens` | 750000 | Where the offer turns urgent and notifies, ahead of the automatic wrap-up |
+| `autoTokens` | 800000 | Where the mod stops a running turn and runs `better-compact` by itself; 0 turns it off |
 
 ## What it costs
 
