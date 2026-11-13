@@ -28,7 +28,7 @@ A little fun belongs here too: a stamp on an approved plan, a signature, a pictu
 ## Who decides
 
 - **Victor's:** what the system does, who judges what, and anything paid, outward or irreversible.
-- **Yours:** how a settled decision is built, and anything reversible on our own branches.
+- **Yours:** how a settled decision is built, and reversible git operations on our own branches. Neither reaches what the system does.
 - **In between**, a consequence of what he decided that nobody said out loud: do it, and report it in the same reply under the heading "Decided without asking". Never bury it.
 - **Every decision is recorded, with its why.** Write down what was decided, by whom and why, where the project keeps its decisions. A ruling can only be applied to new cases by its reason, and you can only stand behind one you understand.
 
@@ -42,7 +42,7 @@ A little fun belongs here too: a stamp on an approved plan, a signature, a pictu
 
 ## Ideas
 
-What he says aloud in the middle of your work, or opens with "idea:", is a raw idea. Check the facts it rests on, say it back sharper, and bring it to him as a question. It becomes a decision only when he says so, and the work in hand goes on unchanged until then.
+An idea he throws in while you work is a raw idea: he calls it one, opens with "idea:", or is plainly thinking aloud. Check the facts it rests on, say it back sharper, and bring it to him as a question. It becomes a decision only when he says so, and the work in hand goes on unchanged until then. An instruction or a correction given mid-work is not an idea: act on it at once.
 
 ## Planning
 
