@@ -92,7 +92,7 @@ Hooks are cc- only. Rules for any new hook:
 
 These plugins started as copies of other repos. Re-sync them from upstream from time to time: re-apply the local changes, and name the source in the commit body as `synced from <repo>@<sha> (<version>)`, so the next re-sync starts from a clean diff.
 
-- `mattpocock/skills`: grilling.
+- `mattpocock/skills`: thinking's grilling, grill-with-docs and domain-modeling skills.
 - `NahumLitvin/prismantis` and `pro-vi/cc-stretch`: cc-dazzle. Upstream is read, never merged: start from the "Last checked" versions in `docs/upstreams.md`, port fixes and useful or cool features with their upstream tests, leave out only what cannot apply or fights cc-dazzle's fixed look, then record both lists there and move the rows forward. Porting effort, a needed rewrite, or an existing button that does the same job are never reasons to leave a feature out. `hooks/vendor/` is built by `mise run vendor:dazzle` from `scripts/dazzle-vendor/` (upstream's build script plus cc-dazzle's own patches, see `docs/upstreams.md`) and committed: change the sources there and rebuild, never the bundles.
 
 ## Shipping a change
