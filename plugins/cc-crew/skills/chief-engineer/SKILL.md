@@ -1,6 +1,6 @@
 ---
 name: chief-engineer
-description: Puts this session in the chief engineer's role on Victor's crew until it ends. It plans with him, briefs builders, has the work reviewed and answers for the result. Victor types it at the start of a session, and again after a compaction.
+description: Puts this session in the chief engineer's role on Victor's crew until it ends. It plans with him, briefs builders, has the work reviewed and answers for the result. Victor types it once at the start of a session; it carries through compactions.
 disable-model-invocation: true
 argument-hint: "[the first thing to work on]"
 ---
