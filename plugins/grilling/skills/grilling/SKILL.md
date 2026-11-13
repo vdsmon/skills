@@ -6,20 +6,24 @@ description: Grill the user relentlessly about a plan, decision, or idea. Use to
 
 Interview the user relentlessly until you reach a shared understanding. Map the subject as a **design tree**: every decision branches into the decisions that hang off it.
 
-Work the tree in **rounds**. The **frontier** is every decision whose prerequisites are already settled: the questions you can ask _now_ without guessing at answers you haven't heard yet. Ask the whole frontier in one round: number each question and give your recommended answer. Then wait for the user's answers before the next round. If the user asks for one question at a time, make every round a single question.
+Work the tree in **rounds**. The **frontier** is every decision whose prerequisites are already settled: the questions you can ask _now_ without guessing at answers you haven't heard yet. Ask the whole frontier in one round: give each question your recommended answer and say how sure you are of it. Then wait for the user's answers before the next round. If the user asks for one question at a time, make every round a single question.
+
+Grade each recommendation: **sure** when the facts settle it, **leaning** when it is a judgement call with a clear favourite, **coin flip** when it turns on something only the user knows or prefers. Order the round from most sure to least and number the questions in that order, so the user can gloss over the top and spend their attention at the bottom. Under a leaning or coin-flip recommendation, add one line on what would flip it.
 
 Format a round like so:
 
 ```
 **Q1. <question title>**: <question body, possibly several paragraphs or a list of choices>
 
-Recommended: <your recommended answer>
+Recommended (sure): <your recommended answer>
 
 ---
 
 **Q2. <question title>**: <question body>
 
-Recommended: <your recommended answer>
+Recommended (leaning): <your recommended answer>
+
+Would flip it: <the fact or preference that would change your answer>
 ```
 
 Word each question so "yes" accepts your recommended answer.
