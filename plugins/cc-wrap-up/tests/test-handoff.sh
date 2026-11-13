@@ -35,5 +35,5 @@ check "git-dir fallback: note written" '[ -f "$gitdir/handoff/HANDOFF.md" ]'
 check "git-dir fallback: git status unchanged" '[ "$(git -C "$repo" status --porcelain)" = "$before" ]'
 
 check "no state dir argument: usage, exit 0" 'bash "$scripts/handoff.sh" 2>/dev/null; [ $? -eq 0 ]'
-check "baseline.sh runs outside a repo" 'bash "$scripts/baseline.sh" "$tmp" | grep -q "not a git repository"'
+check "baseline.sh runs outside a repo" 'bash "$here/../scripts/baseline.sh" "$tmp" | grep -q "not a git repository"'
 exit $fail

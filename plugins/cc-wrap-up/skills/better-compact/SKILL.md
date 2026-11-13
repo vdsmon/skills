@@ -1,7 +1,7 @@
 ---
 name: better-compact
 disable-model-invocation: true
-description: A better /compact. Audits in-flight session state, saves what compaction would lose (local commits, state files, notes), then compacts with a focus message and resumes with a follow-up, in one shot when cc-wrap-up is installed.
+description: A better /compact. Audits in-flight session state, saves what compaction would lose (local commits, state files, notes), then compacts with a focus message and resumes with a follow-up, in one shot.
 argument-hint: "[--message-only | --propose | --unattended]"
 allowed-tools:
   - Bash(git status *)
@@ -24,7 +24,7 @@ Use it when the user wants to compact, or asks whether they should. This skill a
 
 Raw input: `$ARGUMENTS`
 
-- `$ARGUMENTS` contains `--message-only` (or `-m`, `message only`, `just the message`, `skip audit`) -> **message-only mode**: skip steps 1-2, jump straight to step 3. Still run `scripts/baseline.sh` (or the two git commands it wraps) so the message can cite branch + recent commits accurately, but no audit summary, no saves.
+- `$ARGUMENTS` contains `--message-only` (or `-m`, `message only`, `just the message`, `skip audit`) -> **message-only mode**: skip steps 1-2, jump straight to step 3. Still run the baseline script (or the two git commands it wraps) so the message can cite branch + recent commits accurately, but no audit summary, no saves.
 - `$ARGUMENTS` contains `--propose` (or `-p`, `propose only`, `don't act`, `just list`) -> **propose mode**: step 2 lists the save-actions under **Action needed** instead of doing them, then the message, handed over without `now`. Do nothing until the user answers; on a go-ahead, run the approved saves, re-run the baseline, hand over again.
 - `$ARGUMENTS` contains `--unattended` -> **unattended mode**: nobody is at the keyboard. cc-wrap-up stopped a running turn because auto-compaction is near, and it runs with or without this audit. Full mode, with these changes: run `git status --short` and `git log -5 --oneline` in place of the script, which may wait on an approval; never ask (list what **Ask first** holds back under **Held back**, with no question, and name each item in the compact message); hand over with `now: true` and no `openQuestion`, even where you would advise against compacting; the follow-up names the step the stopped task was on and says to carry the task through to its end, because nobody will send a second prompt.
 - Otherwise -> **full mode**: all three steps in order, saves carried out.
@@ -37,13 +37,13 @@ Do them in order. In full mode never skip step 1: its point is to catch what wou
 
 ### 1. Assess: what's in flight?
 
-First, gather the mechanical baseline in one call. The script lives in this skill's directory (the base directory announced when the skill loaded):
+First, gather the mechanical baseline in one call:
 
 ```bash
-bash <skill-dir>/scripts/baseline.sh
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/baseline.sh"
 ```
 
-It prints the branch and upstream, `git status --short` with counts, the last five commits, the stash count, and the gitignored plan or state files modified after the last commit: the files a compact message must point at and that `git status` never shows (a `.sweep/plan.md`, a `.flow/` record, a scratch note). Deterministic work belongs in the script, not in your memory of what to check. The script asks for one Bash approval per session on hosts that pre-approve only the `git` prefixes below; if the host refuses it, fall back to `git status --short` and `git log -5 --oneline`.
+It prints the branch and upstream, `git status --short` with counts, the last five commits, the stash count, and the gitignored plan or state files modified after the last commit: the files a compact message must point at and that `git status` never shows (a `.sweep/plan.md`, a `.flow/` record, a scratch note). Deterministic work belongs in the script, not in your memory of what to check. `allowed-tools` pre-approves only the `git` prefixes above, so the script asks for one Bash approval; if it is refused, fall back to `git status --short` and `git log -5 --oneline`.
 
 Audit silently, and **do not** dump a summary recap. The recap is noise; the user knows their own session. Audit feeds step 2 (the saves) and step 3 (the compact message). Check:
 
@@ -59,7 +59,7 @@ Audit silently, and **do not** dump a summary recap. The recap is noise; the use
 
 **Running work, schedules, task list**
 
-Compaction keeps the session: what runs keeps running and firing into the compacted session, and the task list stays as it is. List them (the host's task, cron and watch listings; in Claude Code `TaskList`, `CronList`, the background tasks) and sort each item:
+Compaction keeps the session: what runs keeps running and firing into the compacted session, and the task list stays as it is. List them (`TaskList`, `CronList`, the background tasks) and sort each item:
 - Background shell tasks, monitors, watches: still needed, finished with unread output, or stale?
 - Crons, wake-ups, loops: still needed, or stale?
 - Task list: items done but still open, items no longer wanted, real open work.
@@ -78,7 +78,7 @@ Save-actions are persistence only:
 - **Sync a stale state / plan file** so next session resumes from it.
 - **Write a note or diary entry** for chat-only decisions, in the file the project already keeps for them. Don't invent a new doc.
 - **Capture background output:** read a finished task, summarize it into the note or the compact message before the buffer is useless.
-- **Save a memory**, where the host has persistent memory, for what outlives this task (a stated preference, a standing rule).
+- **Save a memory**, in the memory directory your system prompt names, when it names one, for what outlives this task (a stated preference, a standing rule).
 
 Tidy what step 1 found stale, without asking, after saving what each item was for:
 - **Stop** a stale monitor, watch, cron, wake-up or loop, and a background process this session started whose job is done.
@@ -103,7 +103,7 @@ Commits:
 
 Unattended mode: hold these back and do not ask. Otherwise ask once: one question batching every held-back item, recommended choice first for each. Do everything else in the meantime; the saves never wait on the answer. On a yes, act, re-run the baseline, hand over again (step 3).
 
-After the saves, re-run `scripts/baseline.sh` so the compact message cites the state after them: new commit hashes, updated paths.
+After the saves, re-run the baseline script so the compact message cites the state after them: new commit hashes, updated paths.
 
 **Nothing needs saving -> emit nothing here. Go straight to the compact message.** No "state is clean" line, no recap (that's noise).
 
@@ -116,8 +116,8 @@ The summarizer that `/compact` runs reads the whole conversation; the message on
 
 Hand over:
 
-- If a tool named `mcp__cc-wrap-up__ready` is listed (load it first if it is deferred), call it with `kind: compact`, the message without the `/compact ` prefix as `message`, the follow-up as `followUp`, `openQuestion: true` when **Needs your yes** holds a question, and `now: true` unless a question is held back, propose mode waits for a go-ahead, or you advise against compacting (see Notes). Unattended mode: always `now: true`, never `openQuestion`. With `now`, the mod compacts as soon as your turn ends, then sends the follow-up: print what the tool result asks and end the turn. Without `now`, it offers the user a band; print the blocks.
-- Without the tool, or when it refuses: print the two blocks below. Tell the user to send the compact block, then paste the follow-up at once so it queues and fires when compaction finishes.
+- Call `mcp__cc-wrap-up__ready` (load it first; it is deferred) with `kind: compact`, the message without the `/compact ` prefix as `message`, the follow-up as `followUp`, `openQuestion: true` when **Needs your yes** holds a question, and `now: true` unless a question is held back, propose mode waits for a go-ahead, or you advise against compacting (see Notes). Unattended mode: always `now: true`, never `openQuestion`. With `now`, the mod compacts as soon as your turn ends, then sends the follow-up: print what the tool result asks and end the turn. Without `now`, it offers the user a band; print the blocks.
+- When the tool is missing or refuses: print the two blocks below. Tell the user to send the compact block, then paste the follow-up at once so it queues and fires when compaction finishes.
 - After a yes to a held-back item: act, re-run the baseline, hand over again (with `now: true` once nothing waits).
 
 ## Format

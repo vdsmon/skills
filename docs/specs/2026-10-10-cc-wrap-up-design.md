@@ -199,6 +199,8 @@ The change ships as one pull request:
 - The `test:wrap-up` task.
 - `docs/experiments.md` rows #26 to #31.
 
+2026-11-13, 2.0.0: better-compact, handoff and close joined the plugin, so the mod runs `cc-wrap-up:better-compact` and `cc-wrap-up:handoff` and assumes both are there. The missing-skill code went with them (the plain Compact now, the hidden Hand off button, the automatic wrap-up's check, the urgent warning's case), and so did the second copy of `baseline.sh`: keeping three plugins in step by hand bought nothing once the repo served only its owner's workflows, and the missing-skill branch had already caused one wrong warning (fixed in 1.3.0).
+
 ## Out of scope
 
 - Windows other than 1M. A user on another window sets the three token settings.

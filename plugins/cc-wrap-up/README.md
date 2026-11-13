@@ -1,19 +1,20 @@
 # cc-wrap-up
 
-Offers to wrap up a long Claude Code session at a natural break, then does the last step for you: it compacts with `better-compact`'s message, or it hands the work off with `handoff`'s resume prompt. You do not copy or paste anything.
+Wraps up a long Claude Code session. The plugin ships three skills and a mod:
 
-It is a mod: a hooks module that Claude Code runs inside each session. It reads the context size at no cost. It acts when you press a button, run `/wrap-up` or run one of the two skills, and once by itself: at 800k tokens, inside a turn that is still running.
+- `/better-compact` saves what compaction would lose, then compacts with a focus message and resumes with a follow-up.
+- `/handoff` saves what only the conversation knows and leaves `HANDOFF.md`, a memory entry and a resume prompt for a fresh session.
+- `/close` saves for good when no session will pick the work up, and stops a background session.
+- The mod offers a wrap-up at a natural break, then does the last step for you: it compacts with `better-compact`'s message, or it hands the work off with `handoff`'s resume prompt. You do not copy or paste anything.
+
+The mod is a hooks module that Claude Code runs inside each session. It reads the context size at no cost. It acts when you press a button, run `/wrap-up` or run `/better-compact` or `/handoff`, and once by itself: at 800k tokens, inside a turn that is still running.
 
 ## Install
 
 ```
 /plugin marketplace add vdsmon/skills
 /plugin install cc-wrap-up@vdsmon-skills
-/plugin install better-compact@vdsmon-skills
-/plugin install handoff@vdsmon-skills
 ```
-
-The two skills are optional. Without `better-compact`, Compact compacts at once with no message. Without `handoff`, there is no Hand off button.
 
 ## When it offers a wrap-up
 
@@ -31,7 +32,7 @@ It never shows during a running turn, in a subagent, or in a `claude -p` run.
 A long turn can run past every cue with nobody there: answers get worse as the context grows, and auto-compaction, when it comes, runs with no audit. So **from 800k tokens, inside a running turn**, the mod stops the turn before its next model request and runs `/better-compact --unattended`. The skill saves what would be lost, asks nothing, and hands over a message and a follow-up; the mod compacts when the skill's turn ends, and the follow-up resumes the stopped task.
 
 - It happens once per crossing: after it ran, the context must drop under the line before it can run again. If no compaction follows (the skill hands nothing over, or the compaction is refused), the mod sends one prompt to carry on with the task, and auto-compaction stays the guard.
-- It needs `better-compact` installed. It leaves subagents and `claude -p` runs alone.
+- It leaves subagents and `claude -p` runs alone.
 - `/wrap-up off` stops it in the session; `autoTokens` 0 turns it off for good.
 - A turn that ends past 800k still gets the band; the next turn is stopped at its first request.
 
@@ -79,4 +80,4 @@ Nothing until you press a button, run one of the skills, or a turn crosses `auto
 
 ## Tests
 
-`mise run test:wrap-up` validates the mod and runs `hooks/wrap-up.test.ts` through `claude plugin test`. It needs the `claude` CLI, so CI does not run it.
+`mise run test:wrap-up` validates the mod and runs `hooks/wrap-up.test.ts` through `claude plugin test`. It needs the `claude` CLI, so CI does not run it. The skills' scripts have offline suites in `tests/`, which `mise run test` and CI run.

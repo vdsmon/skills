@@ -9,6 +9,8 @@ const COMMAND = 'wrap-up'
 const TOOL = 'ready'
 const TOOL_NAME = `mcp__cc-wrap-up__${TOOL}`
 const SKILL: Record<PrepKind, string> = { compact: 'better-compact', handoff: 'handoff' }
+// The plugin ships both skills, so their commands carry its namespace (experiment #29).
+const PREP: Record<PrepKind, string> = { compact: `cc-wrap-up:${SKILL.compact}`, handoff: `cc-wrap-up:${SKILL.handoff}` }
 
 const IDLE: Wrap = {
   phase: 'idle',
@@ -53,8 +55,8 @@ const formatTokens = (n: number) =>
 const lineOf = (w: Wrap) => w.line ?? cfg.start
 
 /** What the urgent cue warns of: the automatic wrap-up when it will run first, else auto-compaction. */
-const comingUp = (w: Wrap, hasCompactPrep: boolean) =>
-  cfg.auto <= 0 || cfg.auto >= AUTO_COMPACT_TOKENS || w.auto !== 'idle' || !hasCompactPrep
+const comingUp = (w: Wrap) =>
+  cfg.auto <= 0 || cfg.auto >= AUTO_COMPACT_TOKENS || w.auto !== 'idle'
     ? `auto-compact runs at ${AUTO_COMPACT_AT}, with no audit`
     : (w.tokens ?? 0) < cfg.auto
       ? `${SKILL.compact} runs by itself at ${formatTokens(cfg.auto)}`
@@ -114,10 +116,7 @@ async function onAnswer($: EngineInterface) {
   const isSeam = needsSeam(w, tokens) && (isCommit || (await isTreeClean($)))
   const { next, isNotify } = decide(w, tokens, isSeam)
   await update($, wrap, () => next)
-  if (isNotify) {
-    const hasCompactPrep = (await findPrep($, 'compact')) !== null
-    await $.ui.notify(`${formatTokens(tokens)} tokens: wrap up before ${comingUp(next, hasCompactPrep)}.`)
-  }
+  if (isNotify) await $.ui.notify(`${formatTokens(tokens)} tokens: wrap up before ${comingUp(next)}.`)
 }
 
 /** Back to the start: after a compaction, a /clear, or a finished wrap-up. */
@@ -147,21 +146,9 @@ function soon($: EngineInterface, work: () => Promise<unknown>) {
   $.clock.after(0, () => void work())
 }
 
-/** Which prep skill a command name runs, if any (plugin skills are namespaced). */
+/** Which prep skill a command name runs, if any. */
 function prepKindOf(command: string): PrepKind | null {
-  for (const kind of ['compact', 'handoff'] as const) {
-    if (command === SKILL[kind] || command.endsWith(`:${SKILL[kind]}`)) return kind
-  }
-  return null
-}
-
-/** The installed command that runs the prep skill of this kind, if any. */
-async function findPrep($: EngineInterface, kind: PrepKind) {
-  try {
-    return (await $.command.list()).find(c => prepKindOf(c.name) === kind)?.name ?? null
-  } catch {
-    return null
-  }
+  return command === PREP.compact ? 'compact' : command === PREP.handoff ? 'handoff' : null
 }
 
 /**
@@ -174,11 +161,7 @@ async function carryOn($: EngineInterface) {
 }
 
 async function startPrep($: EngineInterface, kind: PrepKind, args?: string) {
-  const command = await findPrep($, kind)
-  if (command === null) {
-    if (kind === 'compact') await compactNow($, undefined, undefined)
-    return
-  }
+  const command = PREP[kind]
   // The mod's own command.run never reaches its own hook, so mark the prep here.
   await update($, wrap, (w): Wrap => ({ ...w, phase: 'prepping', prepKind: kind, payload: null }))
   try {
@@ -192,11 +175,11 @@ async function startPrep($: EngineInterface, kind: PrepKind, args?: string) {
 }
 
 /** Compacts with the message, then sends the follow-up as the user's next prompt. */
-async function compactNow($: EngineInterface, message: string | undefined, followUp: string | undefined) {
+async function compactNow($: EngineInterface, message: string, followUp: string) {
   const isAuto = (await read($, wrap)).auto === 'running'
   let r: Awaited<ReturnType<EngineInterface['session']['compact']>>
   try {
-    r = await $.session.compact(message === undefined ? {} : { instructions: message })
+    r = await $.session.compact({ instructions: message })
   } catch (err) {
     await $.ui.toast(`Compaction did not run: ${String(err)}`)
     if (isAuto) await carryOn($)
@@ -209,7 +192,7 @@ async function compactNow($: EngineInterface, message: string | undefined, follo
   }
   // The mod's own compaction never reaches its own session.compact hook.
   await reset($)
-  if (followUp !== undefined) void $.prompt.submit({ text: followUp, asUser: true })
+  void $.prompt.submit({ text: followUp, asUser: true })
 }
 
 /** /clear, then the resume prompt as the new session's first message. */
@@ -326,7 +309,6 @@ async function autoWrap($: EngineInterface, turnId: string) {
     return
   }
   if (w.isOff || w.auto === 'running' || w.auto === 'spent' || BUSY.includes(w.phase)) return
-  if ((await findPrep($, 'compact')) === null) return
   await update($, wrap, (cur): Wrap => ({ ...cur, tokens, auto: 'running' }))
   stoppedTurn = turnId
   // The hook waits for the abort before it passes its request on. The abort runs from
@@ -533,16 +515,13 @@ export const register: Register = (on, options) => {
     if (w.phase !== 'cue' && w.phase !== 'urgent') return next(e)
 
     const size = w.tokens === null ? 'This session' : `${formatTokens(w.tokens)} tokens`
-    const hasCompactPrep = (await findPrep($, 'compact')) !== null
-    const hasHandoffPrep = (await findPrep($, 'handoff')) !== null
-    const handoff = hasHandoffPrep ? [<Button key="handoff" label="Hand off" hotkey="h" onPress={() => soon($, () => startPrep($, 'handoff'))} />] : []
     return row(
       w.phase === 'urgent'
-        ? `${size} · ${comingUp(w, hasCompactPrep)}`
+        ? `${size} · ${comingUp(w)}`
         : `${size} · good moment to wrap up`,
       w.phase === 'urgent' ? 'warning' : undefined,
-      <Button key="compact" hotkey="c" label={hasCompactPrep ? 'Compact' : 'Compact now'} onPress={() => soon($, () => startPrep($, 'compact'))} />,
-      ...handoff,
+      <Button key="compact" label="Compact" hotkey="c" onPress={() => soon($, () => startPrep($, 'compact'))} />,
+      <Button key="handoff" label="Hand off" hotkey="h" onPress={() => soon($, () => startPrep($, 'handoff'))} />,
       <Button key="later" label="Later" hotkey="l" onPress={() => later($)} />,
     )
   })

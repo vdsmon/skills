@@ -1,7 +1,7 @@
 {
   "name": "vdsmon-skills",
   "metadata": {
-    "description": "Personal Agent Skills by vdsmon, packaged as a plugin marketplace. Each skill ships as its own plugin so you can pick and choose. Plugins prefixed with cc- are Claude-Code-specific (hooks, dynamic context injection, or ${CLAUDE_SKILL_DIR}), and unprefixed plugins port cleanly to other SKILL.md-native hosts (OpenAI Codex, Gemini CLI, Cursor, Goose, Copilot, etc.)."
+    "description": "Personal Agent Skills by vdsmon, packaged as a plugin marketplace. Each feature ships as one plugin, which may hold several skills. Plugins prefixed with cc- are Claude-Code-specific (hooks, dynamic context injection, or ${CLAUDE_SKILL_DIR}), and unprefixed plugins port cleanly to other SKILL.md-native hosts (OpenAI Codex, Gemini CLI, Cursor, Goose, Copilot, etc.)."
   },
   "owner": {
     "name": "Victor De Simone",
@@ -18,8 +18,8 @@
     {
       "name": "cc-wrap-up",
       "source": "./plugins/cc-wrap-up",
-      "description": "Cues a wrap-up at a natural break in a long session, then compacts with better-compact's message or hands off with handoff's resume prompt, with no copy-paste. At 800k tokens it stops a turn still running and runs better-compact by itself, before auto-compaction does. Claude Code only.",
-      "version": "1.3.0"
+      "description": "Wraps up a long session: /better-compact saves what compaction would lose and compacts, /handoff leaves a resume note, /close saves for good and ends the session. Its mod offers them at a natural break, acts on the result with no copy-paste, and runs better-compact by itself at 800k tokens. Claude Code only.",
+      "version": "2.0.0"
     },
     {
       "name": "cc-pitstop",
@@ -40,18 +40,6 @@
       "version": "0.8.0"
     },
     {
-      "name": "better-compact",
-      "source": "./plugins/better-compact",
-      "description": "A better /compact: audit the session, save what compaction would lose, then compact with a focus message and resume with a follow-up. Commits real work locally, syncs stale state files and notes chat-only decisions, asking only for risky items; compacts in one shot with cc-wrap-up. Portable across SKILL.md-native hosts.",
-      "version": "2.2.0"
-    },
-    {
-      "name": "handoff",
-      "source": "./plugins/handoff",
-      "description": "Save what only the conversation knows before a session ends, so a fresh session can pick up the work. Its /handoff commits real work and writes a handoff note, a memory pointer and a resume prompt; /close saves for good and stops a background session. Portable across SKILL.md-native hosts.",
-      "version": "1.2.0"
-    },
-    {
       "name": "humanize",
       "source": "./plugins/humanize",
       "description": "Strip AI-writing tells from text. Detects em-dash overuse, AI vocabulary, inflated significance, rule-of-three, sycophancy, compound coinages, and 20+ more patterns. `--casual` also adds the small inconsistencies real writers have. Outputs only the corrected text and edits files in place. Portable across SKILL.md-native hosts.",
@@ -64,22 +52,10 @@
       "version": "0.5.0"
     },
     {
-      "name": "grilling",
-      "source": "./plugins/grilling",
-      "description": "Relentless interview that stress-tests a plan, decision, or idea one round of questions at a time, until you and the agent agree. Bundles grilling, grill-with-docs (grill and write docs as you go), and domain-modeling (sharpen project terms in GLOSSARY.md). Portable across SKILL.md-native hosts.",
-      "version": "0.6.0"
-    },
-    {
-      "name": "question",
-      "source": "./plugins/question",
-      "description": "Answer a genuine question in full, with no edits and no side effects. Treats 'why X and not Y?' as curiosity, not as a hidden request to switch to Y or an attack on X. Investigates read-only, explains the tradeoff, gives an honest verdict, and stops. Portable across SKILL.md-native hosts.",
-      "version": "0.1.1"
-    },
-    {
-      "name": "idea",
-      "source": "./plugins/idea",
-      "description": "Marks a message as a raw idea thought aloud: the agent checks the facts behind it, sharpens it and says what is still open, and builds nothing. For ideas thrown in mid-task that need refining before anyone decides. Portable across SKILL.md-native hosts.",
-      "version": "0.1.0"
+      "name": "thinking",
+      "source": "./plugins/thinking",
+      "description": "Modes of talking that build nothing: grilling stress-tests a plan one round of questions at a time, idea sharpens a raw idea, question answers a question with no edits. Also grill-with-docs and domain-modeling for terms in GLOSSARY.md. Portable across SKILL.md-native hosts.",
+      "version": "1.0.0"
     },
     {
       "name": "open-pr",
