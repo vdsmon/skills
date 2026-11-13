@@ -1,20 +1,20 @@
 // node_modules/beautiful-mermaid/src/multiline-utils.ts
-function dt(t) {
+function ut(t) {
   return (t.startsWith('"') && t.endsWith('"') ? t.slice(1, -1) : t).replace(/<br\s*\/?>/gi, `
 `).replace(/\\n/g, `
 `).replace(/<\/?(?:sub|sup|small|mark)\s*>/gi, "").replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/(?<!\*)\*([^\s*](?:[^*]*[^\s*])?)\*(?!\*)/g, "<i>$1</i>").replace(/~~(.+?)~~/g, "<s>$1</s>");
 }
 
 // node_modules/beautiful-mermaid/src/parser.ts
-function Le(t) {
+function ze(t) {
   let e = t.split(`
 `).map((o) => o.trim()).filter((o) => o.length > 0 && !o.startsWith("%%"));
   if (e.length === 0)
     throw new Error("Empty mermaid diagram");
   let n = e[0];
-  return /^stateDiagram(-v2)?\s*$/i.test(n) ? Un(e) : Jn(e);
+  return /^stateDiagram(-v2)?\s*$/i.test(n) ? wr(e) : Cr(e);
 }
-function Jn(t) {
+function Cr(t) {
   let e = t[0].match(/^(?:graph|flowchart)\s+(TD|TB|LR|BT|RL)\s*$/i);
   if (!e)
     throw new Error(`Invalid mermaid header: "${t[0]}". Expected "graph TD", "flowchart LR", "stateDiagram-v2", etc.`);
@@ -27,63 +27,63 @@ function Jn(t) {
     classAssignments: /* @__PURE__ */ new Map(),
     nodeStyles: /* @__PURE__ */ new Map(),
     linkStyles: /* @__PURE__ */ new Map()
-  }, s = [];
+  }, a = [];
   for (let r = 1; r < t.length; r++) {
-    let i = t[r], a = i.match(/^classDef\s+(\w+)\s+(.+)$/);
-    if (a) {
-      let u = a[1], m = a[2], p = Vt(m);
-      o.classDefs.set(u, p);
+    let i = t[r], s = i.match(/^classDef\s+(\w+)\s+(.+)$/);
+    if (s) {
+      let u = s[1], g = s[2], m = ne(g);
+      o.classDefs.set(u, m);
       continue;
     }
     let c = i.match(/^class\s+([\w,-]+)\s+(\w+)$/);
     if (c) {
-      let u = c[1].split(",").map((p) => p.trim()), m = c[2];
-      for (let p of u)
-        o.classAssignments.set(p, m);
+      let u = c[1].split(",").map((m) => m.trim()), g = c[2];
+      for (let m of u)
+        o.classAssignments.set(m, g);
       continue;
     }
-    let l = i.match(/^style\s+([\w,-]+)\s+(.+)$/);
-    if (l) {
-      let u = l[1].split(",").map((p) => p.trim()), m = Vt(l[2]);
-      for (let p of u)
-        o.nodeStyles.set(p, { ...o.nodeStyles.get(p), ...m });
+    let f = i.match(/^style\s+([\w,-]+)\s+(.+)$/);
+    if (f) {
+      let u = f[1].split(",").map((m) => m.trim()), g = ne(f[2]);
+      for (let m of u)
+        o.nodeStyles.set(m, { ...o.nodeStyles.get(m), ...g });
       continue;
     }
     let d = i.match(/^linkStyle\s+(default|[\d,\s]+)\s+(.+)$/);
     if (d) {
-      let u = d[1].trim(), m = Vt(d[2]);
+      let u = d[1].trim(), g = ne(d[2]);
       if (u === "default")
-        o.linkStyles.set("default", { ...o.linkStyles.get("default"), ...m });
+        o.linkStyles.set("default", { ...o.linkStyles.get("default"), ...g });
       else {
-        let p = u.split(",").map((b) => parseInt(b.trim(), 10));
-        for (let b of p)
-          isNaN(b) || o.linkStyles.set(b, { ...o.linkStyles.get(b), ...m });
+        let m = u.split(",").map((x) => parseInt(x.trim(), 10));
+        for (let x of m)
+          isNaN(x) || o.linkStyles.set(x, { ...o.linkStyles.get(x), ...g });
       }
       continue;
     }
     let h = i.match(/^direction\s+(TD|TB|LR|BT|RL)\s*$/i);
-    if (h && s.length > 0) {
-      s[s.length - 1].direction = h[1].toUpperCase();
+    if (h && a.length > 0) {
+      a[a.length - 1].direction = h[1].toUpperCase();
       continue;
     }
-    let f = i.match(/^subgraph\s+(.+)$/);
-    if (f) {
-      let u = f[1].trim(), m = u.match(/^([\w-]+)\s*\[(.+)\]$/), p, b;
-      m ? (p = m[1], b = dt(m[2])) : (b = dt(u), p = u.replace(/\s+/g, "_").replace(/[^\w]/g, ""));
-      let A = { id: p, label: b, nodeIds: [], children: [] };
-      s.push(A);
+    let l = i.match(/^subgraph\s+(.+)$/);
+    if (l) {
+      let u = l[1].trim(), g = u.match(/^([\w-]+)\s*\[(.+)\]$/), m, x;
+      g ? (m = g[1], x = ut(g[2])) : (x = ut(u), m = u.replace(/\s+/g, "_").replace(/[^\w]/g, ""));
+      let w = { id: m, label: x, nodeIds: [], children: [] };
+      a.push(w);
       continue;
     }
     if (i === "end") {
-      let u = s.pop();
-      u && (s.length > 0 ? s[s.length - 1].children.push(u) : o.subgraphs.push(u));
+      let u = a.pop();
+      u && (a.length > 0 ? a[a.length - 1].children.push(u) : o.subgraphs.push(u));
       continue;
     }
-    tr(i, o, s);
+    Dr(i, o, a);
   }
   return o;
 }
-function Un(t) {
+function wr(t) {
   let e = {
     direction: "TD",
     nodes: /* @__PURE__ */ new Map(),
@@ -93,90 +93,90 @@ function Un(t) {
     classAssignments: /* @__PURE__ */ new Map(),
     nodeStyles: /* @__PURE__ */ new Map(),
     linkStyles: /* @__PURE__ */ new Map()
-  }, n = [], o = /* @__PURE__ */ new Set(), s = 0, r = 0;
+  }, n = [], o = /* @__PURE__ */ new Set(), a = 0, r = 0;
   for (let i = 1; i < t.length; i++) {
-    let a = t[i], c = a.match(/^direction\s+(TD|TB|LR|BT|RL)\s*$/i);
+    let s = t[i], c = s.match(/^direction\s+(TD|TB|LR|BT|RL)\s*$/i);
     if (c) {
       n.length > 0 ? n[n.length - 1].direction = c[1].toUpperCase() : e.direction = c[1].toUpperCase();
       continue;
     }
-    let l = a.match(/^linkStyle\s+(default|[\d,\s]+)\s+(.+)$/);
-    if (l) {
-      let m = l[1].trim(), p = Vt(l[2]);
-      if (m === "default")
-        e.linkStyles.set("default", { ...e.linkStyles.get("default"), ...p });
+    let f = s.match(/^linkStyle\s+(default|[\d,\s]+)\s+(.+)$/);
+    if (f) {
+      let g = f[1].trim(), m = ne(f[2]);
+      if (g === "default")
+        e.linkStyles.set("default", { ...e.linkStyles.get("default"), ...m });
       else {
-        let b = m.split(",").map((A) => parseInt(A.trim(), 10));
-        for (let A of b)
-          isNaN(A) || e.linkStyles.set(A, { ...e.linkStyles.get(A), ...p });
+        let x = g.split(",").map((w) => parseInt(w.trim(), 10));
+        for (let w of x)
+          isNaN(w) || e.linkStyles.set(w, { ...e.linkStyles.get(w), ...m });
       }
       continue;
     }
-    let d = a.match(/^state\s+(?:"([^"]+)"\s+as\s+)?([\w\p{L}]+)\s*\{$/u);
+    let d = s.match(/^state\s+(?:"([^"]+)"\s+as\s+)?([\w\p{L}]+)\s*\{$/u);
     if (d) {
-      let m = d[1] ?? d[2], p = d[2], b = { id: p, label: m, nodeIds: [], children: [] };
-      n.push(b), o.add(p), e.nodes.delete(p);
+      let g = d[1] ?? d[2], m = d[2], x = { id: m, label: g, nodeIds: [], children: [] };
+      n.push(x), o.add(m), e.nodes.delete(m);
       continue;
     }
-    if (a === "}") {
-      let m = n.pop();
-      m && (n.length > 0 ? n[n.length - 1].children.push(m) : e.subgraphs.push(m));
+    if (s === "}") {
+      let g = n.pop();
+      g && (n.length > 0 ? n[n.length - 1].children.push(g) : e.subgraphs.push(g));
       continue;
     }
-    let h = a.match(/^state\s+"([^"]+)"\s+as\s+([\w\p{L}]+)\s*$/u);
+    let h = s.match(/^state\s+"([^"]+)"\s+as\s+([\w\p{L}]+)\s*$/u);
     if (h) {
-      let m = dt(h[1]), p = h[2];
-      Ot(e, n, { id: p, label: m, shape: "rounded" });
+      let g = ut(h[1]), m = h[2];
+      Vt(e, n, { id: m, label: g, shape: "rounded" });
       continue;
     }
-    let f = a.match(/^(\[\*\]|[\w\p{L}-]+)\s*(-->)\s*(\[\*\]|[\w\p{L}-]+)(?:\s*:\s*(.+))?$/u);
-    if (f) {
-      let m = f[1], p = f[3], b = f[4]?.trim(), A = b ? dt(b) : void 0;
-      m === "[*]" ? (s++, m = `_start${s > 1 ? s : ""}`, Ot(e, n, { id: m, label: "", shape: "state-start" })) : o.has(m) || Se(e, n, m), p === "[*]" ? (r++, p = `_end${r > 1 ? r : ""}`, Ot(e, n, { id: p, label: "", shape: "state-end" })) : o.has(p) || Se(e, n, p), e.edges.push({
-        source: m,
-        target: p,
-        label: A,
+    let l = s.match(/^(\[\*\]|[\w\p{L}-]+)\s*(-->)\s*(\[\*\]|[\w\p{L}-]+)(?:\s*:\s*(.+))?$/u);
+    if (l) {
+      let g = l[1], m = l[3], x = l[4]?.trim(), w = x ? ut(x) : void 0;
+      g === "[*]" ? (a++, g = `_start${a > 1 ? a : ""}`, Vt(e, n, { id: g, label: "", shape: "state-start" })) : o.has(g) || We(e, n, g), m === "[*]" ? (r++, m = `_end${r > 1 ? r : ""}`, Vt(e, n, { id: m, label: "", shape: "state-end" })) : o.has(m) || We(e, n, m), e.edges.push({
+        source: g,
+        target: m,
+        label: w,
         style: "solid",
         hasArrowStart: !1,
         hasArrowEnd: !0
       });
       continue;
     }
-    let u = a.match(/^([\w\p{L}-]+)\s*:\s*(.+)$/u);
+    let u = s.match(/^([\w\p{L}-]+)\s*:\s*(.+)$/u);
     if (u) {
-      let m = u[1], p = dt(u[2].trim());
-      Ot(e, n, { id: m, label: p, shape: "rounded" });
+      let g = u[1], m = ut(u[2].trim());
+      Vt(e, n, { id: g, label: m, shape: "rounded" });
       continue;
     }
   }
   return e;
 }
-function Ot(t, e, n) {
+function Vt(t, e, n) {
   if (!t.nodes.has(n.id) && t.nodes.set(n.id, n), e.length > 0) {
-    let s = e[e.length - 1];
-    s.nodeIds.includes(n.id) || s.nodeIds.push(n.id);
+    let a = e[e.length - 1];
+    a.nodeIds.includes(n.id) || a.nodeIds.push(n.id);
   }
 }
-function Se(t, e, n) {
+function We(t, e, n) {
   if (!t.nodes.has(n))
-    Ot(t, e, { id: n, label: n, shape: "rounded" });
+    Vt(t, e, { id: n, label: n, shape: "rounded" });
   else if (e.length > 0) {
     let o = e[e.length - 1];
     o.nodeIds.includes(n) || o.nodeIds.push(n);
   }
 }
-function Vt(t) {
+function ne(t) {
   let e = t.replace(/;\s*$/, ""), n = {};
   for (let o of e.split(",")) {
-    let s = o.indexOf(":");
-    if (s > 0) {
-      let r = o.slice(0, s).trim(), i = o.slice(s + 1).trim();
+    let a = o.indexOf(":");
+    if (a > 0) {
+      let r = o.slice(0, a).trim(), i = o.slice(a + 1).trim();
       r && i && (n[r] = i);
     }
   }
   return n;
 }
-var qn = /^(<)?(-->|-.->|==>|---|-\.-|===)(?:\|([^|]*)\|)?/, Vn = /^(<)?(--|-\.|==)\s+(.+?)\s+(-->|---|\.\->|-\.\-|==>|===)/, Kn = [
+var Mr = /^(<)?(-->|-.->|==>|---|-\.-|===)(?:\|([^|]*)\|)?/, Ar = /^(<)?(--|-\.|==)\s+(.+?)\s+(-->|---|\.\->|-\.\-|==>|===)/, vr = [
   // Triple delimiters (must be first)
   { regex: /^((?:\w|-(?![-.>]))+)\(\(\((.+?)\)\)\)/, shape: "doublecircle" },
   // A(((text)))
@@ -207,108 +207,108 @@ var qn = /^(<)?(-->|-.->|==>|---|-\.-|===)(?:\|([^|]*)\|)?/, Vn = /^(<)?(--|-\.|
   // A(text)
   { regex: /^((?:\w|-(?![-.>]))+)\{(.+?)\}/, shape: "diamond" }
   // A{text}
-], Qn = /^((?:\w|-(?![-.>]))+)/, Zn = /^:::([\w][\w-]*)/;
-function tr(t, e, n) {
-  let o = t.trim(), s = Re(o, e, n);
-  if (!s || s.ids.length === 0) return;
-  o = s.remaining.trim();
-  let r = s.ids;
+], Sr = /^((?:\w|-(?![-.>]))+)/, Rr = /^:::([\w][\w-]*)/;
+function Dr(t, e, n) {
+  let o = t.trim(), a = _e(o, e, n);
+  if (!a || a.ids.length === 0) return;
+  o = a.remaining.trim();
+  let r = a.ids;
   for (; o.length > 0; ) {
-    let i, a, c, l, d = o.match(qn);
+    let i, s, c, f, d = o.match(Mr);
     if (d) {
       i = !!d[1];
-      let f = d[2], u = d[3]?.trim();
-      l = u ? dt(u) : void 0, o = o.slice(d[0].length).trim(), a = nr(f), c = f.endsWith(">");
+      let l = d[2], u = d[3]?.trim();
+      f = u ? ut(u) : void 0, o = o.slice(d[0].length).trim(), s = Lr(l), c = l.endsWith(">");
     } else {
-      let f = o.match(Vn);
-      if (!f) break;
-      i = !!f[1];
-      let u = f[3].trim();
-      l = u ? dt(u) : void 0;
-      let m = f[2], p = f[4];
-      o = o.slice(f[0].length).trim(), a = rr(m, p), c = p.endsWith(">");
+      let l = o.match(Ar);
+      if (!l) break;
+      i = !!l[1];
+      let u = l[3].trim();
+      f = u ? ut(u) : void 0;
+      let g = l[2], m = l[4];
+      o = o.slice(l[0].length).trim(), s = Er(g, m), c = m.endsWith(">");
     }
-    let h = Re(o, e, n);
+    let h = _e(o, e, n);
     if (!h || h.ids.length === 0) break;
     o = h.remaining.trim();
-    for (let f of r)
+    for (let l of r)
       for (let u of h.ids)
         e.edges.push({
-          source: f,
+          source: l,
           target: u,
-          label: l,
-          style: a,
+          label: f,
+          style: s,
           hasArrowStart: i,
           hasArrowEnd: c
         });
     r = h.ids;
   }
 }
-function Re(t, e, n) {
-  let o = De(t, e, n);
+function _e(t, e, n) {
+  let o = je(t, e, n);
   if (!o) return null;
-  let s = [o.id], r = o.remaining.trim();
+  let a = [o.id], r = o.remaining.trim();
   for (; r.startsWith("&"); ) {
     r = r.slice(1).trim();
-    let i = De(r, e, n);
+    let i = je(r, e, n);
     if (!i) break;
-    s.push(i.id), r = i.remaining.trim();
+    a.push(i.id), r = i.remaining.trim();
   }
-  return { ids: s, remaining: r };
+  return { ids: a, remaining: r };
 }
-function De(t, e, n) {
-  let o = null, s = t;
-  for (let { regex: i, shape: a } of Kn) {
+function je(t, e, n) {
+  let o = null, a = t;
+  for (let { regex: i, shape: s } of vr) {
     let c = t.match(i);
     if (c) {
       o = c[1];
-      let l = dt(c[2]);
-      Te(e, n, { id: o, label: l, shape: a }), s = t.slice(c[0].length);
+      let f = ut(c[2]);
+      Oe(e, n, { id: o, label: f, shape: s }), a = t.slice(c[0].length);
       break;
     }
   }
   if (o === null) {
-    let i = t.match(Qn);
-    i && (o = i[1], e.nodes.has(o) || Te(e, n, { id: o, label: o, shape: "rectangle" }), s = t.slice(i[0].length));
+    let i = t.match(Sr);
+    i && (o = i[1], e.nodes.has(o) || Oe(e, n, { id: o, label: o, shape: "rectangle" }), a = t.slice(i[0].length));
   }
   if (o === null) return null;
-  let r = s.match(Zn);
-  return r && (e.classAssignments.set(o, r[1]), s = s.slice(r[0].length)), { id: o, remaining: s };
+  let r = a.match(Rr);
+  return r && (e.classAssignments.set(o, r[1]), a = a.slice(r[0].length)), { id: o, remaining: a };
 }
-function Te(t, e, n) {
-  !t.nodes.has(n.id) && t.nodes.set(n.id, n), er(e, n.id);
+function Oe(t, e, n) {
+  !t.nodes.has(n.id) && t.nodes.set(n.id, n), Tr(e, n.id);
 }
-function er(t, e) {
+function Tr(t, e) {
   if (t.length > 0) {
     let n = t[t.length - 1];
     n.nodeIds.includes(e) || n.nodeIds.push(e);
   }
 }
-function nr(t) {
+function Lr(t) {
   return t === "-.->" || t === "-.-" ? "dotted" : t === "==>" || t === "===" ? "thick" : "solid";
 }
-function rr(t, e) {
+function Er(t, e) {
   return t === "-." || e === ".->" || e === "-.-" ? "dotted" : t === "==" || e === "==>" || e === "===" ? "thick" : "solid";
 }
 
 // node_modules/beautiful-mermaid/src/ascii/types.ts
-var _ = { x: 1, y: 0 }, Y = { x: 1, y: 2 }, j = { x: 0, y: 1 }, P = { x: 2, y: 1 }, wt = { x: 2, y: 0 }, Mt = { x: 0, y: 0 }, Rt = { x: 2, y: 2 }, vt = { x: 0, y: 2 }, Gt = { x: 1, y: 1 };
-function ae(t, e) {
+var O = { x: 1, y: 0 }, H = { x: 1, y: 2 }, z = { x: 0, y: 1 }, W = { x: 2, y: 1 }, At = { x: 2, y: 0 }, wt = { x: 0, y: 0 }, Dt = { x: 2, y: 2 }, vt = { x: 0, y: 2 }, $t = { x: 1, y: 1 };
+function ge(t, e) {
+  return t.x === e.x && t.y === e.y;
+}
+function re(t, e) {
   return t.x === e.x && t.y === e.y;
 }
 function Kt(t, e) {
-  return t.x === e.x && t.y === e.y;
-}
-function Ft(t, e) {
   return { x: t.x + e.x, y: t.y + e.y };
 }
-function It(t) {
+function Bt(t) {
   return `${t.x},${t.y}`;
 }
-var Ee = { name: "", styles: {} };
+var Fe = { name: "", styles: {} };
 
 // node_modules/beautiful-mermaid/src/ascii/ansi.ts
-var Zt = {
+var ie = {
   fg: "#27272a",
   // zinc-800 — primary text
   border: "#a1a1aa",
@@ -322,7 +322,7 @@ var Zt = {
   junction: "#a1a1aa"
   // same as border
 };
-function ke() {
+function Je() {
   let t = globalThis.process;
   if (t) {
     if (!t.stdout?.isTTY)
@@ -332,7 +332,7 @@ function ke() {
   }
   return typeof document < "u" ? "html" : "none";
 }
-function le(t) {
+function xe(t) {
   let e = t.replace("#", "");
   return e.length === 3 ? {
     r: parseInt(e[0] + e[0], 16),
@@ -344,35 +344,35 @@ function le(t) {
     b: parseInt(e.substring(4, 6), 16)
   };
 }
-var te = "\x1B[", Qt = `${te}0m`;
-function Ge(t) {
-  let { r: e, g: n, b: o } = le(t);
-  return `${te}38;2;${e};${n};${o}m`;
+var se = "\x1B[", oe = `${se}0m`;
+function Ue(t) {
+  let { r: e, g: n, b: o } = xe(t);
+  return `${se}38;2;${e};${n};${o}m`;
 }
-function or(t, e, n) {
+function Gr(t, e, n) {
   let o = (t + e + n) / 3;
   if (Math.max(Math.abs(t - o), Math.abs(e - o), Math.abs(n - o)) < 10) {
-    let l = Math.round(o / 255 * 23);
-    return 232 + Math.min(23, Math.max(0, l));
+    let f = Math.round(o / 255 * 23);
+    return 232 + Math.min(23, Math.max(0, f));
   }
-  let r = (l) => l < 48 ? 0 : l < 115 ? 1 : Math.min(5, Math.floor((l - 35) / 40)), i = r(t), a = r(e), c = r(n);
-  return 16 + 36 * i + 6 * a + c;
+  let r = (f) => f < 48 ? 0 : f < 115 ? 1 : Math.min(5, Math.floor((f - 35) / 40)), i = r(t), s = r(e), c = r(n);
+  return 16 + 36 * i + 6 * s + c;
 }
-function Ie(t) {
-  let { r: e, g: n, b: o } = le(t), s = or(e, n, o);
-  return `${te}38;5;${s}m`;
+function qe(t) {
+  let { r: e, g: n, b: o } = xe(t), a = Gr(e, n, o);
+  return `${se}38;5;${a}m`;
 }
-function Ne(t) {
-  let { r: e, g: n, b: o } = le(t), s = 0.299 * e + 0.587 * n + 0.114 * o, r = s > 100 ? 0 : 60, i;
-  return e > 180 && n < 100 && o < 100 ? i = 31 : n > 180 && e < 100 && o < 100 ? i = 32 : e > 150 && n > 150 && o < 100 ? i = 33 : o > 180 && e < 100 && n < 100 ? i = 34 : e > 150 && o > 150 && n < 100 ? i = 35 : n > 150 && o > 150 && e < 100 ? i = 36 : s > 200 ? i = 37 : s < 50 ? i = 30 : i = 37, `${te}${i + r}m`;
+function Ve(t) {
+  let { r: e, g: n, b: o } = xe(t), a = 0.299 * e + 0.587 * n + 0.114 * o, r = a > 100 ? 0 : 60, i;
+  return e > 180 && n < 100 && o < 100 ? i = 31 : n > 180 && e < 100 && o < 100 ? i = 32 : e > 150 && n > 150 && o < 100 ? i = 33 : o > 180 && e < 100 && n < 100 ? i = 34 : e > 150 && o > 150 && n < 100 ? i = 35 : n > 150 && o > 150 && e < 100 ? i = 36 : a > 200 ? i = 37 : a < 50 ? i = 30 : i = 37, `${se}${i + r}m`;
 }
-function Ye(t) {
+function Ke(t) {
   return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
-function $e(t, e) {
-  return `<span style="color:${t}">${Ye(e)}</span>`;
+function Qe(t, e) {
+  return `<span style="color:${t}">${Ke(e)}</span>`;
 }
-function Be(t, e) {
+function Ze(t, e) {
   switch (t) {
     case "text":
       return e.fg;
@@ -390,124 +390,124 @@ function Be(t, e) {
       return e.fg;
   }
 }
-function ce(t, e, n) {
+function pe(t, e, n) {
   if (n === "none") return "";
-  let o = Be(t, e);
+  let o = Ze(t, e);
   switch (n) {
     case "truecolor":
-      return Ge(o);
+      return Ue(o);
     case "ansi256":
-      return Ie(o);
+      return qe(o);
     case "ansi16":
-      return Ne(o);
+      return Ve(o);
     default:
       return "";
   }
 }
-function Xe(t, e, n, o) {
+function tn(t, e, n, o) {
   if (o === "none")
     return t.join("");
   if (o === "html")
-    return ir(t, e, n);
-  let s = "", r = null, i = "";
-  for (let a = 0; a < t.length; a++) {
-    let c = t[a], l = e[a] ?? null;
+    return kr(t, e, n);
+  let a = "", r = null, i = "";
+  for (let s = 0; s < t.length; s++) {
+    let c = t[s], f = e[s] ?? null;
     if (c === " ") {
-      i.length > 0 && (r !== null ? s += ce(r, n, o) + i + Qt : s += i, i = "", r = null), s += c;
+      i.length > 0 && (r !== null ? a += pe(r, n, o) + i + oe : a += i, i = "", r = null), a += c;
       continue;
     }
-    if (l === r) {
+    if (f === r) {
       i += c;
       continue;
     }
-    i.length > 0 && (r !== null ? s += ce(r, n, o) + i + Qt : s += i), i = c, r = l;
+    i.length > 0 && (r !== null ? a += pe(r, n, o) + i + oe : a += i), i = c, r = f;
   }
-  return i.length > 0 && r !== null ? s += ce(r, n, o) + i + Qt : i.length > 0 && (s += i), s;
+  return i.length > 0 && r !== null ? a += pe(r, n, o) + i + oe : i.length > 0 && (a += i), a;
 }
-function ir(t, e, n) {
-  let o = "", s = null, r = "", i = () => {
-    r.length !== 0 && (s !== null ? o += $e(Be(s, n), r) : o += Ye(r), r = "", s = null);
+function kr(t, e, n) {
+  let o = "", a = null, r = "", i = () => {
+    r.length !== 0 && (a !== null ? o += Qe(Ze(a, n), r) : o += Ke(r), r = "", a = null);
   };
-  for (let a = 0; a < t.length; a++) {
-    let c = t[a], l = e[a] ?? null;
+  for (let s = 0; s < t.length; s++) {
+    let c = t[s], f = e[s] ?? null;
     if (c === " ") {
       i(), o += " ";
       continue;
     }
-    if (l === s) {
+    if (f === a) {
       r += c;
       continue;
     }
-    i(), r = c, s = l;
+    i(), r = c, a = f;
   }
   return i(), o;
 }
-function ee(t, e, n) {
+function ae(t, e, n) {
   if (n === "none" || t.length === 0) return t;
-  if (n === "html") return $e(e, t);
+  if (n === "html") return Qe(e, t);
   let o;
   switch (n) {
     case "truecolor":
-      o = Ge(e);
+      o = Ue(e);
       break;
     case "ansi256":
-      o = Ie(e);
+      o = qe(e);
       break;
     case "ansi16":
-      o = Ne(e);
+      o = Ve(e);
       break;
     default:
       return t;
   }
-  return `${o}${t}${Qt}`;
+  return `${o}${t}${oe}`;
 }
 
 // node_modules/beautiful-mermaid/src/ascii/canvas.ts
-function it(t, e) {
+function ct(t, e) {
   let n = [];
   for (let o = 0; o <= t; o++) {
-    let s = [];
+    let a = [];
     for (let r = 0; r <= e; r++)
-      s.push(" ");
-    n.push(s);
+      a.push(" ");
+    n.push(a);
   }
   return n;
 }
 function ht(t) {
-  let [e, n] = Jt(t);
-  return it(e, n);
+  let [e, n] = Qt(t);
+  return ct(e, n);
 }
-function $t(t, e) {
+function Ht(t, e) {
   let n = [];
   for (let o = 0; o <= t; o++) {
-    let s = [];
+    let a = [];
     for (let r = 0; r <= e; r++)
-      s.push(null);
-    n.push(s);
+      a.push(null);
+    n.push(a);
   }
   return n;
 }
-function Nt(t, e, n) {
-  let o = t.length - 1, s = (t[0]?.length ?? 1) - 1, r = Math.max(e, o), i = Math.max(n, s), a = $t(r, i);
-  for (let c = 0; c < a.length; c++)
-    for (let l = 0; l < a[0].length; l++)
-      c < t.length && l < t[0].length && (a[c][l] = t[c][l]);
-  return t.length = 0, t.push(...a), t;
+function Yt(t, e, n) {
+  let o = t.length - 1, a = (t[0]?.length ?? 1) - 1, r = Math.max(e, o), i = Math.max(n, a), s = Ht(r, i);
+  for (let c = 0; c < s.length; c++)
+    for (let f = 0; f < s[0].length; f++)
+      c < t.length && f < t[0].length && (s[c][f] = t[c][f]);
+  return t.length = 0, t.push(...s), t;
 }
-function Bt(t, e, n, o) {
-  (e >= t.length || n >= (t[0]?.length ?? 0)) && Nt(t, e, n), t[e][n] = o;
+function Lt(t, e, n, o) {
+  (e >= t.length || n >= (t[0]?.length ?? 0)) && Yt(t, e, n), t[e][n] = o;
 }
-function Jt(t) {
+function Qt(t) {
   return [t.length - 1, (t[0]?.length ?? 1) - 1];
 }
-function Tt(t, e, n) {
-  let [o, s] = Jt(t), r = Math.max(e, o), i = Math.max(n, s), a = it(r, i);
-  for (let c = 0; c < a.length; c++)
-    for (let l = 0; l < a[0].length; l++)
-      c < t.length && l < t[0].length && (a[c][l] = t[c][l]);
-  return t.length = 0, t.push(...a), t;
+function Et(t, e, n) {
+  let [o, a] = Qt(t), r = Math.max(e, o), i = Math.max(n, a), s = ct(r, i);
+  for (let c = 0; c < s.length; c++)
+    for (let f = 0; f < s[0].length; f++)
+      c < t.length && f < t[0].length && (s[c][f] = t[c][f]);
+  return t.length = 0, t.push(...s), t;
 }
-var sr = /* @__PURE__ */ new Set([
+var Ir = /* @__PURE__ */ new Set([
   "\u2500",
   "\u2502",
   "\u250C",
@@ -524,21 +524,21 @@ var sr = /* @__PURE__ */ new Set([
   "\u2576",
   "\u2577"
 ]);
-function He(t, e) {
+function nn(t, e) {
   for (let n = 0; n < (e[0]?.length ?? 0); n++) {
-    let o = e.map((s, r) => s[n] !== " " ? r : -1).filter((s) => s >= 0);
+    let o = e.map((a, r) => a[n] !== " " ? r : -1).filter((a) => a >= 0);
     if (o.length !== 0)
-      for (let s = o[0]; s <= o[o.length - 1]; s++)
-        e[s][n] === " " && !fe(t[s][n]) && (t[s][n] = " ");
+      for (let a = o[0]; a <= o[o.length - 1]; a++)
+        e[a][n] === " " && !be(t[a][n]) && (t[a][n] = " ");
   }
 }
-function Pe(t) {
-  return sr.has(t);
+function en(t) {
+  return Ir.has(t);
 }
-function fe(t) {
+function be(t) {
   return /^[a-zA-Z0-9]$/.test(t);
 }
-var ar = {
+var Nr = {
   "\u2500": { "\u2502": "\u253C", "\u250C": "\u252C", "\u2510": "\u252C", "\u2514": "\u2534", "\u2518": "\u2534", "\u251C": "\u253C", "\u2524": "\u253C", "\u252C": "\u252C", "\u2534": "\u2534" },
   "\u2502": { "\u2500": "\u253C", "\u250C": "\u251C", "\u2510": "\u2524", "\u2514": "\u251C", "\u2518": "\u2524", "\u251C": "\u251C", "\u2524": "\u2524", "\u252C": "\u253C", "\u2534": "\u253C" },
   "\u250C": { "\u2500": "\u252C", "\u2502": "\u251C", "\u2510": "\u252C", "\u2514": "\u251C", "\u2518": "\u253C", "\u251C": "\u251C", "\u2524": "\u253C", "\u252C": "\u252C", "\u2534": "\u253C" },
@@ -550,48 +550,48 @@ var ar = {
   "\u252C": { "\u2500": "\u252C", "\u2502": "\u253C", "\u250C": "\u252C", "\u2510": "\u252C", "\u2514": "\u253C", "\u2518": "\u253C", "\u251C": "\u253C", "\u2524": "\u253C", "\u2534": "\u253C" },
   "\u2534": { "\u2500": "\u2534", "\u2502": "\u253C", "\u250C": "\u253C", "\u2510": "\u253C", "\u2514": "\u2534", "\u2518": "\u2534", "\u251C": "\u253C", "\u2524": "\u253C", "\u252C": "\u253C" }
 };
-function cr(t, e) {
-  return ar[t]?.[e] ?? t;
+function $r(t, e) {
+  return Nr[t]?.[e] ?? t;
 }
-function Lt(t, e, n, ...o) {
-  let [s, r] = Jt(t);
-  for (let a of o) {
-    let [c, l] = Jt(a);
-    s = Math.max(s, c + e.x), r = Math.max(r, l + e.y);
+function Gt(t, e, n, ...o) {
+  let [a, r] = Qt(t);
+  for (let s of o) {
+    let [c, f] = Qt(s);
+    a = Math.max(a, c + e.x), r = Math.max(r, f + e.y);
   }
-  let i = it(s, r);
-  for (let a = 0; a <= s; a++)
+  let i = ct(a, r);
+  for (let s = 0; s <= a; s++)
     for (let c = 0; c <= r; c++)
-      a < t.length && c < t[0].length && (i[a][c] = t[a][c]);
-  for (let a of o)
-    for (let c = 0; c < a.length; c++)
-      for (let l = 0; l < a[0].length; l++) {
-        let d = a[c][l];
+      s < t.length && c < t[0].length && (i[s][c] = t[s][c]);
+  for (let s of o)
+    for (let c = 0; c < s.length; c++)
+      for (let f = 0; f < s[0].length; f++) {
+        let d = s[c][f];
         if (d !== " ") {
-          let h = c + e.x, f = l + e.y, u = i[h][f];
-          !n && Pe(d) && Pe(u) ? i[h][f] = cr(u, d) : fe(u) && fe(d) || (i[h][f] = d);
+          let h = c + e.x, l = f + e.y, u = i[h][l];
+          !n && en(d) && en(u) ? i[h][l] = $r(u, d) : be(u) && be(d) || (i[h][l] = d);
         }
       }
   return i;
 }
-function Pt(t, e) {
-  let [n, o] = Jt(t), s = [], r = e?.roleCanvas, i = e?.colorMode ?? "none", a = e?.theme ?? Zt;
+function _t(t, e) {
+  let [n, o] = Qt(t), a = [], r = e?.roleCanvas, i = e?.colorMode ?? "none", s = e?.theme ?? ie;
   for (let c = 0; c <= o; c++)
     if (i === "none" || !r) {
-      let l = "";
+      let f = "";
       for (let d = 0; d <= n; d++)
-        l += t[d][c];
-      s.push(l);
+        f += t[d][c];
+      a.push(f);
     } else {
-      let l = [], d = [];
+      let f = [], d = [];
       for (let h = 0; h <= n; h++)
-        l.push(t[h][c]), d.push(r[h]?.[c] ?? null);
-      s.push(Xe(l, d, a, i));
+        f.push(t[h][c]), d.push(r[h]?.[c] ?? null);
+      a.push(tn(f, d, s, i));
     }
-  return s.join(`
+  return a.join(`
 `);
 }
-var lr = {
+var Br = {
   // Unicode arrows
   "\u25B2": "\u25BC",
   "\u25BC": "\u25B2",
@@ -614,49 +614,49 @@ var lr = {
   "\u2575": "\u2577",
   "\u2577": "\u2575"
 };
-function We(t) {
+function rn(t) {
   for (let e of t)
     e.reverse();
   for (let e of t)
     for (let n = 0; n < e.length; n++) {
-      let o = lr[e[n]];
+      let o = Br[e[n]];
       o && (e[n] = o);
     }
   return t;
 }
-function _e(t) {
+function on(t) {
   for (let e of t)
     e.reverse();
   return t;
 }
-function de(t, e, n, o = !1) {
-  Tt(t, e.x + n.length, e.y);
-  for (let s = 0; s < n.length; s++) {
-    let r = e.x + s, i = t[r][e.y];
-    (o || i === " ") && (t[r][e.y] = n[s]);
+function ye(t, e, n, o = !1) {
+  Et(t, e.x + n.length, e.y);
+  for (let a = 0; a < n.length; a++) {
+    let r = e.x + a, i = t[r][e.y];
+    (o || i === " ") && (t[r][e.y] = n[a]);
   }
 }
-function je(t, e, n) {
-  let o = 0, s = 0;
+function sn(t, e, n) {
+  let o = 0, a = 0;
   for (let r of e.values()) o += r;
-  for (let r of n.values()) s += r;
-  Tt(t, o - 1, s - 1);
+  for (let r of n.values()) a += r;
+  Et(t, o - 1, a - 1);
 }
-function ze(t, e, n) {
-  let o = 0, s = 0;
+function an(t, e, n) {
+  let o = 0, a = 0;
   for (let r of e.values()) o += r;
-  for (let r of n.values()) s += r;
-  Nt(t, o - 1, s - 1);
+  for (let r of n.values()) a += r;
+  Yt(t, o - 1, a - 1);
 }
 
 // node_modules/beautiful-mermaid/src/ascii/converter.ts
-function Oe(t, e) {
+function cn(t, e) {
   let n = /* @__PURE__ */ new Map(), o = 0;
-  for (let [a, c] of t.nodes) {
-    let l = {
+  for (let [s, c] of t.nodes) {
+    let f = {
       // Use the parser ID as the unique identity key to avoid collisions
       // when multiple nodes share the same label (e.g. A[Web Server], C[Web Server]).
-      name: a,
+      name: s,
       // The label is used for rendering inside the box.
       displayLabel: c.label,
       // Preserve shape from parser for shape-aware rendering
@@ -667,39 +667,39 @@ function Oe(t, e) {
       drawing: null,
       drawn: !1,
       styleClassName: "",
-      styleClass: Ee
+      styleClass: Fe
     };
-    n.set(a, l), o++;
+    n.set(s, f), o++;
   }
-  let s = [...n.values()], r = [];
-  for (let a of t.edges) {
-    let c = n.get(a.source), l = n.get(a.target);
-    !c || !l || r.push({
+  let a = [...n.values()], r = [];
+  for (let s of t.edges) {
+    let c = n.get(s.source), f = n.get(s.target);
+    !c || !f || r.push({
       from: c,
-      to: l,
-      text: a.label ?? "",
+      to: f,
+      text: s.label ?? "",
       path: [],
       labelLine: [],
       startDir: { x: 0, y: 0 },
       endDir: { x: 0, y: 0 },
-      style: a.style,
-      hasArrowStart: a.hasArrowStart,
-      hasArrowEnd: a.hasArrowEnd
+      style: s.style,
+      hasArrowStart: s.hasArrowStart,
+      hasArrowEnd: s.hasArrowEnd
     });
   }
   let i = [];
-  for (let a of t.subgraphs)
-    Fe(a, null, n, i);
-  fr(t.subgraphs, i, n, t);
-  for (let [a, c] of t.classAssignments) {
-    let l = n.get(a), d = t.classDefs.get(c);
-    l && d && (l.styleClassName = c, l.styleClass = { name: c, styles: d });
+  for (let s of t.subgraphs)
+    ln(s, null, n, i);
+  Yr(t.subgraphs, i, n, t);
+  for (let [s, c] of t.classAssignments) {
+    let f = n.get(s), d = t.classDefs.get(c);
+    f && d && (f.styleClassName = c, f.styleClass = { name: c, styles: d });
   }
   return {
-    nodes: s,
+    nodes: a,
     edges: r,
-    canvas: it(0, 0),
-    roleCanvas: $t(0, 0),
+    canvas: ct(0, 0),
+    roleCanvas: Ht(0, 0),
     grid: /* @__PURE__ */ new Map(),
     columnWidth: /* @__PURE__ */ new Map(),
     rowHeight: /* @__PURE__ */ new Map(),
@@ -711,9 +711,9 @@ function Oe(t, e) {
     // Populated by analyzeEdgeBundles() during layout
   };
 }
-function Fe(t, e, n, o) {
-  let s;
-  t.direction && (s = t.direction === "LR" || t.direction === "RL" ? "LR" : "TD");
+function ln(t, e, n, o) {
+  let a;
+  t.direction && (a = t.direction === "LR" || t.direction === "RL" ? "LR" : "TD");
   let r = {
     name: t.label,
     nodes: [],
@@ -723,50 +723,50 @@ function Fe(t, e, n, o) {
     minY: 0,
     maxX: 0,
     maxY: 0,
-    direction: s
+    direction: a
   };
   for (let i of t.nodeIds) {
-    let a = n.get(i);
-    a && r.nodes.push(a);
+    let s = n.get(i);
+    s && r.nodes.push(s);
   }
   o.push(r);
   for (let i of t.children) {
-    let a = Fe(i, r, n, o);
-    r.children.push(a);
-    for (let c of a.nodes)
+    let s = ln(i, r, n, o);
+    r.children.push(s);
+    for (let c of s.nodes)
       r.nodes.includes(c) || r.nodes.push(c);
   }
   return r;
 }
-function fr(t, e, n, o) {
-  let s = /* @__PURE__ */ new Map();
-  ur(t, e, s);
+function Yr(t, e, n, o) {
+  let a = /* @__PURE__ */ new Map();
+  Pr(t, e, a);
   let r = /* @__PURE__ */ new Map();
-  function i(a) {
-    let c = s.get(a);
+  function i(s) {
+    let c = a.get(s);
     if (c) {
-      for (let l of a.children)
-        i(l);
-      for (let l of a.nodeIds)
-        r.has(l) || r.set(l, c);
+      for (let f of s.children)
+        i(f);
+      for (let f of s.nodeIds)
+        r.has(f) || r.set(f, c);
     }
   }
-  for (let a of t)
-    i(a);
-  for (let a of e)
-    a.nodes = a.nodes.filter((c) => {
-      let l;
-      for (let [h, f] of n)
-        if (f === c) {
-          l = h;
+  for (let s of t)
+    i(s);
+  for (let s of e)
+    s.nodes = s.nodes.filter((c) => {
+      let f;
+      for (let [h, l] of n)
+        if (l === c) {
+          f = h;
           break;
         }
-      if (!l) return !1;
-      let d = r.get(l);
-      return d ? dr(a, d) : !0;
+      if (!f) return !1;
+      let d = r.get(f);
+      return d ? Xr(s, d) : !0;
     });
 }
-function dr(t, e) {
+function Xr(t, e) {
   let n = e;
   for (; n !== null; ) {
     if (n === t) return !0;
@@ -774,19 +774,19 @@ function dr(t, e) {
   }
   return !1;
 }
-function ur(t, e, n) {
+function Pr(t, e, n) {
   let o = [];
-  function s(r) {
+  function a(r) {
     for (let i of r)
-      o.push(i), s(i.children);
+      o.push(i), a(i.children);
   }
-  s(t);
+  a(t);
   for (let r = 0; r < o.length && r < e.length; r++)
     n.set(o[r], e[r]);
 }
 
 // node_modules/beautiful-mermaid/src/ascii/pathfinder.ts
-var ue = class {
+var Ce = class {
   items = [];
   size() {
     return this.items.length;
@@ -811,251 +811,404 @@ var ue = class {
   sinkDown(e) {
     let n = this.items.length;
     for (; ; ) {
-      let o = e, s = 2 * e + 1, r = 2 * e + 2;
-      if (s < n && this.items[s].priority < this.items[o].priority && (o = s), r < n && this.items[r].priority < this.items[o].priority && (o = r), o !== e)
+      let o = e, a = 2 * e + 1, r = 2 * e + 2;
+      if (a < n && this.items[a].priority < this.items[o].priority && (o = a), r < n && this.items[r].priority < this.items[o].priority && (o = r), o !== e)
         [this.items[e], this.items[o]] = [this.items[o], this.items[e]], e = o;
       else
         break;
     }
   }
 };
-function hr(t, e) {
+function Hr(t, e) {
   let n = Math.abs(t.x - e.x), o = Math.abs(t.y - e.y);
   return n === 0 || o === 0 ? n + o : n + o + 1;
 }
-var gr = [
+var Wr = [
   { x: 1, y: 0 },
   { x: -1, y: 0 },
   { x: 0, y: 1 },
   { x: 0, y: -1 }
 ];
-function mr(t, e) {
-  return e.x < 0 || e.y < 0 ? !1 : !t.has(It(e));
+function _r(t, e) {
+  return e.x < 0 || e.y < 0 ? !1 : !t.has(Bt(e));
 }
-function Ht(t, e, n) {
-  let o = new ue();
+function jt(t, e, n) {
+  let o = new Ce();
   o.push({ coord: e, priority: 0 });
-  let s = /* @__PURE__ */ new Map();
-  s.set(It(e), 0);
+  let a = /* @__PURE__ */ new Map();
+  a.set(Bt(e), 0);
   let r = /* @__PURE__ */ new Map();
-  r.set(It(e), null);
+  r.set(Bt(e), null);
   let i = 0;
   for (; o.size() > 0; ) {
     if (++i > 5e4) throw new Error("mermaid edge routing gave up");
-    let a = o.pop().coord;
-    if (ae(a, n)) {
-      let l = [], d = a;
+    let s = o.pop().coord;
+    if (ge(s, n)) {
+      let f = [], d = s;
       for (; d !== null; )
-        l.unshift(d), d = r.get(It(d)) ?? null;
-      return l;
+        f.unshift(d), d = r.get(Bt(d)) ?? null;
+      return f;
     }
-    let c = s.get(It(a));
-    for (let l of gr) {
-      let d = { x: a.x + l.x, y: a.y + l.y };
-      if (!mr(t, d) && !ae(d, n))
+    let c = a.get(Bt(s));
+    for (let f of Wr) {
+      let d = { x: s.x + f.x, y: s.y + f.y };
+      if (!_r(t, d) && !ge(d, n))
         continue;
-      let h = c + 1, f = It(d), u = s.get(f);
+      let h = c + 1, l = Bt(d), u = a.get(l);
       if (u === void 0 || h < u) {
-        s.set(f, h);
-        let m = h + hr(d, n);
-        o.push({ coord: d, priority: m }), r.set(f, a);
+        a.set(l, h);
+        let g = h + Hr(d, n);
+        o.push({ coord: d, priority: g }), r.set(l, s);
       }
     }
   }
   return null;
 }
-function Yt(t) {
+function Xt(t) {
   if (t.length <= 2) return t;
   let e = /* @__PURE__ */ new Set(), n = t[0], o = t[1];
-  for (let s = 2; s < t.length; s++) {
-    let r = t[s], i = o.x - n.x, a = o.y - n.y, c = r.x - o.x, l = r.y - o.y;
-    i === c && a === l && e.add(s - 1), n = o, o = r;
+  for (let a = 2; a < t.length; a++) {
+    let r = t[a], i = o.x - n.x, s = o.y - n.y, c = r.x - o.x, f = r.y - o.y;
+    i === c && s === f && e.add(a - 1), n = o, o = r;
   }
-  return t.filter((s, r) => !e.has(r));
+  return t.filter((a, r) => !e.has(r));
 }
 
 // node_modules/beautiful-mermaid/src/ascii/edge-routing.ts
-function ne(t) {
-  return t === _ ? Y : t === Y ? _ : t === j ? P : t === P ? j : t === wt ? vt : t === Mt ? Rt : t === Rt ? Mt : t === vt ? wt : Gt;
+function ce(t) {
+  return t === O ? H : t === H ? O : t === z ? W : t === W ? z : t === At ? vt : t === wt ? Dt : t === Dt ? wt : t === vt ? At : $t;
 }
-function x(t, e) {
+function b(t, e) {
   return t.x === e.x && t.y === e.y;
 }
-function pt(t, e) {
-  return t.x === e.x ? t.y < e.y ? Y : _ : t.y === e.y ? t.x < e.x ? P : j : t.x < e.x ? t.y < e.y ? Rt : wt : t.y < e.y ? vt : Mt;
+function xt(t, e) {
+  return t.x === e.x ? t.y < e.y ? H : O : t.y === e.y ? t.x < e.x ? W : z : t.x < e.x ? t.y < e.y ? Dt : At : t.y < e.y ? vt : wt;
 }
-function pr(t) {
-  return t === "LR" ? [P, Y, Y, P] : [Y, P, P, Y];
+function jr(t) {
+  return t === "LR" ? [W, H, H, W] : [H, W, W, H];
 }
-function xr(t, e) {
-  if (t.from === t.to) return pr(e);
-  let n = pt(t.from.gridCoord, t.to.gridCoord), o, s, r, i, a = e === "LR" ? x(n, j) || x(n, Mt) || x(n, vt) : x(n, _) || x(n, Mt) || x(n, wt);
-  return x(n, Rt) ? e === "LR" ? (o = Y, s = j, r = P, i = _) : (o = P, s = _, r = Y, i = j) : x(n, wt) ? e === "LR" ? (o = _, s = j, r = P, i = Y) : (o = P, s = Y, r = _, i = j) : x(n, vt) ? e === "LR" ? (o = Y, s = Y, r = j, i = _) : (o = j, s = _, r = Y, i = P) : x(n, Mt) ? e === "LR" ? (o = Y, s = Y, r = j, i = Y) : (o = P, s = P, r = _, i = P) : a ? e === "LR" && x(n, j) ? (o = Y, s = Y, r = j, i = P) : e === "TD" && x(n, _) ? (o = P, s = P, r = _, i = Y) : (o = n, s = ne(n), r = n, i = ne(n)) : (o = n, s = ne(n), r = n, i = ne(n)), [o, s, r, i];
+function Or(t, e) {
+  if (t.from === t.to) return jr(e);
+  let n = xt(t.from.gridCoord, t.to.gridCoord), o, a, r, i, s = e === "LR" ? b(n, z) || b(n, wt) || b(n, vt) : b(n, O) || b(n, wt) || b(n, At);
+  return b(n, Dt) ? e === "LR" ? (o = H, a = z, r = W, i = O) : (o = W, a = O, r = H, i = z) : b(n, At) ? e === "LR" ? (o = O, a = z, r = W, i = H) : (o = W, a = H, r = O, i = z) : b(n, vt) ? e === "LR" ? (o = H, a = H, r = z, i = O) : (o = z, a = O, r = H, i = W) : b(n, wt) ? e === "LR" ? (o = H, a = H, r = z, i = H) : (o = W, a = W, r = O, i = W) : s ? e === "LR" && b(n, z) ? (o = H, a = H, r = z, i = W) : e === "TD" && b(n, O) ? (o = W, a = W, r = O, i = H) : (o = n, a = ce(n), r = n, i = ce(n)) : (o = n, a = ce(n), r = n, i = ce(n)), [o, a, r, i];
 }
-function Je(t, e) {
-  let n = yt(t, e.from), o = yt(t, e.to), s = n && n === o && n.direction ? n.direction : t.config.graphDirection, [r, i, a, c] = xr(e, s), l = Ft(e.from.gridCoord, r), d = Ft(e.to.gridCoord, i), h = Ht(t.grid, l, d), f = Ft(e.from.gridCoord, a), u = Ft(e.to.gridCoord, c), m = Ht(t.grid, f, u);
-  if (h !== null && m !== null) {
-    h = Yt(h), m = Yt(m), h.length <= m.length ? (e.startDir = r, e.endDir = i, e.path = h) : (e.startDir = a, e.endDir = c, e.path = m);
+function fn(t, e) {
+  let n = mt(t, e.from), o = mt(t, e.to), a = n && n === o && n.direction ? n.direction : t.config.graphDirection, [r, i, s, c] = Or(e, a), f = Kt(e.from.gridCoord, r), d = Kt(e.to.gridCoord, i), h = jt(t.grid, f, d), l = Kt(e.from.gridCoord, s), u = Kt(e.to.gridCoord, c), g = jt(t.grid, l, u);
+  if (h !== null && g !== null) {
+    h = Xt(h), g = Xt(g), h.length <= g.length ? (e.startDir = r, e.endDir = i, e.path = h) : (e.startDir = s, e.endDir = c, e.path = g);
     return;
   }
   if (h !== null) {
-    e.startDir = r, e.endDir = i, e.path = Yt(h);
+    e.startDir = r, e.endDir = i, e.path = Xt(h);
     return;
   }
-  if (m !== null) {
-    e.startDir = a, e.endDir = c, e.path = Yt(m);
+  if (g !== null) {
+    e.startDir = s, e.endDir = c, e.path = Xt(g);
     return;
   }
-  e.startDir = r, e.endDir = i, e.path = [l, d];
+  e.startDir = r, e.endDir = i, e.path = [f, d];
 }
-function he(t, e) {
+function we(t, e) {
   if (e.text.length === 0) return;
-  let n = e.text.length, o = e.path.length, s = t.config.graphDirection === "TD", r = [];
-  for (let f = 1; f < o; f++) {
-    let u = e.path[f - 1], m = e.path[f], p = [u, m], b = br(t, p), A = u.x === m.x;
-    r.push({ line: p, width: b, index: f, isVertical: A });
+  let n = e.text.length, o = e.path.length, a = t.config.graphDirection === "TD", r = [];
+  for (let l = 1; l < o; l++) {
+    let u = e.path[l - 1], g = e.path[l], m = [u, g], x = zr(t, m), w = u.x === g.x;
+    r.push({ line: m, width: x, index: l, isVertical: w });
   }
-  let i = r.filter((f) => f.width >= n && f.index > 1), a;
+  let i = r.filter((l) => l.width >= n && l.index > 1), s;
   if (i.length > 0)
-    i.sort((f, u) => u.index - f.index), a = i[0].line;
+    i.sort((l, u) => u.index - l.index), s = i[0].line;
   else {
-    let f = r.filter((u) => u.width >= n);
-    f.length > 0 ? (f.sort((u, m) => m.index - u.index), a = f[0].line) : (r.sort((u, m) => m.width - u.width), a = r[0]?.line ?? [e.path[0], e.path[1]]);
+    let l = r.filter((u) => u.width >= n);
+    l.length > 0 ? (l.sort((u, g) => g.index - u.index), s = l[0].line) : (r.sort((u, g) => g.width - u.width), s = r[0]?.line ?? [e.path[0], e.path[1]]);
   }
-  let c = Math.min(a[0].x, a[1].x), l = Math.max(a[0].x, a[1].x), d = c + Math.floor((l - c) / 2), h = t.columnWidth.get(d) ?? 0;
-  t.columnWidth.set(d, Math.max(h, n + 2)), e.labelLine = [a[0], a[1]];
+  let c = Math.min(s[0].x, s[1].x), f = Math.max(s[0].x, s[1].x), d = c + Math.floor((f - c) / 2), h = t.columnWidth.get(d) ?? 0;
+  t.columnWidth.set(d, Math.max(h, n + 2)), e.labelLine = [s[0], s[1]];
 }
-function br(t, e) {
-  let n = 0, o = Math.min(e[0].x, e[1].x), s = Math.max(e[0].x, e[1].x);
-  for (let r = o; r <= s; r++)
+function zr(t, e) {
+  let n = 0, o = Math.min(e[0].x, e[1].x), a = Math.max(e[0].x, e[1].x);
+  for (let r = o; r <= a; r++)
     n += t.columnWidth.get(r) ?? 0;
   return n;
 }
 
+// back-edges.ts
+var Me = [{ x: 0, y: -1 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: -1, y: 0 }], Ae = [O, W, H, z], [ve, Se, Re, De] = [0, 1, 2, 3], Fr = 15, dn = 16, pn = 32, Jr = 2, Ur = 2, un = 4, qr = 2e5, Vr = 2, Pt = (t) => (t + 2) % 4, Ot = (t, e) => ({ x: t.x + Me[e].x, y: t.y + Me[e].y }), Kr = (t, e) => t.x === e.x && t.y === e.y, kt = (t, e) => Me.findIndex((n) => n.x === e.x - t.x && n.y === e.y - t.y), le = (t, e) => Ot({ x: t.gridCoord.x + 1, y: t.gridCoord.y + 1 }, e), Le = (t, e) => {
+  let n = mt(t, e.from);
+  return n?.direction && n === mt(t, e.to) ? n.direction : t.config.graphDirection;
+};
+function zt(t, e) {
+  let n = e.from.gridCoord, o = e.to.gridCoord;
+  return !n || !o ? !1 : e.from === e.to || (Le(t, e) === "LR" ? o.x < n.x : o.y < n.y);
+}
+var Qr = (t) => {
+  let e = t.slice(0, 1);
+  for (let n of t.slice(1)) {
+    let o = e[e.length - 1];
+    for (; o.x !== n.x; ) e.push(o = { x: o.x + Math.sign(n.x - o.x), y: o.y });
+    for (; o.y !== n.y; ) e.push(o = { x: o.x, y: o.y + Math.sign(n.y - o.y) });
+  }
+  return e;
+}, Zr = (t) => t.filter((e, n) => n === 0 || n === t.length - 1 || kt(t[n - 1], e) !== kt(e, t[n + 1])), Zt = 2, It = (t, e) => (e.x - t.x) * t.height + (e.y - t.y), to = ({ reach: t }, e) => e.x >= t.left && e.x <= t.right && e.y >= t.top && e.y <= t.bottom, hn = (t, e) => ({
+  left: Math.min(e?.left ?? 1 / 0, ...t.map((n) => n.x - Zt)),
+  top: Math.min(e?.top ?? 1 / 0, ...t.map((n) => n.y - Zt)),
+  right: Math.max(e?.right ?? -1 / 0, ...t.map((n) => n.x + Zt)),
+  bottom: Math.max(e?.bottom ?? -1 / 0, ...t.map((n) => n.y + Zt))
+}), fe = (t, e, n) => n === Se || n === Re ? It(t, e) * 2 + n - 1 : fe(t, Ot(e, n), Pt(n)), xn = (t, e) => `out:${e.x},${e.y}:${t.style}:${t.hasArrowStart}`, Te = (t, e) => `in:${e.x},${e.y}:${t.style}:${t.hasArrowEnd}`, mn = (t, e, n) => {
+  let o = (s, c) => t.cells[It(t, s)] = t.cells[It(t, s)] | c, a = e.map((s, c) => c > 0 && c < e.length - 1 && kt(e[c - 1], s) !== kt(s, e[c + 1])), r = a.indexOf(!0), i = a.lastIndexOf(!0);
+  for (let s = 0; s + 1 < e.length; s++) {
+    let c = kt(e[s], e[s + 1]);
+    if (c < 0) continue;
+    o(e[s], 1 << c), o(e[s + 1], 1 << Pt(c)), s === 0 && o(e[1], dn), s === e.length - 2 && o(e[s], dn);
+    let f = n ? s >= i ? Te(n, e[e.length - 1]) : s < r ? xn(n, e[0]) : "" : "", d = fe(t, e[s], c), h = t.links.get(d);
+    t.links.set(d, { edges: (h?.edges ?? 0) + 1, shared: h?.shared ?? f });
+  }
+}, eo = (t, e) => Le(t, e) === "LR" ? ve : De, gn = (t, e, n, o, a, r) => {
+  let i = (N) => to(e, N) && !(e.cells[It(e, N)] & pn), s = (N, k) => e.links.get(fe(e, N, k))?.shared, c = eo(t, n), f = a.map((N) => ({ side: N, end: le(n.to, N), last: Ot(le(n.to, N), N) })).filter((N) => i(N.last) && [void 0, Te(n, N.end)].includes(s(N.end, N.side)));
+  if (f.length === 0) return null;
+  let d = f.map((N) => Te(n, N.end)), h = new Set([n.from, n.to].flatMap((N) => Ae.map((k, Z) => It(e, Ot(le(N, Z), Z))))), l = (N, k, Z) => {
+    let G = s(N, Pt(k)), P = s(N, Z);
+    return G?.startsWith("in:") && (Z !== k || P !== G) ? !1 : P === void 0 ? !0 : P.startsWith("out:") ? Z === k && G === P : d.includes(P);
+  }, u = (N, k, Z) => {
+    if (!l(N, k, Z)) return -1;
+    let G = e.cells[It(e, N)], P = k === Z ? 0 : Jr;
+    return G === 0 || G & (1 << Pt(k) | 1 << Z) ? P : P === 0 && G === (1 << (k + 1) % 4 | 1 << (k + 3) % 4) ? Ur : -1;
+  }, g = (N) => ({ x: e.x + Math.floor(N / 4 / e.height), y: e.y + Math.floor(N / 4) % e.height }), m = (N) => Math.min(...f.map((k) => Math.abs(N.x - k.last.x) + Math.abs(N.y - k.last.y))), x = new Int32Array(e.cells.length * 4).fill(-1), w = new Int32Array(x.length).fill(-1), B = [], v = (N, k, Z, G) => {
+    let P = It(e, N) * 4 + k;
+    x[P] !== -1 && x[P] <= Z || (x[P] = Z, w[P] = G, (B[Z + m(N)] ??= []).push(P, Z));
+  };
+  for (let N of o) {
+    let k = le(n.from, N);
+    i(Ot(k, N)) && [void 0, xn(n, k)].includes(s(k, N)) && v(Ot(k, N), N, 1 + (N === c ? un : 0), -1);
+  }
+  let Y;
+  for (let N = 0; N < B.length && N < (Y?.cost ?? 1 / 0); N++) {
+    let k = B[N];
+    for (let Z = 0; k && Z < k.length; Z += 2) {
+      let G = k[Z], P = k[Z + 1];
+      if (x[G] !== P) continue;
+      if (++r.steps > qr) throw new Error("mermaid edge routing gave up");
+      let C = g(G), U = G % 4;
+      for (let F of f) {
+        if (!Kr(C, F.last) || U !== Pt(F.side)) continue;
+        let V = u(C, U, U), ot = P + 1 + V + (F.side === c ? un : 0);
+        V >= 0 && (!Y || ot < Y.cost) && (Y = { cost: ot, state: G, end: F.end });
+      }
+      for (let F = 0; F < 4; F++) {
+        if (F === Pt(U) || F !== U && h.has(G >> 2)) continue;
+        let V = Ot(C, F);
+        if (!i(V)) continue;
+        let ot = u(C, U, F);
+        ot >= 0 && v(V, F, P + 1 + ot, G);
+      }
+    }
+  }
+  if (!Y) return null;
+  let T = [Y.end], K = Y.state;
+  for (let N = Y.state; N !== -1; N = w[N]) T.push(g(K = N));
+  return { cost: Y.cost, cells: [...T, Ot(g(K), Pt(K % 4))].reverse() };
+}, no = (t, e, n, o) => {
+  let a = Le(t, n) === "LR" ? [Re, De, Se, ve] : [Se, ve, Re, De], r = n.from !== n.to ? gn(t, e, n, a, a, o) : a.map((i) => gn(t, e, n, [i], a.filter((s) => (i + s) % 2 === 1), o)).reduce((i, s) => s && (!i || s.cost < i.cost) ? s : i, null);
+  if (!r) throw new Error(`mermaid found no free route for the back edge ${n.from.name} to ${n.to.name}`);
+  return r.cells;
+}, ro = (t, e, n) => {
+  let o = [...n.values()].flat(), a = Math.max(0, -Math.min(...o.map((s) => s.x))), r = Math.max(0, -Math.min(...o.map((s) => s.y)));
+  if (a === 0 && r === 0) return;
+  let i = (s) => ({ x: s.x + a, y: s.y + r });
+  for (let s of t.nodes) s.gridCoord && (s.gridCoord = i(s.gridCoord));
+  t.grid = new Map([...t.grid].map(([s, c]) => {
+    let [f, d] = s.split(",").map(Number);
+    return [`${f + a},${d + r}`, c];
+  })), t.columnWidth = new Map([...t.columnWidth].map(([s, c]) => [s + a, c])), t.rowHeight = new Map([...t.rowHeight].map(([s, c]) => [s + r, c]));
+  for (let s of t.edges)
+    s.path = s.path.map(i), s.labelLine = s.labelLine.map(i), s.pathToJunction && (s.pathToJunction = s.pathToJunction.map(i));
+  for (let s of t.bundles)
+    s.junctionPoint && (s.junctionPoint = i(s.junctionPoint)), s.sharedPath = s.sharedPath.map(i);
+  for (let [s, c] of n) n.set(s, c.map(i));
+  e.x += a, e.y += r;
+}, oo = (t, e, n, o) => {
+  if (n.text = n.text.replace(/\s*\n\s*/g, " "), n.text.length === 0) return;
+  let a = n.text.length + 3, r = o.map((l, u) => {
+    if (u === 0 || u === o.length - 1) return !1;
+    let g = kt(o[u - 1], l), m = kt(l, o[u + 1]), x = 1 << Pt(g) | 1 << m, w = (B) => e.links.get(fe(e, l, B)).edges;
+    return g === m && (e.cells[It(e, l)] & Fr) === x && w(m) === 1 && w(Pt(g)) === 1;
+  }), i = [];
+  for (let l = 1; l < o.length - 1; l++) {
+    if (!r[l]) continue;
+    let u = l;
+    for (; r[u + 1]; ) u++;
+    let g = o[l].y === o[l - 1].y, m = g ? Math.abs(Mt(t, o[u + 1]).x - Mt(t, o[l - 1]).x) - 1 : u - l + 1;
+    i.push({ from: l, to: u, level: g, size: m }), l = u;
+  }
+  let s = (l) => Math.max(...t.nodes.map((u) => u.gridCoord && l >= u.gridCoord.x && l <= u.gridCoord.x + 2 ? Math.abs(l - u.gridCoord.x - 1) : -1)), c = (l) => [-1, 0].flatMap((u) => o.slice(l.from, l.to + 1).filter((g) => s(g.x) === u))[0]?.x, f = (l) => i.filter((u) => u.level === l && c(u) !== void 0).reduce((u, g) => u && u.size >= g.size ? u : g, void 0), d = i.find((l) => l.level && l.size >= a) ?? f(!0) ?? f(!1);
+  if (!d) throw new Error(`mermaid found no free cells for the label of the back edge ${n.from.name} to ${n.to.name}`);
+  let h = c(d);
+  if (h !== void 0) {
+    let l = t.columnWidth.get(h) ?? 0;
+    t.columnWidth.set(h, d.level ? l + Math.max(0, a - d.size) : Math.max(l, a));
+  }
+  n.labelLine = [o[d.from - 1], o[d.to + 1]];
+}, bn = /* @__PURE__ */ new WeakMap(), yn = { 7: "\u251C", 11: "\u2534", 13: "\u2524", 14: "\u252C", 15: "\u253C" };
+function Cn(t) {
+  let e = t.edges.filter((m) => zt(t, m));
+  if (e.length === 0) return;
+  if (t.subgraphs.length > 0) throw new Error("mermaid cannot route a back edge in a diagram with subgraphs");
+  let n = t.edges.filter((m) => !e.includes(m)).map((m) => Qr(m.path)), o = [...n.flat(), ...t.nodes.flatMap((m) => m.gridCoord ? [m.gridCoord, { x: m.gridCoord.x + 2, y: m.gridCoord.y + 2 }] : [])], a = hn(o), r = Zt * e.length, i = a.left - r, s = a.top - r, c = a.right + r - i + 1, f = a.bottom + r - s + 1, d = { x: i, y: s, width: c, height: f, cells: new Uint8Array(c * f), links: /* @__PURE__ */ new Map(), reach: a };
+  for (let m of t.grid.keys()) {
+    let [x, w] = m.split(",").map(Number);
+    d.cells[It(d, { x, y: w })] = pn;
+  }
+  for (let m of n) mn(d, m);
+  let h = (m) => Math.abs(m.from.gridCoord.x - m.to.gridCoord.x) + Math.abs(m.from.gridCoord.y - m.to.gridCoord.y), l = /* @__PURE__ */ new Map(), u = { steps: 0 };
+  for (let m of [...e].sort((x, w) => h(x) - h(w))) {
+    let x = no(t, d, m, u);
+    mn(d, x, m), d.reach = hn(x, d.reach), l.set(m, x), m.startDir = Ae[kt(x[0], x[1])], m.endDir = Ae[kt(x[x.length - 1], x[x.length - 2])];
+  }
+  ro(t, d, l);
+  let g = /* @__PURE__ */ new Map();
+  for (let [m, x] of l) {
+    m.path = Zr(x);
+    for (let w of x)
+      t.columnWidth.has(w.x) || t.columnWidth.set(w.x, Vr), t.rowHeight.has(w.y) || t.rowHeight.set(w.y, 1);
+    x.slice(1, -1).forEach((w, B) => {
+      let v = g.get(It(d, w)) ?? { cell: w, arms: 0, edges: 0 };
+      g.set(It(d, w), { cell: w, arms: v.arms | 1 << Pt(kt(x[B], w)) | 1 << kt(w, x[B + 2]), edges: v.edges + 1 });
+    });
+  }
+  for (let m of e) oo(t, d, m, l.get(m));
+  bn.set(t, [...g.values()].filter((m) => m.edges > 1 && yn[m.arms]));
+}
+function wn(t) {
+  for (let { cell: e, arms: n } of bn.get(t) ?? []) {
+    let o = Mt(t, e);
+    t.canvas[o.x]?.[o.y] !== void 0 && (t.canvas[o.x][o.y] = t.config.useAscii ? "+" : yn[n], Lt(t.roleCanvas, o.x, o.y, "junction"));
+  }
+}
+
 // node_modules/beautiful-mermaid/src/ascii/edge-bundling.ts
-function qe(t) {
+function An(t) {
   if (t.config.graphDirection !== "TD")
     return [];
   let e = [], n = /* @__PURE__ */ new Set(), o = /* @__PURE__ */ new Map();
   for (let r of t.edges) {
-    if (r.from === r.to) continue;
+    if (r.from === r.to || zt(t, r)) continue;
     let i = o.get(r.to) ?? [];
     i.push(r), o.set(r.to, i);
   }
   for (let [r, i] of o) {
-    if (i.length < 2 || !Ue(i, t) || i.some((c) => n.has(c))) continue;
-    let a = {
+    if (i.length < 2 || !Mn(i, t) || i.some((c) => n.has(c))) continue;
+    let s = {
       type: "fan-in",
       edges: [...i],
       sharedNode: r,
       otherNodes: i.map((c) => c.from),
       junctionPoint: null,
       sharedPath: [],
-      junctionDir: Gt,
-      sharedNodeDir: Gt
+      junctionDir: $t,
+      sharedNodeDir: $t
     };
     for (let c of i)
-      c.bundle = a, n.add(c);
-    e.push(a);
+      c.bundle = s, n.add(c);
+    e.push(s);
   }
-  let s = /* @__PURE__ */ new Map();
+  let a = /* @__PURE__ */ new Map();
   for (let r of t.edges) {
-    if (r.from === r.to || n.has(r)) continue;
-    let i = s.get(r.from) ?? [];
-    i.push(r), s.set(r.from, i);
+    if (r.from === r.to || zt(t, r) || n.has(r)) continue;
+    let i = a.get(r.from) ?? [];
+    i.push(r), a.set(r.from, i);
   }
-  for (let [r, i] of s) {
-    if (i.length < 2 || !Ue(i, t)) continue;
-    let a = {
+  for (let [r, i] of a) {
+    if (i.length < 2 || !Mn(i, t)) continue;
+    let s = {
       type: "fan-out",
       edges: [...i],
       sharedNode: r,
       otherNodes: i.map((c) => c.to),
       junctionPoint: null,
       sharedPath: [],
-      junctionDir: Gt,
-      sharedNodeDir: Gt
+      junctionDir: $t,
+      sharedNodeDir: $t
     };
     for (let c of i)
-      c.bundle = a, n.add(c);
-    e.push(a);
+      c.bundle = s, n.add(c);
+    e.push(s);
   }
   return e;
 }
-function Ue(t, e) {
+function Mn(t, e) {
   if (t.length < 2) return !1;
-  let n = t[0].style, o = yt(e, t[0].from), s = yt(e, t[0].to);
+  let n = t[0].style, o = mt(e, t[0].from), a = mt(e, t[0].to);
   for (let r of t) {
     if (r.style !== n || r.text.length > 0) return !1;
-    let i = yt(e, r.from), a = yt(e, r.to);
-    if (i !== o || a !== s || i !== a) return !1;
+    let i = mt(e, r.from), s = mt(e, r.to);
+    if (i !== o || s !== a || i !== s) return !1;
   }
   return !0;
 }
-function yr(t, e) {
-  let n = t.config.graphDirection, o = e.sharedNode.gridCoord, s = e.otherNodes.map((r) => r.gridCoord);
+function io(t, e) {
+  let n = t.config.graphDirection, o = e.sharedNode.gridCoord, a = e.otherNodes.map((r) => r.gridCoord);
   if (e.type === "fan-in") {
-    let r = Math.min(...s.map((l) => l.x)), i = Math.max(...s.map((l) => l.x)), a = Math.min(...s.map((l) => l.y)), c = Math.max(...s.map((l) => l.y));
+    let r = Math.min(...a.map((f) => f.x)), i = Math.max(...a.map((f) => f.x)), s = Math.min(...a.map((f) => f.y)), c = Math.max(...a.map((f) => f.y));
     if (n === "TD") {
-      let l = o.y - 1, d = Math.floor((r + i) / 2) + 1;
-      return { x: o.x + 1, y: l };
+      let f = o.y - 1, d = Math.floor((r + i) / 2) + 1;
+      return { x: o.x + 1, y: f };
     } else {
-      let l = o.x - 1, d = o.y + 1;
-      return { x: l, y: d };
+      let f = o.x - 1, d = o.y + 1;
+      return { x: f, y: d };
     }
   } else {
-    let r = Math.min(...s.map((l) => l.x)), i = Math.max(...s.map((l) => l.x)), a = Math.min(...s.map((l) => l.y)), c = Math.max(...s.map((l) => l.y));
+    let r = Math.min(...a.map((f) => f.x)), i = Math.max(...a.map((f) => f.x)), s = Math.min(...a.map((f) => f.y)), c = Math.max(...a.map((f) => f.y));
     if (n === "TD") {
-      let l = o.y + 3;
-      return { x: o.x + 1, y: l };
+      let f = o.y + 3;
+      return { x: o.x + 1, y: f };
     } else {
-      let l = o.x + 3, d = o.y + 1;
-      return { x: l, y: d };
+      let f = o.x + 3, d = o.y + 1;
+      return { x: f, y: d };
     }
   }
 }
-function Cr(t, e) {
+function so(t, e) {
   let n = t.config.graphDirection;
-  e.junctionPoint = yr(t, e);
+  e.junctionPoint = io(t, e);
   let o = e.junctionPoint;
   if (e.type === "fan-in") {
-    e.junctionDir = n === "TD" ? _ : j, e.sharedNodeDir = n === "TD" ? Y : P;
-    let s = e.sharedNode.gridCoord, r = n === "TD" ? { x: s.x + 1, y: s.y } : { x: s.x, y: s.y + 1 }, i = Ht(t.grid, o, r);
-    e.sharedPath = i ? Yt(i) : [o, r];
-    for (let a of e.edges) {
-      let c = a.from.gridCoord, l = n === "TD" ? { x: c.x + 1, y: c.y + 2 } : { x: c.x + 2, y: c.y + 1 }, d = Ht(t.grid, l, o);
-      a.pathToJunction = d ? Yt(d) : [l, o], a.startDir = n === "TD" ? Y : P, a.endDir = n === "TD" ? _ : j, a.path = [...a.pathToJunction, ...e.sharedPath.slice(1)];
+    e.junctionDir = n === "TD" ? O : z, e.sharedNodeDir = n === "TD" ? H : W;
+    let a = e.sharedNode.gridCoord, r = n === "TD" ? { x: a.x + 1, y: a.y } : { x: a.x, y: a.y + 1 }, i = jt(t.grid, o, r);
+    e.sharedPath = i ? Xt(i) : [o, r];
+    for (let s of e.edges) {
+      let c = s.from.gridCoord, f = n === "TD" ? { x: c.x + 1, y: c.y + 2 } : { x: c.x + 2, y: c.y + 1 }, d = jt(t.grid, f, o);
+      s.pathToJunction = d ? Xt(d) : [f, o], s.startDir = n === "TD" ? H : W, s.endDir = n === "TD" ? O : z, s.path = [...s.pathToJunction, ...e.sharedPath.slice(1)];
     }
   } else {
-    e.junctionDir = n === "TD" ? Y : P, e.sharedNodeDir = n === "TD" ? _ : j;
-    let s = e.sharedNode.gridCoord, r = n === "TD" ? { x: s.x + 1, y: s.y + 2 } : { x: s.x + 2, y: s.y + 1 }, i = Ht(t.grid, r, o);
-    e.sharedPath = i ? Yt(i) : [r, o];
-    for (let a of e.edges) {
-      let c = a.to.gridCoord, l = n === "TD" ? { x: c.x + 1, y: c.y } : { x: c.x, y: c.y + 1 }, d = Ht(t.grid, o, l);
-      a.pathToJunction = d ? Yt(d) : [o, l], a.startDir = n === "TD" ? Y : P, a.endDir = n === "TD" ? _ : j, a.path = [...e.sharedPath, ...a.pathToJunction.slice(1)];
+    e.junctionDir = n === "TD" ? H : W, e.sharedNodeDir = n === "TD" ? O : z;
+    let a = e.sharedNode.gridCoord, r = n === "TD" ? { x: a.x + 1, y: a.y + 2 } : { x: a.x + 2, y: a.y + 1 }, i = jt(t.grid, r, o);
+    e.sharedPath = i ? Xt(i) : [r, o];
+    for (let s of e.edges) {
+      let c = s.to.gridCoord, f = n === "TD" ? { x: c.x + 1, y: c.y } : { x: c.x, y: c.y + 1 }, d = jt(t.grid, o, f);
+      s.pathToJunction = d ? Xt(d) : [o, f], s.startDir = n === "TD" ? H : W, s.endDir = n === "TD" ? O : z, s.path = [...e.sharedPath, ...s.pathToJunction.slice(1)];
     }
   }
 }
-function Ve(t) {
+function vn(t) {
   for (let e of t.bundles)
-    Cr(t, e);
+    so(t, e);
 }
 
 // node_modules/beautiful-mermaid/src/ascii/multiline-utils.ts
-function rt(t) {
+function st(t) {
   return t.split(`
 `);
 }
-function re(t) {
-  let e = rt(t);
+function de(t) {
+  let e = st(t);
   return Math.max(...e.map((n) => n.length), 0);
 }
-function ge(t) {
-  return rt(t).length;
+function Ee(t) {
+  return st(t).length;
 }
 
 // node_modules/beautiful-mermaid/src/ascii/shapes/corners.ts
-var Ke = {
+var Sn = {
   // Standard rectangular shapes
   rectangle: {
     unicode: { tl: "\u250C", tr: "\u2510", bl: "\u2514", br: "\u2518" },
@@ -1124,80 +1277,80 @@ var Ke = {
     ascii: { tl: "@", tr: "@", bl: "@", br: "@" }
   }
 };
-function xt(t, e) {
-  let n = Ke[t] ?? Ke.rectangle;
+function bt(t, e) {
+  let n = Sn[t] ?? Sn.rectangle;
   return e ? n.ascii : n.unicode;
 }
 
 // node_modules/beautiful-mermaid/src/ascii/shapes/rectangle.ts
-function At(t, e) {
-  let n = rt(t), o = Math.max(...n.map((d) => d.length), 0), s = n.length, r = 2 * e.padding + o, i = r + 2, a = s + 2 * e.padding, c = a % 2 === 0 ? a + 1 : a, l = c + 2;
+function St(t, e) {
+  let n = st(t), o = Math.max(...n.map((d) => d.length), 0), a = n.length, r = 2 * e.padding + o, i = r + 2, s = a + 2 * e.padding, c = s % 2 === 0 ? s + 1 : s, f = c + 2;
   return {
     width: i,
-    height: l,
+    height: f,
     labelArea: {
       x: 1 + e.padding,
       y: 1 + e.padding,
       width: o,
-      height: s
+      height: a
     },
     // Grid layout: [border=1, content, border=1]
     gridColumns: [1, r, 1],
     gridRows: [1, c, 1]
   };
 }
-function St(t, e, n, o) {
-  let { width: s, height: r } = e, i = it(s - 1, r - 1), a = { x: 0, y: 0 }, c = { x: s - 1, y: r - 1 }, l = o ? "-" : "\u2500", d = o ? "|" : "\u2502";
-  for (let b = a.x + 1; b < c.x; b++)
-    i[b][a.y] = l, i[b][c.y] = l;
-  for (let b = a.y + 1; b < c.y; b++)
-    i[a.x][b] = d, i[c.x][b] = d;
-  i[a.x][a.y] = n.tl, i[c.x][a.y] = n.tr, i[a.x][c.y] = n.bl, i[c.x][c.y] = n.br;
-  let h = rt(t), f = s - 1, u = r - 1, p = Math.floor(u / 2) - Math.floor((h.length - 1) / 2);
-  for (let b = 0; b < h.length; b++) {
-    let A = h[b], B = Math.floor(f / 2) - Math.ceil(A.length / 2) + 1;
-    for (let v = 0; v < A.length; v++) {
-      let H = B + v, L = p + b;
-      H >= 0 && H < i.length && L >= 0 && L < i[0].length && (i[H][L] = A[v]);
+function Rt(t, e, n, o) {
+  let { width: a, height: r } = e, i = ct(a - 1, r - 1), s = { x: 0, y: 0 }, c = { x: a - 1, y: r - 1 }, f = o ? "-" : "\u2500", d = o ? "|" : "\u2502";
+  for (let x = s.x + 1; x < c.x; x++)
+    i[x][s.y] = f, i[x][c.y] = f;
+  for (let x = s.y + 1; x < c.y; x++)
+    i[s.x][x] = d, i[c.x][x] = d;
+  i[s.x][s.y] = n.tl, i[c.x][s.y] = n.tr, i[s.x][c.y] = n.bl, i[c.x][c.y] = n.br;
+  let h = st(t), l = a - 1, u = r - 1, m = Math.floor(u / 2) - Math.floor((h.length - 1) / 2);
+  for (let x = 0; x < h.length; x++) {
+    let w = h[x], B = Math.floor(l / 2) - Math.ceil(w.length / 2) + 1;
+    for (let v = 0; v < w.length; v++) {
+      let Y = B + v, T = m + x;
+      Y >= 0 && Y < i.length && T >= 0 && T < i[0].length && (i[Y][T] = w[v]);
     }
   }
   return i;
 }
 function gt(t, e, n) {
-  let { width: o, height: s } = e, r = n.x + Math.floor(o / 2), i = n.y + Math.floor(s / 2);
-  return x(t, _) ? { x: r, y: n.y } : x(t, Y) ? { x: r, y: n.y + s - 1 } : x(t, j) ? { x: n.x, y: i } : x(t, P) ? { x: n.x + o - 1, y: i } : x(t, Mt) ? { x: n.x, y: n.y } : x(t, wt) ? { x: n.x + o - 1, y: n.y } : x(t, vt) ? { x: n.x, y: n.y + s - 1 } : x(t, Rt) ? { x: n.x + o - 1, y: n.y + s - 1 } : { x: r, y: i };
+  let { width: o, height: a } = e, r = n.x + Math.floor(o / 2), i = n.y + Math.floor(a / 2);
+  return b(t, O) ? { x: r, y: n.y } : b(t, H) ? { x: r, y: n.y + a - 1 } : b(t, z) ? { x: n.x, y: i } : b(t, W) ? { x: n.x + o - 1, y: i } : b(t, wt) ? { x: n.x, y: n.y } : b(t, At) ? { x: n.x + o - 1, y: n.y } : b(t, vt) ? { x: n.x, y: n.y + a - 1 } : b(t, Dt) ? { x: n.x + o - 1, y: n.y + a - 1 } : { x: r, y: i };
 }
-var me = {
-  getDimensions: At,
+var Ge = {
+  getDimensions: St,
   render(t, e, n) {
-    let o = xt("rectangle", n.useAscii);
-    return St(t, e, o, n.useAscii);
+    let o = bt("rectangle", n.useAscii);
+    return Rt(t, e, o, n.useAscii);
   },
   getAttachmentPoint: gt
 };
 
 // node_modules/beautiful-mermaid/src/ascii/shapes/diamond.ts
-var Qe = {
-  getDimensions: At,
+var Rn = {
+  getDimensions: St,
   render(t, e, n) {
-    let o = xt("diamond", n.useAscii);
-    return St(t, e, o, n.useAscii);
+    let o = bt("diamond", n.useAscii);
+    return Rt(t, e, o, n.useAscii);
   },
   getAttachmentPoint: gt
 };
 
 // node_modules/beautiful-mermaid/src/ascii/shapes/circle.ts
-var Ze = {
-  getDimensions: At,
+var Dn = {
+  getDimensions: St,
   render(t, e, n) {
-    let o = xt("circle", n.useAscii);
-    return St(t, e, o, n.useAscii);
+    let o = bt("circle", n.useAscii);
+    return Rt(t, e, o, n.useAscii);
   },
   getAttachmentPoint: gt
 };
 
 // node_modules/beautiful-mermaid/src/ascii/shapes/state.ts
-var tn = {
+var Tn = {
   getDimensions(t, e) {
     return {
       width: 5,
@@ -1208,14 +1361,14 @@ var tn = {
     };
   },
   render(t, e, n) {
-    let { width: o, height: s } = e, r = it(o - 1, s - 1), i = Math.floor(o / 2);
+    let { width: o, height: a } = e, r = ct(o - 1, a - 1), i = Math.floor(o / 2);
     return n.useAscii ? (r[0][0] = ".", r[1][0] = "-", r[2][0] = "-", r[3][0] = "-", r[4][0] = ".", r[0][1] = "|", r[i][1] = "*", r[4][1] = "|", r[0][2] = "'", r[1][2] = "-", r[2][2] = "-", r[3][2] = "-", r[4][2] = "'") : (r[0][0] = "\u256D", r[1][0] = "\u2500", r[2][0] = "\u2500", r[3][0] = "\u2500", r[4][0] = "\u256E", r[0][1] = "\u2502", r[i][1] = "\u25CF", r[4][1] = "\u2502", r[0][2] = "\u2570", r[1][2] = "\u2500", r[2][2] = "\u2500", r[3][2] = "\u2500", r[4][2] = "\u256F"), r;
   },
   getAttachmentPoint(t, e, n) {
-    let { width: o, height: s } = e, r = n.x + Math.floor(o / 2), i = n.y + Math.floor(s / 2);
-    return x(t, _) ? { x: r, y: n.y } : x(t, Y) ? { x: r, y: n.y + s - 1 } : x(t, j) ? { x: n.x, y: i } : x(t, P) ? { x: n.x + o - 1, y: i } : { x: r, y: i };
+    let { width: o, height: a } = e, r = n.x + Math.floor(o / 2), i = n.y + Math.floor(a / 2);
+    return b(t, O) ? { x: r, y: n.y } : b(t, H) ? { x: r, y: n.y + a - 1 } : b(t, z) ? { x: n.x, y: i } : b(t, W) ? { x: n.x + o - 1, y: i } : { x: r, y: i };
   }
-}, en = {
+}, Ln = {
   getDimensions(t, e) {
     return {
       width: 5,
@@ -1226,29 +1379,29 @@ var tn = {
     };
   },
   render(t, e, n) {
-    let { width: o, height: s } = e, r = it(o - 1, s - 1), i = Math.floor(o / 2);
+    let { width: o, height: a } = e, r = ct(o - 1, a - 1), i = Math.floor(o / 2);
     return n.useAscii ? (r[0][0] = "#", r[1][0] = "=", r[2][0] = "=", r[3][0] = "=", r[4][0] = "#", r[0][1] = "#", r[i][1] = "*", r[4][1] = "#", r[0][2] = "#", r[1][2] = "=", r[2][2] = "=", r[3][2] = "=", r[4][2] = "#") : (r[0][0] = "\u2554", r[1][0] = "\u2550", r[2][0] = "\u2550", r[3][0] = "\u2550", r[4][0] = "\u2557", r[0][1] = "\u2551", r[i][1] = "\u25CE", r[4][1] = "\u2551", r[0][2] = "\u255A", r[1][2] = "\u2550", r[2][2] = "\u2550", r[3][2] = "\u2550", r[4][2] = "\u255D"), r;
   },
   getAttachmentPoint(t, e, n) {
-    let { width: o, height: s } = e, r = n.x + Math.floor(o / 2), i = n.y + Math.floor(s / 2);
-    return x(t, _) ? { x: r, y: n.y } : x(t, Y) ? { x: r, y: n.y + s - 1 } : x(t, j) ? { x: n.x, y: i } : x(t, P) ? { x: n.x + o - 1, y: i } : { x: r, y: i };
+    let { width: o, height: a } = e, r = n.x + Math.floor(o / 2), i = n.y + Math.floor(a / 2);
+    return b(t, O) ? { x: r, y: n.y } : b(t, H) ? { x: r, y: n.y + a - 1 } : b(t, z) ? { x: n.x, y: i } : b(t, W) ? { x: n.x + o - 1, y: i } : { x: r, y: i };
   }
 };
 
 // node_modules/beautiful-mermaid/src/ascii/shapes/rounded.ts
-var nn = {
-  getDimensions: At,
+var En = {
+  getDimensions: St,
   render(t, e, n) {
-    let o = xt("rounded", n.useAscii);
-    return St(t, e, o, n.useAscii);
+    let o = bt("rounded", n.useAscii);
+    return Rt(t, e, o, n.useAscii);
   },
   getAttachmentPoint: gt
 };
 
 // node_modules/beautiful-mermaid/src/ascii/shapes/stadium.ts
-var rn = {
+var Gn = {
   getDimensions(t, e) {
-    let n = rt(t), o = Math.max(...n.map((l) => l.length), 0), s = n.length, r = 2 * e.padding + o, i = r + 4, a = s + 2 * e.padding, c = Math.max(a + 2, 3);
+    let n = st(t), o = Math.max(...n.map((f) => f.length), 0), a = n.length, r = 2 * e.padding + o, i = r + 4, s = a + 2 * e.padding, c = Math.max(s + 2, 3);
     return {
       width: i,
       height: c,
@@ -1256,37 +1409,37 @@ var rn = {
         x: 2 + e.padding,
         y: 1 + e.padding,
         width: o,
-        height: s
+        height: a
       },
       gridColumns: [2, r, 2],
-      gridRows: [1, a, 1]
+      gridRows: [1, s, 1]
     };
   },
   render(t, e, n) {
-    let { width: o, height: s } = e, r = it(o - 1, s - 1), i = Math.floor(s / 2), a = n.useAscii ? "-" : "\u2500";
-    if (s === 3)
+    let { width: o, height: a } = e, r = ct(o - 1, a - 1), i = Math.floor(a / 2), s = n.useAscii ? "-" : "\u2500";
+    if (a === 3)
       r[0][i] = "(", r[o - 1][i] = ")";
     else if (n.useAscii) {
-      for (let d = 0; d < s; d++)
+      for (let d = 0; d < a; d++)
         r[0][d] = "(", r[o - 1][d] = ")";
       for (let d = 1; d < o - 1; d++)
-        r[d][0] = a, r[d][s - 1] = a;
+        r[d][0] = s, r[d][a - 1] = s;
     } else {
       r[0][0] = "\u256D";
-      for (let d = 1; d < o - 1; d++) r[d][0] = a;
+      for (let d = 1; d < o - 1; d++) r[d][0] = s;
       r[o - 1][0] = "\u256E";
-      for (let d = 1; d < s - 1; d++)
+      for (let d = 1; d < a - 1; d++)
         r[0][d] = "\u2502", r[o - 1][d] = "\u2502";
-      r[0][s - 1] = "\u2570";
-      for (let d = 1; d < o - 1; d++) r[d][s - 1] = a;
-      r[o - 1][s - 1] = "\u256F";
+      r[0][a - 1] = "\u2570";
+      for (let d = 1; d < o - 1; d++) r[d][a - 1] = s;
+      r[o - 1][a - 1] = "\u256F";
     }
-    let c = rt(t), l = i - Math.floor((c.length - 1) / 2);
+    let c = st(t), f = i - Math.floor((c.length - 1) / 2);
     for (let d = 0; d < c.length; d++) {
-      let h = c[d], f = Math.floor(o / 2) - Math.floor(h.length / 2);
+      let h = c[d], l = Math.floor(o / 2) - Math.floor(h.length / 2);
       for (let u = 0; u < h.length; u++) {
-        let m = f + u, p = l + d;
-        m > 0 && m < o - 1 && p >= 0 && p < s && (r[m][p] = h[u]);
+        let g = l + u, m = f + d;
+        g > 0 && g < o - 1 && m >= 0 && m < a && (r[g][m] = h[u]);
       }
     }
     return r;
@@ -1295,19 +1448,19 @@ var rn = {
 };
 
 // node_modules/beautiful-mermaid/src/ascii/shapes/hexagon.ts
-var on = {
-  getDimensions: At,
+var kn = {
+  getDimensions: St,
   render(t, e, n) {
-    let o = xt("hexagon", n.useAscii);
-    return St(t, e, o, n.useAscii);
+    let o = bt("hexagon", n.useAscii);
+    return Rt(t, e, o, n.useAscii);
   },
   getAttachmentPoint: gt
 };
 
 // node_modules/beautiful-mermaid/src/ascii/shapes/special.ts
-var sn = {
+var In = {
   getDimensions(t, e) {
-    let n = rt(t), o = Math.max(...n.map((l) => l.length), 0), s = n.length, r = 2 * e.padding + o, i = r + 4, a = s + 2 * e.padding, c = a + 2;
+    let n = st(t), o = Math.max(...n.map((f) => f.length), 0), a = n.length, r = 2 * e.padding + o, i = r + 4, s = a + 2 * e.padding, c = s + 2;
     return {
       width: i,
       height: c,
@@ -1315,43 +1468,43 @@ var sn = {
         x: 2 + e.padding,
         y: 1 + e.padding,
         width: o,
-        height: s
+        height: a
       },
       gridColumns: [2, r, 2],
-      gridRows: [1, a, 1]
+      gridRows: [1, s, 1]
     };
   },
   render(t, e, n) {
-    let { width: o, height: s } = e, r = it(o - 1, s - 1), i = n.useAscii ? "-" : "\u2500", a = n.useAscii ? "|" : "\u2502";
+    let { width: o, height: a } = e, r = ct(o - 1, a - 1), i = n.useAscii ? "-" : "\u2500", s = n.useAscii ? "|" : "\u2502";
     r[0][0] = n.useAscii ? "+" : "\u250C", r[1][0] = n.useAscii ? "+" : "\u252C";
     for (let h = 2; h < o - 2; h++) r[h][0] = i;
     r[o - 2][0] = n.useAscii ? "+" : "\u252C", r[o - 1][0] = n.useAscii ? "+" : "\u2510";
-    for (let h = 1; h < s - 1; h++)
-      r[0][h] = a, r[1][h] = a, r[o - 2][h] = a, r[o - 1][h] = a;
-    r[0][s - 1] = n.useAscii ? "+" : "\u2514", r[1][s - 1] = n.useAscii ? "+" : "\u2534";
-    for (let h = 2; h < o - 2; h++) r[h][s - 1] = i;
-    r[o - 2][s - 1] = n.useAscii ? "+" : "\u2534", r[o - 1][s - 1] = n.useAscii ? "+" : "\u2518";
-    let c = rt(t), d = Math.floor(s / 2) - Math.floor((c.length - 1) / 2);
+    for (let h = 1; h < a - 1; h++)
+      r[0][h] = s, r[1][h] = s, r[o - 2][h] = s, r[o - 1][h] = s;
+    r[0][a - 1] = n.useAscii ? "+" : "\u2514", r[1][a - 1] = n.useAscii ? "+" : "\u2534";
+    for (let h = 2; h < o - 2; h++) r[h][a - 1] = i;
+    r[o - 2][a - 1] = n.useAscii ? "+" : "\u2534", r[o - 1][a - 1] = n.useAscii ? "+" : "\u2518";
+    let c = st(t), d = Math.floor(a / 2) - Math.floor((c.length - 1) / 2);
     for (let h = 0; h < c.length; h++) {
-      let f = c[h], u = Math.floor(o / 2) - Math.floor(f.length / 2);
-      for (let m = 0; m < f.length; m++) {
-        let p = u + m, b = d + h;
-        p > 1 && p < o - 2 && b > 0 && b < s - 1 && (r[p][b] = f[m]);
+      let l = c[h], u = Math.floor(o / 2) - Math.floor(l.length / 2);
+      for (let g = 0; g < l.length; g++) {
+        let m = u + g, x = d + h;
+        m > 1 && m < o - 2 && x > 0 && x < a - 1 && (r[m][x] = l[g]);
       }
     }
     return r;
   },
   getAttachmentPoint: gt
-}, an = {
-  getDimensions: At,
+}, Nn = {
+  getDimensions: St,
   render(t, e, n) {
-    let o = xt("doublecircle", n.useAscii);
-    return St(t, e, o, n.useAscii);
+    let o = bt("doublecircle", n.useAscii);
+    return Rt(t, e, o, n.useAscii);
   },
   getAttachmentPoint: gt
-}, cn = {
+}, $n = {
   getDimensions(t, e) {
-    let n = rt(t), o = Math.max(...n.map((l) => l.length), 0), s = n.length, r = 2 * e.padding + o, i = r + 2, a = s + 2 * e.padding + 2, c = a + 2;
+    let n = st(t), o = Math.max(...n.map((f) => f.length), 0), a = n.length, r = 2 * e.padding + o, i = r + 2, s = a + 2 * e.padding + 2, c = s + 2;
     return {
       width: i,
       height: c,
@@ -1359,153 +1512,153 @@ var sn = {
         x: 1 + e.padding,
         y: 2 + e.padding,
         width: o,
-        height: s
+        height: a
       },
       gridColumns: [1, r, 1],
-      gridRows: [2, a - 2, 2]
+      gridRows: [2, s - 2, 2]
     };
   },
   render(t, e, n) {
-    let { width: o, height: s } = e, r = it(o - 1, s - 1), i = n.useAscii ? "-" : "\u2500", a = n.useAscii ? "|" : "\u2502";
+    let { width: o, height: a } = e, r = ct(o - 1, a - 1), i = n.useAscii ? "-" : "\u2500", s = n.useAscii ? "|" : "\u2502";
     r[0][0] = n.useAscii ? "." : "\u256D";
     for (let h = 1; h < o - 1; h++) r[h][0] = i;
-    r[o - 1][0] = n.useAscii ? "." : "\u256E", r[0][1] = a;
+    r[o - 1][0] = n.useAscii ? "." : "\u256E", r[0][1] = s;
     for (let h = 1; h < o - 1; h++) r[h][1] = i;
-    r[o - 1][1] = a;
-    for (let h = 2; h < s - 2; h++)
-      r[0][h] = a, r[o - 1][h] = a;
-    r[0][s - 2] = a;
-    for (let h = 1; h < o - 1; h++) r[h][s - 2] = i;
-    r[o - 1][s - 2] = a, r[0][s - 1] = n.useAscii ? "'" : "\u2570";
-    for (let h = 1; h < o - 1; h++) r[h][s - 1] = i;
-    r[o - 1][s - 1] = n.useAscii ? "'" : "\u256F";
-    let c = rt(t), d = Math.floor(s / 2) - Math.floor((c.length - 1) / 2);
+    r[o - 1][1] = s;
+    for (let h = 2; h < a - 2; h++)
+      r[0][h] = s, r[o - 1][h] = s;
+    r[0][a - 2] = s;
+    for (let h = 1; h < o - 1; h++) r[h][a - 2] = i;
+    r[o - 1][a - 2] = s, r[0][a - 1] = n.useAscii ? "'" : "\u2570";
+    for (let h = 1; h < o - 1; h++) r[h][a - 1] = i;
+    r[o - 1][a - 1] = n.useAscii ? "'" : "\u256F";
+    let c = st(t), d = Math.floor(a / 2) - Math.floor((c.length - 1) / 2);
     for (let h = 0; h < c.length; h++) {
-      let f = c[h], u = Math.floor(o / 2) - Math.floor(f.length / 2);
-      for (let m = 0; m < f.length; m++) {
-        let p = u + m, b = d + h;
-        p > 0 && p < o - 1 && b > 1 && b < s - 2 && (r[p][b] = f[m]);
+      let l = c[h], u = Math.floor(o / 2) - Math.floor(l.length / 2);
+      for (let g = 0; g < l.length; g++) {
+        let m = u + g, x = d + h;
+        m > 0 && m < o - 1 && x > 1 && x < a - 2 && (r[m][x] = l[g]);
       }
     }
     return r;
   },
   getAttachmentPoint: gt
-}, ln = {
-  getDimensions: At,
+}, Bn = {
+  getDimensions: St,
   render(t, e, n) {
-    let o = xt("asymmetric", n.useAscii);
-    return St(t, e, o, n.useAscii);
+    let o = bt("asymmetric", n.useAscii);
+    return Rt(t, e, o, n.useAscii);
   },
   getAttachmentPoint: gt
-}, fn = {
-  getDimensions: At,
+}, Yn = {
+  getDimensions: St,
   render(t, e, n) {
-    let o = xt("trapezoid", n.useAscii);
-    return St(t, e, o, n.useAscii);
+    let o = bt("trapezoid", n.useAscii);
+    return Rt(t, e, o, n.useAscii);
   },
   getAttachmentPoint: gt
-}, dn = {
-  getDimensions: At,
+}, Xn = {
+  getDimensions: St,
   render(t, e, n) {
-    let o = xt("trapezoid-alt", n.useAscii);
-    return St(t, e, o, n.useAscii);
+    let o = bt("trapezoid-alt", n.useAscii);
+    return Rt(t, e, o, n.useAscii);
   },
   getAttachmentPoint: gt
 };
 
 // node_modules/beautiful-mermaid/src/ascii/shapes/index.ts
-var Mr = /* @__PURE__ */ new Map([
+var ao = /* @__PURE__ */ new Map([
   // Core shapes
-  ["rectangle", me],
-  ["rounded", nn],
-  ["diamond", Qe],
-  ["stadium", rn],
-  ["circle", Ze],
+  ["rectangle", Ge],
+  ["rounded", En],
+  ["diamond", Rn],
+  ["stadium", Gn],
+  ["circle", Dn],
   // Batch 1 additions
-  ["subroutine", sn],
-  ["doublecircle", an],
-  ["hexagon", on],
+  ["subroutine", In],
+  ["doublecircle", Nn],
+  ["hexagon", kn],
   // Batch 2 additions
-  ["cylinder", cn],
-  ["asymmetric", ln],
-  ["trapezoid", fn],
-  ["trapezoid-alt", dn],
+  ["cylinder", $n],
+  ["asymmetric", Bn],
+  ["trapezoid", Yn],
+  ["trapezoid-alt", Xn],
   // State diagram pseudo-states
-  ["state-start", tn],
-  ["state-end", en]
+  ["state-start", Tn],
+  ["state-end", Ln]
 ]);
-function un(t) {
-  return Mr.get(t) ?? me;
+function Pn(t) {
+  return ao.get(t) ?? Ge;
 }
-function hn(t, e, n) {
-  return un(t).getDimensions(e, n);
+function Hn(t, e, n) {
+  return Pn(t).getDimensions(e, n);
 }
-function gn(t, e, n, o) {
-  return un(t).getAttachmentPoint(e, n, o);
+function Wn(t, e, n, o) {
+  return Pn(t).getAttachmentPoint(e, n, o);
 }
 
 // node_modules/beautiful-mermaid/src/ascii/draw.ts
-function wr(t, e) {
-  return vr(t, e);
+function co(t, e) {
+  return lo(t, e);
 }
-function vr(t, e) {
-  let n = t.gridCoord, o = e.config.useAscii, s = 0;
+function lo(t, e) {
+  let n = t.gridCoord, o = e.config.useAscii, a = 0;
   for (let v = 0; v < 2; v++)
-    s += e.columnWidth.get(n.x + v) ?? 0;
+    a += e.columnWidth.get(n.x + v) ?? 0;
   let r = 0;
   for (let v = 0; v < 2; v++)
     r += e.rowHeight.get(n.y + v) ?? 0;
-  let i = { x: 0, y: 0 }, a = { x: s, y: r }, c = it(Math.max(i.x, a.x), Math.max(i.y, a.y)), l = xt(t.shape, o), d = t.shape === "state-end", h = o ? d ? "=" : "-" : d ? "\u2550" : "\u2500", f = o ? d ? "\u2016" : "|" : d ? "\u2551" : "\u2502", m = d ? o ? { tl: "#", tr: "#", bl: "#", br: "#" } : { tl: "\u2554", tr: "\u2557", bl: "\u255A", br: "\u255D" } : l;
-  for (let v = i.x + 1; v < a.x; v++) c[v][i.y] = h;
-  for (let v = i.x + 1; v < a.x; v++) c[v][a.y] = h;
-  for (let v = i.y + 1; v < a.y; v++) c[i.x][v] = f;
-  for (let v = i.y + 1; v < a.y; v++) c[a.x][v] = f;
-  c[i.x][i.y] = m.tl, c[a.x][i.y] = m.tr, c[i.x][a.y] = m.bl, c[a.x][a.y] = m.br;
-  let p = t.displayLabel, b = rt(p), B = i.y + Math.floor(r / 2) - Math.floor((b.length - 1) / 2);
-  for (let v = 0; v < b.length; v++) {
-    let H = b[v], L = i.x + Math.floor(s / 2) - Math.ceil(H.length / 2) + 1;
-    for (let q = 0; q < H.length; q++)
-      L + q >= 0 && L + q < c.length && B + v >= 0 && B + v < c[0].length && (c[L + q][B + v] = H[q]);
+  let i = { x: 0, y: 0 }, s = { x: a, y: r }, c = ct(Math.max(i.x, s.x), Math.max(i.y, s.y)), f = bt(t.shape, o), d = t.shape === "state-end", h = o ? d ? "=" : "-" : d ? "\u2550" : "\u2500", l = o ? d ? "\u2016" : "|" : d ? "\u2551" : "\u2502", g = d ? o ? { tl: "#", tr: "#", bl: "#", br: "#" } : { tl: "\u2554", tr: "\u2557", bl: "\u255A", br: "\u255D" } : f;
+  for (let v = i.x + 1; v < s.x; v++) c[v][i.y] = h;
+  for (let v = i.x + 1; v < s.x; v++) c[v][s.y] = h;
+  for (let v = i.y + 1; v < s.y; v++) c[i.x][v] = l;
+  for (let v = i.y + 1; v < s.y; v++) c[s.x][v] = l;
+  c[i.x][i.y] = g.tl, c[s.x][i.y] = g.tr, c[i.x][s.y] = g.bl, c[s.x][s.y] = g.br;
+  let m = t.displayLabel, x = st(m), B = i.y + Math.floor(r / 2) - Math.floor((x.length - 1) / 2);
+  for (let v = 0; v < x.length; v++) {
+    let Y = x[v], T = i.x + Math.floor(a / 2) - Math.ceil(Y.length / 2) + 1;
+    for (let K = 0; K < Y.length; K++)
+      T + K >= 0 && T + K < c.length && B + v >= 0 && B + v < c[0].length && (c[T + K][B + v] = Y[K]);
   }
   return c;
 }
-function pn(t, e) {
-  return wr(t, e);
+function jn(t, e) {
+  return co(t, e);
 }
-function oe(t, e, n = 1) {
+function ue(t, e, n = 1) {
   let o = 0;
   for (let v of t)
-    for (let H of v)
-      o = Math.max(o, H.length);
+    for (let Y of v)
+      o = Math.max(o, Y.length);
   let r = o + 2 * n + 2, i = 0;
   for (let v of t)
     i += Math.max(v.length, 1);
-  let a = t.length - 1, c = i + a + 2, l = e ? "-" : "\u2500", d = e ? "|" : "\u2502", h = e ? "+" : "\u250C", f = e ? "+" : "\u2510", u = e ? "+" : "\u2514", m = e ? "+" : "\u2518", p = e ? "+" : "\u251C", b = e ? "+" : "\u2524", A = it(r - 1, c - 1);
-  A[0][0] = h;
-  for (let v = 1; v < r - 1; v++) A[v][0] = l;
-  A[r - 1][0] = f, A[0][c - 1] = u;
-  for (let v = 1; v < r - 1; v++) A[v][c - 1] = l;
-  A[r - 1][c - 1] = m;
+  let s = t.length - 1, c = i + s + 2, f = e ? "-" : "\u2500", d = e ? "|" : "\u2502", h = e ? "+" : "\u250C", l = e ? "+" : "\u2510", u = e ? "+" : "\u2514", g = e ? "+" : "\u2518", m = e ? "+" : "\u251C", x = e ? "+" : "\u2524", w = ct(r - 1, c - 1);
+  w[0][0] = h;
+  for (let v = 1; v < r - 1; v++) w[v][0] = f;
+  w[r - 1][0] = l, w[0][c - 1] = u;
+  for (let v = 1; v < r - 1; v++) w[v][c - 1] = f;
+  w[r - 1][c - 1] = g;
   for (let v = 1; v < c - 1; v++)
-    A[0][v] = d, A[r - 1][v] = d;
+    w[0][v] = d, w[r - 1][v] = d;
   let B = 1;
   for (let v = 0; v < t.length; v++) {
-    let H = t[v], L = H.length > 0 ? H : [""];
-    for (let q of L) {
-      let ut = 1 + n;
-      for (let O = 0; O < q.length; O++)
-        A[ut + O][B] = q[O];
+    let Y = t[v], T = Y.length > 0 ? Y : [""];
+    for (let K of T) {
+      let N = 1 + n;
+      for (let k = 0; k < K.length; k++)
+        w[N + k][B] = K[k];
       B++;
     }
     if (v < t.length - 1) {
-      A[0][B] = p;
-      for (let q = 1; q < r - 1; q++) A[q][B] = l;
-      A[r - 1][B] = b, B++;
+      w[0][B] = m;
+      for (let K = 1; K < r - 1; K++) w[K][B] = f;
+      w[r - 1][B] = x, B++;
     }
   }
-  return A;
+  return w;
 }
-var Ar = {
+var fo = {
   solid: {
     h: { unicode: "\u2500", ascii: "-" },
     v: { unicode: "\u2502", ascii: "|" }
@@ -1519,400 +1672,400 @@ var Ar = {
     v: { unicode: "\u2503", ascii: "\u2016" }
   }
 };
-function xe(t, e, n, o, s, r, i = "solid") {
-  let a = pt(e, n), c = [], l = Ar[i], d = r ? l.h.ascii : l.h.unicode, h = r ? l.v.ascii : l.v.unicode;
-  if (x(a, _))
-    for (let f = e.y - o; f >= n.y - s; f--)
-      c.push({ x: e.x, y: f }), t[e.x][f] = h;
-  else if (x(a, Y))
-    for (let f = e.y + o; f <= n.y + s; f++)
-      c.push({ x: e.x, y: f }), t[e.x][f] = h;
-  else if (x(a, j))
-    for (let f = e.x - o; f >= n.x - s; f--)
-      c.push({ x: f, y: e.y }), t[f][e.y] = d;
-  else if (x(a, P))
-    for (let f = e.x + o; f <= n.x + s; f++)
-      c.push({ x: f, y: e.y }), t[f][e.y] = d;
-  else if (x(a, Mt)) {
-    for (let f = e.x - o; f >= n.x; f--)
-      c.push({ x: f, y: e.y }), t[f][e.y] = d;
-    for (let f = e.y - 1; f >= n.y - s; f--)
-      c.push({ x: n.x, y: f }), t[n.x][f] = h;
-  } else if (x(a, wt)) {
-    for (let f = e.x + o; f <= n.x; f++)
-      c.push({ x: f, y: e.y }), t[f][e.y] = d;
-    for (let f = e.y - 1; f >= n.y - s; f--)
-      c.push({ x: n.x, y: f }), t[n.x][f] = h;
-  } else if (x(a, vt)) {
-    for (let f = e.x - o; f >= n.x; f--)
-      c.push({ x: f, y: e.y }), t[f][e.y] = d;
-    for (let f = e.y + 1; f <= n.y + s; f++)
-      c.push({ x: n.x, y: f }), t[n.x][f] = h;
-  } else if (x(a, Rt))
+function Ie(t, e, n, o, a, r, i = "solid") {
+  let s = xt(e, n), c = [], f = fo[i], d = r ? f.h.ascii : f.h.unicode, h = r ? f.v.ascii : f.v.unicode;
+  if (b(s, O))
+    for (let l = e.y - o; l >= n.y - a; l--)
+      c.push({ x: e.x, y: l }), t[e.x][l] = h;
+  else if (b(s, H))
+    for (let l = e.y + o; l <= n.y + a; l++)
+      c.push({ x: e.x, y: l }), t[e.x][l] = h;
+  else if (b(s, z))
+    for (let l = e.x - o; l >= n.x - a; l--)
+      c.push({ x: l, y: e.y }), t[l][e.y] = d;
+  else if (b(s, W))
+    for (let l = e.x + o; l <= n.x + a; l++)
+      c.push({ x: l, y: e.y }), t[l][e.y] = d;
+  else if (b(s, wt)) {
+    for (let l = e.x - o; l >= n.x; l--)
+      c.push({ x: l, y: e.y }), t[l][e.y] = d;
+    for (let l = e.y - 1; l >= n.y - a; l--)
+      c.push({ x: n.x, y: l }), t[n.x][l] = h;
+  } else if (b(s, At)) {
+    for (let l = e.x + o; l <= n.x; l++)
+      c.push({ x: l, y: e.y }), t[l][e.y] = d;
+    for (let l = e.y - 1; l >= n.y - a; l--)
+      c.push({ x: n.x, y: l }), t[n.x][l] = h;
+  } else if (b(s, vt)) {
+    for (let l = e.x - o; l >= n.x; l--)
+      c.push({ x: l, y: e.y }), t[l][e.y] = d;
+    for (let l = e.y + 1; l <= n.y + a; l++)
+      c.push({ x: n.x, y: l }), t[n.x][l] = h;
+  } else if (b(s, Dt))
     if (n.x - e.x <= 1)
-      for (let u = e.y + o; u <= n.y + s; u++)
+      for (let u = e.y + o; u <= n.y + a; u++)
         c.push({ x: e.x, y: u }), t[e.x][u] = h;
     else {
       for (let u = e.x + o; u <= n.x; u++)
         c.push({ x: u, y: e.y }), t[u][e.y] = d;
-      for (let u = e.y + 1; u <= n.y + s; u++)
+      for (let u = e.y + 1; u <= n.y + a; u++)
         c.push({ x: n.x, y: u }), t[n.x][u] = h;
     }
   return c;
 }
-function Sr(t, e) {
+function uo(t, e) {
   if (e.path.length === 0) {
     let d = ht(t.canvas);
     return [d, d, d, d, d, d];
   }
-  let n = Er(t, e), [o, s, r] = Dr(t, e.path, e.style), i = Tr(t, e.path, s[0], e.from.shape), a;
-  e.hasArrowEnd ? a = mn(
+  let n = xo(t, e), [o, a, r] = mo(t, e.path, e.style), i = go(t, e.path, a[0], e.from.shape), s;
+  e.hasArrowEnd ? s = _n(
     t,
-    s[s.length - 1],
+    a[a.length - 1],
     r[r.length - 1]
-  ) : a = ht(t.canvas);
+  ) : s = ht(t.canvas);
   let c;
-  if (e.hasArrowStart && s.length > 0) {
-    let h = s[0][0], f = Rr(r[0]), u = { x: h.x, y: h.y };
-    x(r[0], P) ? u.x = h.x - 1 : x(r[0], j) ? u.x = h.x + 1 : x(r[0], Y) ? u.y = h.y - 1 : x(r[0], _) && (u.y = h.y + 1), c = mn(t, [h, u], f);
+  if (e.hasArrowStart && a.length > 0) {
+    let h = a[0][0], l = ho(r[0]), u = { x: h.x, y: h.y };
+    b(r[0], W) ? u.x = h.x - 1 : b(r[0], z) ? u.x = h.x + 1 : b(r[0], H) ? u.y = h.y - 1 : b(r[0], O) && (u.y = h.y + 1), c = _n(t, [h, u], l);
   } else
     c = ht(t.canvas);
-  let l = Lr(t, e.path);
-  return [o, i, a, c, l, n];
+  let f = po(t, e.path);
+  return [o, i, s, c, f, n];
 }
-function Rr(t) {
-  return x(t, _) ? Y : x(t, Y) ? _ : x(t, j) ? P : x(t, P) ? j : x(t, Mt) ? Rt : x(t, wt) ? vt : x(t, vt) ? wt : x(t, Rt) ? Mt : Gt;
+function ho(t) {
+  return b(t, O) ? H : b(t, H) ? O : b(t, z) ? W : b(t, W) ? z : b(t, wt) ? Dt : b(t, At) ? vt : b(t, vt) ? At : b(t, Dt) ? wt : $t;
 }
-function Dr(t, e, n = "solid") {
-  let o = ht(t.canvas), s = e[0], r = [], i = [];
-  for (let a = 1; a < e.length; a++) {
-    let c = e[a], l = Et(t, s), d = Et(t, c);
-    if (Kt(l, d)) {
-      s = c;
+function mo(t, e, n = "solid") {
+  let o = ht(t.canvas), a = e[0], r = [], i = [];
+  for (let s = 1; s < e.length; s++) {
+    let c = e[s], f = Mt(t, a), d = Mt(t, c);
+    if (re(f, d)) {
+      a = c;
       continue;
     }
-    let h = pt(s, c), f = xe(o, l, d, 1, -1, t.config.useAscii, n);
-    f.length === 0 && f.push(l), r.push(f), i.push(h), s = c;
+    let h = xt(a, c), l = Ie(o, f, d, 1, -1, t.config.useAscii, n);
+    l.length === 0 && l.push(f), r.push(l), i.push(h), a = c;
   }
   return [o, r, i];
 }
-function Tr(t, e, n, o) {
-  let s = ht(t.canvas);
+function go(t, e, n, o) {
+  let a = ht(t.canvas);
   if (t.config.useAscii || o === "state-start" || o === "state-end")
-    return s;
-  let r = n[0], i = pt(e[0], e[1]);
-  return x(i, _) ? s[r.x][r.y + 1] = "\u2534" : x(i, Y) ? s[r.x][r.y - 1] = "\u252C" : x(i, j) ? s[r.x + 1][r.y] = "\u2524" : x(i, P) && (s[r.x - 1][r.y] = "\u251C"), s;
+    return a;
+  let r = n[0], i = xt(e[0], e[1]);
+  return b(i, O) ? a[r.x][r.y + 1] = "\u2534" : b(i, H) ? a[r.x][r.y - 1] = "\u252C" : b(i, z) ? a[r.x + 1][r.y] = "\u2524" : b(i, W) && (a[r.x - 1][r.y] = "\u251C"), a;
 }
-function mn(t, e, n) {
+function _n(t, e, n) {
   let o = ht(t.canvas);
   if (e.length === 0) return o;
-  let s = e[0], r = e[e.length - 1], i = pt(s, r);
-  (e.length === 1 || x(i, Gt)) && (i = n);
-  let a;
-  return t.config.useAscii ? x(i, _) ? a = "^" : x(i, Y) ? a = "v" : x(i, j) ? a = "<" : x(i, P) ? a = ">" : x(n, _) ? a = "^" : x(n, Y) ? a = "v" : x(n, j) ? a = "<" : x(n, P) ? a = ">" : a = "*" : x(i, _) ? a = "\u25B2" : x(i, Y) ? a = "\u25BC" : x(i, j) ? a = "\u25C4" : x(i, P) ? a = "\u25BA" : x(i, wt) ? a = "\u25E5" : x(i, Mt) ? a = "\u25E4" : x(i, Rt) ? a = "\u25E2" : x(i, vt) ? a = "\u25E3" : x(n, _) ? a = "\u25B2" : x(n, Y) ? a = "\u25BC" : x(n, j) ? a = "\u25C4" : x(n, P) ? a = "\u25BA" : x(n, wt) ? a = "\u25E5" : x(n, Mt) ? a = "\u25E4" : x(n, Rt) ? a = "\u25E2" : x(n, vt) ? a = "\u25E3" : a = "\u25CF", o[r.x][r.y] = a, o;
+  let a = e[0], r = e[e.length - 1], i = xt(a, r);
+  (e.length === 1 || b(i, $t)) && (i = n);
+  let s;
+  return t.config.useAscii ? b(i, O) ? s = "^" : b(i, H) ? s = "v" : b(i, z) ? s = "<" : b(i, W) ? s = ">" : b(n, O) ? s = "^" : b(n, H) ? s = "v" : b(n, z) ? s = "<" : b(n, W) ? s = ">" : s = "*" : b(i, O) ? s = "\u25B2" : b(i, H) ? s = "\u25BC" : b(i, z) ? s = "\u25C4" : b(i, W) ? s = "\u25BA" : b(i, At) ? s = "\u25E5" : b(i, wt) ? s = "\u25E4" : b(i, Dt) ? s = "\u25E2" : b(i, vt) ? s = "\u25E3" : b(n, O) ? s = "\u25B2" : b(n, H) ? s = "\u25BC" : b(n, z) ? s = "\u25C4" : b(n, W) ? s = "\u25BA" : b(n, At) ? s = "\u25E5" : b(n, wt) ? s = "\u25E4" : b(n, Dt) ? s = "\u25E2" : b(n, vt) ? s = "\u25E3" : s = "\u25CF", o[r.x][r.y] = s, o;
 }
-function Lr(t, e) {
+function po(t, e) {
   let n = ht(t.canvas);
   for (let o = 1; o < e.length - 1; o++) {
-    let s = e[o], r = Et(t, s), i = pt(e[o - 1], s), a = pt(s, e[o + 1]), c;
-    t.config.useAscii ? c = "+" : x(i, P) && x(a, Y) || x(i, _) && x(a, j) ? c = "\u2510" : x(i, P) && x(a, _) || x(i, Y) && x(a, j) ? c = "\u2518" : x(i, j) && x(a, Y) || x(i, _) && x(a, P) ? c = "\u250C" : x(i, j) && x(a, _) || x(i, Y) && x(a, P) ? c = "\u2514" : c = "+", n[r.x][r.y] = c;
+    let a = e[o], r = Mt(t, a), i = xt(e[o - 1], a), s = xt(a, e[o + 1]), c;
+    t.config.useAscii ? c = "+" : b(i, W) && b(s, H) || b(i, O) && b(s, z) ? c = "\u2510" : b(i, W) && b(s, O) || b(i, H) && b(s, z) ? c = "\u2518" : b(i, z) && b(s, H) || b(i, O) && b(s, W) ? c = "\u250C" : b(i, z) && b(s, O) || b(i, H) && b(s, W) ? c = "\u2514" : c = "+", n[r.x][r.y] = c;
   }
   return n;
 }
-function Er(t, e) {
+function xo(t, e) {
   let n = ht(t.canvas);
   if (e.text.length === 0) return n;
-  let o = bn(t, e.labelLine), s;
+  let o = zn(t, e.labelLine), a;
   if (e.path.length >= 2) {
     let r = e.path[0].y, i = e.path[e.path.length - 1].y;
-    i < r ? s = !0 : i > r && (s = !1);
+    i < r ? a = !0 : i > r && (a = !1);
   }
-  return kr(n, o, e.text, s), n;
+  return bo(n, o, e.text, zt(t, e) ? void 0 : a), n;
 }
-function kr(t, e, n, o) {
+function bo(t, e, n, o) {
   if (e.length < 2) return;
-  let s = Math.min(e[0].x, e[1].x), r = Math.max(e[0].x, e[1].x), i = Math.min(e[0].y, e[1].y), a = Math.max(e[0].y, e[1].y), c = s + Math.floor((r - s) / 2), l = i + Math.floor((a - i) / 2);
-  if (o !== void 0 && s === r) {
-    let f = a - i, u = Math.max(1, Math.floor(f / 4));
-    o ? l = l + u : l = l - u;
+  let a = Math.min(e[0].x, e[1].x), r = Math.max(e[0].x, e[1].x), i = Math.min(e[0].y, e[1].y), s = Math.max(e[0].y, e[1].y), c = a + Math.floor((r - a) / 2), f = i + Math.floor((s - i) / 2);
+  if (o !== void 0 && a === r) {
+    let l = s - i, u = Math.max(1, Math.floor(l / 4));
+    o ? f = f + u : f = f - u;
   }
-  let d = rt(n), h = l - Math.floor((d.length - 1) / 2);
-  for (let f = 0; f < d.length; f++) {
-    let u = d[f], m = c - Math.floor(u.length / 2);
-    de(t, { x: m, y: h + f }, u);
+  let d = st(n), h = f - Math.floor((d.length - 1) / 2);
+  for (let l = 0; l < d.length; l++) {
+    let u = d[l], g = c - Math.floor(u.length / 2);
+    ye(t, { x: g, y: h + l }, u);
   }
 }
-function jt(t, e, n) {
-  let o = e.gridCoord, s = 0;
+function Ut(t, e, n) {
+  let o = e.gridCoord, a = 0;
   for (let c = 0; c < 2; c++)
-    s += t.columnWidth.get(o.x + c) ?? 0;
+    a += t.columnWidth.get(o.x + c) ?? 0;
   let r = 0;
   for (let c = 0; c < 2; c++)
     r += t.rowHeight.get(o.y + c) ?? 0;
   let i = {
-    width: s + 1,
+    width: a + 1,
     height: r + 1,
     labelArea: { x: 0, y: 0, width: 0, height: 0 },
     gridColumns: [0, 0, 0],
     gridRows: [0, 0, 0]
-  }, a = e.drawingCoord;
-  return gn(e.shape, n, i, a);
+  }, s = e.drawingCoord;
+  return Wn(e.shape, n, i, s);
 }
-function Gr(t, e, n) {
+function yo(t, e, n) {
   let o = ht(t.canvas);
   if (!e.pathToJunction || e.pathToJunction.length === 0)
     return [o, o, o, o, o, o];
-  let s = ht(t.canvas), r = t.config.useAscii, i = e.pathToJunction.map((d, h) => n.type === "fan-in" && h === 0 ? jt(t, e.from, e.startDir) : n.type === "fan-out" && h === e.pathToJunction.length - 1 ? jt(t, e.to, e.endDir) : Et(t, d));
+  let a = ht(t.canvas), r = t.config.useAscii, i = e.pathToJunction.map((d, h) => n.type === "fan-in" && h === 0 ? Ut(t, e.from, e.startDir) : n.type === "fan-out" && h === e.pathToJunction.length - 1 ? Ut(t, e.to, e.endDir) : Mt(t, d));
   for (let d = 1; d < i.length; d++) {
-    let h = i[d - 1], f = i[d];
-    Kt(h, f) || xe(s, h, f, 1, -1, r, e.style);
+    let h = i[d - 1], l = i[d];
+    re(h, l) || Ie(a, h, l, 1, -1, r, e.style);
   }
-  let a = ht(t.canvas);
+  let s = ht(t.canvas);
   for (let d = 1; d < e.pathToJunction.length - 1; d++) {
-    let h = e.pathToJunction[d], f = Et(t, h), u = pt(e.pathToJunction[d - 1], h), m = pt(h, e.pathToJunction[d + 1]), p;
-    r ? p = "+" : x(u, P) && x(m, Y) || x(u, _) && x(m, j) ? p = "\u2510" : x(u, P) && x(m, _) || x(u, Y) && x(m, j) ? p = "\u2518" : x(u, j) && x(m, Y) || x(u, _) && x(m, P) ? p = "\u250C" : x(u, j) && x(m, _) || x(u, Y) && x(m, P) ? p = "\u2514" : p = "+", a[f.x][f.y] = p;
+    let h = e.pathToJunction[d], l = Mt(t, h), u = xt(e.pathToJunction[d - 1], h), g = xt(h, e.pathToJunction[d + 1]), m;
+    r ? m = "+" : b(u, W) && b(g, H) || b(u, O) && b(g, z) ? m = "\u2510" : b(u, W) && b(g, O) || b(u, H) && b(g, z) ? m = "\u2518" : b(u, z) && b(g, H) || b(u, O) && b(g, W) ? m = "\u250C" : b(u, z) && b(g, O) || b(u, H) && b(g, W) ? m = "\u2514" : m = "+", s[l.x][l.y] = m;
   }
   let c = ht(t.canvas);
   if (n.type === "fan-in" && e.pathToJunction.length >= 2) {
-    let d = i[0], h = pt(e.pathToJunction[0], e.pathToJunction[1]);
-    r || (x(h, _) ? c[d.x][d.y] = "\u2534" : x(h, Y) ? c[d.x][d.y] = "\u252C" : x(h, j) ? c[d.x][d.y] = "\u2524" : x(h, P) && (c[d.x][d.y] = "\u251C"));
+    let d = i[0], h = xt(e.pathToJunction[0], e.pathToJunction[1]);
+    r || (b(h, O) ? c[d.x][d.y] = "\u2534" : b(h, H) ? c[d.x][d.y] = "\u252C" : b(h, z) ? c[d.x][d.y] = "\u2524" : b(h, W) && (c[d.x][d.y] = "\u251C"));
   }
-  let l = ht(t.canvas);
-  return [s, c, o, o, a, l];
+  let f = ht(t.canvas);
+  return [a, c, o, o, s, f];
 }
-function Ir(t, e) {
+function Co(t, e) {
   let n = ht(t.canvas), o = ht(t.canvas);
   if (e.sharedPath.length < 2)
     return [n, o];
-  let s = t.config.useAscii, r = e.edges[0]?.style ?? "solid", i = t.config.graphDirection, a = e.sharedPath.map((c, l) => {
-    if (e.type === "fan-in" && l === e.sharedPath.length - 1) {
-      let d = i === "TD" ? _ : j;
-      return jt(t, e.sharedNode, d);
+  let a = t.config.useAscii, r = e.edges[0]?.style ?? "solid", i = t.config.graphDirection, s = e.sharedPath.map((c, f) => {
+    if (e.type === "fan-in" && f === e.sharedPath.length - 1) {
+      let d = i === "TD" ? O : z;
+      return Ut(t, e.sharedNode, d);
     }
-    if (e.type === "fan-out" && l === 0) {
-      let d = i === "TD" ? Y : P;
-      return jt(t, e.sharedNode, d);
+    if (e.type === "fan-out" && f === 0) {
+      let d = i === "TD" ? H : W;
+      return Ut(t, e.sharedNode, d);
     }
-    return Et(t, c);
+    return Mt(t, c);
   });
-  for (let c = 1; c < a.length; c++) {
-    let l = a[c - 1], d = a[c];
-    Kt(l, d) || xe(n, l, d, 1, -1, s, r);
+  for (let c = 1; c < s.length; c++) {
+    let f = s[c - 1], d = s[c];
+    re(f, d) || Ie(n, f, d, 1, -1, a, r);
   }
   for (let c = 1; c < e.sharedPath.length - 1; c++) {
-    let l = e.sharedPath[c], d = Et(t, l), h = pt(e.sharedPath[c - 1], l), f = pt(l, e.sharedPath[c + 1]), u;
-    s ? u = "+" : x(h, P) && x(f, Y) || x(h, _) && x(f, j) ? u = "\u2510" : x(h, P) && x(f, _) || x(h, Y) && x(f, j) ? u = "\u2518" : x(h, j) && x(f, Y) || x(h, _) && x(f, P) ? u = "\u250C" : x(h, j) && x(f, _) || x(h, Y) && x(f, P) ? u = "\u2514" : u = "+", o[d.x][d.y] = u;
+    let f = e.sharedPath[c], d = Mt(t, f), h = xt(e.sharedPath[c - 1], f), l = xt(f, e.sharedPath[c + 1]), u;
+    a ? u = "+" : b(h, W) && b(l, H) || b(h, O) && b(l, z) ? u = "\u2510" : b(h, W) && b(l, O) || b(h, H) && b(l, z) ? u = "\u2518" : b(h, z) && b(l, H) || b(h, O) && b(l, W) ? u = "\u250C" : b(h, z) && b(l, O) || b(h, H) && b(l, W) ? u = "\u2514" : u = "+", o[d.x][d.y] = u;
   }
   return [n, o];
 }
-function Nr(t, e) {
+function wo(t, e) {
   let n = ht(t.canvas);
   if (e.sharedPath.length < 2) return n;
-  let o = e.sharedPath.length - 1, s = e.sharedPath[o - 1], r = e.sharedPath[o], i = pt(s, r), a = t.config.graphDirection, c = a === "TD" ? _ : j, l = jt(t, e.sharedNode, c);
-  a === "TD" ? l.y -= 1 : l.x -= 1;
+  let o = e.sharedPath.length - 1, a = e.sharedPath[o - 1], r = e.sharedPath[o], i = xt(a, r), s = t.config.graphDirection, c = s === "TD" ? O : z, f = Ut(t, e.sharedNode, c);
+  s === "TD" ? f.y -= 1 : f.x -= 1;
   let d;
-  return t.config.useAscii ? x(i, _) ? d = "^" : x(i, Y) ? d = "v" : x(i, j) ? d = "<" : x(i, P) ? d = ">" : d = "v" : x(i, _) ? d = "\u25B2" : x(i, Y) ? d = "\u25BC" : x(i, j) ? d = "\u25C4" : x(i, P) ? d = "\u25BA" : d = "\u25BC", n[l.x][l.y] = d, n;
+  return t.config.useAscii ? b(i, O) ? d = "^" : b(i, H) ? d = "v" : b(i, z) ? d = "<" : b(i, W) ? d = ">" : d = "v" : b(i, O) ? d = "\u25B2" : b(i, H) ? d = "\u25BC" : b(i, z) ? d = "\u25C4" : b(i, W) ? d = "\u25BA" : d = "\u25BC", n[f.x][f.y] = d, n;
 }
-function Yr(t, e) {
+function Mo(t, e) {
   let n = ht(t.canvas);
   if (!e.pathToJunction || e.pathToJunction.length < 2) return n;
-  let o = e.pathToJunction.length - 1, s = e.pathToJunction[o - 1], r = e.pathToJunction[o], i = pt(s, r), a = t.config.graphDirection, c = a === "TD" ? _ : j, l = jt(t, e.to, c);
-  a === "TD" ? l.y -= 1 : l.x -= 1;
+  let o = e.pathToJunction.length - 1, a = e.pathToJunction[o - 1], r = e.pathToJunction[o], i = xt(a, r), s = t.config.graphDirection, c = s === "TD" ? O : z, f = Ut(t, e.to, c);
+  s === "TD" ? f.y -= 1 : f.x -= 1;
   let d;
-  return t.config.useAscii ? x(i, _) ? d = "^" : x(i, Y) ? d = "v" : x(i, j) ? d = "<" : x(i, P) ? d = ">" : d = "v" : x(i, _) ? d = "\u25B2" : x(i, Y) ? d = "\u25BC" : x(i, j) ? d = "\u25C4" : x(i, P) ? d = "\u25BA" : d = "\u25BC", n[l.x][l.y] = d, n;
+  return t.config.useAscii ? b(i, O) ? d = "^" : b(i, H) ? d = "v" : b(i, z) ? d = "<" : b(i, W) ? d = ">" : d = "v" : b(i, O) ? d = "\u25B2" : b(i, H) ? d = "\u25BC" : b(i, z) ? d = "\u25C4" : b(i, W) ? d = "\u25BA" : d = "\u25BC", n[f.x][f.y] = d, n;
 }
-function $r(t, e) {
+function Ao(t, e) {
   let n = ht(t.canvas);
   if (!e.junctionPoint) return n;
-  let o = Et(t, e.junctionPoint), s = t.config.useAscii, r = !1, i = !1, a = !1, c = !1;
+  let o = Mt(t, e.junctionPoint), a = t.config.useAscii, r = !1, i = !1, s = !1, c = !1;
   if (e.sharedPath.length >= 2) {
-    let d = e.type === "fan-in" ? 0 : e.sharedPath.length - 1, h = e.type === "fan-in" ? 1 : e.sharedPath.length - 2, f = pt(
+    let d = e.type === "fan-in" ? 0 : e.sharedPath.length - 1, h = e.type === "fan-in" ? 1 : e.sharedPath.length - 2, l = xt(
       e.sharedPath[d],
       e.sharedPath[h]
     );
-    x(f, Y) ? i = !0 : x(f, _) ? r = !0 : x(f, P) ? c = !0 : x(f, j) && (a = !0);
+    b(l, H) ? i = !0 : b(l, O) ? r = !0 : b(l, W) ? c = !0 : b(l, z) && (s = !0);
   }
   for (let d of e.edges)
     if (d.pathToJunction && d.pathToJunction.length >= 2) {
-      let h = e.type === "fan-in" ? d.pathToJunction.length - 1 : 0, f = e.type === "fan-in" ? d.pathToJunction.length - 2 : 1, u = pt(
-        d.pathToJunction[f],
+      let h = e.type === "fan-in" ? d.pathToJunction.length - 1 : 0, l = e.type === "fan-in" ? d.pathToJunction.length - 2 : 1, u = xt(
+        d.pathToJunction[l],
         d.pathToJunction[h]
       );
-      x(u, Y) ? r = !0 : x(u, _) ? i = !0 : x(u, P) ? a = !0 : x(u, j) && (c = !0);
+      b(u, H) ? r = !0 : b(u, O) ? i = !0 : b(u, W) ? s = !0 : b(u, z) && (c = !0);
     }
-  let l;
-  return s ? l = "+" : r && i && a && c ? l = "\u253C" : i && a && c && !r ? l = "\u252C" : r && a && c && !i ? l = "\u2534" : r && i && c && !a ? l = "\u251C" : r && i && a && !c ? l = "\u2524" : a && c ? l = "\u2500" : r && i ? l = "\u2502" : i && c ? l = "\u250C" : i && a ? l = "\u2510" : r && c ? l = "\u2514" : r && a ? l = "\u2518" : l = "\u253C", n[o.x][o.y] = l, n;
+  let f;
+  return a ? f = "+" : r && i && s && c ? f = "\u253C" : i && s && c && !r ? f = "\u252C" : r && s && c && !i ? f = "\u2534" : r && i && c && !s ? f = "\u251C" : r && i && s && !c ? f = "\u2524" : s && c ? f = "\u2500" : r && i ? f = "\u2502" : i && c ? f = "\u250C" : i && s ? f = "\u2510" : r && c ? f = "\u2514" : r && s ? f = "\u2518" : f = "\u253C", n[o.x][o.y] = f, n;
 }
-function Br(t, e) {
+function vo(t, e) {
   let n = t.maxX - t.minX, o = t.maxY - t.minY;
-  if (n <= 0 || o <= 0) return it(0, 0);
-  let s = { x: 0, y: 0 }, r = { x: n, y: o }, i = it(n, o);
+  if (n <= 0 || o <= 0) return ct(0, 0);
+  let a = { x: 0, y: 0 }, r = { x: n, y: o }, i = ct(n, o);
   if (e.config.useAscii) {
-    for (let a = s.x + 1; a < r.x; a++) i[a][s.y] = "-";
-    for (let a = s.x + 1; a < r.x; a++) i[a][r.y] = "-";
-    for (let a = s.y + 1; a < r.y; a++) i[s.x][a] = "|";
-    for (let a = s.y + 1; a < r.y; a++) i[r.x][a] = "|";
-    i[s.x][s.y] = "+", i[r.x][s.y] = "+", i[s.x][r.y] = "+", i[r.x][r.y] = "+";
+    for (let s = a.x + 1; s < r.x; s++) i[s][a.y] = "-";
+    for (let s = a.x + 1; s < r.x; s++) i[s][r.y] = "-";
+    for (let s = a.y + 1; s < r.y; s++) i[a.x][s] = "|";
+    for (let s = a.y + 1; s < r.y; s++) i[r.x][s] = "|";
+    i[a.x][a.y] = "+", i[r.x][a.y] = "+", i[a.x][r.y] = "+", i[r.x][r.y] = "+";
   } else {
-    for (let a = s.x + 1; a < r.x; a++) i[a][s.y] = "\u2500";
-    for (let a = s.x + 1; a < r.x; a++) i[a][r.y] = "\u2500";
-    for (let a = s.y + 1; a < r.y; a++) i[s.x][a] = "\u2502";
-    for (let a = s.y + 1; a < r.y; a++) i[r.x][a] = "\u2502";
-    i[s.x][s.y] = "\u250C", i[r.x][s.y] = "\u2510", i[s.x][r.y] = "\u2514", i[r.x][r.y] = "\u2518";
+    for (let s = a.x + 1; s < r.x; s++) i[s][a.y] = "\u2500";
+    for (let s = a.x + 1; s < r.x; s++) i[s][r.y] = "\u2500";
+    for (let s = a.y + 1; s < r.y; s++) i[a.x][s] = "\u2502";
+    for (let s = a.y + 1; s < r.y; s++) i[r.x][s] = "\u2502";
+    i[a.x][a.y] = "\u250C", i[r.x][a.y] = "\u2510", i[a.x][r.y] = "\u2514", i[r.x][r.y] = "\u2518";
   }
   return i;
 }
-function Xr(t, e) {
+function So(t, e) {
   let n = t.maxX - t.minX, o = t.maxY - t.minY;
-  if (n <= 0 || o <= 0) return [it(0, 0), { x: 0, y: 0 }];
-  let s = it(n, o), r = rt(t.name);
+  if (n <= 0 || o <= 0) return [ct(0, 0), { x: 0, y: 0 }];
+  let a = ct(n, o), r = st(t.name);
   for (let i = 0; i < r.length; i++) {
-    let a = r[i], c = 1 + i, l = Math.floor(n / 2) - Math.floor(a.length / 2);
-    l < 1 && (l = 1);
-    for (let d = 0; d < a.length; d++)
-      l + d < n && c < o && (s[l + d][c] = a[d]);
+    let s = r[i], c = 1 + i, f = Math.floor(n / 2) - Math.floor(s.length / 2);
+    f < 1 && (f = 1);
+    for (let d = 0; d < s.length; d++)
+      f + d < n && c < o && (a[f + d][c] = s[d]);
   }
-  return [s, { x: t.minX, y: t.minY }];
+  return [a, { x: t.minX, y: t.minY }];
 }
-function Pr(t) {
+function Ro(t) {
   function e(o) {
     return o.parent === null ? 0 : 1 + e(o.parent);
   }
   let n = [...t];
-  return n.sort((o, s) => e(o) - e(s)), n;
+  return n.sort((o, a) => e(o) - e(a)), n;
 }
-function pe(t, e, n, o) {
-  for (let s = 0; s < e.length; s++)
+function ke(t, e, n, o) {
+  for (let a = 0; a < e.length; a++)
     for (let r = 0; r < (e[0]?.length ?? 0); r++) {
-      let i = e[s]?.[r];
+      let i = e[a]?.[r];
       if (i && i !== " ") {
-        let a = s + n.x, c = r + n.y;
-        a >= 0 && c >= 0 && Bt(t, a, c, o);
+        let s = a + n.x, c = r + n.y;
+        s >= 0 && c >= 0 && Lt(t, s, c, o);
       }
     }
 }
-function _t(t, e, n, o) {
-  for (let s of e)
-    pe(t, s, n, o);
+function Jt(t, e, n, o) {
+  for (let a of e)
+    ke(t, a, n, o);
 }
-function Hr(t, e, n) {
-  let o = (s) => /^[┌┐└┘├┤┬┴┼│─╭╮╰╯+\-|.':]$/.test(s);
-  for (let s = 0; s < e.length; s++)
+function Do(t, e, n) {
+  let o = (a) => /^[┌┐└┘├┤┬┴┼│─╭╮╰╯+\-|.':]$/.test(a);
+  for (let a = 0; a < e.length; a++)
     for (let r = 0; r < (e[0]?.length ?? 0); r++) {
-      let i = e[s]?.[r];
+      let i = e[a]?.[r];
       if (i && i !== " ") {
-        let a = s + n.x, c = r + n.y;
-        a >= 0 && c >= 0 && Bt(t, a, c, o(i) ? "border" : "text");
+        let s = a + n.x, c = r + n.y;
+        s >= 0 && c >= 0 && Lt(t, s, c, o(i) ? "border" : "text");
       }
     }
 }
-function xn(t) {
-  let e = t.config.useAscii, n = { x: 0, y: 0 }, o = Pr(t.subgraphs);
-  for (let f of o) {
-    let u = Br(f, t), m = { x: f.minX, y: f.minY };
-    t.canvas = Lt(t.canvas, m, e, u), pe(t.roleCanvas, u, m, "border");
+function On(t) {
+  let e = t.config.useAscii, n = { x: 0, y: 0 }, o = Ro(t.subgraphs);
+  for (let l of o) {
+    let u = vo(l, t), g = { x: l.minX, y: l.minY };
+    t.canvas = Gt(t.canvas, g, e, u), ke(t.roleCanvas, u, g, "border");
   }
-  for (let f of t.nodes)
-    !f.drawn && f.drawingCoord && f.drawing && (t.canvas = Lt(t.canvas, f.drawingCoord, e, f.drawing), Hr(t.roleCanvas, f.drawing, f.drawingCoord), f.drawn = !0);
-  let s = [], r = [], i = [], a = [], c = [], l = [], d = [], h = /* @__PURE__ */ new Set();
-  for (let f of t.edges)
-    if (f.bundle && f.pathToJunction) {
-      let u = f.bundle, [m, p, , , b, A] = Gr(t, f, u);
-      if (s.push(m), r.push(b), c.push(p), l.push(A), !h.has(u)) {
+  for (let l of t.nodes)
+    !l.drawn && l.drawingCoord && l.drawing && (t.canvas = Gt(t.canvas, l.drawingCoord, e, l.drawing), Do(t.roleCanvas, l.drawing, l.drawingCoord), l.drawn = !0);
+  let a = [], r = [], i = [], s = [], c = [], f = [], d = [], h = /* @__PURE__ */ new Set();
+  for (let l of t.edges)
+    if (l.bundle && l.pathToJunction) {
+      let u = l.bundle, [g, m, , , x, w] = yo(t, l, u);
+      if (a.push(g), r.push(x), c.push(m), f.push(w), !h.has(u)) {
         h.add(u);
-        let [B, v] = Ir(t, u);
-        if (s.push(B), r.push(v), u.type === "fan-in") {
-          let L = Nr(t, u);
-          i.push(L);
+        let [B, v] = Co(t, u);
+        if (a.push(B), r.push(v), u.type === "fan-in") {
+          let T = wo(t, u);
+          i.push(T);
         }
-        let H = $r(t, u);
-        d.push(H);
+        let Y = Ao(t, u);
+        d.push(Y);
       }
-      if (u.type === "fan-out" && f.hasArrowEnd) {
-        let B = Yr(t, f);
+      if (u.type === "fan-out" && l.hasArrowEnd) {
+        let B = Mo(t, l);
         i.push(B);
       }
     } else {
-      let [u, m, p, b, A, B] = Sr(t, f);
-      s.push(u), r.push(A), i.push(p), a.push(b), c.push(m), l.push(B);
+      let [u, g, m, x, w, B] = uo(t, l);
+      a.push(u), r.push(w), i.push(m), s.push(x), c.push(g), f.push(B);
     }
-  t.canvas = Lt(t.canvas, n, e, ...s), _t(t.roleCanvas, s, n, "line"), t.canvas = Lt(t.canvas, n, e, ...r), _t(t.roleCanvas, r, n, "corner"), t.canvas = Lt(t.canvas, n, e, ...d), _t(t.roleCanvas, d, n, "junction"), t.canvas = Lt(t.canvas, n, e, ...i), _t(t.roleCanvas, i, n, "arrow"), t.canvas = Lt(t.canvas, n, e, ...c), _t(t.roleCanvas, c, n, "junction"), t.canvas = Lt(t.canvas, n, e, ...a), _t(t.roleCanvas, a, n, "arrow"), t.canvas = Lt(t.canvas, n, e, ...l);
-  for (let f of l) He(t.canvas, f);
-  _t(t.roleCanvas, l, n, "text");
-  for (let f of t.subgraphs) {
-    if (f.nodes.length === 0) continue;
-    let [u, m] = Xr(f, t);
-    t.canvas = Lt(t.canvas, m, e, u), pe(t.roleCanvas, u, m, "text");
+  t.canvas = Gt(t.canvas, n, e, ...a), Jt(t.roleCanvas, a, n, "line"), t.canvas = Gt(t.canvas, n, e, ...r), Jt(t.roleCanvas, r, n, "corner"), t.canvas = Gt(t.canvas, n, e, ...d), Jt(t.roleCanvas, d, n, "junction"), wn(t), t.canvas = Gt(t.canvas, n, e, ...i), Jt(t.roleCanvas, i, n, "arrow"), t.canvas = Gt(t.canvas, n, e, ...c), Jt(t.roleCanvas, c, n, "junction"), t.canvas = Gt(t.canvas, n, e, ...s), Jt(t.roleCanvas, s, n, "arrow"), t.canvas = Gt(t.canvas, n, e, ...f);
+  for (let l of f) nn(t.canvas, l);
+  Jt(t.roleCanvas, f, n, "text");
+  for (let l of t.subgraphs) {
+    if (l.nodes.length === 0) continue;
+    let [u, g] = So(l, t);
+    t.canvas = Gt(t.canvas, g, e, u), ke(t.roleCanvas, u, g, "text");
   }
   return t.canvas;
 }
 
 // node_modules/beautiful-mermaid/src/ascii/grid.ts
-function Et(t, e, n) {
-  let o = n ? { x: e.x + n.x, y: e.y + n.y } : e, s = 0;
+function Mt(t, e, n) {
+  let o = n ? { x: e.x + n.x, y: e.y + n.y } : e, a = 0;
   for (let c = 0; c < o.x; c++)
-    s += t.columnWidth.get(c) ?? 0;
+    a += t.columnWidth.get(c) ?? 0;
   let r = 0;
   for (let c = 0; c < o.y; c++)
     r += t.rowHeight.get(c) ?? 0;
-  let i = t.columnWidth.get(o.x) ?? 0, a = t.rowHeight.get(o.y) ?? 0;
+  let i = t.columnWidth.get(o.x) ?? 0, s = t.rowHeight.get(o.y) ?? 0;
   return {
-    x: s + Math.floor(i / 2) + t.offsetX,
-    y: r + Math.floor(a / 2) + t.offsetY
+    x: a + Math.floor(i / 2) + t.offsetX,
+    y: r + Math.floor(s / 2) + t.offsetY
   };
 }
-function bn(t, e) {
-  return e.map((n) => Et(t, n));
+function zn(t, e) {
+  return e.map((n) => Mt(t, n));
 }
-function Ut(t, e, n, o) {
-  let s = o ?? jr(t, e);
-  if (t.grid.has(It(n)))
-    return s === "LR" ? Ut(t, e, { x: n.x, y: n.y + 4 }, s) : Ut(t, e, { x: n.x + 4, y: n.y }, s);
+function te(t, e, n, o) {
+  let a = o ?? Eo(t, e);
+  if (t.grid.has(Bt(n)))
+    return a === "LR" ? te(t, e, { x: n.x, y: n.y + 4 }, a) : te(t, e, { x: n.x + 4, y: n.y }, a);
   for (let r = 0; r < 3; r++)
     for (let i = 0; i < 3; i++) {
-      let a = { x: n.x + r, y: n.y + i };
-      t.grid.set(It(a), e);
+      let s = { x: n.x + r, y: n.y + i };
+      t.grid.set(Bt(s), e);
     }
   return e.gridCoord = n, n;
 }
-function Wr(t, e) {
-  let n = e.gridCoord, o = t.config.boxBorderPadding, s = hn(e.shape, e.displayLabel, {
+function To(t, e) {
+  let n = e.gridCoord, o = t.config.boxBorderPadding, a = Hn(e.shape, e.displayLabel, {
     useAscii: t.config.useAscii,
     padding: o
-  }), r = s.gridColumns, i = s.gridRows;
-  for (let a = 0; a < r.length; a++) {
-    let c = n.x + a, l = t.columnWidth.get(c) ?? 0;
-    t.columnWidth.set(c, Math.max(l, r[a]));
+  }), r = a.gridColumns, i = a.gridRows;
+  for (let s = 0; s < r.length; s++) {
+    let c = n.x + s, f = t.columnWidth.get(c) ?? 0;
+    t.columnWidth.set(c, Math.max(f, r[s]));
   }
-  for (let a = 0; a < i.length; a++) {
-    let c = n.y + a, l = t.rowHeight.get(c) ?? 0;
-    t.rowHeight.set(c, Math.max(l, i[a]));
+  for (let s = 0; s < i.length; s++) {
+    let c = n.y + s, f = t.rowHeight.get(c) ?? 0;
+    t.rowHeight.set(c, Math.max(f, i[s]));
   }
   if (n.x > 0) {
-    let a = t.columnWidth.get(n.x - 1) ?? 0;
-    t.columnWidth.set(n.x - 1, Math.max(a, t.config.paddingX));
+    let s = t.columnWidth.get(n.x - 1) ?? 0;
+    t.columnWidth.set(n.x - 1, Math.max(s, t.config.paddingX));
   }
   if (n.y > 0) {
-    let a = t.config.paddingY;
-    zr(t, e) && (a += 4);
+    let s = t.config.paddingY;
+    Go(t, e) && (s += 4);
     let c = t.rowHeight.get(n.y - 1) ?? 0;
-    t.rowHeight.set(n.y - 1, Math.max(c, a));
+    t.rowHeight.set(n.y - 1, Math.max(c, s));
   }
 }
-function yn(t, e) {
+function Fn(t, e) {
   for (let n of e)
-    t.columnWidth.has(n.x) || t.columnWidth.set(n.x, Math.floor(t.config.paddingX / 2)), t.rowHeight.has(n.y) || t.rowHeight.set(n.y, Math.floor(t.config.paddingY / 2));
+    t.columnWidth.has(n.x) || t.columnWidth.set(n.x, Math.max(1, Math.floor(t.config.paddingX / 2))), t.rowHeight.has(n.y) || t.rowHeight.set(n.y, Math.max(1, Math.floor(t.config.paddingY / 2)));
 }
-function be(t, e) {
+function Ne(t, e) {
   return t.subgraphs.some((n) => n.nodes.includes(e));
 }
-function yt(t, e) {
+function mt(t, e) {
   let n = null;
   for (let o of t.subgraphs)
-    o.nodes.includes(e) && (!n || _r(n, o)) && (n = o);
+    o.nodes.includes(e) && (!n || Lo(n, o)) && (n = o);
   return n;
 }
-function _r(t, e) {
+function Lo(t, e) {
   let n = e;
   for (; n !== null; ) {
     if (n === t) return !0;
@@ -1920,181 +2073,183 @@ function _r(t, e) {
   }
   return !1;
 }
-function jr(t, e) {
-  let n = yt(t, e);
+function Eo(t, e) {
+  let n = mt(t, e);
   return n?.direction ? n.direction : t.config.graphDirection;
 }
-function zr(t, e) {
-  let n = yt(t, e);
+function Go(t, e) {
+  let n = mt(t, e);
   if (!n) return !1;
   let o = !1;
-  for (let s of t.edges)
-    if (s.to === e && yt(t, s.from) !== n) {
+  for (let a of t.edges)
+    if (a.to === e && mt(t, a.from) !== n) {
       o = !0;
       break;
     }
   if (!o) return !1;
-  for (let s of n.nodes) {
-    if (s === e || !s.gridCoord) continue;
+  for (let a of n.nodes) {
+    if (a === e || !a.gridCoord) continue;
     let r = !1;
     for (let i of t.edges)
-      if (i.to === s && yt(t, i.from) !== n) {
+      if (i.to === a && mt(t, i.from) !== n) {
         r = !0;
         break;
       }
-    if (r && s.gridCoord.y < e.gridCoord.y)
+    if (r && a.gridCoord.y < e.gridCoord.y)
       return !1;
   }
   return !0;
 }
-function Cn(t, e) {
+function Jn(t, e) {
   if (e.nodes.length === 0) return;
-  let n = 1e6, o = 1e6, s = -1e6, r = -1e6;
+  let n = 1e6, o = 1e6, a = -1e6, r = -1e6;
   for (let c of e.children)
-    Cn(t, c), c.nodes.length > 0 && (n = Math.min(n, c.minX), o = Math.min(o, c.minY), s = Math.max(s, c.maxX), r = Math.max(r, c.maxY));
+    Jn(t, c), c.nodes.length > 0 && (n = Math.min(n, c.minX), o = Math.min(o, c.minY), a = Math.max(a, c.maxX), r = Math.max(r, c.maxY));
   for (let c of e.nodes) {
     if (!c.drawingCoord || !c.drawing) continue;
-    let l = c.drawingCoord.x, d = c.drawingCoord.y, h = l + c.drawing.length - 1, f = d + c.drawing[0].length - 1;
-    n = Math.min(n, l), o = Math.min(o, d), s = Math.max(s, h), r = Math.max(r, f);
+    let f = c.drawingCoord.x, d = c.drawingCoord.y, h = f + c.drawing.length - 1, l = d + c.drawing[0].length - 1;
+    n = Math.min(n, f), o = Math.min(o, d), a = Math.max(a, h), r = Math.max(r, l);
   }
-  let i = 2, a = 2;
-  e.minX = n - i, e.minY = o - i - a, e.maxX = s + i, e.maxY = r + i;
+  let i = 2, s = 2;
+  e.minX = n - i, e.minY = o - i - s, e.maxX = a + i, e.maxY = r + i;
 }
-function Or(t) {
+function ko(t) {
   let n = t.subgraphs.filter((o) => o.parent === null && o.nodes.length > 0);
   for (let o = 0; o < n.length; o++)
-    for (let s = o + 1; s < n.length; s++) {
-      let r = n[o], i = n[s];
+    for (let a = o + 1; a < n.length; a++) {
+      let r = n[o], i = n[a];
       r.minX < i.maxX && r.maxX > i.minX && (r.maxY >= i.minY - 1 && r.minY < i.minY ? i.minY = r.maxY + 1 + 1 : i.maxY >= r.minY - 1 && i.minY < r.minY && (r.minY = i.maxY + 1 + 1)), r.minY < i.maxY && r.maxY > i.minY && (r.maxX >= i.minX - 1 && r.minX < i.minX ? i.minX = r.maxX + 1 + 1 : i.maxX >= r.minX - 1 && i.minX < r.minX && (r.minX = i.maxX + 1 + 1));
     }
 }
-function Fr(t) {
+function Io(t) {
   for (let e of t.subgraphs)
-    Cn(t, e);
-  Or(t);
+    Jn(t, e);
+  ko(t);
 }
-function Jr(t) {
+function No(t) {
   if (t.subgraphs.length === 0) return;
   let e = 0, n = 0;
   for (let r of t.subgraphs)
     e = Math.min(e, r.minX), n = Math.min(n, r.minY);
-  let o = -e, s = -n;
-  if (!(o === 0 && s === 0)) {
-    t.offsetX = o, t.offsetY = s;
+  let o = -e, a = -n;
+  if (!(o === 0 && a === 0)) {
+    t.offsetX = o, t.offsetY = a;
     for (let r of t.subgraphs)
-      r.minX += o, r.minY += s, r.maxX += o, r.maxY += s;
+      r.minX += o, r.minY += a, r.maxX += o, r.maxY += a;
     for (let r of t.nodes)
-      r.drawingCoord && (r.drawingCoord.x += o, r.drawingCoord.y += s);
+      r.drawingCoord && (r.drawingCoord.x += o, r.drawingCoord.y += a);
   }
 }
-function Mn(t) {
-  let e = t.config.graphDirection, n = new Array(100).fill(0), o = /* @__PURE__ */ new Set(), s = [];
-  for (let f of t.nodes) {
-    o.has(f.name) || s.push(f), o.add(f.name);
-    for (let u of ye(t, f))
+function Un(t) {
+  let e = t.config.graphDirection, n = new Array(100).fill(0), o = /* @__PURE__ */ new Set(), a = [];
+  for (let l of t.nodes) {
+    o.has(l.name) || a.push(l), o.add(l.name);
+    for (let u of $e(t, l))
       o.add(u.name);
   }
-  let r = s.filter((f) => {
-    let u = yt(t, f);
+  let r = a.filter((l) => {
+    let u = mt(t, l);
     if (!u) return !0;
-    for (let m of t.edges)
-      if (m.to === f && yt(t, m.from) !== u)
+    for (let g of t.edges)
+      if (g.to === l && mt(t, g.from) !== u)
         return !1;
     return !0;
-  }), i = !1, a = !1;
-  for (let f of r)
-    be(t, f) ? ye(t, f).length > 0 && (a = !0) : i = !0;
-  let c = e === "LR" && i && a, l, d = [];
-  c ? (l = r.filter((f) => !be(t, f)), d = r.filter((f) => be(t, f))) : l = r;
-  for (let f of l) {
+  }), i = !1, s = !1;
+  for (let l of r)
+    Ne(t, l) ? $e(t, l).length > 0 && (s = !0) : i = !0;
+  let c = e === "LR" && i && s, f, d = [];
+  c ? (f = r.filter((l) => !Ne(t, l)), d = r.filter((l) => Ne(t, l))) : f = r;
+  for (let l of f) {
     let u = e === "LR" ? { x: 0, y: n[0] } : { x: n[0], y: 0 };
-    Ut(t, t.nodes[f.index], u), n[0] = n[0] + 4;
+    te(t, t.nodes[l.index], u), n[0] = n[0] + 4;
   }
   if (c && d.length > 0)
     for (let u of d) {
-      let m = e === "LR" ? { x: 4, y: n[4] } : { x: n[4], y: 4 };
-      Ut(t, t.nodes[u.index], m), n[4] = n[4] + 4;
+      let g = e === "LR" ? { x: 4, y: n[4] } : { x: n[4], y: 4 };
+      te(t, t.nodes[u.index], g), n[4] = n[4] + 4;
     }
-  let h = l.length + d.length;
+  let h = f.length + d.length;
   for (; h < t.nodes.length; ) {
-    let f = h;
+    let l = h;
     for (let u of t.nodes) {
       if (u.gridCoord === null) continue;
-      let m = u.gridCoord;
-      for (let p of ye(t, u)) {
-        if (p.gridCoord !== null) continue;
-        let b = yt(t, u), A = yt(t, p), B = b && b === A && b.direction ? b.direction : t.config.graphDirection, v = B === "LR" ? m.x + 4 : m.y + 4, H;
-        B !== t.config.graphDirection ? H = B === "LR" ? m.y : m.x : H = n[v];
-        let L = B === "LR" ? { x: v, y: H } : { x: H, y: v };
-        Ut(t, t.nodes[p.index], L, B), B === t.config.graphDirection && (n[v] = H + 4), h++;
+      let g = u.gridCoord;
+      for (let m of $e(t, u)) {
+        if (m.gridCoord !== null) continue;
+        let x = mt(t, u), w = mt(t, m), B = x && x === w && x.direction ? x.direction : t.config.graphDirection, v = B === "LR" ? g.x + 4 : g.y + 4, Y;
+        B !== t.config.graphDirection ? Y = B === "LR" ? g.y : g.x : Y = n[v];
+        let T = B === "LR" ? { x: v, y: Y } : { x: Y, y: v };
+        te(t, t.nodes[m.index], T, B), B === t.config.graphDirection && (n[v] = Y + 4), h++;
       }
     }
-    if (h === f) break;
+    if (h === l) break;
   }
-  for (let f of t.nodes)
-    Wr(t, f);
-  t.bundles = qe(t), Ve(t);
-  for (let f of t.edges) {
-    if (f.bundle && f.path.length > 0) {
-      yn(t, f.path), he(t, f);
-      continue;
+  for (let l of t.nodes)
+    To(t, l);
+  t.bundles = An(t), vn(t);
+  for (let l of t.edges)
+    if (!zt(t, l)) {
+      if (l.bundle && l.path.length > 0) {
+        Fn(t, l.path), we(t, l);
+        continue;
+      }
+      fn(t, l), Fn(t, l.path), we(t, l);
     }
-    Je(t, f), yn(t, f.path), he(t, f);
-  }
-  for (let f of t.nodes)
-    f.drawingCoord = Et(t, f.gridCoord), f.drawing = pn(f, t);
-  je(t.canvas, t.columnWidth, t.rowHeight), ze(t.roleCanvas, t.columnWidth, t.rowHeight), Fr(t), Jr(t);
+  Cn(t);
+  for (let l of t.nodes)
+    l.drawingCoord = Mt(t, l.gridCoord), l.drawing = jn(l, t);
+  sn(t.canvas, t.columnWidth, t.rowHeight), an(t.roleCanvas, t.columnWidth, t.rowHeight), Io(t), No(t);
 }
-function Ur(t, e) {
+function $o(t, e) {
   return t.edges.filter((n) => n.from.name === e.name);
 }
-function ye(t, e) {
-  return Ur(t, e).map((n) => n.to);
+function $e(t, e) {
+  return $o(t, e).map((n) => n.to);
 }
 
 // node_modules/beautiful-mermaid/src/sequence/parser.ts
-function wn(t) {
+function qn(t) {
   let e = {
     actors: [],
     messages: [],
     blocks: [],
     notes: []
   }, n = /* @__PURE__ */ new Set(), o = [];
-  for (let s = 1; s < t.length; s++) {
-    let r = t[s], i = r.match(/^(participant|actor)\s+(\S+?)(?:\s+as\s+(.+))?$/);
+  for (let a = 1; a < t.length; a++) {
+    let r = t[a], i = r.match(/^(participant|actor)\s+(\S+?)(?:\s+as\s+(.+))?$/);
     if (i) {
-      let f = i[1], u = i[2], m = i[3]?.trim() ?? u, p = dt(m);
-      n.has(u) || (n.add(u), e.actors.push({ id: u, label: p, type: f }));
+      let l = i[1], u = i[2], g = i[3]?.trim() ?? u, m = ut(g);
+      n.has(u) || (n.add(u), e.actors.push({ id: u, label: m, type: l }));
       continue;
     }
-    let a = r.match(/^Note\s+(left of|right of|over)\s+([^:]+):\s*(.+)$/i);
-    if (a) {
-      let f = a[1].toLowerCase(), u = a[2].trim(), m = dt(a[3].trim()), p = u.split(",").map((A) => A.trim());
-      for (let A of p)
-        qt(e, n, A);
-      let b = "over";
-      f === "left of" ? b = "left" : f === "right of" && (b = "right"), e.notes.push({
-        actorIds: p,
-        text: m,
-        position: b,
+    let s = r.match(/^Note\s+(left of|right of|over)\s+([^:]+):\s*(.+)$/i);
+    if (s) {
+      let l = s[1].toLowerCase(), u = s[2].trim(), g = ut(s[3].trim()), m = u.split(",").map((w) => w.trim());
+      for (let w of m)
+        ee(e, n, w);
+      let x = "over";
+      l === "left of" ? x = "left" : l === "right of" && (x = "right"), e.notes.push({
+        actorIds: m,
+        text: g,
+        position: x,
         afterIndex: e.messages.length - 1
       });
       continue;
     }
     let c = r.match(/^(loop|alt|opt|par|critical|break|rect)\s*(.*)$/);
     if (c) {
-      let f = c[1], u = c[2]?.trim() ?? "", m = dt(u);
+      let l = c[1], u = c[2]?.trim() ?? "", g = ut(u);
       o.push({
-        type: f,
-        label: m,
+        type: l,
+        label: g,
         startIndex: e.messages.length,
         dividers: []
       });
       continue;
     }
-    let l = r.match(/^(else|and)\s*(.*)$/);
-    if (l && o.length > 0) {
-      let f = l[2]?.trim() ?? "", u = dt(f);
+    let f = r.match(/^(else|and)\s*(.*)$/);
+    if (f && o.length > 0) {
+      let l = f[2]?.trim() ?? "", u = ut(l);
       o[o.length - 1].dividers.push({
         index: e.messages.length,
         label: u
@@ -2102,13 +2257,13 @@ function wn(t) {
       continue;
     }
     if (r === "end" && o.length > 0) {
-      let f = o.pop();
+      let l = o.pop();
       e.blocks.push({
-        type: f.type,
-        label: f.label,
-        startIndex: f.startIndex,
-        endIndex: Math.max(e.messages.length - 1, f.startIndex),
-        dividers: f.dividers
+        type: l.type,
+        label: l.label,
+        startIndex: l.startIndex,
+        endIndex: Math.max(e.messages.length - 1, l.startIndex),
+        dividers: l.dividers
       });
       continue;
     }
@@ -2116,335 +2271,335 @@ function wn(t) {
       /^(\S+?)\s*(--?>?>|--?[)x]|--?>>|--?>)\s*([+-]?)(\S+?)\s*:\s*(.+)$/
     );
     if (d) {
-      let f = d[1], u = d[2], m = d[3], p = d[4], b = dt(d[5].trim());
-      qt(e, n, f), qt(e, n, p);
-      let A = u.startsWith("--") ? "dashed" : "solid", B = u.includes(">>") || u.includes("x") ? "filled" : "open", v = {
-        from: f,
-        to: p,
-        label: b,
-        lineStyle: A,
+      let l = d[1], u = d[2], g = d[3], m = d[4], x = ut(d[5].trim());
+      ee(e, n, l), ee(e, n, m);
+      let w = u.startsWith("--") ? "dashed" : "solid", B = u.includes(">>") || u.includes("x") ? "filled" : "open", v = {
+        from: l,
+        to: m,
+        label: x,
+        lineStyle: w,
         arrowHead: B
       };
-      m === "+" && (v.activate = !0), m === "-" && (v.deactivate = !0), e.messages.push(v);
+      g === "+" && (v.activate = !0), g === "-" && (v.deactivate = !0), e.messages.push(v);
       continue;
     }
     let h = r.match(
       /^(\S+?)\s*(->>|-->>|-\)|--\)|-x|--x|->|-->)\s*([+-]?)(\S+?)\s*:\s*(.+)$/
     );
     if (h) {
-      let f = h[1], u = h[2], m = h[3], p = h[4], b = dt(h[5].trim());
-      qt(e, n, f), qt(e, n, p);
-      let A = u.startsWith("--") ? "dashed" : "solid", B = u.includes(">>") || u.includes("x") ? "filled" : "open", v = { from: f, to: p, label: b, lineStyle: A, arrowHead: B };
-      m === "+" && (v.activate = !0), m === "-" && (v.deactivate = !0), e.messages.push(v);
+      let l = h[1], u = h[2], g = h[3], m = h[4], x = ut(h[5].trim());
+      ee(e, n, l), ee(e, n, m);
+      let w = u.startsWith("--") ? "dashed" : "solid", B = u.includes(">>") || u.includes("x") ? "filled" : "open", v = { from: l, to: m, label: x, lineStyle: w, arrowHead: B };
+      g === "+" && (v.activate = !0), g === "-" && (v.deactivate = !0), e.messages.push(v);
       continue;
     }
   }
   return e;
 }
-function qt(t, e, n) {
+function ee(t, e, n) {
   e.has(n) || (e.add(n), t.actors.push({ id: n, label: n, type: "participant" }));
 }
 
 // node_modules/beautiful-mermaid/src/ascii/sequence.ts
-function vn(t, e, n, o) {
-  let s = t.split(`
-`).map((g) => g.trim()).filter((g) => g.length > 0 && !g.startsWith("%%")), r = wn(s);
+function Vn(t, e, n, o) {
+  let a = t.split(`
+`).map((p) => p.trim()).filter((p) => p.length > 0 && !p.startsWith("%%")), r = qn(a);
   if (r.actors.length === 0) return "";
-  let i = e.useAscii, a = i ? "-" : "\u2500", c = i ? "|" : "\u2502", l = i ? "+" : "\u250C", d = i ? "+" : "\u2510", h = i ? "+" : "\u2514", f = i ? "+" : "\u2518", u = i ? "+" : "\u252C", m = i ? "+" : "\u2534", p = i ? "+" : "\u251C", b = i ? "+" : "\u2524", A = /* @__PURE__ */ new Map();
-  r.actors.forEach((g, y) => A.set(g.id, y));
-  let B = 1, H = r.actors.map((g) => re(g.label) + 2 * B + 2).map((g) => Math.ceil(g / 2)), L = r.actors.map((g) => ge(g.label) + 2), q = Math.max(...L, 3), ut = new Array(Math.max(r.actors.length - 1, 0)).fill(0);
-  for (let g of r.messages) {
-    let y = A.get(g.from), E = A.get(g.to);
+  let i = e.useAscii, s = i ? "-" : "\u2500", c = i ? "|" : "\u2502", f = i ? "+" : "\u250C", d = i ? "+" : "\u2510", h = i ? "+" : "\u2514", l = i ? "+" : "\u2518", u = i ? "+" : "\u252C", g = i ? "+" : "\u2534", m = i ? "+" : "\u251C", x = i ? "+" : "\u2524", w = /* @__PURE__ */ new Map();
+  r.actors.forEach((p, y) => w.set(p.id, y));
+  let B = 1, Y = r.actors.map((p) => de(p.label) + 2 * B + 2).map((p) => Math.ceil(p / 2)), T = r.actors.map((p) => Ee(p.label) + 2), K = Math.max(...T, 3), N = new Array(Math.max(r.actors.length - 1, 0)).fill(0);
+  for (let p of r.messages) {
+    let y = w.get(p.from), E = w.get(p.to);
     if (y === E) continue;
-    let T = Math.min(y, E), k = Math.max(y, E), R = re(g.label) + 4, J = k - T, G = Math.ceil(R / J);
-    for (let S = T; S < k; S++)
-      ut[S] = Math.max(ut[S], G);
+    let L = Math.min(y, E), I = Math.max(y, E), R = de(p.label) + 4, Q = I - L, $ = Math.ceil(R / Q);
+    for (let S = L; S < I; S++)
+      N[S] = Math.max(N[S], $);
   }
-  let O = [H[0]];
-  for (let g = 1; g < r.actors.length; g++) {
+  let k = [Y[0]];
+  for (let p = 1; p < r.actors.length; p++) {
     let y = Math.max(
-      H[g - 1] + H[g] + 2,
-      ut[g - 1] + 2,
+      Y[p - 1] + Y[p] + 2,
+      N[p - 1] + 2,
       10
     );
-    O[g] = O[g - 1] + y;
+    k[p] = k[p - 1] + y;
   }
-  let ft = [], I = [], U = /* @__PURE__ */ new Map(), C = /* @__PURE__ */ new Map(), F = /* @__PURE__ */ new Map(), V = [], K = q;
-  for (let g = 0; g < r.messages.length; g++) {
-    for (let k = 0; k < r.blocks.length; k++)
-      r.blocks[k].startIndex === g && (K += 2, U.set(k, K - 1));
-    for (let k = 0; k < r.blocks.length; k++)
-      for (let R = 0; R < r.blocks[k].dividers.length; R++)
-        r.blocks[k].dividers[R].index === g && (K += 1, F.set(`${k}:${R}`, K), K += 1);
-    K += 1;
-    let y = r.messages[g], E = y.from === y.to, T = ge(y.label);
-    E ? (I[g] = K + 1, ft[g] = K, K += 2 + T) : (I[g] = K, ft[g] = K + T, K += T + 1);
-    for (let k = 0; k < r.notes.length; k++)
-      if (r.notes[k].afterIndex === g) {
-        K += 1;
-        let R = r.notes[k], J = rt(R.text), G = Math.max(...J.map(($) => $.length)) + 4, S = J.length + 2, z = A.get(R.actorIds[0]) ?? 0, D;
+  let Z = [], G = [], P = /* @__PURE__ */ new Map(), C = /* @__PURE__ */ new Map(), U = /* @__PURE__ */ new Map(), F = [], V = K;
+  for (let p = 0; p < r.messages.length; p++) {
+    for (let I = 0; I < r.blocks.length; I++)
+      r.blocks[I].startIndex === p && (V += 2, P.set(I, V - 1));
+    for (let I = 0; I < r.blocks.length; I++)
+      for (let R = 0; R < r.blocks[I].dividers.length; R++)
+        r.blocks[I].dividers[R].index === p && (V += 1, U.set(`${I}:${R}`, V), V += 1);
+    V += 1;
+    let y = r.messages[p], E = y.from === y.to, L = Ee(y.label);
+    E ? (G[p] = V + 1, Z[p] = V, V += 2 + L) : (G[p] = V, Z[p] = V + L, V += L + 1);
+    for (let I = 0; I < r.notes.length; I++)
+      if (r.notes[I].afterIndex === p) {
+        V += 1;
+        let R = r.notes[I], Q = st(R.text), $ = Math.max(...Q.map((_) => _.length)) + 4, S = Q.length + 2, q = w.get(R.actorIds[0]) ?? 0, D;
         if (R.position === "left")
-          D = O[z] - G - 1;
+          D = k[q] - $ - 1;
         else if (R.position === "right")
-          D = O[z] + 2;
+          D = k[q] + 2;
         else if (R.actorIds.length >= 2) {
-          let $ = A.get(R.actorIds[1]) ?? z;
-          D = Math.floor((O[z] + O[$]) / 2) - Math.floor(G / 2);
+          let _ = w.get(R.actorIds[1]) ?? q;
+          D = Math.floor((k[q] + k[_]) / 2) - Math.floor($ / 2);
         } else
-          D = O[z] - Math.floor(G / 2);
-        D = Math.max(0, D), V.push({ x: D, y: K, width: G, height: S, lines: J }), K += S;
+          D = k[q] - Math.floor($ / 2);
+        D = Math.max(0, D), F.push({ x: D, y: V, width: $, height: S, lines: Q }), V += S;
       }
-    for (let k = 0; k < r.blocks.length; k++)
-      r.blocks[k].endIndex === g && (K += 1, C.set(k, K), K += 1);
+    for (let I = 0; I < r.blocks.length; I++)
+      r.blocks[I].endIndex === p && (V += 1, C.set(I, V), V += 1);
   }
-  K += 1;
-  let at = K, ct = at + q, ot = O[O.length - 1] ?? 0, st = H[H.length - 1] ?? 0, w = ot + st + 2;
-  for (let g = 0; g < r.messages.length; g++) {
-    let y = r.messages[g];
+  V += 1;
+  let ot = V, ft = ot + K, at = k[k.length - 1] ?? 0, lt = Y[Y.length - 1] ?? 0, A = at + lt + 2;
+  for (let p = 0; p < r.messages.length; p++) {
+    let y = r.messages[p];
     if (y.from === y.to) {
-      let E = A.get(y.from), T = O[E] + 6 + 2 + y.label.length;
-      w = Math.max(w, T + 1);
+      let E = w.get(y.from), L = k[E] + 6 + 2 + y.label.length;
+      A = Math.max(A, L + 1);
     }
   }
-  for (let g of V)
-    w = Math.max(w, g.x + g.width + 1);
-  let X = it(w, ct - 1), N = $t(w, ct - 1);
-  function M(g, y, E, T) {
-    g >= 0 && g < X.length && y >= 0 && y < (X[0]?.length ?? 0) && (X[g][y] = E, Bt(N, g, y, T));
+  for (let p of F)
+    A = Math.max(A, p.x + p.width + 1);
+  let j = ct(A, ft - 1), X = Ht(A, ft - 1);
+  function M(p, y, E, L) {
+    p >= 0 && p < j.length && y >= 0 && y < (j[0]?.length ?? 0) && (j[p][y] = E, Lt(X, p, y, L));
   }
-  function W(g, y, E) {
-    let T = rt(E), k = re(E), R = k + 2 * B + 2, J = T.length + 2, G = g - Math.floor(R / 2);
-    M(G, y, l, "border");
-    for (let z = 1; z < R - 1; z++) M(G + z, y, a, "border");
-    M(G + R - 1, y, d, "border");
-    for (let z = 0; z < T.length; z++) {
-      let D = y + 1 + z;
-      M(G, D, c, "border"), M(G + R - 1, D, c, "border");
-      let $ = T[z], tt = G + 1 + B + Math.floor((k - $.length) / 2);
-      for (let Z = 0; Z < $.length; Z++)
-        M(tt + Z, D, $[Z], "text");
+  function J(p, y, E) {
+    let L = st(E), I = de(E), R = I + 2 * B + 2, Q = L.length + 2, $ = p - Math.floor(R / 2);
+    M($, y, f, "border");
+    for (let q = 1; q < R - 1; q++) M($ + q, y, s, "border");
+    M($ + R - 1, y, d, "border");
+    for (let q = 0; q < L.length; q++) {
+      let D = y + 1 + q;
+      M($, D, c, "border"), M($ + R - 1, D, c, "border");
+      let _ = L[q], nt = $ + 1 + B + Math.floor((I - _.length) / 2);
+      for (let et = 0; et < _.length; et++)
+        M(nt + et, D, _[et], "text");
     }
-    let S = y + J - 1;
-    M(G, S, h, "border");
-    for (let z = 1; z < R - 1; z++) M(G + z, S, a, "border");
-    M(G + R - 1, S, f, "border");
+    let S = y + Q - 1;
+    M($, S, h, "border");
+    for (let q = 1; q < R - 1; q++) M($ + q, S, s, "border");
+    M($ + R - 1, S, l, "border");
   }
-  for (let g = 0; g < r.actors.length; g++) {
-    let y = O[g];
-    for (let E = q; E <= at; E++)
+  for (let p = 0; p < r.actors.length; p++) {
+    let y = k[p];
+    for (let E = K; E <= ot; E++)
       M(y, E, c, "line");
   }
-  for (let g = 0; g < r.actors.length; g++) {
-    let y = r.actors[g];
-    W(O[g], 0, y.label), W(O[g], at, y.label), i || (M(O[g], q - 1, u, "junction"), M(O[g], at, m, "junction"));
+  for (let p = 0; p < r.actors.length; p++) {
+    let y = r.actors[p];
+    J(k[p], 0, y.label), J(k[p], ot, y.label), i || (M(k[p], K - 1, u, "junction"), M(k[p], ot, g, "junction"));
   }
-  for (let g = 0; g < r.messages.length; g++) {
-    let y = r.messages[g], E = A.get(y.from), T = A.get(y.to), k = O[E], R = O[T], J = E === T, G = y.lineStyle === "dashed", S = y.arrowHead === "filled", z = G ? i ? "." : "\u254C" : a;
-    if (J) {
-      let D = ft[g], $ = Math.max(4, 4);
-      M(k, D, p, "junction");
-      for (let et = k + 1; et < k + $; et++) M(et, D, z, "line");
-      M(k + $, D, i ? "+" : "\u2510", "corner"), M(k + $, D + 1, c, "line");
-      let tt = k + $ + 2;
-      for (let et = 0; et < y.label.length; et++)
-        tt + et < w && M(tt + et, D + 1, y.label[et], "text");
-      let Z = S ? i ? "<" : "\u25C0" : i ? "<" : "\u25C1";
-      M(k, D + 2, Z, "arrow");
-      for (let et = k + 1; et < k + $; et++) M(et, D + 2, z, "line");
-      M(k + $, D + 2, i ? "+" : "\u2518", "corner");
+  for (let p = 0; p < r.messages.length; p++) {
+    let y = r.messages[p], E = w.get(y.from), L = w.get(y.to), I = k[E], R = k[L], Q = E === L, $ = y.lineStyle === "dashed", S = y.arrowHead === "filled", q = $ ? i ? "." : "\u254C" : s;
+    if (Q) {
+      let D = Z[p], _ = Math.max(4, 4);
+      M(I, D, m, "junction");
+      for (let rt = I + 1; rt < I + _; rt++) M(rt, D, q, "line");
+      M(I + _, D, i ? "+" : "\u2510", "corner"), M(I + _, D + 1, c, "line");
+      let nt = I + _ + 2;
+      for (let rt = 0; rt < y.label.length; rt++)
+        nt + rt < A && M(nt + rt, D + 1, y.label[rt], "text");
+      let et = S ? i ? "<" : "\u25C0" : i ? "<" : "\u25C1";
+      M(I, D + 2, et, "arrow");
+      for (let rt = I + 1; rt < I + _; rt++) M(rt, D + 2, q, "line");
+      M(I + _, D + 2, i ? "+" : "\u2518", "corner");
     } else {
-      let D = I[g], $ = ft[g], tt = k < R, Z = Math.floor((k + R) / 2), et = rt(y.label);
-      for (let nt = 0; nt < et.length; nt++) {
-        let lt = et[nt], mt = Z - Math.floor(lt.length / 2), Dt = D + nt;
-        for (let Ct = 0; Ct < lt.length; Ct++) {
-          let kt = mt + Ct;
-          kt >= 0 && kt < w && M(kt, Dt, lt[Ct], "text");
+      let D = G[p], _ = Z[p], nt = I < R, et = Math.floor((I + R) / 2), rt = st(y.label);
+      for (let it = 0; it < rt.length; it++) {
+        let dt = rt[it], pt = et - Math.floor(dt.length / 2), Tt = D + it;
+        for (let Ct = 0; Ct < dt.length; Ct++) {
+          let Nt = pt + Ct;
+          Nt >= 0 && Nt < A && M(Nt, Tt, dt[Ct], "text");
         }
       }
-      if (tt) {
-        for (let lt = k + 1; lt < R; lt++) M(lt, $, z, "line");
-        M(R, $, S ? i ? ">" : "\u25B6" : i ? ">" : "\u25B7", "arrow");
+      if (nt) {
+        for (let dt = I + 1; dt < R; dt++) M(dt, _, q, "line");
+        M(R, _, S ? i ? ">" : "\u25B6" : i ? ">" : "\u25B7", "arrow");
       } else {
-        for (let lt = R + 1; lt < k; lt++) M(lt, $, z, "line");
-        M(R, $, S ? i ? "<" : "\u25C0" : i ? "<" : "\u25C1", "arrow");
+        for (let dt = R + 1; dt < I; dt++) M(dt, _, q, "line");
+        M(R, _, S ? i ? "<" : "\u25C0" : i ? "<" : "\u25C1", "arrow");
       }
     }
   }
-  for (let g = 0; g < r.blocks.length; g++) {
-    let y = r.blocks[g], E = U.get(g), T = C.get(g);
-    if (E === void 0 || T === void 0) continue;
-    let k = w, R = 0;
+  for (let p = 0; p < r.blocks.length; p++) {
+    let y = r.blocks[p], E = P.get(p), L = C.get(p);
+    if (E === void 0 || L === void 0) continue;
+    let I = A, R = 0;
     for (let D = y.startIndex; D <= y.endIndex && !(D >= r.messages.length); D++) {
-      let $ = r.messages[D], tt = A.get($.from) ?? 0, Z = A.get($.to) ?? 0;
-      k = Math.min(k, O[Math.min(tt, Z)]), R = Math.max(R, O[Math.max(tt, Z)]);
+      let _ = r.messages[D], nt = w.get(_.from) ?? 0, et = w.get(_.to) ?? 0;
+      I = Math.min(I, k[Math.min(nt, et)]), R = Math.max(R, k[Math.max(nt, et)]);
     }
-    let J = Math.max(0, k - 4), G = Math.min(w - 1, R + 4);
-    M(J, E, l, "border");
-    for (let D = J + 1; D < G; D++) M(D, E, a, "border");
-    M(G, E, d, "border");
-    let S = y.label ? `${y.type} [${y.label}]` : y.type, z = rt(S);
-    for (let D = 0; D < z.length && E + D < T; D++) {
-      let $ = z[D];
-      for (let tt = 0; tt < $.length && J + 1 + tt < G; tt++)
-        M(J + 1 + tt, E + D, $[tt], "text");
+    let Q = Math.max(0, I - 4), $ = Math.min(A - 1, R + 4);
+    M(Q, E, f, "border");
+    for (let D = Q + 1; D < $; D++) M(D, E, s, "border");
+    M($, E, d, "border");
+    let S = y.label ? `${y.type} [${y.label}]` : y.type, q = st(S);
+    for (let D = 0; D < q.length && E + D < L; D++) {
+      let _ = q[D];
+      for (let nt = 0; nt < _.length && Q + 1 + nt < $; nt++)
+        M(Q + 1 + nt, E + D, _[nt], "text");
     }
-    M(J, T, h, "border");
-    for (let D = J + 1; D < G; D++) M(D, T, a, "border");
-    M(G, T, f, "border");
-    for (let D = E + 1; D < T; D++)
-      M(J, D, c, "border"), M(G, D, c, "border");
+    M(Q, L, h, "border");
+    for (let D = Q + 1; D < $; D++) M(D, L, s, "border");
+    M($, L, l, "border");
+    for (let D = E + 1; D < L; D++)
+      M(Q, D, c, "border"), M($, D, c, "border");
     for (let D = 0; D < y.dividers.length; D++) {
-      let $ = F.get(`${g}:${D}`);
-      if ($ === void 0) continue;
-      let tt = Q();
-      M(J, $, p, "junction");
-      for (let et = J + 1; et < G; et++) M(et, $, tt, "line");
-      M(G, $, b, "junction");
-      let Z = y.dividers[D].label;
-      if (Z) {
-        let et = `[${Z}]`;
-        for (let nt = 0; nt < et.length && J + 1 + nt < G; nt++)
-          M(J + 1 + nt, $, et[nt], "text");
+      let _ = U.get(`${p}:${D}`);
+      if (_ === void 0) continue;
+      let nt = tt();
+      M(Q, _, m, "junction");
+      for (let rt = Q + 1; rt < $; rt++) M(rt, _, nt, "line");
+      M($, _, x, "junction");
+      let et = y.dividers[D].label;
+      if (et) {
+        let rt = `[${et}]`;
+        for (let it = 0; it < rt.length && Q + 1 + it < $; it++)
+          M(Q + 1 + it, _, rt[it], "text");
       }
     }
   }
-  for (let g of V) {
-    Tt(X, g.x + g.width, g.y + g.height), Nt(N, g.x + g.width, g.y + g.height), M(g.x, g.y, l, "border");
-    for (let E = 1; E < g.width - 1; E++) M(g.x + E, g.y, a, "border");
-    M(g.x + g.width - 1, g.y, d, "border");
-    for (let E = 0; E < g.lines.length; E++) {
-      let T = g.y + 1 + E;
-      M(g.x, T, c, "border"), M(g.x + g.width - 1, T, c, "border");
-      for (let k = 0; k < g.lines[E].length; k++)
-        M(g.x + 2 + k, T, g.lines[E][k], "text");
+  for (let p of F) {
+    Et(j, p.x + p.width, p.y + p.height), Yt(X, p.x + p.width, p.y + p.height), M(p.x, p.y, f, "border");
+    for (let E = 1; E < p.width - 1; E++) M(p.x + E, p.y, s, "border");
+    M(p.x + p.width - 1, p.y, d, "border");
+    for (let E = 0; E < p.lines.length; E++) {
+      let L = p.y + 1 + E;
+      M(p.x, L, c, "border"), M(p.x + p.width - 1, L, c, "border");
+      for (let I = 0; I < p.lines[E].length; I++)
+        M(p.x + 2 + I, L, p.lines[E][I], "text");
     }
-    let y = g.y + g.height - 1;
-    M(g.x, y, h, "border");
-    for (let E = 1; E < g.width - 1; E++) M(g.x + E, y, a, "border");
-    M(g.x + g.width - 1, y, f, "border");
+    let y = p.y + p.height - 1;
+    M(p.x, y, h, "border");
+    for (let E = 1; E < p.width - 1; E++) M(p.x + E, y, s, "border");
+    M(p.x + p.width - 1, y, l, "border");
   }
-  return Pt(X, { roleCanvas: N, colorMode: n, theme: o });
-  function Q() {
+  return _t(j, { roleCanvas: X, colorMode: n, theme: o });
+  function tt() {
     return i ? "-" : "\u254C";
   }
 }
 
 // node_modules/beautiful-mermaid/src/class/parser.ts
-function Sn(t) {
+function Qn(t) {
   let e = {
     classes: [],
     relationships: [],
     namespaces: []
-  }, n = /* @__PURE__ */ new Map(), o = null, s = null, r = 0;
+  }, n = /* @__PURE__ */ new Map(), o = null, a = null, r = 0;
   for (let i = 1; i < t.length; i++) {
-    let a = t[i];
-    if (s && r > 0) {
-      if (a === "}") {
-        r--, r === 0 && (s = null);
+    let s = t[i];
+    if (a && r > 0) {
+      if (s === "}") {
+        r--, r === 0 && (a = null);
         continue;
       }
-      let m = a.match(/^<<(\w+)>>$/);
-      if (m) {
-        s.annotation = m[1];
+      let g = s.match(/^<<(\w+)>>$/);
+      if (g) {
+        a.annotation = g[1];
         continue;
       }
-      let p = An(a);
-      p && (p.isMethod ? s.methods.push(p.member) : s.attributes.push(p.member));
+      let m = Kn(s);
+      m && (m.isMethod ? a.methods.push(m.member) : a.attributes.push(m.member));
       continue;
     }
-    let c = a.match(/^namespace\s+(\S+)\s*\{$/);
+    let c = s.match(/^namespace\s+(\S+)\s*\{$/);
     if (c) {
       o = { name: c[1], classIds: [] };
       continue;
     }
-    if (a === "}" && o) {
+    if (s === "}" && o) {
       e.namespaces.push(o), o = null;
       continue;
     }
-    let l = a.match(/^class\s+(\S+?)(?:\s*~(\w+)~)?\s*\{$/);
-    if (l) {
-      let m = l[1], p = l[2], b = zt(n, m);
-      p && (b.label = `${m}<${p}>`), s = b, r = 1, o && o.classIds.push(m);
-      continue;
-    }
-    let d = a.match(/^class\s+(\S+?)(?:\s*~(\w+)~)?\s*$/);
-    if (d) {
-      let m = d[1], p = d[2], b = zt(n, m);
-      p && (b.label = `${m}<${p}>`), o && o.classIds.push(m);
-      continue;
-    }
-    let h = a.match(/^class\s+(\S+?)\s*\{\s*<<(\w+)>>\s*\}$/);
-    if (h) {
-      let m = zt(n, h[1]);
-      m.annotation = h[2];
-      continue;
-    }
-    let f = a.match(/^(\S+?)\s*:\s*(.+)$/);
+    let f = s.match(/^class\s+(\S+?)(?:\s*~(\w+)~)?\s*\{$/);
     if (f) {
-      let m = f[2];
-      if (!m.match(/<\|--|--|\*--|o--|-->|\.\.>|\.\.\|>/)) {
-        let p = zt(n, f[1]), b = An(m);
-        b && (b.isMethod ? p.methods.push(b.member) : p.attributes.push(b.member));
+      let g = f[1], m = f[2], x = qt(n, g);
+      m && (x.label = `${g}<${m}>`), a = x, r = 1, o && o.classIds.push(g);
+      continue;
+    }
+    let d = s.match(/^class\s+(\S+?)(?:\s*~(\w+)~)?\s*$/);
+    if (d) {
+      let g = d[1], m = d[2], x = qt(n, g);
+      m && (x.label = `${g}<${m}>`), o && o.classIds.push(g);
+      continue;
+    }
+    let h = s.match(/^class\s+(\S+?)\s*\{\s*<<(\w+)>>\s*\}$/);
+    if (h) {
+      let g = qt(n, h[1]);
+      g.annotation = h[2];
+      continue;
+    }
+    let l = s.match(/^(\S+?)\s*:\s*(.+)$/);
+    if (l) {
+      let g = l[2];
+      if (!g.match(/<\|--|--|\*--|o--|-->|\.\.>|\.\.\|>/)) {
+        let m = qt(n, l[1]), x = Kn(g);
+        x && (x.isMethod ? m.methods.push(x.member) : m.attributes.push(x.member));
         continue;
       }
     }
-    let u = qr(a);
+    let u = Bo(s);
     if (u) {
-      zt(n, u.from), zt(n, u.to), e.relationships.push(u);
+      qt(n, u.from), qt(n, u.to), e.relationships.push(u);
       continue;
     }
   }
   return e.classes = [...n.values()], e;
 }
-function zt(t, e) {
+function qt(t, e) {
   let n = t.get(e);
   return n || (n = { id: e, label: e, attributes: [], methods: [] }, t.set(e, n)), n;
 }
-function An(t) {
+function Kn(t) {
   let e = t.trim().replace(/;$/, "");
   if (!e) return null;
   let n = "", o = e;
   /^[+\-#~]/.test(o) && (n = o[0], o = o.slice(1).trim());
-  let s = o.match(/^(.+?)\(([^)]*)\)(?:\s*(.+))?$/);
-  if (s) {
-    let d = s[1].trim(), h = s[2]?.trim() || void 0, f = s[3]?.trim(), u = d.endsWith("$") || o.includes("$"), m = d.endsWith("*") || o.includes("*");
+  let a = o.match(/^(.+?)\(([^)]*)\)(?:\s*(.+))?$/);
+  if (a) {
+    let d = a[1].trim(), h = a[2]?.trim() || void 0, l = a[3]?.trim(), u = d.endsWith("$") || o.includes("$"), g = d.endsWith("*") || o.includes("*");
     return {
       member: {
         visibility: n,
         name: d.replace(/[$*]$/, ""),
-        type: f || void 0,
+        type: l || void 0,
         isStatic: u,
-        isAbstract: m,
+        isAbstract: g,
         isMethod: !0,
         params: h
       },
       isMethod: !0
     };
   }
-  let r = o.split(/\s+/), i, a;
-  r.length >= 2 ? (a = r[0], i = r.slice(1).join(" ")) : i = r[0] ?? o;
-  let c = i.endsWith("$"), l = i.endsWith("*");
+  let r = o.split(/\s+/), i, s;
+  r.length >= 2 ? (s = r[0], i = r.slice(1).join(" ")) : i = r[0] ?? o;
+  let c = i.endsWith("$"), f = i.endsWith("*");
   return {
     member: {
       visibility: n,
       name: i.replace(/[$*]$/, ""),
-      type: a || void 0,
+      type: s || void 0,
       isStatic: c,
-      isAbstract: l,
+      isAbstract: f,
       isMethod: !1
     },
     isMethod: !1
   };
 }
-function qr(t) {
+function Bo(t) {
   let e = t.match(
     /^(\S+?)\s+(?:"([^"]*?)"\s+)?(<\|--|<\|\.\.|\*--|o--|-->|--\*|--o|--\|>|\.\.>|\.\.\|>|<--|<\.\.?|--)\s+(?:"([^"]*?)"\s+)?(\S+?)(?:\s*:\s*(.+))?$/
   );
   if (!e) return null;
-  let n = e[1], o = e[2], s = o ? dt(o) : void 0, r = e[3].trim(), i = e[4], a = i ? dt(i) : void 0, c = e[5], l = e[6]?.trim(), d = l ? dt(l) : void 0, h = Vr(r);
-  return h ? { from: n, to: c, type: h.type, markerAt: h.markerAt, label: d, fromCardinality: s, toCardinality: a } : null;
+  let n = e[1], o = e[2], a = o ? ut(o) : void 0, r = e[3].trim(), i = e[4], s = i ? ut(i) : void 0, c = e[5], f = e[6]?.trim(), d = f ? ut(f) : void 0, h = Yo(r);
+  return h ? { from: n, to: c, type: h.type, markerAt: h.markerAt, label: d, fromCardinality: a, toCardinality: s } : null;
 }
-function Vr(t) {
+function Yo(t) {
   switch (t.trim()) {
     case "<|--":
       return { type: "inheritance", markerAt: "from" };
@@ -2478,25 +2633,25 @@ function Vr(t) {
 }
 
 // node_modules/beautiful-mermaid/src/ascii/class-diagram.ts
-function Kr(t) {
+function Xo(t) {
   return /^[┌┐└┘├┤┬┴┼│─╭╮╰╯+\-|]$/.test(t) ? "border" : "text";
 }
-function Rn(t) {
+function Zn(t) {
   let e = t.visibility || "", n = t.type ? `: ${t.type}` : "";
   return `${e}${t.name}${n}`;
 }
-function Qr(t) {
+function Po(t) {
   let e = [];
   t.annotation && e.push(`<<${t.annotation}>>`);
-  let n = rt(t.label);
+  let n = st(t.label);
   e.push(...n);
-  let o = t.attributes.map(Rn), s = t.methods.map(Rn);
-  return o.length === 0 && s.length === 0 ? [e] : s.length === 0 ? [e, o] : [e, o, s];
+  let o = t.attributes.map(Zn), a = t.methods.map(Zn);
+  return o.length === 0 && a.length === 0 ? [e] : a.length === 0 ? [e, o] : [e, o, a];
 }
-function Zr(t, e) {
+function Ho(t, e) {
   return { type: t, markerAt: e, dashed: t === "dependency" || t === "realization" };
 }
-function Wt(t, e, n) {
+function Ft(t, e, n) {
   switch (t) {
     case "inheritance":
     case "realization":
@@ -2510,331 +2665,331 @@ function Wt(t, e, n) {
       return n === "down" ? e ? "v" : "\u25BC" : n === "up" ? e ? "^" : "\u25B2" : n === "left" ? e ? "<" : "\u25C0" : e ? ">" : "\u25B6";
   }
 }
-function Dn(t, e, n, o) {
-  let s = t.split(`
-`).map((w) => w.trim()).filter((w) => w.length > 0 && !w.startsWith("%%")), r = Sn(s);
+function tr(t, e, n, o) {
+  let a = t.split(`
+`).map((A) => A.trim()).filter((A) => A.length > 0 && !A.startsWith("%%")), r = Qn(a);
   if (r.classes.length === 0) return "";
-  let i = e.useAscii, a = 4, c = 3, l = /* @__PURE__ */ new Map(), d = /* @__PURE__ */ new Map(), h = /* @__PURE__ */ new Map();
-  for (let w of r.classes) {
-    let X = Qr(w);
-    l.set(w.id, X);
-    let N = 0;
-    for (let g of X)
-      for (let y of g) N = Math.max(N, y.length);
-    let M = N + 4, W = 0;
-    for (let g of X) W += Math.max(g.length, 1);
-    let Q = W + (X.length - 1) + 2;
-    d.set(w.id, M), h.set(w.id, Q);
+  let i = e.useAscii, s = 4, c = 3, f = /* @__PURE__ */ new Map(), d = /* @__PURE__ */ new Map(), h = /* @__PURE__ */ new Map();
+  for (let A of r.classes) {
+    let j = Po(A);
+    f.set(A.id, j);
+    let X = 0;
+    for (let p of j)
+      for (let y of p) X = Math.max(X, y.length);
+    let M = X + 4, J = 0;
+    for (let p of j) J += Math.max(p.length, 1);
+    let tt = J + (j.length - 1) + 2;
+    d.set(A.id, M), h.set(A.id, tt);
   }
-  let f = /* @__PURE__ */ new Map();
-  for (let w of r.classes) f.set(w.id, w);
-  let u = /* @__PURE__ */ new Map(), m = /* @__PURE__ */ new Map();
-  for (let w of r.relationships) {
-    let X = w.type === "inheritance" || w.type === "realization", N = X && w.markerAt === "to" ? w.to : w.from, M = X && w.markerAt === "to" ? w.from : w.to;
-    u.has(M) || u.set(M, /* @__PURE__ */ new Set()), u.get(M).add(N), m.has(N) || m.set(N, /* @__PURE__ */ new Set()), m.get(N).add(M);
+  let l = /* @__PURE__ */ new Map();
+  for (let A of r.classes) l.set(A.id, A);
+  let u = /* @__PURE__ */ new Map(), g = /* @__PURE__ */ new Map();
+  for (let A of r.relationships) {
+    let j = A.type === "inheritance" || A.type === "realization", X = j && A.markerAt === "to" ? A.to : A.from, M = j && A.markerAt === "to" ? A.from : A.to;
+    u.has(M) || u.set(M, /* @__PURE__ */ new Set()), u.get(M).add(X), g.has(X) || g.set(X, /* @__PURE__ */ new Set()), g.get(X).add(M);
   }
-  let p = /* @__PURE__ */ new Map(), A = r.classes.filter((w) => !u.has(w.id) || u.get(w.id).size === 0).map((w) => w.id);
-  for (let w of A) p.set(w, 0);
+  let m = /* @__PURE__ */ new Map(), w = r.classes.filter((A) => !u.has(A.id) || u.get(A.id).size === 0).map((A) => A.id);
+  for (let A of w) m.set(A, 0);
   let B = r.classes.length - 1, v = 0;
-  for (; v < A.length; ) {
-    let w = A[v++], X = m.get(w);
-    if (X)
-      for (let N of X) {
-        let M = (p.get(w) ?? 0) + 1;
-        M > B || (!p.has(N) || p.get(N) < M) && (p.set(N, M), A.push(N));
+  for (; v < w.length; ) {
+    let A = w[v++], j = g.get(A);
+    if (j)
+      for (let X of j) {
+        let M = (m.get(A) ?? 0) + 1;
+        M > B || (!m.has(X) || m.get(X) < M) && (m.set(X, M), w.push(X));
       }
   }
-  for (let w of r.classes)
-    p.has(w.id) || p.set(w.id, 0);
-  let H = Math.max(...p.values(), 0), L = Array.from({ length: H + 1 }, () => []);
-  for (let w of r.classes)
-    L[p.get(w.id)].push(w.id);
-  let q = /* @__PURE__ */ new Map(), ut = 0;
-  for (let w = 0; w <= H; w++) {
-    let X = L[w];
-    if (X.length === 0) continue;
-    let N = 0, M = 0;
-    for (let W of X) {
-      let Q = f.get(W), g = d.get(W), y = h.get(W);
-      q.set(W, {
-        cls: Q,
-        sections: l.get(W),
-        x: N,
-        y: ut,
-        width: g,
+  for (let A of r.classes)
+    m.has(A.id) || m.set(A.id, 0);
+  let Y = Math.max(...m.values(), 0), T = Array.from({ length: Y + 1 }, () => []);
+  for (let A of r.classes)
+    T[m.get(A.id)].push(A.id);
+  let K = /* @__PURE__ */ new Map(), N = 0;
+  for (let A = 0; A <= Y; A++) {
+    let j = T[A];
+    if (j.length === 0) continue;
+    let X = 0, M = 0;
+    for (let J of j) {
+      let tt = l.get(J), p = d.get(J), y = h.get(J);
+      K.set(J, {
+        cls: tt,
+        sections: f.get(J),
+        x: X,
+        y: N,
+        width: p,
         height: y
-      }), N += g + a, M = Math.max(M, y);
+      }), X += p + s, M = Math.max(M, y);
     }
-    ut += M + c;
+    N += M + c;
   }
-  let O = 0, ft = 0;
-  for (let w of q.values())
-    O = Math.max(O, w.x + w.width), ft = Math.max(ft, w.y + w.height);
-  O += 4, ft += 2;
-  let I = it(O - 1, ft - 1), U = $t(O - 1, ft - 1);
-  function C(w, X, N, M) {
-    w >= 0 && w < I.length && X >= 0 && X < (I[0]?.length ?? 0) && (I[w][X] = N, Bt(U, w, X, M));
+  let k = 0, Z = 0;
+  for (let A of K.values())
+    k = Math.max(k, A.x + A.width), Z = Math.max(Z, A.y + A.height);
+  k += 4, Z += 2;
+  let G = ct(k - 1, Z - 1), P = Ht(k - 1, Z - 1);
+  function C(A, j, X, M) {
+    A >= 0 && A < G.length && j >= 0 && j < (G[0]?.length ?? 0) && (G[A][j] = X, Lt(P, A, j, M));
   }
-  for (let w of q.values()) {
-    let X = oe(w.sections, i);
-    for (let N = 0; N < X.length; N++)
-      for (let M = 0; M < X[0].length; M++) {
-        let W = X[N][M];
-        if (W !== " ") {
-          let Q = w.x + N, g = w.y + M;
-          Q < O && g < ft && C(Q, g, W, Kr(W));
+  for (let A of K.values()) {
+    let j = ue(A.sections, i);
+    for (let X = 0; X < j.length; X++)
+      for (let M = 0; M < j[0].length; M++) {
+        let J = j[X][M];
+        if (J !== " ") {
+          let tt = A.x + X, p = A.y + M;
+          tt < k && p < Z && C(tt, p, J, Xo(J));
         }
       }
   }
-  let F = [];
-  for (let w of q.values())
-    F.push({
-      x1: w.x,
-      x2: w.x + w.width - 1,
-      y1: w.y,
-      y2: w.y + w.height - 1
+  let U = [];
+  for (let A of K.values())
+    U.push({
+      x1: A.x,
+      x2: A.x + A.width - 1,
+      y1: A.y,
+      y2: A.y + A.height - 1
     });
-  function V(w, X, N) {
-    for (let [M, W] of q.entries())
-      if (!N?.has(M) && w >= W.x && w <= W.x + W.width - 1 && X >= W.y && X <= W.y + W.height - 1)
+  function F(A, j, X) {
+    for (let [M, J] of K.entries())
+      if (!X?.has(M) && A >= J.x && A <= J.x + J.width - 1 && j >= J.y && j <= J.y + J.height - 1)
         return !0;
     return !1;
   }
-  function K(w, X, N, M) {
-    let W = !0;
-    for (let Q = Math.min(X, N); Q <= Math.max(X, N); Q++)
-      if (V(w, Q, M)) {
-        W = !1;
+  function V(A, j, X, M) {
+    let J = !0;
+    for (let tt = Math.min(j, X); tt <= Math.max(j, X); tt++)
+      if (F(A, tt, M)) {
+        J = !1;
         break;
       }
-    if (W) return w;
-    for (let Q = 1; Q < O + 10; Q++) {
-      let g = w + Q;
-      W = !0;
-      for (let E = Math.min(X, N); E <= Math.max(X, N); E++)
-        if (V(g, E, M)) {
-          W = !1;
+    if (J) return A;
+    for (let tt = 1; tt < k + 10; tt++) {
+      let p = A + tt;
+      J = !0;
+      for (let E = Math.min(j, X); E <= Math.max(j, X); E++)
+        if (F(p, E, M)) {
+          J = !1;
           break;
         }
-      if (W) return g;
-      let y = w - Q;
+      if (J) return p;
+      let y = A - tt;
       if (y >= 0) {
-        W = !0;
-        for (let E = Math.min(X, N); E <= Math.max(X, N); E++)
-          if (V(y, E, M)) {
-            W = !1;
+        J = !0;
+        for (let E = Math.min(j, X); E <= Math.max(j, X); E++)
+          if (F(y, E, M)) {
+            J = !1;
             break;
           }
-        if (W) return y;
+        if (J) return y;
       }
     }
-    return O + 2;
+    return k + 2;
   }
-  let at = i ? "-" : "\u2500", ct = i ? "|" : "\u2502", ot = i ? "." : "\u254C", st = i ? ":" : "\u250A";
-  for (let w of r.relationships) {
-    let X = q.get(w.from), N = q.get(w.to);
-    if (!X || !N) continue;
-    let M = Zr(w.type, w.markerAt), W = M.dashed ? ot : at, Q = M.dashed ? st : ct, g = /* @__PURE__ */ new Set([w.from, w.to]), y = X.x + Math.floor(X.width / 2), E = X.y + X.height - 1, T = N.x + Math.floor(N.width / 2), k = N.y;
-    if (E < k) {
-      let R = K(y, E + 1, k - 1, g), J = R !== y;
-      if (R >= O && Tt(I, R + 2, ft), J) {
-        let G = E + 1, S = k - 1, z = Math.min(y, R), D = Math.max(y, R);
-        for (let $ = z; $ <= D; $++)
-          C($, G, W, "line");
-        !i && G < (I[0]?.length ?? 0) && (y < R ? (C(y, G, "\u2514", "corner"), C(R, G, "\u2510", "corner")) : (C(y, G, "\u2518", "corner"), C(R, G, "\u250C", "corner")));
-        for (let $ = G + 1; $ <= S; $++)
-          C(R, $, Q, "line");
-        if (R !== T) {
-          let $ = Math.min(R, T), tt = Math.max(R, T);
-          for (let Z = $; Z <= tt; Z++)
-            C(Z, S, W, "line");
-          !i && S < (I[0]?.length ?? 0) && (R < T ? (C(R, S, "\u2514", "corner"), C(T, S, "\u2510", "corner")) : (C(R, S, "\u2518", "corner"), C(T, S, "\u250C", "corner")));
+  let ot = i ? "-" : "\u2500", ft = i ? "|" : "\u2502", at = i ? "." : "\u254C", lt = i ? ":" : "\u250A";
+  for (let A of r.relationships) {
+    let j = K.get(A.from), X = K.get(A.to);
+    if (!j || !X) continue;
+    let M = Ho(A.type, A.markerAt), J = M.dashed ? at : ot, tt = M.dashed ? lt : ft, p = /* @__PURE__ */ new Set([A.from, A.to]), y = j.x + Math.floor(j.width / 2), E = j.y + j.height - 1, L = X.x + Math.floor(X.width / 2), I = X.y;
+    if (E < I) {
+      let R = V(y, E + 1, I - 1, p), Q = R !== y;
+      if (R >= k && Et(G, R + 2, Z), Q) {
+        let $ = E + 1, S = I - 1, q = Math.min(y, R), D = Math.max(y, R);
+        for (let _ = q; _ <= D; _++)
+          C(_, $, J, "line");
+        !i && $ < (G[0]?.length ?? 0) && (y < R ? (C(y, $, "\u2514", "corner"), C(R, $, "\u2510", "corner")) : (C(y, $, "\u2518", "corner"), C(R, $, "\u250C", "corner")));
+        for (let _ = $ + 1; _ <= S; _++)
+          C(R, _, tt, "line");
+        if (R !== L) {
+          let _ = Math.min(R, L), nt = Math.max(R, L);
+          for (let et = _; et <= nt; et++)
+            C(et, S, J, "line");
+          !i && S < (G[0]?.length ?? 0) && (R < L ? (C(R, S, "\u2514", "corner"), C(L, S, "\u2510", "corner")) : (C(R, S, "\u2518", "corner"), C(L, S, "\u250C", "corner")));
         }
         if (M.markerAt === "to") {
-          let $ = Wt(M.type, i, "down");
-          C(T, S, $, "arrow");
+          let _ = Ft(M.type, i, "down");
+          C(L, S, _, "arrow");
         }
         if (M.markerAt === "from") {
-          let $ = Wt(M.type, i, "down");
-          C(y, E + 1, $, "arrow");
+          let _ = Ft(M.type, i, "down");
+          C(y, E + 1, _, "arrow");
         }
       } else {
-        let G = E + Math.floor((k - E) / 2);
-        for (let S = E + 1; S <= G; S++)
-          C(y, S, Q, "line");
-        if (y !== T && G < (I[0]?.length ?? 0)) {
-          let S = Math.min(y, T), z = Math.max(y, T);
-          for (let D = S; D <= z; D++)
-            C(D, G, W, "line");
-          i || (C(y, G, y < T ? "\u2514" : "\u2518", "corner"), C(T, G, y < T ? "\u2510" : "\u250C", "corner"));
+        let $ = E + Math.floor((I - E) / 2);
+        for (let S = E + 1; S <= $; S++)
+          C(y, S, tt, "line");
+        if (y !== L && $ < (G[0]?.length ?? 0)) {
+          let S = Math.min(y, L), q = Math.max(y, L);
+          for (let D = S; D <= q; D++)
+            C(D, $, J, "line");
+          i || (C(y, $, y < L ? "\u2514" : "\u2518", "corner"), C(L, $, y < L ? "\u2510" : "\u250C", "corner"));
         }
-        for (let S = G + 1; S < k; S++)
-          C(T, S, Q, "line");
-        M.markerAt === "to" && C(T, k - 1, Wt(M.type, i, "down"), "arrow"), M.markerAt === "from" && C(y, E + 1, Wt(M.type, i, "down"), "arrow");
+        for (let S = $ + 1; S < I; S++)
+          C(L, S, tt, "line");
+        M.markerAt === "to" && C(L, I - 1, Ft(M.type, i, "down"), "arrow"), M.markerAt === "from" && C(y, E + 1, Ft(M.type, i, "down"), "arrow");
       }
-    } else if (N.y + N.height - 1 < X.y) {
-      let R = X.y, J = N.y + N.height - 1, G = J + Math.floor((R - J) / 2);
-      for (let S = R - 1; S >= G; S--)
-        C(y, S, Q, "line");
-      if (y !== T) {
-        let S = Math.min(y, T), z = Math.max(y, T);
-        for (let D = S; D <= z; D++)
-          C(D, G, W, "line");
-        !i && G >= 0 && G < ft && (C(y, G, y < T ? "\u250C" : "\u2510", "corner"), C(T, G, y < T ? "\u2518" : "\u2514", "corner"));
+    } else if (X.y + X.height - 1 < j.y) {
+      let R = j.y, Q = X.y + X.height - 1, $ = Q + Math.floor((R - Q) / 2);
+      for (let S = R - 1; S >= $; S--)
+        C(y, S, tt, "line");
+      if (y !== L) {
+        let S = Math.min(y, L), q = Math.max(y, L);
+        for (let D = S; D <= q; D++)
+          C(D, $, J, "line");
+        !i && $ >= 0 && $ < Z && (C(y, $, y < L ? "\u250C" : "\u2510", "corner"), C(L, $, y < L ? "\u2518" : "\u2514", "corner"));
       }
-      for (let S = G - 1; S > J; S--)
-        C(T, S, Q, "line");
+      for (let S = $ - 1; S > Q; S--)
+        C(L, S, tt, "line");
       if (M.markerAt === "from") {
-        let S = Wt(M.type, i, "up"), z = R - 1;
+        let S = Ft(M.type, i, "up"), q = R - 1;
         for (let D = 0; D < S.length; D++)
-          C(y - Math.floor(S.length / 2) + D, z, S[D], "arrow");
+          C(y - Math.floor(S.length / 2) + D, q, S[D], "arrow");
       }
       if (M.markerAt === "to") {
-        let z = M.type === "inheritance" || M.type === "realization" ? "down" : "up", D = Wt(M.type, i, z), $ = J + 1;
-        for (let tt = 0; tt < D.length; tt++)
-          C(T - Math.floor(D.length / 2) + tt, $, D[tt], "arrow");
+        let q = M.type === "inheritance" || M.type === "realization" ? "down" : "up", D = Ft(M.type, i, q), _ = Q + 1;
+        for (let nt = 0; nt < D.length; nt++)
+          C(L - Math.floor(D.length / 2) + nt, _, D[nt], "arrow");
       }
     } else {
-      let R = Math.max(E, N.y + N.height - 1) + 2;
-      Tt(I, O, R + 1), Nt(U, O, R + 1);
+      let R = Math.max(E, X.y + X.height - 1) + 2;
+      Et(G, k, R + 1), Yt(P, k, R + 1);
       for (let S = E + 1; S <= R; S++)
-        C(y, S, Q, "line");
-      let J = Math.min(y, T), G = Math.max(y, T);
-      for (let S = J; S <= G; S++)
-        C(S, R, W, "line");
-      for (let S = R - 1; S >= N.y + N.height; S--)
-        C(T, S, Q, "line");
+        C(y, S, tt, "line");
+      let Q = Math.min(y, L), $ = Math.max(y, L);
+      for (let S = Q; S <= $; S++)
+        C(S, R, J, "line");
+      for (let S = R - 1; S >= X.y + X.height; S--)
+        C(L, S, tt, "line");
       if (M.markerAt === "from") {
-        let S = Wt(M.type, i, "down"), z = E + 1;
+        let S = Ft(M.type, i, "down"), q = E + 1;
         for (let D = 0; D < S.length; D++)
-          C(y - Math.floor(S.length / 2) + D, z, S[D], "arrow");
+          C(y - Math.floor(S.length / 2) + D, q, S[D], "arrow");
       }
       if (M.markerAt === "to") {
-        let S = Wt(M.type, i, "up"), z = N.y + N.height;
+        let S = Ft(M.type, i, "up"), q = X.y + X.height;
         for (let D = 0; D < S.length; D++)
-          C(T - Math.floor(S.length / 2) + D, z, S[D], "arrow");
+          C(L - Math.floor(S.length / 2) + D, q, S[D], "arrow");
       }
     }
-    if (w.label) {
-      let R = rt(w.label), J = Math.max(...R.map((Z) => Z.length)) + 2, G, S;
-      if (E < k)
-        G = Math.floor((E + 1 + k - 1) / 2), S = Math.floor((y + T) / 2);
-      else if (N.y + N.height - 1 < X.y) {
-        let Z = N.y + N.height - 1;
-        G = Math.floor((Z + 1 + X.y - 1) / 2), S = Math.floor((y + T) / 2);
+    if (A.label) {
+      let R = st(A.label), Q = Math.max(...R.map((et) => et.length)) + 2, $, S;
+      if (E < I)
+        $ = Math.floor((E + 1 + I - 1) / 2), S = Math.floor((y + L) / 2);
+      else if (X.y + X.height - 1 < j.y) {
+        let et = X.y + X.height - 1;
+        $ = Math.floor((et + 1 + j.y - 1) / 2), S = Math.floor((y + L) / 2);
       } else
-        G = Math.max(E, N.y + N.height - 1) + 2, S = Math.floor((y + T) / 2);
-      let z = G, D = Math.floor(R.length / 2), $ = !1;
-      for (let Z = 0; Z < R.length; Z++) {
-        let et = z - D + Z, nt = S - Math.floor(J / 2), lt = Math.max(0, nt);
-        for (let mt = lt; mt < lt + J; mt++)
-          if (V(mt, et, g)) {
-            $ = !0;
+        $ = Math.max(E, X.y + X.height - 1) + 2, S = Math.floor((y + L) / 2);
+      let q = $, D = Math.floor(R.length / 2), _ = !1;
+      for (let et = 0; et < R.length; et++) {
+        let rt = q - D + et, it = S - Math.floor(Q / 2), dt = Math.max(0, it);
+        for (let pt = dt; pt < dt + Q; pt++)
+          if (F(pt, rt, p)) {
+            _ = !0;
             break;
           }
-        if ($) break;
+        if (_) break;
       }
-      if ($) {
-        let Z = E + 1, et = k - 1;
-        for (let nt = Z; nt <= et; nt++) {
-          let lt = !0, mt = S - Math.floor(J / 2), Dt = Math.max(0, mt);
-          for (let Ct = Dt; Ct < Dt + J; Ct++)
-            if (V(Ct, nt, g)) {
-              lt = !1;
+      if (_) {
+        let et = E + 1, rt = I - 1;
+        for (let it = et; it <= rt; it++) {
+          let dt = !0, pt = S - Math.floor(Q / 2), Tt = Math.max(0, pt);
+          for (let Ct = Tt; Ct < Tt + Q; Ct++)
+            if (F(Ct, it, p)) {
+              dt = !1;
               break;
             }
-          if (lt) {
-            z = nt;
+          if (dt) {
+            q = it;
             break;
           }
         }
       }
-      let tt = z - D;
-      for (let Z = 0; Z < R.length; Z++) {
-        let et = ` ${R[Z]} `, nt = S - Math.floor(et.length / 2), lt = Math.max(0, nt), mt = tt + Z, Dt = lt + et.length;
-        Dt > 0 && mt >= 0 && (Tt(I, Math.max(Dt, 1), Math.max(mt + 1, 1)), Nt(U, Math.max(Dt, 1), Math.max(mt + 1, 1)));
-        for (let Ct = 0; Ct < et.length; Ct++) {
-          let kt = lt + Ct;
-          kt >= 0 && mt >= 0 && C(kt, mt, et[Ct], "text");
+      let nt = q - D;
+      for (let et = 0; et < R.length; et++) {
+        let rt = ` ${R[et]} `, it = S - Math.floor(rt.length / 2), dt = Math.max(0, it), pt = nt + et, Tt = dt + rt.length;
+        Tt > 0 && pt >= 0 && (Et(G, Math.max(Tt, 1), Math.max(pt + 1, 1)), Yt(P, Math.max(Tt, 1), Math.max(pt + 1, 1)));
+        for (let Ct = 0; Ct < rt.length; Ct++) {
+          let Nt = dt + Ct;
+          Nt >= 0 && pt >= 0 && C(Nt, pt, rt[Ct], "text");
         }
       }
     }
   }
-  return Pt(I, { roleCanvas: U, colorMode: n, theme: o });
+  return _t(G, { roleCanvas: P, colorMode: n, theme: o });
 }
 
 // node_modules/beautiful-mermaid/src/er/parser.ts
-function Ln(t) {
+function nr(t) {
   let e = {
     entities: [],
     relationships: []
   }, n = /* @__PURE__ */ new Map(), o = null;
-  for (let s = 1; s < t.length; s++) {
-    let r = t[s];
+  for (let a = 1; a < t.length; a++) {
+    let r = t[a];
     if (o) {
       if (r === "}") {
         o = null;
         continue;
       }
-      let c = to(r);
+      let c = Wo(r);
       c && o.attributes.push(c);
       continue;
     }
     let i = r.match(/^(\S+)\s*\{$/);
     if (i) {
       let c = i[1];
-      o = Ce(n, c);
+      o = Be(n, c);
       continue;
     }
-    let a = eo(r);
-    if (a) {
-      Ce(n, a.entity1), Ce(n, a.entity2), e.relationships.push(a);
+    let s = _o(r);
+    if (s) {
+      Be(n, s.entity1), Be(n, s.entity2), e.relationships.push(s);
       continue;
     }
   }
   return e.entities = [...n.values()], e;
 }
-function Ce(t, e) {
+function Be(t, e) {
   let n = t.get(e);
   return n || (n = { id: e, label: e, attributes: [] }, t.set(e, n)), n;
 }
-function to(t) {
+function Wo(t) {
   let e = t.match(/^(\S+)\s+(\S+)(?:\s+(.+))?$/);
   if (!e) return null;
-  let n = e[1], o = e[2], s = e[3]?.trim() ?? "", r = [], i, a = s.match(/"([^"]*)"/);
-  a && (i = dt(a[1]));
-  let c = s.replace(/"[^"]*"/, "").trim();
-  for (let l of c.split(/\s+/)) {
-    let d = l.toUpperCase();
+  let n = e[1], o = e[2], a = e[3]?.trim() ?? "", r = [], i, s = a.match(/"([^"]*)"/);
+  s && (i = ut(s[1]));
+  let c = a.replace(/"[^"]*"/, "").trim();
+  for (let f of c.split(/\s+/)) {
+    let d = f.toUpperCase();
     (d === "PK" || d === "FK" || d === "UK") && r.push(d);
   }
   return { type: n, name: o, keys: r, comment: i };
 }
-function eo(t) {
+function _o(t) {
   let e = t.match(/^(\S+)\s+([|o}{]+(?:--|\.\.)[|o}{]+)\s+(\S+)\s*:\s*(.+)$/);
   if (!e) return null;
-  let n = e[1], o = e[2], s = e[3], r = e[4].trim().replace(/^["']|["']$/g, ""), i = dt(r), a = o.match(/^([|o}{]+)(--|\.\.?)([|o}{]+)$/);
-  if (!a) return null;
-  let c = a[1], l = a[2], d = a[3], h = Tn(c), f = Tn(d), u = l === "--";
-  return !h || !f ? null : { entity1: n, entity2: s, cardinality1: h, cardinality2: f, label: i, identifying: u };
+  let n = e[1], o = e[2], a = e[3], r = e[4].trim().replace(/^["']|["']$/g, ""), i = ut(r), s = o.match(/^([|o}{]+)(--|\.\.?)([|o}{]+)$/);
+  if (!s) return null;
+  let c = s[1], f = s[2], d = s[3], h = er(c), l = er(d), u = f === "--";
+  return !h || !l ? null : { entity1: n, entity2: a, cardinality1: h, cardinality2: l, label: i, identifying: u };
 }
-function Tn(t) {
+function er(t) {
   let e = t.split("").sort().join("");
   return e === "||" ? "one" : e === "o|" ? "zero-one" : e === "|}" || e === "{|" ? "many" : e === "{o" || e === "o{" ? "zero-many" : null;
 }
 
 // node_modules/beautiful-mermaid/src/ascii/er-diagram.ts
-function no(t) {
+function jo(t) {
   return /^[┌┐└┘├┤┬┴┼│─╭╮╰╯+\-|]$/.test(t) ? "border" : "text";
 }
-function ro(t) {
+function Oo(t) {
   return `${t.keys.length > 0 ? t.keys.join(",") + " " : "   "}${t.type} ${t.name}`;
 }
-function oo(t) {
-  let e = rt(t.label), n = t.attributes.map(ro);
+function zo(t) {
+  let e = st(t.label), n = t.attributes.map(Oo);
   return n.length === 0 ? [e] : [e, n];
 }
-function ie(t, e, n = !1) {
+function he(t, e, n = !1) {
   if (e)
     switch (t) {
       case "one":
@@ -2858,163 +3013,163 @@ function ie(t, e, n = !1) {
         return n ? "\u25CB\u255F" : "\u2562\u25CB";
     }
 }
-function io(t) {
+function Fo(t) {
   let e = /* @__PURE__ */ new Set(), n = [], o = /* @__PURE__ */ new Map();
   for (let r of t.entities)
     o.set(r.id, /* @__PURE__ */ new Set());
   for (let r of t.relationships)
     o.get(r.entity1)?.add(r.entity2), o.get(r.entity2)?.add(r.entity1);
-  function s(r, i) {
-    let a = [r];
-    for (; a.length > 0; ) {
-      let c = a.pop();
+  function a(r, i) {
+    let s = [r];
+    for (; s.length > 0; ) {
+      let c = s.pop();
       if (!e.has(c)) {
         e.add(c), i.add(c);
-        for (let l of o.get(c) ?? [])
-          e.has(l) || a.push(l);
+        for (let f of o.get(c) ?? [])
+          e.has(f) || s.push(f);
       }
     }
   }
   for (let r of t.entities)
     if (!e.has(r.id)) {
       let i = /* @__PURE__ */ new Set();
-      s(r.id, i), i.size > 0 && n.push(i);
+      a(r.id, i), i.size > 0 && n.push(i);
     }
   return n;
 }
-function En(t, e, n, o) {
-  let s = t.split(`
-`).map((I) => I.trim()).filter((I) => I.length > 0 && !I.startsWith("%%")), r = Ln(s);
+function rr(t, e, n, o) {
+  let a = t.split(`
+`).map((G) => G.trim()).filter((G) => G.length > 0 && !G.startsWith("%%")), r = nr(a);
   if (r.entities.length === 0) return "";
-  let i = e.useAscii, a = 6, c = 4, l = 6, d = /* @__PURE__ */ new Map(), h = /* @__PURE__ */ new Map(), f = /* @__PURE__ */ new Map(), u = /* @__PURE__ */ new Map();
-  for (let I of r.entities) {
-    u.set(I.id, I);
-    let U = oo(I);
-    d.set(I.id, U);
+  let i = e.useAscii, s = 6, c = 4, f = 6, d = /* @__PURE__ */ new Map(), h = /* @__PURE__ */ new Map(), l = /* @__PURE__ */ new Map(), u = /* @__PURE__ */ new Map();
+  for (let G of r.entities) {
+    u.set(G.id, G);
+    let P = zo(G);
+    d.set(G.id, P);
     let C = 0;
-    for (let at of U)
-      for (let ct of at) C = Math.max(C, ct.length);
-    let F = C + 4, V = 0;
-    for (let at of U) V += Math.max(at.length, 1);
-    let K = V + (U.length - 1) + 2;
-    h.set(I.id, F), f.set(I.id, K);
+    for (let ot of P)
+      for (let ft of ot) C = Math.max(C, ft.length);
+    let U = C + 4, F = 0;
+    for (let ot of P) F += Math.max(ot.length, 1);
+    let V = F + (P.length - 1) + 2;
+    h.set(G.id, U), l.set(G.id, V);
   }
-  let m = io(r), p = /* @__PURE__ */ new Map(), b = 0;
-  for (let I of m) {
-    let U = r.entities.filter((ct) => I.has(ct.id)), C = Math.max(2, Math.ceil(Math.sqrt(U.length))), F = 0, V = 0, K = 0, at = b;
-    for (let ct of U) {
-      let ot = h.get(ct.id), st = f.get(ct.id);
-      K >= C && (b += V + c, F = 0, V = 0, K = 0), p.set(ct.id, {
-        entity: ct,
-        sections: d.get(ct.id),
-        x: F,
-        y: b,
-        width: ot,
-        height: st
-      }), F += ot + a, V = Math.max(V, st), K++;
+  let g = Fo(r), m = /* @__PURE__ */ new Map(), x = 0;
+  for (let G of g) {
+    let P = r.entities.filter((ft) => G.has(ft.id)), C = Math.max(2, Math.ceil(Math.sqrt(P.length))), U = 0, F = 0, V = 0, ot = x;
+    for (let ft of P) {
+      let at = h.get(ft.id), lt = l.get(ft.id);
+      V >= C && (x += F + c, U = 0, F = 0, V = 0), m.set(ft.id, {
+        entity: ft,
+        sections: d.get(ft.id),
+        x: U,
+        y: x,
+        width: at,
+        height: lt
+      }), U += at + s, F = Math.max(F, lt), V++;
     }
-    b += V + l;
+    x += F + f;
   }
-  let A = 0, B = 0;
-  for (let I of p.values())
-    A = Math.max(A, I.x + I.width), B = Math.max(B, I.y + I.height);
-  A += 4, B += 2;
-  let v = it(A - 1, B - 1), H = $t(A - 1, B - 1);
-  function L(I, U, C, F) {
-    I >= 0 && I < v.length && U >= 0 && U < (v[0]?.length ?? 0) && (v[I][U] = C, Bt(H, I, U, F));
+  let w = 0, B = 0;
+  for (let G of m.values())
+    w = Math.max(w, G.x + G.width), B = Math.max(B, G.y + G.height);
+  w += 4, B += 2;
+  let v = ct(w - 1, B - 1), Y = Ht(w - 1, B - 1);
+  function T(G, P, C, U) {
+    G >= 0 && G < v.length && P >= 0 && P < (v[0]?.length ?? 0) && (v[G][P] = C, Lt(Y, G, P, U));
   }
-  for (let I of p.values()) {
-    let U = oe(I.sections, i);
-    for (let C = 0; C < U.length; C++)
-      for (let F = 0; F < U[0].length; F++) {
-        let V = U[C][F];
-        if (V !== " ") {
-          let K = I.x + C, at = I.y + F;
-          K < A && at < B && L(K, at, V, no(V));
+  for (let G of m.values()) {
+    let P = ue(G.sections, i);
+    for (let C = 0; C < P.length; C++)
+      for (let U = 0; U < P[0].length; U++) {
+        let F = P[C][U];
+        if (F !== " ") {
+          let V = G.x + C, ot = G.y + U;
+          V < w && ot < B && T(V, ot, F, jo(F));
         }
       }
   }
-  let q = i ? "-" : "\u2500", ut = i ? "|" : "\u2502", O = i ? "." : "\u254C", ft = i ? ":" : "\u250A";
-  for (let I of r.relationships) {
-    let U = p.get(I.entity1), C = p.get(I.entity2);
-    if (!U || !C) continue;
-    let F = I.identifying ? q : O, V = I.identifying ? ut : ft, K = U.x + Math.floor(U.width / 2), at = U.y + Math.floor(U.height / 2), ct = C.x + Math.floor(C.width / 2), ot = C.y + Math.floor(C.height / 2);
-    if (Math.abs(at - ot) < Math.max(U.height, C.height)) {
-      let [w, X] = K < ct ? [U, C] : [C, U], [N, M] = K < ct ? [I.cardinality1, I.cardinality2] : [I.cardinality2, I.cardinality1], W = w.x + w.width, Q = X.x - 1, g = w.y + Math.floor(w.height / 2);
-      for (let T = W; T <= Q; T++)
-        L(T, g, F, "line");
-      let y = ie(N, i, !1);
-      for (let T = 0; T < y.length; T++)
-        L(W + T, g, y[T], "arrow");
-      let E = ie(M, i, !0);
-      for (let T = 0; T < E.length; T++)
-        L(Q - E.length + 1 + T, g, E[T], "arrow");
-      if (I.label) {
-        let T = rt(I.label), k = Math.floor((W + Q) / 2);
-        for (let R = 0; R < T.length; R++) {
-          let J = T[R], G = Math.max(W, k - Math.floor(J.length / 2)), S = g + 1 + R;
-          Tt(v, Math.max(G + J.length, 1), Math.max(S + 1, 1)), Nt(H, Math.max(G + J.length, 1), Math.max(S + 1, 1));
-          for (let z = 0; z < J.length; z++) {
-            let D = G + z;
-            D >= W && D <= Q && L(D, S, J[z], "text");
+  let K = i ? "-" : "\u2500", N = i ? "|" : "\u2502", k = i ? "." : "\u254C", Z = i ? ":" : "\u250A";
+  for (let G of r.relationships) {
+    let P = m.get(G.entity1), C = m.get(G.entity2);
+    if (!P || !C) continue;
+    let U = G.identifying ? K : k, F = G.identifying ? N : Z, V = P.x + Math.floor(P.width / 2), ot = P.y + Math.floor(P.height / 2), ft = C.x + Math.floor(C.width / 2), at = C.y + Math.floor(C.height / 2);
+    if (Math.abs(ot - at) < Math.max(P.height, C.height)) {
+      let [A, j] = V < ft ? [P, C] : [C, P], [X, M] = V < ft ? [G.cardinality1, G.cardinality2] : [G.cardinality2, G.cardinality1], J = A.x + A.width, tt = j.x - 1, p = A.y + Math.floor(A.height / 2);
+      for (let L = J; L <= tt; L++)
+        T(L, p, U, "line");
+      let y = he(X, i, !1);
+      for (let L = 0; L < y.length; L++)
+        T(J + L, p, y[L], "arrow");
+      let E = he(M, i, !0);
+      for (let L = 0; L < E.length; L++)
+        T(tt - E.length + 1 + L, p, E[L], "arrow");
+      if (G.label) {
+        let L = st(G.label), I = Math.floor((J + tt) / 2);
+        for (let R = 0; R < L.length; R++) {
+          let Q = L[R], $ = Math.max(J, I - Math.floor(Q.length / 2)), S = p + 1 + R;
+          Et(v, Math.max($ + Q.length, 1), Math.max(S + 1, 1)), Yt(Y, Math.max($ + Q.length, 1), Math.max(S + 1, 1));
+          for (let q = 0; q < Q.length; q++) {
+            let D = $ + q;
+            D >= J && D <= tt && T(D, S, Q[q], "text");
           }
         }
       }
     } else {
-      let [w, X] = at < ot ? [U, C] : [C, U], [N, M] = at < ot ? [I.cardinality1, I.cardinality2] : [I.cardinality2, I.cardinality1], W = w.y + w.height, Q = X.y - 1, g = w.x + Math.floor(w.width / 2);
-      for (let R = W; R <= Q; R++)
-        L(g, R, V, "line");
-      let y = X.x + Math.floor(X.width / 2);
-      if (g !== y) {
-        let R = Math.floor((W + Q) / 2), J = Math.min(g, y), G = Math.max(g, y);
-        for (let S = J; S <= G; S++)
-          L(S, R, F, "line");
-        for (let S = R + 1; S <= Q; S++)
-          L(y, S, V, "line");
+      let [A, j] = ot < at ? [P, C] : [C, P], [X, M] = ot < at ? [G.cardinality1, G.cardinality2] : [G.cardinality2, G.cardinality1], J = A.y + A.height, tt = j.y - 1, p = A.x + Math.floor(A.width / 2);
+      for (let R = J; R <= tt; R++)
+        T(p, R, F, "line");
+      let y = j.x + Math.floor(j.width / 2);
+      if (p !== y) {
+        let R = Math.floor((J + tt) / 2), Q = Math.min(p, y), $ = Math.max(p, y);
+        for (let S = Q; S <= $; S++)
+          T(S, R, U, "line");
+        for (let S = R + 1; S <= tt; S++)
+          T(y, S, F, "line");
       }
-      let E = ie(N, i, !1);
+      let E = he(X, i, !1);
       for (let R = 0; R < E.length; R++)
-        L(g - Math.floor(E.length / 2) + R, W, E[R], "arrow");
-      let T = g !== y ? y : g, k = ie(M, i, !0);
-      for (let R = 0; R < k.length; R++)
-        L(T - Math.floor(k.length / 2) + R, Q, k[R], "arrow");
-      if (I.label) {
-        let R = rt(I.label), G = Math.floor((W + Q) / 2) - Math.floor((R.length - 1) / 2);
+        T(p - Math.floor(E.length / 2) + R, J, E[R], "arrow");
+      let L = p !== y ? y : p, I = he(M, i, !0);
+      for (let R = 0; R < I.length; R++)
+        T(L - Math.floor(I.length / 2) + R, tt, I[R], "arrow");
+      if (G.label) {
+        let R = st(G.label), $ = Math.floor((J + tt) / 2) - Math.floor((R.length - 1) / 2);
         for (let S = 0; S < R.length; S++) {
-          let z = R[S], D = g + 2, $ = G + S;
-          if ($ >= 0)
-            for (let tt = 0; tt < z.length; tt++) {
-              let Z = D + tt;
-              Z >= 0 && (Tt(v, Z + 1, $ + 1), Nt(H, Z + 1, $ + 1), L(Z, $, z[tt], "text"));
+          let q = R[S], D = p + 2, _ = $ + S;
+          if (_ >= 0)
+            for (let nt = 0; nt < q.length; nt++) {
+              let et = D + nt;
+              et >= 0 && (Et(v, et + 1, _ + 1), Yt(Y, et + 1, _ + 1), T(et, _, q[nt], "text"));
             }
         }
       }
     }
   }
-  return Pt(v, { roleCanvas: H, colorMode: n, theme: o });
+  return _t(v, { roleCanvas: Y, colorMode: n, theme: o });
 }
 
 // node_modules/beautiful-mermaid/src/xychart/parser.ts
-function Gn(t) {
-  let e = {}, n = {}, o = [], s, r = !1;
+function ir(t) {
+  let e = {}, n = {}, o = [], a, r = !1;
   for (let i of t) {
     if (/^xychart(-beta)?\b/i.test(i)) {
       /\bhorizontal\b/i.test(i) && (r = !0);
       continue;
     }
-    let a = i.match(/^title\s+"([^"]+)"/);
-    if (a) {
-      s = a[1];
+    let s = i.match(/^title\s+"([^"]+)"/);
+    if (s) {
+      a = s[1];
       continue;
     }
     let c = i.match(/^x-axis\s+(?:"([^"]*)"\s*)?\[([^\]]+)\]/);
     if (c) {
-      c[1] && (e.title = c[1]), e.categories = c[2].split(",").map((m) => m.trim());
+      c[1] && (e.title = c[1]), e.categories = c[2].split(",").map((g) => g.trim());
       continue;
     }
-    let l = i.match(/^x-axis\s+(?:"([^"]*)"\s+)?(-?\d+(?:\.\d+)?)\s*-->\s*(-?\d+(?:\.\d+)?)/);
-    if (l) {
-      l[1] && (e.title = l[1]), e.range = { min: parseFloat(l[2]), max: parseFloat(l[3]) };
+    let f = i.match(/^x-axis\s+(?:"([^"]*)"\s+)?(-?\d+(?:\.\d+)?)\s*-->\s*(-?\d+(?:\.\d+)?)/);
+    if (f) {
+      f[1] && (e.title = f[1]), e.range = { min: parseFloat(f[2]), max: parseFloat(f[3]) };
       continue;
     }
     let d = i.match(/^y-axis\s+(?:"([^"]*)"\s+)?(-?\d+(?:\.\d+)?)\s*-->\s*(-?\d+(?:\.\d+)?)/);
@@ -3027,55 +3182,55 @@ function Gn(t) {
       n.title = h[1];
       continue;
     }
-    let f = i.match(/^bar\s+(?:"([^"]*)"\s*|([^\s"[]+)\s+)?\[([^\]]+)\]/);
-    if (f) {
-      o.push({ type: "bar", name: f[1] ?? f[2], data: kn(f[3]) });
+    let l = i.match(/^bar\s+(?:"([^"]*)"\s*|([^\s"[]+)\s+)?\[([^\]]+)\]/);
+    if (l) {
+      o.push({ type: "bar", name: l[1] ?? l[2], data: or(l[3]) });
       continue;
     }
     let u = i.match(/^line\s+(?:"([^"]*)"\s*|([^\s"[]+)\s+)?\[([^\]]+)\]/);
     if (u) {
-      o.push({ type: "line", name: u[1] ?? u[2], data: kn(u[3]) });
+      o.push({ type: "line", name: u[1] ?? u[2], data: or(u[3]) });
       continue;
     }
   }
   if (!n.range && o.length > 0) {
-    let i = o.flatMap((d) => d.data), a = Math.min(...i), c = Math.max(...i), l = c - a || 1;
-    a = a - l * 0.1, c = c + l * 0.1, a > 0 && a < l * 0.5 && (a = 0), n.range = { min: a, max: c };
+    let i = o.flatMap((d) => d.data), s = Math.min(...i), c = Math.max(...i), f = c - s || 1;
+    s = s - f * 0.1, c = c + f * 0.1, s > 0 && s < f * 0.5 && (s = 0), n.range = { min: s, max: c };
   }
-  return n.range || (n.range = { min: 0, max: 100 }), { title: s, horizontal: r, xAxis: e, yAxis: n, series: o };
+  return n.range || (n.range = { min: 0, max: 100 }), { title: a, horizontal: r, xAxis: e, yAxis: n, series: o };
 }
-function kn(t) {
+function or(t) {
   return t.split(",").map((e) => parseFloat(e.trim()));
 }
 
 // node_modules/beautiful-mermaid/src/xychart/colors.ts
-var Me = "#3b82f6";
-function Nn(t) {
-  let e = t.replace("#", ""), n = parseInt(e.substring(0, 2), 16) / 255, o = parseInt(e.substring(2, 4), 16) / 255, s = parseInt(e.substring(4, 6), 16) / 255, r = Math.max(n, o, s), i = Math.min(n, o, s), a = (r + i) / 2;
-  if (r === i) return [0, 0, a * 100];
-  let c = r - i, l = a > 0.5 ? c / (2 - r - i) : c / (r + i), d;
-  return r === n ? d = ((o - s) / c + (o < s ? 6 : 0)) / 6 : r === o ? d = ((s - n) / c + 2) / 6 : d = ((n - o) / c + 4) / 6, [d * 360, l * 100, a * 100];
+var Ye = "#3b82f6";
+function ar(t) {
+  let e = t.replace("#", ""), n = parseInt(e.substring(0, 2), 16) / 255, o = parseInt(e.substring(2, 4), 16) / 255, a = parseInt(e.substring(4, 6), 16) / 255, r = Math.max(n, o, a), i = Math.min(n, o, a), s = (r + i) / 2;
+  if (r === i) return [0, 0, s * 100];
+  let c = r - i, f = s > 0.5 ? c / (2 - r - i) : c / (r + i), d;
+  return r === n ? d = ((o - a) / c + (o < a ? 6 : 0)) / 6 : r === o ? d = ((a - n) / c + 2) / 6 : d = ((n - o) / c + 4) / 6, [d * 360, f * 100, s * 100];
 }
-function so(t, e, n) {
-  let o = e / 100, s = n / 100, r = (1 - Math.abs(2 * s - 1)) * o, i = r * (1 - Math.abs(t / 60 % 2 - 1)), a = s - r / 2, c, l, d;
-  t < 60 ? (c = r, l = i, d = 0) : t < 120 ? (c = i, l = r, d = 0) : t < 180 ? (c = 0, l = r, d = i) : t < 240 ? (c = 0, l = i, d = r) : t < 300 ? (c = i, l = 0, d = r) : (c = r, l = 0, d = i);
-  let h = (f) => Math.round((f + a) * 255).toString(16).padStart(2, "0");
-  return `#${h(c)}${h(l)}${h(d)}`;
+function Jo(t, e, n) {
+  let o = e / 100, a = n / 100, r = (1 - Math.abs(2 * a - 1)) * o, i = r * (1 - Math.abs(t / 60 % 2 - 1)), s = a - r / 2, c, f, d;
+  t < 60 ? (c = r, f = i, d = 0) : t < 120 ? (c = i, f = r, d = 0) : t < 180 ? (c = 0, f = r, d = i) : t < 240 ? (c = 0, f = i, d = r) : t < 300 ? (c = i, f = 0, d = r) : (c = r, f = 0, d = i);
+  let h = (l) => Math.round((l + s) * 255).toString(16).padStart(2, "0");
+  return `#${h(c)}${h(f)}${h(d)}`;
 }
-function In(t) {
+function sr(t) {
   return /^#[0-9a-fA-F]{6}$/.test(t);
 }
-function ao(t) {
-  return Nn(t)[2] < 50;
+function Uo(t) {
+  return ar(t)[2] < 50;
 }
-function Yn(t, e, n) {
+function cr(t, e, n) {
   if (t === 0) return e;
-  let o = In(e) ? e : Me, s = n && In(n) ? n : void 0, [r, i] = Nn(o), a = Math.max(55, Math.min(85, i)), c = Math.ceil(t / 2), l = t % 2 === 1, d = s && ao(s) ? !l : l, h = d ? Math.max(25, 48 - c * 13) : Math.min(78, 55 + c * 11), f = (d ? -8 : 12) * c, u = ((r + f) % 360 + 360) % 360;
-  return so(u, a, h);
+  let o = sr(e) ? e : Ye, a = n && sr(n) ? n : void 0, [r, i] = ar(o), s = Math.max(55, Math.min(85, i)), c = Math.ceil(t / 2), f = t % 2 === 1, d = a && Uo(a) ? !f : f, h = d ? Math.max(25, 48 - c * 13) : Math.min(78, 55 + c * 11), l = (d ? -8 : 12) * c, u = ((r + l) % 360 + 360) % 360;
+  return Jo(u, s, h);
 }
 
 // node_modules/beautiful-mermaid/src/ascii/xychart.ts
-var we = 60, ve = 20, co = {
+var Xe = 60, Pe = 20, qo = {
   hLine: "\u2500",
   vLine: "\u2502",
   origin: "\u253C",
@@ -3091,7 +3246,7 @@ var we = 60, ve = 20, co = {
   // bottom-left: up+right
   cornerBR: "\u256F"
   // bottom-right: up+left
-}, $n = {
+}, lr = {
   hLine: "-",
   vLine: "|",
   origin: "+",
@@ -3104,11 +3259,11 @@ var we = 60, ve = 20, co = {
   cornerBL: "+",
   cornerBR: "+"
 };
-function Bn(t, e) {
-  let n = e.accent ?? Me;
-  return t <= 1 ? [n] : Array.from({ length: t }, (o, s) => Yn(s, n, e.bg));
+function fr(t, e) {
+  let n = e.accent ?? Ye;
+  return t <= 1 ? [n] : Array.from({ length: t }, (o, a) => cr(a, n, e.bg));
 }
-function lo(t, e) {
+function Vo(t, e) {
   switch (t) {
     case "text":
       return e.fg;
@@ -3126,318 +3281,318 @@ function lo(t, e) {
       return e.fg;
   }
 }
-function Xn(t, e, n, o) {
-  let s = t.split(`
-`).map((a) => a.trim()).filter((a) => a.length > 0 && !a.startsWith("%%")), r = Gn(s), i = e.useAscii ? $n : co;
-  return r.horizontal ? uo(r, i, n, o) : fo(r, i, n, o);
+function dr(t, e, n, o) {
+  let a = t.split(`
+`).map((s) => s.trim()).filter((s) => s.length > 0 && !s.startsWith("%%")), r = ir(a), i = e.useAscii ? lr : qo;
+  return r.horizontal ? Qo(r, i, n, o) : Ko(r, i, n, o);
 }
-function fo(t, e, n, o) {
-  let s = zn(t);
-  if (s === 0) return "";
-  let r = t.yAxis.range, i = Fn(r.min, r.max), a = i.length > 1 ? i[1] - i[0] : Math.abs(r.max - r.min) || 1, c = Math.floor(r.min / a + 1e-9) * a, l = Math.max(c + a, Math.ceil(r.max / a - 1e-9) * a), d = Math.round((l - c) / a), h = Array.from({ length: d + 1 }, (g, y) => Math.round((c + y * a) * 1e10) / 1e10), f = h.map((g) => se(g)), u = Math.max(...f.map((g) => g.length)) + 1, m = Math.max(we, s * 6), p = Math.max(1, Math.round(ve / d)), b = d * p, A = a / p, B = (g) => (g - c) / A, v = B(Math.min(Math.max(0, c), l)), H = Math.round(v) - 1, L = Math.floor(m / s), q = On(t, s), ut = !!t.title, O = !!t.xAxis.title, ft = t.series.length > 1, I = ut ? 0 : -1, U = (ut ? 2 : 0) + (ft ? 1 : 0), C = u + 1, F = C + L * s + 2, V = U + b, K = V + 1, at = O ? K + 1 : -1, ct = K + 1 + (O ? 1 : 0) + 0, ot = Hn(F, ct), st = Wn(F, ct), w = _n(F, ct), X = Bn(t.series.length, o), N = (g) => Math.min(b - 1, Math.max(-1, Math.round(B(g)) - 1)), M = (g) => C + Math.floor(L * (g + 0.5));
-  ut && I >= 0 && Xt(ot, st, I, Math.floor(F / 2 - t.title.length / 2), t.title, "text"), ft && Pn(ot, st, w, t, ut ? 1 : 0, F, e, X);
-  for (let g = 0; g < b; g++) {
-    let y = U + (b - 1 - g);
-    bt(ot, st, y, C - 1, e.vLine, "border");
+function Ko(t, e, n, o) {
+  let a = xr(t);
+  if (a === 0) return "";
+  let r = t.yAxis.range, i = yr(r.min, r.max), s = i.length > 1 ? i[1] - i[0] : Math.abs(r.max - r.min) || 1, c = Math.floor(r.min / s + 1e-9) * s, f = Math.max(c + s, Math.ceil(r.max / s - 1e-9) * s), d = Math.round((f - c) / s), h = Array.from({ length: d + 1 }, (p, y) => Math.round((c + y * s) * 1e10) / 1e10), l = h.map((p) => me(p)), u = Math.max(...l.map((p) => p.length)) + 1, g = Math.max(Xe, a * 6), m = Math.max(1, Math.round(Pe / d)), x = d * m, w = s / m, B = (p) => (p - c) / w, v = B(Math.min(Math.max(0, c), f)), Y = Math.round(v) - 1, T = Math.floor(g / a), K = br(t, a), N = !!t.title, k = !!t.xAxis.title, Z = t.series.length > 1, G = N ? 0 : -1, P = (N ? 2 : 0) + (Z ? 1 : 0), C = u + 1, U = C + T * a + 2, F = P + x, V = F + 1, ot = k ? V + 1 : -1, ft = V + 1 + (k ? 1 : 0) + 0, at = hr(U, ft), lt = mr(U, ft), A = gr(U, ft), j = fr(t.series.length, o), X = (p) => Math.min(x - 1, Math.max(-1, Math.round(B(p)) - 1)), M = (p) => C + Math.floor(T * (p + 0.5));
+  N && G >= 0 && Wt(at, lt, G, Math.floor(U / 2 - t.title.length / 2), t.title, "text"), Z && ur(at, lt, A, t, N ? 1 : 0, U, e, j);
+  for (let p = 0; p < x; p++) {
+    let y = P + (x - 1 - p);
+    yt(at, lt, y, C - 1, e.vLine, "border");
   }
-  bt(ot, st, V, C - 1, e.origin, "border");
-  for (let g of h) {
-    let y = Math.round(B(g)) - 1;
-    if (y < -1 || y >= b) continue;
-    let E = U + (b - 1 - y), T = se(g);
-    bt(ot, st, E, C - 1, y === -1 || y === H ? e.origin : e.yTick, "border");
-    let k = u - T.length;
-    Xt(ot, st, E, Math.max(0, k), T, "text");
+  yt(at, lt, F, C - 1, e.origin, "border");
+  for (let p of h) {
+    let y = Math.round(B(p)) - 1;
+    if (y < -1 || y >= x) continue;
+    let E = P + (x - 1 - y), L = me(p);
+    yt(at, lt, E, C - 1, y === -1 || y === Y ? e.origin : e.yTick, "border");
+    let I = u - L.length;
+    Wt(at, lt, E, Math.max(0, I), L, "text");
   }
-  for (let g = C; g < C + L * s; g++)
-    bt(ot, st, V, g, e.hLine, "border");
-  for (let g = 0; g < s; g++) {
-    let y = M(g);
-    bt(ot, st, V, y, e.xTick, "border");
-    let E = q[g], T = y - Math.floor(E.length / 2);
-    Xt(ot, st, K, Math.max(0, T), E, "text");
+  for (let p = C; p < C + T * a; p++)
+    yt(at, lt, F, p, e.hLine, "border");
+  for (let p = 0; p < a; p++) {
+    let y = M(p);
+    yt(at, lt, F, y, e.xTick, "border");
+    let E = K[p], L = y - Math.floor(E.length / 2);
+    Wt(at, lt, V, Math.max(0, L), E, "text");
   }
-  if (O && at >= 0) {
-    let g = t.xAxis.title;
-    Xt(ot, st, at, Math.floor(F / 2 - g.length / 2), g, "text");
+  if (k && ot >= 0) {
+    let p = t.xAxis.title;
+    Wt(at, lt, ot, Math.floor(U / 2 - p.length / 2), p, "text");
   }
-  for (let g of h) {
-    let y = Math.round(B(g)) - 1;
-    if (y < 0 || y >= b) continue;
-    let E = U + (b - 1 - y);
-    for (let T = C; T < C + L * s; T++)
-      Ae(ot, E, T) === " " && bt(ot, st, E, T, y === H ? e.hLine : e.grid, y === H ? "border" : "line");
+  for (let p of h) {
+    let y = Math.round(B(p)) - 1;
+    if (y < 0 || y >= x) continue;
+    let E = P + (x - 1 - y);
+    for (let L = C; L < C + T * a; L++)
+      He(at, E, L) === " " && yt(at, lt, E, L, y === Y ? e.hLine : e.grid, y === Y ? "border" : "line");
   }
-  let W = [];
-  for (let g = 0; g < t.series.length; g++)
-    t.series[g].type === "bar" && W.push({ data: t.series[g].data, globalIdx: g });
-  if (W.length > 0) {
-    let g = W.length, y = Math.max(1, L - 2), E = Math.max(1, Math.min(Math.floor(y / g), 8)), T = E * g + (g - 1);
-    for (let k = 0; k < W.length; k++) {
-      let R = W[k], J = X[R.globalIdx];
-      for (let G = 0; G < R.data.length; G++) {
-        let D = M(G) - Math.floor(T / 2) + k * (E + 1), $ = B(R.data[G]), tt = $ < v ? Math.ceil($ * 2 - 1e-9) / 2 : Math.floor($ * 2 + 1e-9) / 2, Z = Math.max(0, Math.min(v, tt)), et = Math.min(b, Math.max(v, tt));
-        for (let nt = -1; nt < b; nt++) {
-          let lt = Z <= nt + 0.5 + 1e-9 && et >= nt + 1 - 1e-9, mt = Z <= nt + 1 + 1e-9 && et >= nt + 1.5 - 1e-9, Dt = e === $n ? (tt < v ? mt : lt) && e.bar : lt && mt ? e.bar : lt ? "\u2584" : mt && "\u2580";
-          if (!Dt) continue;
-          let Ct = U + (b - 1 - nt);
-          for (let kt = D; kt < D + E; kt++)
-            bt(ot, st, Ct, kt, Dt, "arrow", w, J);
+  let J = [];
+  for (let p = 0; p < t.series.length; p++)
+    t.series[p].type === "bar" && J.push({ data: t.series[p].data, globalIdx: p });
+  if (J.length > 0) {
+    let p = J.length, y = Math.max(1, T - 2), E = Math.max(1, Math.min(Math.floor(y / p), 8)), L = E * p + (p - 1);
+    for (let I = 0; I < J.length; I++) {
+      let R = J[I], Q = j[R.globalIdx];
+      for (let $ = 0; $ < R.data.length; $++) {
+        let D = M($) - Math.floor(L / 2) + I * (E + 1), _ = B(R.data[$]), nt = _ < v ? Math.ceil(_ * 2 - 1e-9) / 2 : Math.floor(_ * 2 + 1e-9) / 2, et = Math.max(0, Math.min(v, nt)), rt = Math.min(x, Math.max(v, nt));
+        for (let it = -1; it < x; it++) {
+          let dt = et <= it + 0.5 + 1e-9 && rt >= it + 1 - 1e-9, pt = et <= it + 1 + 1e-9 && rt >= it + 1.5 - 1e-9, Tt = e === lr ? (nt < v ? pt : dt) && e.bar : dt && pt ? e.bar : dt ? "\u2584" : pt && "\u2580";
+          if (!Tt) continue;
+          let Ct = P + (x - 1 - it);
+          for (let Nt = D; Nt < D + E; Nt++)
+            yt(at, lt, Ct, Nt, Tt, "arrow", A, Q);
         }
       }
     }
   }
-  let Q = [];
-  for (let g = 0; g < t.series.length; g++)
-    t.series[g].type === "line" && Q.push({ data: t.series[g].data, globalIdx: g });
-  for (let g of Q) {
-    if (g.data.length === 0) continue;
-    let y = X[g.globalIdx];
-    ho(ot, st, g.data, M, N, U, b, C, L * s, e, w, y);
+  let tt = [];
+  for (let p = 0; p < t.series.length; p++)
+    t.series[p].type === "line" && tt.push({ data: t.series[p].data, globalIdx: p });
+  for (let p of tt) {
+    if (p.data.length === 0) continue;
+    let y = j[p.globalIdx];
+    Zo(at, lt, p.data, M, X, P, x, C, T * a, e, A, y);
   }
-  return jn(ot, st, w, n, o);
+  return pr(at, lt, A, n, o);
 }
-function uo(t, e, n, o) {
-  let s = zn(t);
-  if (s === 0) return "";
-  let r = t.yAxis.range, i = Fn(r.min, r.max), a = On(t, s), c = Math.max(...a.map((C) => C.length)) + 1, l = Math.max(we, 40), d = Math.max(2, Math.floor(ve / s)), h = d * s, f = !!t.title, u = !!t.yAxis.title, m = t.series.length > 1, p = (f ? 2 : 0) + (m ? 1 : 0), b = c + 1, A = b + l + 2, B = p + h + 2 + (u ? 1 : 0), v = p + h, H = Hn(A, B), L = Wn(A, B), q = _n(A, B), ut = Bn(t.series.length, o), O = (C) => {
-    let F = (C - r.min) / (r.max - r.min || 1);
-    return b + Math.round(F * (l - 1));
-  }, ft = (C) => p + Math.floor(d * (C + 0.5));
-  f && Xt(H, L, 0, Math.floor(A / 2 - t.title.length / 2), t.title, "text"), m && Pn(H, L, q, t, f ? 1 : 0, A, e, ut);
-  for (let C = p; C < p + h; C++)
-    bt(H, L, C, b - 1, e.vLine, "border");
-  bt(H, L, v, b - 1, e.origin, "border");
-  for (let C = 0; C < s; C++) {
-    let F = ft(C), V = a[C], K = c - V.length;
-    Xt(H, L, F, Math.max(0, K), V, "text");
+function Qo(t, e, n, o) {
+  let a = xr(t);
+  if (a === 0) return "";
+  let r = t.yAxis.range, i = yr(r.min, r.max), s = br(t, a), c = Math.max(...s.map((C) => C.length)) + 1, f = Math.max(Xe, 40), d = Math.max(2, Math.floor(Pe / a)), h = d * a, l = !!t.title, u = !!t.yAxis.title, g = t.series.length > 1, m = (l ? 2 : 0) + (g ? 1 : 0), x = c + 1, w = x + f + 2, B = m + h + 2 + (u ? 1 : 0), v = m + h, Y = hr(w, B), T = mr(w, B), K = gr(w, B), N = fr(t.series.length, o), k = (C) => {
+    let U = (C - r.min) / (r.max - r.min || 1);
+    return x + Math.round(U * (f - 1));
+  }, Z = (C) => m + Math.floor(d * (C + 0.5));
+  l && Wt(Y, T, 0, Math.floor(w / 2 - t.title.length / 2), t.title, "text"), g && ur(Y, T, K, t, l ? 1 : 0, w, e, N);
+  for (let C = m; C < m + h; C++)
+    yt(Y, T, C, x - 1, e.vLine, "border");
+  yt(Y, T, v, x - 1, e.origin, "border");
+  for (let C = 0; C < a; C++) {
+    let U = Z(C), F = s[C], V = c - F.length;
+    Wt(Y, T, U, Math.max(0, V), F, "text");
   }
-  for (let C = b; C < b + l; C++)
-    bt(H, L, v, C, e.hLine, "border");
+  for (let C = x; C < x + f; C++)
+    yt(Y, T, v, C, e.hLine, "border");
   for (let C of i) {
-    let F = O(C);
-    if (F < b || F >= b + l) continue;
-    bt(H, L, v, F, e.xTick, "border");
-    let V = se(C);
-    Xt(H, L, v + 1, F - Math.floor(V.length / 2), V, "text");
+    let U = k(C);
+    if (U < x || U >= x + f) continue;
+    yt(Y, T, v, U, e.xTick, "border");
+    let F = me(C);
+    Wt(Y, T, v + 1, U - Math.floor(F.length / 2), F, "text");
   }
   if (u) {
     let C = t.yAxis.title;
-    Xt(H, L, B - 1, Math.floor(A / 2 - C.length / 2), C, "text");
+    Wt(Y, T, B - 1, Math.floor(w / 2 - C.length / 2), C, "text");
   }
   for (let C of i) {
-    let F = O(C);
-    if (!(F < b || F >= b + l))
-      for (let V = p; V < p + h; V++)
-        Ae(H, V, F) === " " && bt(H, L, V, F, e.grid, "line");
+    let U = k(C);
+    if (!(U < x || U >= x + f))
+      for (let F = m; F < m + h; F++)
+        He(Y, F, U) === " " && yt(Y, T, F, U, e.grid, "line");
   }
-  let I = [];
+  let G = [];
   for (let C = 0; C < t.series.length; C++)
-    t.series[C].type === "bar" && I.push({ data: t.series[C].data, globalIdx: C });
-  if (I.length > 0) {
-    let C = I.length, F = 1, V = F * C + (C - 1), K = O(Math.max(0, r.min));
-    for (let at = 0; at < I.length; at++) {
-      let ct = I[at], ot = ut[ct.globalIdx];
-      for (let st = 0; st < ct.data.length; st++) {
-        let N = ft(st) - Math.floor(V / 2) + at * (F + 1), M = O(ct.data[st]), W = Math.min(K, M), Q = Math.max(K, M);
-        for (let g = N; g < N + F; g++)
-          for (let y = W; y <= Q; y++)
-            bt(H, L, g, y, e.bar, "arrow", q, ot);
+    t.series[C].type === "bar" && G.push({ data: t.series[C].data, globalIdx: C });
+  if (G.length > 0) {
+    let C = G.length, U = 1, F = U * C + (C - 1), V = k(Math.max(0, r.min));
+    for (let ot = 0; ot < G.length; ot++) {
+      let ft = G[ot], at = N[ft.globalIdx];
+      for (let lt = 0; lt < ft.data.length; lt++) {
+        let X = Z(lt) - Math.floor(F / 2) + ot * (U + 1), M = k(ft.data[lt]), J = Math.min(V, M), tt = Math.max(V, M);
+        for (let p = X; p < X + U; p++)
+          for (let y = J; y <= tt; y++)
+            yt(Y, T, p, y, e.bar, "arrow", K, at);
       }
     }
   }
-  let U = [];
+  let P = [];
   for (let C = 0; C < t.series.length; C++)
-    t.series[C].type === "line" && U.push({ data: t.series[C].data, globalIdx: C });
-  for (let C of U) {
+    t.series[C].type === "line" && P.push({ data: t.series[C].data, globalIdx: C });
+  for (let C of P) {
     if (C.data.length === 0) continue;
-    let F = ut[C.globalIdx];
-    go(H, L, C.data, ft, O, p, h, b, l, e, q, F);
+    let U = N[C.globalIdx];
+    ti(Y, T, C.data, Z, k, m, h, x, f, e, K, U);
   }
-  return jn(H, L, q, n, o);
+  return pr(Y, T, K, n, o);
 }
-function ho(t, e, n, o, s, r, i, a, c, l, d, h) {
+function Zo(t, e, n, o, a, r, i, s, c, f, d, h) {
   if (n.length === 0) return;
-  let f = n.map((m, p) => ({
-    col: o(p),
-    row: s(m)
-  })), u = (m, p, b) => {
-    let A = r + (i - 1 - p);
-    A >= 0 && m >= a && m < a + c && ![l.bar, "\u2580", "\u2584"].includes(Ae(t, A, m)) && bt(t, e, A, m, b, "arrow", d, h);
+  let l = n.map((g, m) => ({
+    col: o(m),
+    row: a(g)
+  })), u = (g, m, x) => {
+    let w = r + (i - 1 - m);
+    w >= 0 && g >= s && g < s + c && ![f.bar, "\u2580", "\u2584"].includes(He(t, w, g)) && yt(t, e, w, g, x, "arrow", d, h);
   };
-  if (f.length === 1) {
-    u(f[0].col, f[0].row, l.hLine);
+  if (l.length === 1) {
+    u(l[0].col, l[0].row, f.hLine);
     return;
   }
-  for (let m = 0; m < f.length - 1; m++) {
-    let p = f[m], b = f[m + 1];
-    if (p.row === b.row) {
-      for (let L = p.col; L <= b.col; L++)
-        u(L, p.row, l.hLine);
+  for (let g = 0; g < l.length - 1; g++) {
+    let m = l[g], x = l[g + 1];
+    if (m.row === x.row) {
+      for (let T = m.col; T <= x.col; T++)
+        u(T, m.row, f.hLine);
       continue;
     }
-    let A = Math.round((p.col + b.col) / 2), B = b.row > p.row;
-    for (let L = p.col; L < A; L++)
-      u(L, p.row, l.hLine);
-    B ? u(A, p.row, l.cornerBR) : u(A, p.row, l.cornerTR);
-    let v = Math.min(p.row, b.row), H = Math.max(p.row, b.row);
-    for (let L = v + 1; L < H; L++)
-      u(A, L, l.vLine);
-    B ? u(A, b.row, l.cornerTL) : u(A, b.row, l.cornerBL);
-    for (let L = A + 1; L <= b.col; L++)
-      u(L, b.row, l.hLine);
-    if (m === 0) {
-      let L = Math.max(a, p.col - Math.floor((b.col - p.col) / 4));
-      for (let q = L; q < p.col; q++)
-        u(q, p.row, l.hLine);
+    let w = Math.round((m.col + x.col) / 2), B = x.row > m.row;
+    for (let T = m.col; T < w; T++)
+      u(T, m.row, f.hLine);
+    B ? u(w, m.row, f.cornerBR) : u(w, m.row, f.cornerTR);
+    let v = Math.min(m.row, x.row), Y = Math.max(m.row, x.row);
+    for (let T = v + 1; T < Y; T++)
+      u(w, T, f.vLine);
+    B ? u(w, x.row, f.cornerTL) : u(w, x.row, f.cornerBL);
+    for (let T = w + 1; T <= x.col; T++)
+      u(T, x.row, f.hLine);
+    if (g === 0) {
+      let T = Math.max(s, m.col - Math.floor((x.col - m.col) / 4));
+      for (let K = T; K < m.col; K++)
+        u(K, m.row, f.hLine);
     }
-    if (m === f.length - 2) {
-      let L = Math.min(a + c - 1, b.col + Math.floor((b.col - p.col) / 4));
-      for (let q = b.col + 1; q <= L; q++)
-        u(q, b.row, l.hLine);
+    if (g === l.length - 2) {
+      let T = Math.min(s + c - 1, x.col + Math.floor((x.col - m.col) / 4));
+      for (let K = x.col + 1; K <= T; K++)
+        u(K, x.row, f.hLine);
     }
   }
 }
-function go(t, e, n, o, s, r, i, a, c, l, d, h) {
+function ti(t, e, n, o, a, r, i, s, c, f, d, h) {
   if (n.length === 0) return;
-  let f = n.map((m, p) => ({
-    row: o(p),
-    col: s(m)
-  })), u = (m, p, b) => {
-    m >= r && m < r + i && p >= a && p < a + c && bt(t, e, m, p, b, "arrow", d, h);
+  let l = n.map((g, m) => ({
+    row: o(m),
+    col: a(g)
+  })), u = (g, m, x) => {
+    g >= r && g < r + i && m >= s && m < s + c && yt(t, e, g, m, x, "arrow", d, h);
   };
-  if (f.length === 1) {
-    u(f[0].row, f[0].col, l.vLine);
+  if (l.length === 1) {
+    u(l[0].row, l[0].col, f.vLine);
     return;
   }
-  for (let m = 0; m < f.length - 1; m++) {
-    let p = f[m], b = f[m + 1];
-    if (p.col === b.col) {
-      for (let L = p.row; L <= b.row; L++)
-        u(L, p.col, l.vLine);
+  for (let g = 0; g < l.length - 1; g++) {
+    let m = l[g], x = l[g + 1];
+    if (m.col === x.col) {
+      for (let T = m.row; T <= x.row; T++)
+        u(T, m.col, f.vLine);
       continue;
     }
-    let A = Math.round((p.row + b.row) / 2), B = b.col > p.col;
-    for (let L = p.row; L < A; L++)
-      u(L, p.col, l.vLine);
-    B ? u(A, p.col, l.cornerBL) : u(A, p.col, l.cornerBR);
-    let v = Math.min(p.col, b.col), H = Math.max(p.col, b.col);
-    for (let L = v + 1; L < H; L++)
-      u(A, L, l.hLine);
-    B ? u(A, b.col, l.cornerTR) : u(A, b.col, l.cornerTL);
-    for (let L = A + 1; L <= b.row; L++)
-      u(L, b.col, l.vLine);
+    let w = Math.round((m.row + x.row) / 2), B = x.col > m.col;
+    for (let T = m.row; T < w; T++)
+      u(T, m.col, f.vLine);
+    B ? u(w, m.col, f.cornerBL) : u(w, m.col, f.cornerBR);
+    let v = Math.min(m.col, x.col), Y = Math.max(m.col, x.col);
+    for (let T = v + 1; T < Y; T++)
+      u(w, T, f.hLine);
+    B ? u(w, x.col, f.cornerTR) : u(w, x.col, f.cornerTL);
+    for (let T = w + 1; T <= x.row; T++)
+      u(T, x.col, f.vLine);
   }
 }
-function Pn(t, e, n, o, s, r, i, a) {
-  let c = [], l = 0, d = 0;
-  for (let m = 0; m < o.series.length; m++) {
-    let p = o.series[m];
-    p.type === "bar" ? (c.push({ symbol: i.bar, label: p.name || `Bar ${l + 1}`, globalIdx: m }), l++) : (c.push({ symbol: i.hLine, label: p.name || `Line ${d + 1}`, globalIdx: m }), d++);
+function ur(t, e, n, o, a, r, i, s) {
+  let c = [], f = 0, d = 0;
+  for (let g = 0; g < o.series.length; g++) {
+    let m = o.series[g];
+    m.type === "bar" ? (c.push({ symbol: i.bar, label: m.name || `Bar ${f + 1}`, globalIdx: g }), f++) : (c.push({ symbol: i.hLine, label: m.name || `Line ${d + 1}`, globalIdx: g }), d++);
   }
   let h = 0;
-  for (let m = 0; m < c.length; m++)
-    m > 0 && (h += 2), h += 2 + c[m].label.length;
+  for (let g = 0; g < c.length; g++)
+    g > 0 && (h += 2), h += 2 + c[g].label.length;
   let u = Math.max(0, Math.floor(r / 2 - h / 2));
-  for (let m = 0; m < c.length; m++) {
-    m > 0 && (u += 2);
-    let p = c[m];
-    bt(t, e, s, u, p.symbol, "arrow", n, a[p.globalIdx]), u += 1, u += 1, Xt(t, e, s, u, p.label, "text"), u += p.label.length;
+  for (let g = 0; g < c.length; g++) {
+    g > 0 && (u += 2);
+    let m = c[g];
+    yt(t, e, a, u, m.symbol, "arrow", n, s[m.globalIdx]), u += 1, u += 1, Wt(t, e, a, u, m.label, "text"), u += m.label.length;
   }
 }
-function Hn(t, e) {
+function hr(t, e) {
   return Array.from({ length: t }, () => Array.from({ length: e }, () => " "));
 }
-function Wn(t, e) {
+function mr(t, e) {
   return Array.from({ length: t }, () => Array.from({ length: e }).fill(null));
 }
-function _n(t, e) {
+function gr(t, e) {
   return Array.from({ length: t }, () => Array.from({ length: e }).fill(null));
 }
-function bt(t, e, n, o, s, r, i, a) {
-  o >= 0 && o < t.length && n >= 0 && n < t[0].length && (t[o][n] = s, e[o][n] = r, i && a && (i[o][n] = a));
+function yt(t, e, n, o, a, r, i, s) {
+  o >= 0 && o < t.length && n >= 0 && n < t[0].length && (t[o][n] = a, e[o][n] = r, i && s && (i[o][n] = s));
 }
-function Ae(t, e, n) {
+function He(t, e, n) {
   return n >= 0 && n < t.length && e >= 0 && e < t[0].length ? t[n][e] : " ";
 }
-function Xt(t, e, n, o, s, r) {
-  for (let i = 0; i < s.length; i++)
-    bt(t, e, n, o + i, s[i], r);
+function Wt(t, e, n, o, a, r) {
+  for (let i = 0; i < a.length; i++)
+    yt(t, e, n, o + i, a[i], r);
 }
-function jn(t, e, n, o, s) {
+function pr(t, e, n, o, a) {
   if (t.length === 0) return "";
-  let r = t[0].length, i = t.length, a = [];
+  let r = t[0].length, i = t.length, s = [];
   for (let c = 0; c < r; c++) {
-    let l = [], d = [], h = [];
+    let f = [], d = [], h = [];
     for (let u = 0; u < i; u++)
-      l.push(t[u][c]), d.push(e[u][c]), h.push(n[u][c]);
-    let f = l.length - 1;
-    for (; f >= 0 && l[f] === " "; ) f--;
-    f < 0 ? a.push("") : a.push(mo(
-      l.slice(0, f + 1),
-      d.slice(0, f + 1),
-      h.slice(0, f + 1),
-      s,
+      f.push(t[u][c]), d.push(e[u][c]), h.push(n[u][c]);
+    let l = f.length - 1;
+    for (; l >= 0 && f[l] === " "; ) l--;
+    l < 0 ? s.push("") : s.push(ei(
+      f.slice(0, l + 1),
+      d.slice(0, l + 1),
+      h.slice(0, l + 1),
+      a,
       o
     ));
   }
-  for (; a.length > 0 && a[a.length - 1] === ""; )
-    a.pop();
-  return a.join(`
+  for (; s.length > 0 && s[s.length - 1] === ""; )
+    s.pop();
+  return s.join(`
 `);
 }
-function mo(t, e, n, o, s) {
-  if (s === "none") return t.join("");
-  let r = "", i = null, a = "";
+function ei(t, e, n, o, a) {
+  if (a === "none") return t.join("");
+  let r = "", i = null, s = "";
   for (let c = 0; c < t.length; c++) {
-    let l = t[c];
-    if (l === " ") {
-      a.length > 0 && (r += i ? ee(a, i, s) : a, a = "", i = null), r += " ";
+    let f = t[c];
+    if (f === " ") {
+      s.length > 0 && (r += i ? ae(s, i, a) : s, s = "", i = null), r += " ";
       continue;
     }
-    let d = n[c] ?? null, h = e[c] ?? null, f = d ?? (h ? lo(h, o) : null);
-    f === i ? a += l : (a.length > 0 && (r += i ? ee(a, i, s) : a), a = l, i = f);
+    let d = n[c] ?? null, h = e[c] ?? null, l = d ?? (h ? Vo(h, o) : null);
+    l === i ? s += f : (s.length > 0 && (r += i ? ae(s, i, a) : s), s = f, i = l);
   }
-  return a.length > 0 && (r += i ? ee(a, i, s) : a), r;
+  return s.length > 0 && (r += i ? ae(s, i, a) : s), r;
 }
-function zn(t) {
+function xr(t) {
   if (t.xAxis.categories) return t.xAxis.categories.length;
   for (let e of t.series)
     if (e.data.length > 0) return e.data.length;
   return 0;
 }
-function On(t, e) {
+function br(t, e) {
   if (t.xAxis.categories) return t.xAxis.categories;
   if (t.xAxis.range) {
-    let { min: n, max: o } = t.xAxis.range, s = e > 1 ? (o - n) / (e - 1) : 0;
-    return Array.from({ length: e }, (r, i) => se(n + s * i));
+    let { min: n, max: o } = t.xAxis.range, a = e > 1 ? (o - n) / (e - 1) : 0;
+    return Array.from({ length: e }, (r, i) => me(n + a * i));
   }
   return Array.from({ length: e }, (n, o) => String(o + 1));
 }
-function Fn(t, e) {
+function yr(t, e) {
   let n = e - t;
   if (n <= 0) return [t];
-  let o = n / 6, s = Math.pow(10, Math.floor(Math.log10(o))), r = o / s, i;
-  r <= 1.5 ? i = s : r <= 3 ? i = 2 * s : r <= 7 ? i = 5 * s : i = 10 * s;
-  let a = Math.ceil(t / i) * i, c = [];
-  for (let l = a; l <= e + i * 1e-3; l += i)
-    c.push(Math.round(l * 1e10) / 1e10);
+  let o = n / 6, a = Math.pow(10, Math.floor(Math.log10(o))), r = o / a, i;
+  r <= 1.5 ? i = a : r <= 3 ? i = 2 * a : r <= 7 ? i = 5 * a : i = 10 * a;
+  let s = Math.ceil(t / i) * i, c = [];
+  for (let f = s; f <= e + i * 1e-3; f += i)
+    c.push(Math.round(f * 1e10) / 1e10);
   return c;
 }
-function se(t) {
+function me(t) {
   return Number.isInteger(t) ? String(t) : t.toFixed(Math.abs(t) < 10 ? 1 : 0);
 }
-var po = (t, e) => {
-  we = t, ve = e;
+var ni = (t, e) => {
+  Xe = t, Pe = e;
 };
 
 // node_modules/beautiful-mermaid/src/ascii/index.ts
-function xo(t) {
+function ri(t) {
   let e = t.trim().split(`
 `)[0]?.trim().toLowerCase() ?? "";
   return /^xychart(-beta)?\b/.test(e) ? "xychart" : /^sequencediagram\s*$/.test(e) ? "sequence" : /^classdiagram\s*$/.test(e) ? "class" : /^erdiagram\s*$/.test(e) ? "er" : "flowchart";
 }
-function bo(t, e = {}) {
+function oi(t, e = {}) {
   let n = {
     useAscii: e.useAscii ?? !1,
     paddingX: e.paddingX ?? 5,
@@ -3445,30 +3600,30 @@ function bo(t, e = {}) {
     boxBorderPadding: e.boxBorderPadding ?? 1,
     graphDirection: "TD"
     // default, overridden for flowcharts below
-  }, o = e.colorMode === "auto" || e.colorMode === void 0 ? ke() : e.colorMode, s = { ...Zt, ...e.theme };
-  switch (xo(t)) {
+  }, o = e.colorMode === "auto" || e.colorMode === void 0 ? Je() : e.colorMode, a = { ...ie, ...e.theme };
+  switch (ri(t)) {
     case "xychart":
-      return Xn(t, n, o, s);
+      return dr(t, n, o, a);
     case "sequence":
-      return vn(t, n, o, s);
+      return Vn(t, n, o, a);
     case "class":
-      return Dn(t, n, o, s);
+      return tr(t, n, o, a);
     case "er":
-      return En(t, n, o, s);
+      return rr(t, n, o, a);
     default: {
-      let i = Le(t);
+      let i = ze(t);
       i.direction === "LR" || i.direction === "RL" ? n.graphDirection = "LR" : n.graphDirection = "TD";
-      let a = Oe(i, n);
-      return Mn(a), xn(a), i.direction === "BT" && (We(a.canvas), _e(a.roleCanvas)), Pt(a.canvas, {
-        roleCanvas: a.roleCanvas,
+      let s = cn(i, n);
+      return Un(s), On(s), i.direction === "BT" && (rn(s.canvas), on(s.roleCanvas)), _t(s.canvas, {
+        roleCanvas: s.roleCanvas,
         colorMode: o,
-        theme: s
+        theme: a
       });
     }
   }
 }
-var yo = bo;
+var ii = oi;
 export {
-  yo as renderMermaidAscii,
-  po as setChartSize
+  ii as renderMermaidAscii,
+  ni as setChartSize
 };

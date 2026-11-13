@@ -166,11 +166,12 @@ test('parse cost grows linearly on long backtick cells and unclosed $$ lines', a
   }
 })
 
-test('a two-node cycle with an outgoing edge falls back to its source instead of hanging', async $ => {
+// Upstream falls back to the source here instead of hanging. cc-dazzle routes the return on a lane.
+test('a two-node cycle with an outgoing edge draws its return instead of hanging', async $ => {
   const source = 'flowchart TD\n  A --> B\n  B --> A\n  B --> C'
-  expect(mermaidText(source, 97)).toBeNull()
+  expect(mermaidText(source, 97)).toBe(['┌───┐', '│ A │◄──┐', '└─┬─┘   │', '  ▼     │', '┌───┐   │', '│ B ├───┘', '└─┬─┘', '  ▼', '┌───┐', '│ C │', '└───┘'].join('\n'))
   const ui = await $.ui.mount(reply('```mermaid\n' + source + '\n```', 101))
-  expect(await ui.find({ type: 'Text', text: /B --> C/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /B --> C/ })).toBeUndefined()
   await ui.unmount()
 })
 
