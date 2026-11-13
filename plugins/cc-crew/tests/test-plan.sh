@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Offline checks for cut_briefs.py: a made-up plan with two builder items and one chief
-# engineer item cuts into two briefs, each holding its For, the principle, its own fields
-# and the shared section in that order; the plan is never written; a plan with no builder
-# item writes no brief and says so; a broken plan writes nothing.
+# engineer item cuts into two briefs, each holding its For, the plan's purpose when it has
+# one, the principle, its own fields and the shared section in that order; the plan is never
+# written; a plan with no builder item writes no brief and says so; a broken plan writes nothing.
 set -u
 here=$(cd "$(dirname "$0")" && pwd)
 cut="$here/../skills/plan/scripts/cut_briefs.py"
@@ -92,8 +92,13 @@ for n in 1 2; do
   check "brief $n: order For < principle < fields < shared" '[ "$(line_of FOR-$mine "$b")" -lt "$(line_of PRINCIPLE-MARK "$b")" ] && [ "$(line_of PRINCIPLE-MARK "$b")" -lt "$(line_of OWN-$mine "$b")" ] && [ "$(line_of DONE-$mine "$b")" -lt "$(line_of SHARED-MARK "$b")" ]'
   check "brief $n: ends with the shared section word for word" 'tail -n "$(wc -l < "$shared")" "$b" | diff -q - "$shared" >/dev/null'
   check "brief $n: nothing from the other items" '! grep -qE "[A-Z]+-$other|THREE" "$b"'
-  check "brief $n: nothing from purpose or decisions" '! grep -qE "PURPOSE-MARK|DECISION-MARK" "$b"'
+  check "brief $n: purpose section, heading included, right after For" '[ "$(sed -n "3,5p" "$b")" = "$(printf "## What this is for\n\nTea for the office. PURPOSE-MARK")" ] && [ "$(line_of PURPOSE-MARK "$b")" -lt "$(line_of PRINCIPLE-MARK "$b")" ]'
+  check "brief $n: nothing from decisions" '! grep -q "DECISION-MARK" "$b"'
 done
+
+awk '/^## What this is for$/{skip=1; next} /^## /{skip=0} !skip' "$plan" > "$tmp/nopurpose.md"
+python3 "$cut" "$tmp/nopurpose.md" "$tmp/nopurpose" >/dev/null; rc=$?
+check "no purpose section: cuts as before, For then principle" '[ $rc -eq 0 ] && [ "$(sed -n 3p "$tmp/nopurpose/work-1.md")" = "## Principle" ] && ! grep -q "What this is for" "$tmp/nopurpose/work-1.md"'
 
 sed 's/(builder)/(chief engineer)/' "$plan" > "$tmp/nobuilder.md"
 msg=$(python3 "$cut" "$tmp/nobuilder.md" "$out"); rc=$?

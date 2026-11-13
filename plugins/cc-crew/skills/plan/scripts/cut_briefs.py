@@ -4,8 +4,8 @@
 Usage: cut_briefs.py <plan.md> <out-dir>
 
 Each brief is the plan's own lines, in this order: the item's For field, the
-## Principle section, the item's heading and the rest of its body, then the
-## Every brief section. Nothing is re-rendered: the item body is copied as written
+## What this is for section when the plan has one, the ## Principle section, the
+item's heading and the rest of its body, then the ## Every brief section. Nothing is re-rendered: the item body is copied as written
 with only the For field lifted to the top. Briefs land in <out-dir>/work-<n>.md;
 stale work-*.md files there are removed, so the dir always matches the plan.
 
@@ -77,6 +77,7 @@ def cut(plan_text):
             raise PlanError(f"no '## {need}' section")
     principle = trim(lines[slice(*spans["Principle"])])
     shared = trim(lines[slice(*spans["Every brief"])])
+    purpose = trim(lines[slice(*spans["What this is for"])]) if "What this is for" in spans else []
 
     w0, w1 = spans["Work"]
     items = [(i, t) for i, t in headings(lines, 3) if w0 < i < w1]
@@ -93,7 +94,7 @@ def cut(plan_text):
             continue
         end = items[k + 1][0] if k + 1 < len(items) else w1
         heading, for_block, rest = cut_item(lines, i, end)
-        parts = [for_block, principle, [heading] + rest, shared]
+        parts = [p for p in (for_block, purpose, principle, [heading] + rest, shared) if p]
         briefs.append((n, "\n\n".join("\n".join(trim(p)).strip("\n") for p in parts) + "\n"))
     return briefs
 
