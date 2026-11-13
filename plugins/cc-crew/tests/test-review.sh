@@ -76,16 +76,20 @@ check "reasoning effort high" "has_args \"\$call\" -c 'model_reasoning_effort=\"
 check "runs in the fresh folder" 'has_args "$call" -C "$folder"'
 check "codex stdin is /dev/null" '[ ! -s "$call/stdin" ]'
 check "session id saved" '[ "$(cat "$folder/session-id")" = 0199aaaa-bbbb-cccc-dddd-eeeeeeeeeeee ]'
+check "answer keeps the review and ends with the script's reminder" 'head -n 1 "$last" | grep -qx "The review." && grep -q "^From the review script, not the reviewer\. Before you fix anything above" "$last"'
+check "a first read says nothing about a second" '! grep -q "^This is read" "$last"'
 
 echo "--- REVIEW_MODEL from the environment"
 REVIEW_MODEL=other-model run ok plan "$tmp/principle.md" "$tmp/plan.md" "$tmp/out"
 check "REVIEW_MODEL overrides the model" 'has_args "$call" -m other-model'
+check "the same principle again is read 2, with the stop" 'grep -q "^This is read 2 of this change\. A blocker on a spot you already fixed is a stop" "$last"'
 
 echo "--- follow-up: same folder, model and read-only sandbox again"
 printf 'Why is step 2 risky?\n' > "$tmp/q.md"
 run ok follow-up "$folder" "$tmp/q.md"
 check "follow-up exits 0 with answer-2.md" '[ "$rc" -eq 0 ] && [ "$last" = "$folder/answer-2.md" ] && [ -s "$last" ]'
 check "follow-up has the model" 'has_args "$call" -m gpt-6-astra'
+check "a follow-up answer carries no reminder" '! grep -q "From the review script" "$last"'
 check "follow-up is read-only" 'has_args "$call" --sandbox read-only'
 check "follow-up is a plain exec, not a resume" '[ "$(cat "$call/01")" = exec ] && [ "$(cat "$call/02")" != resume ]'
 check "follow-up prompt has the question and names the earlier answer" 'prompt_of "$call" | grep -q "Why is step 2 risky?" && prompt_of "$call" | grep -q "answer.md"'
@@ -108,6 +112,9 @@ check "empty answer exits 4, not 0" '[ "$rc" -eq 4 ]'
 printf 'ERROR: You have hit your usage limit, said the old log.\n' > "$tmp/principle-usage.md"
 run crash plan "$tmp/principle-usage.md" "$tmp/plan.md" "$tmp/out"
 check "usage words echoed from the prompt still exit 4" '[ "$rc" -eq 4 ]'
+# Refused, failed and empty reads above left no answer, and this principle is new here.
+run ok plan "$tmp/principle-usage.md" "$tmp/plan.md" "$tmp/out"
+check "another principle in the same output folder starts at read 1" '[ "$rc" -eq 0 ] && grep -q "^From the review script" "$last" && ! grep -q "^This is read" "$last"'
 sed 's/{{PRINCIPLE}}/nothing/' "$tmp/scripts/review-prompt-plan.md" > "$tmp/notoken.md" && cp "$tmp/scripts/review-prompt-plan.md" "$tmp/keep.md" && cp "$tmp/notoken.md" "$tmp/scripts/review-prompt-plan.md"
 run ok plan "$tmp/principle.md" "$tmp/plan.md" "$tmp/out"
 check "template without the token exits 4 and never calls codex" '[ "$rc" -eq 4 ] && [ ! -e "$call" ]'
@@ -143,6 +150,22 @@ printf 'landed later\n' > "$tmp/repo2/movedon.txt" && git -C "$tmp/repo2" add mo
 run ok diff "$tmp/principle.md" "$tmp/repo2" moved "$head" "$tmp/out"
 mfolder=$(dirname "$last")
 check "work that landed on <base> since is not shown as deleted" '[ "$rc" -eq 0 ] && ! grep -q "movedon.txt" "$mfolder/diff.patch" && grep -q "^-doomed$" "$mfolder/diff.patch"'
+
+echo "--- a local <base> that is behind its upstream"
+git clone -q "$repo" "$tmp/repo3"
+printf 'landed on the remote\n' > "$repo/landed.txt" && git -C "$repo" add landed.txt && git -C "$repo" commit -q -m "landed on the remote"
+git -C "$tmp/repo3" fetch -q origin
+git -C "$tmp/repo3" checkout -q -b change origin/main
+printf 'the change\n' > "$tmp/repo3/change.txt" && git -C "$tmp/repo3" add change.txt && git -C "$tmp/repo3" commit -q -m change
+run ok diff "$tmp/principle.md" "$tmp/repo3" main change "$tmp/out"
+check "a stale base is refused before codex runs, naming the upstream" '[ "$rc" -eq 4 ] && [ ! -e "$call" ] && printf "%s" "$err" | grep -q "pass origin/main as the base"'
+run ok diff "$tmp/principle.md" "$tmp/repo3" origin/main change "$tmp/out"
+ufolder=$(dirname "$last")
+check "the upstream as base shows only the change" '[ "$rc" -eq 0 ] && grep -q "change.txt" "$ufolder/diff.patch" && ! grep -q "landed.txt" "$ufolder/diff.patch"'
+git -C "$tmp/repo3" checkout -q -b old main
+printf 'old work\n' > "$tmp/repo3/old.txt" && git -C "$tmp/repo3" add old.txt && git -C "$tmp/repo3" commit -q -m old
+run ok diff "$tmp/principle.md" "$tmp/repo3" main old "$tmp/out"
+check "a stale base is fine for a branch cut from it" '[ "$rc" -eq 0 ] && grep -q "old.txt" "$(dirname "$last")/diff.patch"'
 
 if [ "$fail" -ne 0 ]; then echo "test-review: FAILED"; exit 1; fi
 echo "test-review: all passed"

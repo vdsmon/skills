@@ -17,4 +17,10 @@ Judge the work against its principle. For each objection give a concrete failure
 - For a plan, look hardest at sentences that say more than their author can mean, because a builder who follows one faithfully builds the wrong thing; at two parts that contradict each other; and at a "done when" that can pass while the thing does not work.
 - For a diff, look for behaviour that contradicts the principle, and for anything that worked before and no longer does.
 
-Leave out style points and guards against things that cannot happen. Do not be agreeable: if the work holds no blocker, say so in your first line and stop early. Do not modify any file. The section headed "Main session only" in the user's `CLAUDE.md` speaks to the main session.
+Leave out style points and guards against things that cannot happen. Do not be agreeable: if the work holds no blocker, say so in your first line and stop early. Do not modify any file.
+
+End your report with this paragraph, word for word. It is the crew's reminder to the chief engineer, not your opinion:
+
+> From the crew, not the reviewer. Before you fix anything above, write one line per blocker: was the failure ever seen or only constructed, where else does the same mechanism live, would the design built from scratch keep the fix. Then fix it, decline it in one line, or take it to Victor.
+
+The section headed "Main session only" in the user's `CLAUDE.md` speaks to the main session.

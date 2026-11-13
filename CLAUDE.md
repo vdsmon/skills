@@ -69,7 +69,7 @@ The body is a prompt, not docs: second-person imperative. Keep this file and eve
 
 **Progressive disclosure**: move reference content out of SKILL.md into sibling files (see `plugins/humanize/skills/humanize/references/`). Keep references one level deep: chains of `.md` -> `.md` -> `.md` cause partial reads. Aim for 100 lines or fewer in SKILL.md.
 
-**Helper scripts**: put deterministic logic in `skills/<skill>/scripts/` and have the skill call it (e.g. better-compact's `scripts/baseline.sh`). Otherwise the model re-interprets the prose on every run.
+**Helper scripts**: put deterministic logic in `skills/<skill>/scripts/` and have the skill call it (e.g. better-compact's `scripts/baseline.sh`). Otherwise the model re-interprets the prose on every run. A rule that matters and that agents follow unreliably also goes in the script the work passes through at that moment, not in one more line of prose: a check where the script can decide by itself, otherwise a reminder in its output that asks for a visible line (cc-crew's `review.sh` does both).
 
 **Dynamic context injection** (cc- only): `` !`cmd` `` inline or `` ```! `` fenced blocks in the skill body run shell commands, and their output replaces the placeholder before the model reads the skill. Use `${CLAUDE_SKILL_DIR}` for script paths, `$ARGUMENTS` / `$0` for user args.
 

@@ -20,7 +20,7 @@ Status: awaiting approval.
 
 ## Work
 
-Order: <which items come first, and which run together>.
+Order: <what depends on what, and what runs side by side>.
 
 ### Work 1 <title> (builder)
 

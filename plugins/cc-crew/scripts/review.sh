@@ -8,6 +8,7 @@
 # plan and diff make a fresh folder under <out-dir>; follow-up asks again in one.
 # Exit 0: the answer file's path is the last line of stdout. Exit 3: Codex refused
 # for usage (limit or quota). Exit 4: any other failure, with the log tail on stderr.
+# A plan or diff answer ends with the crew's reminder, which is not the reviewer's.
 set -u
 set -o pipefail
 
@@ -46,8 +47,26 @@ build_prompt() { # <template-name> <principle-file> <folder>
     || fail "cannot write $3/prompt.md"
 }
 
+# Closes a plan or diff answer with the weighing the chief engineer owes each
+# blocker. It goes here because this file is where a fix gets decided: the same
+# rule, always in view in the role text, was skipped at exactly this moment.
+add_reminder() { # <folder>
+  local folder=$1 kind d n=0
+  kind=$(basename "$folder"); kind=${kind%%-*}
+  # Reads of one change share an output folder and a principle; another change
+  # reviewed into the same output folder has its own principle.
+  for d in "$(dirname "$folder")/$kind"-*; do
+    [ -s "$d/answer.md" ] && cmp -s "$d/principle.md" "$folder/principle.md" && n=$((n + 1))
+  done
+  {
+    printf '\n---\n\nFrom the review script, not the reviewer. Before you fix anything above, write one line per blocker: was the failure ever seen or only constructed, where else does the same mechanism live, would the design built from scratch keep the fix. Then fix it, decline it in one line, or take it to Victor.\n'
+    [ "$n" -lt 2 ] || printf '\nThis is read %s of this change. A blocker on a spot you already fixed is a stop: change the design or drop the fix.\n' "$n"
+  } >> "$folder/answer.md" || fail "cannot write the reminder into $folder/answer.md"
+}
+
 # Runs one read-only Codex session in <folder> and exits with the script's code.
-run_codex() { # <folder> <answer-file> <log-file> <prompt>
+# With a fifth argument, a good answer gets the reminder.
+run_codex() { # <folder> <answer-file> <log-file> <prompt> [remind]
   local folder=$1 answer=$2 log=$3 prompt=$4 rc sid refusal
   codex exec -C "$folder" --skip-git-repo-check --sandbox read-only \
     -m "$REVIEW_MODEL" -c model_reasoning_effort='"high"' --color never \
@@ -59,6 +78,7 @@ run_codex() { # <folder> <answer-file> <log-file> <prompt>
   [ -n "$sid" ] && [ ! -e "$folder/session-id" ] && printf '%s\n' "$sid" > "$folder/session-id"
 
   if [ "$rc" -eq 0 ] && [ -s "$answer" ]; then
+    [ -z "${5:-}" ] || add_reminder "$folder"
     printf '%s\n' "$answer"
     exit 0
   fi
@@ -91,18 +111,26 @@ cmd_plan() {
   folder=$(new_folder "$3" plan) || exit 4
   { cp "$1" "$folder/principle.md" && cp "$2" "$folder/plan.md"; } || fail "cannot copy into $folder"
   build_prompt review-prompt-plan.md "$1" "$folder"
-  run_codex "$folder" "$folder/answer.md" "$folder/codex.log" "$(cat "$folder/prompt.md")"
+  run_codex "$folder" "$folder/answer.md" "$folder/codex.log" "$(cat "$folder/prompt.md")" remind
 }
 
 cmd_diff() {
   [ $# -eq 5 ] || usage
-  local principle=$1 repo=$2 base=$3 head=$4 out=$5 base_sha head_sha fork_sha folder
+  local principle=$1 repo=$2 base=$3 head=$4 out=$5 base_sha head_sha fork_sha upstream up_fork folder
   readable "$principle" "principle file"
   base_sha=$(git -C "$repo" rev-parse --verify --quiet "$base^{commit}") || fail "not a commit in $repo: $base"
   head_sha=$(git -C "$repo" rev-parse --verify --quiet "$head^{commit}") || fail "not a commit in $repo: $head"
   # Diff from where the branch left <base>, not from <base> as it is now: work
   # that landed on <base> since would otherwise read as deleted by the change.
   fork_sha=$(git -C "$repo" merge-base "$base_sha" "$head_sha") || fail "no common ancestor of $base and $head in $repo"
+  # A local <base> that is behind its upstream puts that fork too early for a branch
+  # cut from the upstream: the diff would carry work that has already landed there.
+  if upstream=$(git -C "$repo" rev-parse --abbrev-ref --verify --quiet "$base@{upstream}" 2>/dev/null) && [ -n "$upstream" ]; then
+    up_fork=$(git -C "$repo" merge-base "$upstream" "$head_sha" 2>/dev/null) || up_fork=$fork_sha
+    if [ "$up_fork" != "$fork_sha" ] && git -C "$repo" merge-base --is-ancestor "$fork_sha" "$up_fork"; then
+      fail "$base is behind $upstream, and $head left $upstream later than it left $base: pass $upstream as the base"
+    fi
+  fi
   folder=$(new_folder "$out" diff) || exit 4
   cp "$principle" "$folder/principle.md" || fail "cannot copy into $folder"
   # Objects only, never the working tree: archive the commit, diff two commits, and
@@ -114,7 +142,7 @@ cmd_diff() {
     || fail "cannot diff $base...$head in $repo"
   printf 'base %s %s\nfork %s\nhead %s %s\n' "$base" "$base_sha" "$fork_sha" "$head" "$head_sha" > "$folder/revs.txt"
   build_prompt review-prompt-diff.md "$principle" "$folder"
-  run_codex "$folder" "$folder/answer.md" "$folder/codex.log" "$(cat "$folder/prompt.md")"
+  run_codex "$folder" "$folder/answer.md" "$folder/codex.log" "$(cat "$folder/prompt.md")" remind
 }
 
 # `codex exec resume` takes no --sandbox flag, so nothing shows it stays read-only.

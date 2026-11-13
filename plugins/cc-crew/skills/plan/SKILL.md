@@ -22,7 +22,7 @@ Name things by what they are. Number only what will be referred to, and write sh
 
 ## 2. Have it reviewed
 
-Send the plan and its principle to the reviewer. Put the principle in a file and run, in the background, `"${CLAUDE_PLUGIN_ROOT}/scripts/review.sh" plan <principle-file> <plan.md> <out-dir>`; the last line it prints is the answer file. Exit 3 means Codex is out of usage: give the same two files to `cc-crew:reviewer-fallback`. Weigh what comes back before fixing anything: is the failure real, and is the guard worth it? A pass with no blocker ends the review. A second fix to the same spot means the design is in question. A third pass that still finds a blocker goes to the user.
+Send the plan and its principle to the reviewer. Put the principle in a file and run, in the background, `"${CLAUDE_PLUGIN_ROOT}/scripts/review.sh" plan <principle-file> <plan.md> <out-dir>`; the last line it prints is the answer file. Exit 3 means Codex is out of usage: give the same two files to `cc-crew:reviewer-fallback`. Weigh what comes back before fixing anything: is the failure real, and is the guard worth it? A pass with no blocker ends the review. A second fix to the same spot is a stop: the design is in question, so change the design or drop the fix. A third pass that still finds a blocker goes to the user.
 
 ## 3. Build the page
 
@@ -31,7 +31,7 @@ The page is where you and the user align. It is free in form: design it for this
 1. The principle.
 2. One picture of the whole: who does and judges what, or what changes.
 3. What is new since you talked: what the review changed, what you decided without asking.
-4. The work in order: who builds each item, what runs together.
+4. The work as a graph of what depends on what: who builds each item, what runs side by side.
 5. What approval starts, and what it does not cover.
 6. Your sign-off, as a signature beside the place for his. A draft shows yours empty.
 7. The settled decisions, folded away as the record.
@@ -47,7 +47,7 @@ Publish it privately, say which version of the plan it shows, and give him the l
 ## 5. While it is built
 
 - Every change to the plan file republishes the page.
-- Once approved, the page becomes the board for the work: move the work in order to the top, give each state its own colour (done, under way, next, not started), and fold away the sections he has already read.
+- Once approved, the page becomes the board for the work: move the work graph to the top, give each state its own colour (done, under way, next, not started), and fold away the sections he has already read.
 - Refresh each item's state at every handback and at the push.
 - A comment on the page that shows something is unclear: change the page, post nothing beyond the automatic reply, and resolve the thread.
 - Before the push, the combined diff goes to the reviewer: `review.sh diff <principle-file> <repo> <base> <head> <out-dir>`. A question about an answer goes through `review.sh follow-up <folder> <question-file>`.

@@ -26,6 +26,10 @@ A wrong call costs us one message. Silence costs a wrong build.
 
 When the plan's design would work and you would simply have done it another way, build the plan's and tell us your idea in the report. We want to hear it.
 
+## Old code in your way
+
+Code and tests that are already there earn no respect for being there, whoever wrote them. When your item touches something a design built from scratch would not have, look up why it is there. If the record shows no case that really happened and nothing else relies on it, delete it and list it in your report. If you are not confident, leave it and propose the deletion in your report: the chief engineer decides. Outside what your item touches, report it and leave it.
+
 ## How we work
 
 - **Commits.** One per item of work, so each can be read and reverted on its own.
@@ -39,6 +43,7 @@ When the plan's design would work and you would simply have done it another way,
 - The branch and the commits.
 - The last lines of your test commands, as printed.
 - What you decided where the brief was silent, with anything you did because the principle needed it first.
+- What you deleted, and what you propose to delete.
 - What you could not do.
 - What looks wrong, in your item or in the plan.
 - What you would do differently.
