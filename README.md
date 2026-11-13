@@ -63,12 +63,10 @@ Generated from each plugin's `plugin.json` by `scripts/sync-codex.sh`, so do not
 | Plugin | Host | What it does |
 |---|---|---|
 | `cc-keepwarm` | CC only | Keeps Claude Code's prompt cache warm in every session with a silent background ping timed from your last request, and skips the ping once the cache is already gone. |
-| `cc-wrap-up` | CC only | Cues a wrap-up at a natural break in a long session, then compacts with better-compact's message or hands off with handoff's resume prompt, with no copy-paste. |
+| `cc-wrap-up` | CC only | Wraps up a long session: /better-compact saves what compaction would lose and compacts, /handoff leaves a resume note, /close saves for good and ends the session. |
 | `cc-pitstop` | CC only | Pauses Claude Code before the 5-hour or weekly usage limit, across every session on the machine, and resumes the paused work on its own when the window resets. |
 | `cc-quiet-watch` | CC only | Watches long jobs on a timer and asks Haiku only when the output changed. It wakes the session only when the job is done, failed, stuck or needs you. |
 | `cc-crew` | CC only | A small crew for Claude Code: a chief engineer role for the main session, with a builder, a helper and a reviewer it briefs from one plan file. |
-| `better-compact` | any | A better /compact: audit the session, save what compaction would lose, then compact with a focus message and resume with a follow-up. |
-| `handoff` | any | Save what only the conversation knows before a session ends, so a fresh session can pick up the work. |
 | `humanize` | any | Strip AI-writing tells from text. Detects em-dash overuse, AI vocabulary, inflated significance, rule-of-three, sycophancy, compound coinages, and 20+ more patterns. |
 | `git-cleanup` | any | Removes local git branches and worktrees that are safely merged into dev/develop/master/main, skipping dirty worktrees and the main checkout. |
 | `thinking` | any | Modes of talking that build nothing: grilling stress-tests a plan one round of questions at a time, idea sharpens a raw idea, question answers a question with no edits. |

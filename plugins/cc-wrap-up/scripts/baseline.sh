@@ -5,7 +5,7 @@
 # the stash), plus the one thing `git status` never shows and a compact message
 # must point at: gitignored plan or state files modified after the last commit
 # (a `.sweep/plan.md`, a `.flow/` run record, a scratch note). Read-only; prints
-# only lines worth pasting into the compact message. Exit 0 always, so a host
+# only lines worth pasting into the compact message. Exit 0 always, so a caller
 # that runs it in a non-repository still gets a usable line.
 set -u
 

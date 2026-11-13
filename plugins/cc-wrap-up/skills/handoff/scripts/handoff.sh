@@ -19,7 +19,7 @@ target="$state_dir/HANDOFF.md"
 [ -f "$target" ] && cp -f "$target" "$state_dir/HANDOFF.prev.md" 2>/dev/null
 
 here=$(cd "$(dirname "$0")" && pwd)
-baseline=$(bash "$here/baseline.sh" "$repo_dir" 2>/dev/null)
+baseline=$(bash "$here/../../../scripts/baseline.sh" "$repo_dir" 2>/dev/null)
 stamp=$(date -u '+%Y-%m-%d %H:%MZ')
 repo_abs=$(cd "$repo_dir" 2>/dev/null && pwd -P || printf '%s' "$repo_dir")
 

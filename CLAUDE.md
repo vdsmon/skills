@@ -42,7 +42,7 @@ To add, rename or remove a plugin, or to flip its cc- prefix: the dir name, the 
 
 ## Checks and tests
 
-- `mise run verify` runs sync, fails if a generated file changed, then runs `scripts/check.py`. check.py fails on a broken contract (above), a description over its cap, `when_to_use` on a user-only skill, a cc- feature in an unprefixed plugin, or better-compact's and handoff's `baseline.sh` copies differing (change both together). It warns on a SKILL.md over 100 lines.
+- `mise run verify` runs sync, fails if a generated file changed, then runs `scripts/check.py`. check.py fails on a broken contract (above), a description over its cap, `when_to_use` on a user-only skill, or a cc- feature in an unprefixed plugin. It warns on a SKILL.md over 100 lines.
 - `mise run test` runs every offline suite (`plugins/*/tests/test-*.sh`). Run the suite of any plugin whose hooks or scripts you touch.
 - CI (`.github/workflows/ci.yml`, on macOS because the hooks use BSD `stat` and `date`) runs sync, check.py and the offline suites on every pull request and on main.
 - Each mod has a task that runs its validate and tests through the `claude` CLI, which CI does not have: `mise run test:keepwarm`, `test:autotitle`, `test:wrap-up`, `test:dazzle`, `test:quiet-watch` and `test:pitstop`. Run one after touching its mod or upgrading Claude Code.
@@ -69,7 +69,7 @@ The body is a prompt, not docs: second-person imperative. Keep this file and eve
 
 **Progressive disclosure**: move reference content out of SKILL.md into sibling files (see `plugins/humanize/skills/humanize/references/`). Keep references one level deep: chains of `.md` -> `.md` -> `.md` cause partial reads. Aim for 100 lines or fewer in SKILL.md.
 
-**Helper scripts**: put deterministic logic in `skills/<skill>/scripts/` and have the skill call it (e.g. better-compact's `scripts/baseline.sh`). Otherwise the model re-interprets the prose on every run. A rule that matters and that agents follow unreliably also goes in the script the work passes through at that moment, not in one more line of prose: a check where the script can decide by itself, otherwise a reminder in its output that asks for a visible line (cc-crew's `review.sh` does both).
+**Helper scripts**: put deterministic logic in `skills/<skill>/scripts/`, or in the plugin's `scripts/` when several skills share it, and have the skill call it (e.g. `plugins/cc-wrap-up/scripts/baseline.sh`). Otherwise the model re-interprets the prose on every run. A rule that matters and that agents follow unreliably also goes in the script the work passes through at that moment, not in one more line of prose: a check where the script can decide by itself, otherwise a reminder in its output that asks for a visible line (cc-crew's `review.sh` does both).
 
 **Dynamic context injection** (cc- only): `` !`cmd` `` inline or `` ```! `` fenced blocks in the skill body run shell commands, and their output replaces the placeholder before the model reads the skill. Use `${CLAUDE_SKILL_DIR}` for script paths, `$ARGUMENTS` / `$0` for user args.
 
@@ -100,7 +100,7 @@ These plugins started as copies of other repos. Re-sync them from upstream from 
 - Every plugin change ships in the same pull request as its version bump: `mise run bump <plugin> [patch|minor|major]` (patch = fix or wording, minor = new behavior, new option or removed feature, major = breaking). Then run `mise run sync` and commit the plugin files together with the generated changes. A plugin edit without a bump is incomplete.
 - Work on a branch and open a pull request. Never push to main.
 - After a pull request merges, update the local install: `claude plugin marketplace update vdsmon-skills`, then `claude plugin update <plugin>@vdsmon-skills` for each plugin it changed, and tell the user to run `/reload-plugins`.
-- No docs inside plugins: SKILL.md is the prompt, and separate docs rot and cost context. One exception: a hook-only plugin may ship one `README.md`, since it has no SKILL.md to explain opt-in and config. Research notes, retros and experiment logs never ship; put them under `docs/` or another folder outside `plugins/`.
+- No docs inside plugins: SKILL.md is the prompt, and separate docs rot and cost context. One exception: a plugin with a mod may ship one `README.md`, since no SKILL.md explains the mod's opt-in and config. Research notes, retros and experiment logs never ship; put them under `docs/` or another folder outside `plugins/`.
 
 ## Installing locally for testing
 

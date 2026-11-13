@@ -15,7 +15,7 @@ allowed-tools:
 
 # Handoff
 
-A fresh session (a new conversation, another machine, another host) starts only from disk and from persistent memory. Nothing of this conversation reaches it: no summary, no background task output, no session-only cron, no task list. Resuming this same conversation (`claude --continue` or `--resume` in Claude Code) brings back the history and the crons that have not expired, but never background Bash or monitor output, and the user may never resume. So save as if the next session starts fresh. This skill audits what the conversation still holds, saves it where the next session will look, and leaves one resume prompt.
+A fresh session (a new conversation, another machine, another host) starts only from disk and from persistent memory. Nothing of this conversation reaches it: no summary, no background task output, no session-only cron, no task list. Resuming this same conversation (`claude --continue` or `--resume`) brings back the history and the crons that have not expired, but never background Bash or monitor output, and the user may never resume. So save as if the next session starts fresh. This skill audits what the conversation still holds, saves it where the next session will look, and leaves one resume prompt.
 
 `better-compact` is the sibling for compaction, where a summary survives and carries context. Here plan for nothing surviving, so every finding becomes a file or a memory entry, never a message.
 
@@ -32,13 +32,13 @@ Honour overrides mid-conversation ("skip the audit, just write the note").
 
 ### 1. Assess: what only this conversation knows
 
-Gather the mechanical baseline in one call. The script lives in this skill's directory (the base directory announced when the skill loaded):
+Gather the mechanical baseline in one call:
 
 ```bash
-bash <skill-dir>/scripts/baseline.sh
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/baseline.sh"
 ```
 
-It prints the branch and upstream, `git status --short` with counts, the last five commits, the stash count, and the gitignored plan or state files modified after the last commit. If the host refuses the script, fall back to `git status --short` and `git log -5 --oneline`.
+It prints the branch and upstream, `git status --short` with counts, the last five commits, the stash count, and the gitignored plan or state files modified after the last commit. If the script is refused, fall back to `git status --short` and `git log -5 --oneline`.
 
 Audit silently; do not dump a recap. The audit feeds step 2. Check:
 
@@ -49,7 +49,7 @@ Audit silently; do not dump a recap. The audit feeds step 2. Check:
 **Workflow state**
 - Plan and state files the session read or wrote: do they say where the work stands now? The script's "ignored files changed after the last commit" list is the starting point. A plan file that still says "in progress" for a finished step misleads the next session.
 - A skill or agent mid-invocation: is the next step derivable from disk?
-- The host's task list or pending chips: session-local, a fresh session never sees them. Sort each: done but still open, no longer wanted, or real open work.
+- The task list or pending chips: session-local, a fresh session never sees them. Sort each: done but still open, no longer wanted, or real open work.
 
 **Background work**
 - Background tasks running or finished with unread output: read the output now. The buffer dies with the session, and a finished job nobody read is a result lost.
@@ -57,7 +57,7 @@ Audit silently; do not dump a recap. The audit feeds step 2. Check:
 - Crons, wake-ups, reminders scheduled inside this session: a fresh session does not get them back. List the ones still wanted so the next session recreates them. Only the ones with their own re-arm hook come back on their own.
 - Messages from other sessions not yet answered: list them with what was asked.
 
-List what still runs or is scheduled (the host's task, cron and watch listings; in Claude Code `TaskList`, `CronList`, the background tasks) and sort each item: still needed, or stale. Stale means a checkable fact says its purpose is done: the CI it polls finished, the PR it watches merged, the server it ran was for a check that passed, the reminder's time is past. "Probably not needed" is not stale. A resume brings unexpired crons back, so a stale one would fire into it.
+List what still runs or is scheduled (`TaskList`, `CronList`, the background tasks) and sort each item: still needed, or stale. Stale means a checkable fact says its purpose is done: the CI it polls finished, the PR it watches merged, the server it ran was for a check that passed, the reminder's time is past. "Probably not needed" is not stale. A resume brings unexpired crons back, so a stale one would fire into it.
 
 **Conversation-only knowledge**
 - Decisions and why (the approach chosen, the approach rejected and what failed), preferences the user stated, debug findings, numbers, deadlines. With compaction these ride in the summary. Here they go into the handoff and into memory, or they are gone.
@@ -96,10 +96,10 @@ This skill saves state; it does not advance the work. A pending fix, a next step
 
 ### 3. Write the handoff and the memory entry
 
-Pick the state dir: the repository's own state directory when it has one (`.flow/`, `.sweep/`, a notes directory the project uses); else, inside a repository, `$(git rev-parse --absolute-git-dir)/handoff`, which survives a reboot and is never committed; outside one, next to the host's memory files. Never the session scratch or temp directory: the next session cannot see it, and a reboot deletes it.
+Pick the state dir: the repository's own state directory when it has one (`.flow/`, `.sweep/`, a notes directory the project uses); else, inside a repository, `$(git rev-parse --absolute-git-dir)/handoff`, which survives a reboot and is never committed; outside one, next to the memory files. Never the session scratch or temp directory: the next session cannot see it, and a reboot deletes it.
 
 ```bash
-bash <skill-dir>/scripts/handoff.sh <state-dir>
+bash "${CLAUDE_SKILL_DIR}/scripts/handoff.sh" <state-dir>
 ```
 
 It writes `<state-dir>/HANDOFF.md` with the git baseline embedded and the sections to fill, keeping an earlier handoff as `HANDOFF.prev.md`. Fill the sections by editing the file:
@@ -111,13 +111,13 @@ It writes `<state-dir>/HANDOFF.md` with the git baseline embedded and the sectio
 - **Next step:** the first action of the next session, with the file or command to touch first.
 - **Resume prompt:** the first message to paste into the next session. It names this file.
 
-Then the memory entry, in the host's persistent memory. In Claude Code that is the memory directory named in your system prompt: one file per fact with its frontmatter, plus one pointer line in `MEMORY.md`, which the next session loads automatically. Write a `project` entry: the state of the work as of today's date, where `HANDOFF.md` is (absolute path), the next step, the gotchas. A preference the user stated is a separate `user` or `feedback` entry, because it outlives this piece of work. Keep the project entry short: the handoff holds the detail; memory holds the pointer plus what must survive even if the handoff is never opened. On a host with no persistent memory, the handoff is the memory: say so, and print its path.
+Then the memory entry, in the memory directory named in your system prompt: one file per fact with its frontmatter, plus one pointer line in `MEMORY.md`, which the next session loads automatically. Write a `project` entry: the state of the work as of today's date, where `HANDOFF.md` is (absolute path), the next step, the gotchas. A preference the user stated is a separate `user` or `feedback` entry, because it outlives this piece of work. Keep the project entry short: the handoff holds the detail; memory holds the pointer plus what must survive even if the handoff is never opened. When the system prompt names no memory directory, the handoff is the memory: say so, and print its path.
 
 ### 4. Hand over
 
 Print the format below and nothing else. Do not start new work after this; the next thing that happens is the exit.
 
-If a tool named `mcp__cc-wrap-up__ready` is listed (load it first if it is deferred), call it before you print, with `kind: handoff`, the resume prompt as `resumePrompt`, the absolute `HANDOFF.md` path as `handoffPath`, and `openQuestion: true` when **Needs your yes** holds a question.
+Call `mcp__cc-wrap-up__ready` (load it first; it is deferred) before you print, with `kind: handoff`, the resume prompt as `resumePrompt`, the absolute `HANDOFF.md` path as `handoffPath`, and `openQuestion: true` when **Needs your yes** holds a question.
 
 If the user answers the held-back question before leaving: act on each yes, then edit the handoff (move the item from Pending to Done this session). Do not re-run `handoff.sh`, which starts a blank note. Reprint the resume prompt only if it changed, and then call the tool again.
 
@@ -164,4 +164,3 @@ The session can be closed.
 
 - The saves run without asking. What needs a yes is asked once, batched, never twice, and not at all when the user said they will not answer.
 - The resume prompt is the next session's first message, so it must stand alone: the handoff path, one sentence of state, the first action.
-- Portable: the audit, the handoff, and the resume prompt need only a shell and git. Persistent memory is used where the host has one.

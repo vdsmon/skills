@@ -16,11 +16,6 @@ SKILL_DESC_MAX = 280
 PLUGIN_DESC_MAX = 300
 FIRST_SENTENCE_MAX = 170
 SKILL_LINES_AIM = 100
-# handoff ships its own copy of better-compact's audit script; they must not diverge.
-IDENTICAL_COPIES = [
-    ("plugins/better-compact/skills/better-compact/scripts/baseline.sh",
-     "plugins/handoff/skills/handoff/scripts/baseline.sh"),
-]
 
 # Claude-Code-only features that an unprefixed (portable) plugin must not use.
 INJECTION = re.compile(r"(?:^|\s)!`[^`\n]+`|^```!", re.MULTILINE)
@@ -153,19 +148,11 @@ def check_portable(manifests):
                     fail(rel(path), f"uses {label}, which is Claude-Code-only")
 
 
-def check_identical_copies():
-    for a, b in IDENTICAL_COPIES:
-        pa, pb = ROOT / a, ROOT / b
-        if pa.is_file() and pb.is_file() and pa.read_bytes() != pb.read_bytes():
-            fail(b, f"must stay byte-identical to {a}")
-
-
 def main():
     manifests = check_marketplace()
     check_skills()
     check_openai_yaml()
     check_portable(manifests)
-    check_identical_copies()
     for line in warns + fails:
         print(line)
     print(f"check.py: {len(fails)} failures, {len(warns)} warnings")

@@ -20,7 +20,7 @@ No next session will pick this work up. Save what only this conversation knows w
 
 ## 1. Audit and save
 
-Read steps 1 and 2 of the handoff skill, `<skill-dir>/../handoff/SKILL.md` (the base directory announced when this skill loaded), and follow them. Its baseline script is `<skill-dir>/../handoff/scripts/baseline.sh`. Its rules on commits, ask-first items, and its rationalizations all apply here.
+Read steps 1 and 2 of the handoff skill, `${CLAUDE_SKILL_DIR}/../handoff/SKILL.md`, and follow them. Its baseline script is `${CLAUDE_PLUGIN_ROOT}/scripts/baseline.sh`. Its rules on commits, ask-first items, and its rationalizations all apply here.
 
 ## 2. Record and tie up
 
@@ -36,7 +36,7 @@ Then tie up without asking:
 Arm the stop, unless **Needs your yes** holds a question or a job still running was held back (the stop would end it):
 
 ```bash
-bash <skill-dir>/scripts/stop-self.sh
+bash ${CLAUDE_SKILL_DIR}/scripts/stop-self.sh
 ```
 
 It stops a Claude Code background session once this turn ends, so the report below is saved first; elsewhere it does nothing. Then print the format below as your last message, and do nothing after it.

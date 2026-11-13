@@ -48,7 +48,7 @@ run = "npm ci && node build.mjs"
 
 [tasks."test:handoff"]
 description = "Run the handoff script checks (handoff.sh and baseline.sh, offline)"
-run = "bash plugins/handoff/tests/test-handoff.sh"
+run = "bash plugins/cc-wrap-up/tests/test-handoff.sh"
 
 [tasks."test:open-pr"]
 description = "Run the open-pr body checker tests (offline)"

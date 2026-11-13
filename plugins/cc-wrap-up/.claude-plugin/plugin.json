@@ -1,7 +1,7 @@
 {
   "name": "cc-wrap-up",
-  "version": "1.3.0",
-  "description": "Cues a wrap-up at a natural break in a long session, then compacts with better-compact's message or hands off with handoff's resume prompt, with no copy-paste. At 800k tokens it stops a turn still running and runs better-compact by itself, before auto-compaction does.",
+  "version": "2.0.0",
+  "description": "Wraps up a long session: /better-compact saves what compaction would lose and compacts, /handoff leaves a resume note, /close saves for good and ends the session. Its mod offers them at a natural break, acts on the result with no copy-paste, and runs better-compact by itself at 800k tokens.",
   "author": {
     "name": "Victor De Simone",
     "email": "victorsmoliveira@gmail.com",
@@ -10,6 +10,7 @@
   "homepage": "https://github.com/vdsmon/skills",
   "repository": "https://github.com/vdsmon/skills",
   "license": "MIT",
+  "skills": "./skills",
   "types": "./types/index.d.ts",
   "userConfig": {
     "startTokens": {

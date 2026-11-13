@@ -16,14 +16,13 @@ const KEPT = [{ role: 'user' as const, text: 'summary', toolUses: [] }]
 // The test's clock: the band starts long work from a timer, so a press settles it.
 let clock: MockClock
 
-// The engine beneath the plugin: a session whose context size, git status and
-// command list the test picks, and a record of every call the mod makes.
+// The engine beneath the plugin: a session whose context size and git status the
+// test picks, and a record of every call the mod makes.
 function world(on: On) {
   clock = mock.clock(on, { now: 0 })
   const seen = {
     tokens: 0 as number | undefined,
     isDirty: false,
-    commands: ['better-compact:better-compact', 'handoff:handoff', 'compact', 'clear'],
     gitRuns: 0,
     notified: 0,
     toasts: [] as string[],
@@ -59,9 +58,6 @@ function world(on: On) {
     seen.registered.push({ name: e.name, isDeferred: e.isDeferred })
     return { value: { tool: `mcp__cc-wrap-up__${e.name}` } }
   })
-  on('command.list', async () => ({
-    value: seen.commands.map(name => ({ name, description: name, source: 'builtin' as const })),
-  }))
   on('session.usage', async () => ({
     value: { startedAt: 0, context: { tokens: seen.tokens, window: 1_000_000 }, rateLimits: [] },
   }))
@@ -279,15 +275,13 @@ test('urgent shows without a seam and notifies once per crossing', async ($, on)
   expect(seen.notified).toBe(2)
 })
 
-for (const [name, options, commands] of [
-  ['with the automatic wrap-up off', { autoTokens: 0 }, undefined],
-  ['with the auto line past auto-compaction', { autoTokens: 980_000 }, undefined],
-  ['without better-compact installed', {}, ['compact', 'clear']],
+for (const [name, options] of [
+  ['with the automatic wrap-up off', { autoTokens: 0 }],
+  ['with the auto line past auto-compaction', { autoTokens: 980_000 }],
 ] as const) {
   test(`${name}, urgent warns of auto-compaction`, { options }, async ($, on) => {
     const seen = world(on)
     seen.isDirty = true
-    if (commands) seen.commands = [...commands]
     await start($)
     const ui = await band($)
     await turn($, seen, 760_000)
@@ -424,7 +418,7 @@ test('a prep the user typed shows as preparing, and one that hands nothing over 
   const seen = world(on)
   await start($)
   const ui = await band($)
-  await typed($, 'better-compact:better-compact')
+  await typed($, 'cc-wrap-up:better-compact')
   expect(await lineText(ui)).toContain('Preparing to compact')
   expect(await buttons(ui)).toEqual([])
   await turn($, seen, 300_000)
@@ -436,7 +430,7 @@ test('a prep that hands over its result leaves the band ready after its turn', a
   const seen = world(on)
   await start($)
   const ui = await band($)
-  await typed($, 'handoff:handoff')
+  await typed($, 'cc-wrap-up:handoff')
   expect(await lineText(ui)).toContain('Preparing the handoff')
   await ready($, HANDOFF)
   await turn($, seen, 700_000)
@@ -473,23 +467,8 @@ test('Compact runs better-compact and shows the prep as running', async ($, on) 
   const ui = await band($)
   await turn($, seen, 520_000)
   await press(ui, 'compact')
-  expect(seen.ran).toEqual([{ command: 'better-compact:better-compact', args: '' }])
+  expect(seen.ran).toEqual([{ command: 'cc-wrap-up:better-compact', args: '' }])
   expect(await lineText(ui)).toContain('Preparing to compact')
-})
-
-test('without better-compact installed, Compact compacts at once with no message', async ($, on) => {
-  const seen = world(on)
-  seen.commands = ['compact', 'clear']
-  await start($)
-  const ui = await band($)
-  await turn($, seen, 520_000)
-  expect((await ui.find({ key: 'compact' }))?.text).toContain('Compact now')
-  expect(await buttons(ui)).toEqual(['compact', 'later'])
-  await press(ui, 'compact')
-  expect(seen.ran).toEqual([])
-  expect(seen.compactions.map(c => c.instructions)).toEqual([undefined])
-  expect(seen.submits).toEqual([])
-  expect(await buttons(ui)).toEqual([])
 })
 
 test('Compact now compacts with the message, then sends the follow-up as the user', async ($, on) => {
@@ -610,7 +589,7 @@ test('while a turn runs, the band offers nothing but a running prep', async ($, 
     props: { ...BAND, isWorking: true },
   })
   expect(await buttons(working)).toEqual([])
-  await typed($, 'better-compact:better-compact')
+  await typed($, 'cc-wrap-up:better-compact')
   expect(await lineText(working)).toContain('Preparing to compact')
 })
 
@@ -620,17 +599,8 @@ test('Hand off runs handoff and shows the prep as running', async ($, on) => {
   const ui = await band($)
   await turn($, seen, 520_000)
   await press(ui, 'handoff')
-  expect(seen.ran).toEqual([{ command: 'handoff:handoff', args: '' }])
+  expect(seen.ran).toEqual([{ command: 'cc-wrap-up:handoff', args: '' }])
   expect(await lineText(ui)).toContain('Preparing the handoff')
-})
-
-test('without handoff installed, there is no Hand off button', async ($, on) => {
-  const seen = world(on)
-  seen.commands = ['better-compact:better-compact', 'compact', 'clear']
-  await start($)
-  const ui = await band($)
-  await turn($, seen, 520_000)
-  expect(await buttons(ui)).toEqual(['compact', 'later'])
 })
 
 test('Fresh session here clears, then sends the resume prompt as the first message', async ($, on) => {
@@ -736,7 +706,7 @@ test('past the auto line inside a turn, the turn stops and better-compact runs u
   expect(seen.ran).toEqual([])
   await stopped($, seen, 805_000)
   expect(seen.toasts.join('\n')).toContain('Stopped the turn to run better-compact')
-  expect(seen.ran).toEqual([{ command: 'better-compact:better-compact', args: '--unattended' }])
+  expect(seen.ran).toEqual([{ command: 'cc-wrap-up:better-compact', args: '--unattended' }])
   expect(await lineText(ui)).toContain('Preparing to compact')
   await ready($, { ...COMPACT, now: true })
   await turn($, seen, 830_000)
@@ -771,14 +741,6 @@ test('the automatic wrap-up leaves subagents, a session with no size yet, a pend
 test('a non-interactive session never stops a turn', async ($, on) => {
   const seen = world(on)
   await start($, false)
-  await step($, seen, 950_000)
-  expect(seen.aborts).toEqual([])
-})
-
-test('without better-compact installed, no turn is stopped', async ($, on) => {
-  const seen = world(on)
-  seen.commands = ['compact', 'clear']
-  await start($)
   await step($, seen, 950_000)
   expect(seen.aborts).toEqual([])
 })
