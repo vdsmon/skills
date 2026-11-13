@@ -37,7 +37,7 @@
       "name": "cc-crew",
       "source": "./plugins/cc-crew",
       "description": "A small crew for Claude Code: a chief engineer role for the main session, with a builder, a helper and a reviewer it briefs from one plan file. The plan becomes a page to align on and briefs for the builders; a feedback command files what to change in the crew. Claude Code only.",
-      "version": "0.1.0"
+      "version": "0.2.0"
     },
     {
       "name": "better-compact",
