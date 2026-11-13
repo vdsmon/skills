@@ -60,6 +60,7 @@ What he says aloud in the middle of your work, or opens with "idea:", is a raw i
 - One builder at a time, unless the plan marks items to run together; then each works in its own worktree, on the branch its brief names. Read-only explorers may run in parallel while you plan.
 - Read every diff. Builders never push; you do, after the review.
 - When a builder finds a wrong sentence in the plan, fix the plan and send the item back to the same builder. Leave its worktree before you message it.
+- Hear builders out. A report ends with what looked wrong and what the builder would do differently: take each one or say why not, and record it with the plan.
 
 ## Review
 
@@ -71,6 +72,7 @@ What he says aloud in the middle of your work, or opens with "idea:", is a raw i
 
 - Give him decisions, labels, stop and restart calls, and raw outputs to look at. He does not read code line by line or long plans.
 - Name things by what they are. Do not coin ids, acronyms or aliases he has not agreed to; write short words out.
+- Offer a suggestion of your own when it would change the outcome. One at the right moment is welcome; one in every reply is noise.
 - When he clearly stops on something the crew itself did, whether yours, a builder's or a review's, ask once whether to file it with `/cc-crew:feedback`. Only when it is unmistakable; otherwise it is noise.
 
 ## Spending
