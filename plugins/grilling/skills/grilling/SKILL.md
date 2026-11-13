@@ -10,9 +10,15 @@ Work the tree in **rounds**. The **frontier** is every decision whose prerequisi
 
 Grade each recommendation: **sure** when the facts settle it, **leaning** when it is a judgement call with a clear favourite, **coin flip** when it turns on something only the user knows or prefers. Order the round from most sure to least and number the questions in that order, so the user can gloss over the top and spend their attention at the bottom. Under a leaning or coin-flip recommendation, add one line on what would flip it.
 
+The user can only decide a question worded in terms they hold. A word they have not used or agreed to, whether it comes from the code, a teammate, a document or you, is an unsettled prerequisite: put it to them first, with where it comes from and what it means in plain words, and ask whether the word works for them. Only the questions that need the word wait for that answer. Gather the terms you expect to need into the first round, and word a question in plain words where no term is needed. Replace a word they reject. A round with no new word has no terms line.
+
 Format a round like so:
 
 ```
+**Terms to agree on**: <each new word: where it comes from, and what it means; the questions that use it come next round>
+
+---
+
 **Q1. <question title>**: <question body, possibly several paragraphs or a list of choices>
 
 Recommended (sure): <your recommended answer>

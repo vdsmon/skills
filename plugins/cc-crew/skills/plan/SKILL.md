@@ -12,6 +12,7 @@ A design was settled with the user. Make it buildable, and align with him on the
 Write `~/.claude/plans/<name>/plan.md` in the shape of [plan-template.md](plan-template.md). The file is for you to follow and for the record: do not paste it into the session, and do not use plan mode.
 
 - **Principle.** The one sentence he approved. Test it against every case you discussed: a sentence broader than you mean gets built faithfully.
+- **Terms.** Every word the plan uses that he did not bring himself: where it comes from (the code, a teammate, a document, you), what it means in plain words, and his yes to it. The file keeps them through a compaction.
 - **Decisions.** Each with who decided it and why. A decision without a reason cannot be applied to a new case; if he gave none, ask once.
 - **Work.** Each item is its builder's brief: what it is for first, what the builder owns, where, the work in order, each limit with its reason, what done means, what it runs beside. An item stands on its own: it may name another item, but never sends the reader there for instructions.
 - **Every brief.** What every builder on this plan needs beyond the builder's own text: shared limits, who else is working where.
@@ -29,12 +30,13 @@ Send the plan and its principle to the reviewer. Put the principle in a file and
 The page is where you and the user align. It is free in form: design it for this plan, restrained, colour welcome. Lead with what he has not seen yet.
 
 1. The principle.
-2. One picture of the whole: who does and judges what, or what changes.
-3. What is new since you talked: what the review changed, what you decided without asking.
-4. The work as a graph of what depends on what: who builds each item, what runs side by side.
-5. What approval starts, and what it does not cover.
-6. Your sign-off, as a signature beside the place for his. A draft shows yours empty.
-7. The settled decisions, folded away as the record.
+2. The terms, each with where it comes from and what it means. The page uses no word that is not his or listed here.
+3. One picture of the whole: who does and judges what, or what changes.
+4. What is new since you talked: what the review changed, what you decided without asking.
+5. The work as a graph of what depends on what: who builds each item, what runs side by side.
+6. What approval starts, and what it does not cover.
+7. Your sign-off, as a signature beside the place for his. A draft shows yours empty.
+8. The settled decisions, folded away as the record.
 
 Publish it privately, say which version of the plan it shows, and give him the link with two or three lines on what approval starts. His "approved" covers what the page showed him: anything that is his to decide and is not on it is not approved.
 
