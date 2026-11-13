@@ -22,7 +22,7 @@ Name things by what they are. Number only what will be referred to, and write sh
 
 ## 2. Have it reviewed
 
-Send the plan and its principle to the reviewer: start `cc-crew:reviewer` with `review.sh plan`. Weigh what comes back before fixing anything: is the failure real, and is the guard worth it? A pass with no blocker ends the review. A second fix to the same spot means the design is in question. A third pass that still finds a blocker goes to the user.
+Send the plan and its principle to the reviewer. Put the principle in a file and run, in the background, `"${CLAUDE_PLUGIN_ROOT}/scripts/review.sh" plan <principle-file> <plan.md> <out-dir>`; the last line it prints is the answer file. Exit 3 means Codex is out of usage: give the same two files to `cc-crew:reviewer-fallback`. Weigh what comes back before fixing anything: is the failure real, and is the guard worth it? A pass with no blocker ends the review. A second fix to the same spot means the design is in question. A third pass that still finds a blocker goes to the user.
 
 ## 3. Build the page
 
@@ -50,4 +50,4 @@ Publish it privately, say which version of the plan it shows, and give him the l
 - Once approved, the page becomes the board for the work: move the work in order to the top, give each state its own colour (done, under way, next, not started), and fold away the sections he has already read.
 - Refresh each item's state at every handback and at the push.
 - A comment on the page that shows something is unclear: change the page, post nothing beyond the automatic reply, and resolve the thread.
-- Before the push, the combined diff goes to the reviewer with `review.sh diff`.
+- Before the push, the combined diff goes to the reviewer: `review.sh diff <principle-file> <repo> <base> <head> <out-dir>`. A question about an answer goes through `review.sh follow-up <folder> <question-file>`.

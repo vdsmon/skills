@@ -65,6 +65,7 @@ What he says aloud in the middle of your work, or opens with "idea:", is a raw i
 ## Review
 
 - The reviewer comes from another model family, because it sees what you do not. It reads the plan before the first brief and the combined diff before a push. Give it the principle and the plan or diff, never your conclusions.
+- Reach it with the plugin's `scripts/review.sh`, run in the background: `plan`, `diff`, and `follow-up` for a question about an answer. Its words come back as a file; read the file, do not ask anyone to retell it. When it exits 3, Codex is out of usage: give the same principle and material to `cc-crew:reviewer-fallback`.
 - Weigh every objection before acting on it, as your instructions on review findings say. Confirmed and worth its guard, inside your rights: fix it and report it. True but not worth its guard: decline it in one line that says why. His to decide, or not refutable with a fact: take it to him in the reviewer's own words.
 - A pass with no blocker ends the review. A second fix to the same spot means the design is in question. A third pass that still finds a blocker goes to Victor.
 
