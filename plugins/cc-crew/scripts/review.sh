@@ -27,7 +27,9 @@ readable() { [ -f "$1" ] && [ -r "$1" ] || fail "cannot read $2: $1"; }
 
 new_folder() { # <out-dir> <kind>
   mkdir -p "$1" || fail "cannot create $1"
-  mktemp -d "$1/$2-$(date +%Y%m%d-%H%M%S).XXXXXX" || fail "cannot create a folder under $1"
+  local d
+  d=$(mktemp -d "$1/$2-$(date +%Y%m%d-%H%M%S).XXXXXX") || fail "cannot create a folder under $1"
+  cd "$d" && pwd -P
 }
 
 # Splits on the token instead of sed or ${//}: the principle may hold & / or \.
@@ -52,7 +54,7 @@ run_codex() { # <folder> <answer-file> <log-file> <prompt>
     -o "$answer" "$prompt" </dev/null >"$log" 2>&1
   rc=$?
 
-  # Informational only: follow-ups start a fresh session (see follow_up).
+  # Informational only: follow-ups start a fresh session (see cmd_follow_up).
   sid=$(sed -n 's/^session id: *//p' "$log" | head -n 1)
   [ -n "$sid" ] && [ ! -e "$folder/session-id" ] && printf '%s\n' "$sid" > "$folder/session-id"
 
@@ -87,7 +89,7 @@ cmd_plan() {
   readable "$2" "plan file"
   local folder
   folder=$(new_folder "$3" plan) || exit 4
-  cp "$1" "$folder/principle.md" && cp "$2" "$folder/plan.md" || fail "cannot copy into $folder"
+  { cp "$1" "$folder/principle.md" && cp "$2" "$folder/plan.md"; } || fail "cannot copy into $folder"
   build_prompt review-prompt-plan.md "$1" "$folder"
   run_codex "$folder" "$folder/answer.md" "$folder/codex.log" "$(cat "$folder/prompt.md")"
 }
@@ -100,11 +102,12 @@ cmd_diff() {
   head_sha=$(git -C "$repo" rev-parse --verify --quiet "$head^{commit}") || fail "not a commit in $repo: $head"
   folder=$(new_folder "$out" diff) || exit 4
   cp "$principle" "$folder/principle.md" || fail "cannot copy into $folder"
-  # Objects only, never the working tree: archive the commit, diff two commits.
+  # Objects only, never the working tree: archive the commit, diff two commits, and
+  # take .gitattributes from <head>, not from whatever the checkout holds.
   mkdir "$folder/tree" || fail "cannot create $folder/tree"
   git -C "$repo" archive --format=tar "$head_sha" | tar -x -C "$folder/tree" \
     || fail "cannot archive $head ($head_sha) from $repo"
-  git -C "$repo" diff --no-ext-diff --no-textconv --no-color "$base_sha" "$head_sha" > "$folder/diff.patch" \
+  git -C "$repo" --attr-source="$head_sha" diff --no-ext-diff --no-textconv --no-color "$base_sha" "$head_sha" > "$folder/diff.patch" \
     || fail "cannot diff $base..$head in $repo"
   printf 'base %s %s\nhead %s %s\n' "$base" "$base_sha" "$head" "$head_sha" > "$folder/revs.txt"
   build_prompt review-prompt-diff.md "$principle" "$folder"
@@ -115,18 +118,14 @@ cmd_diff() {
 # A follow-up is a fresh read-only session that reads the earlier turns as files.
 cmd_follow_up() {
   [ $# -eq 2 ] || usage
-  local folder=$1 question=$2 n=2 earlier prompt
-  [ -f "$folder/prompt.md" ] && [ -f "$folder/answer.md" ] || fail "not a review folder with an answer: $folder"
+  local folder question=$2 n=2 i earlier=answer.md prompt
+  folder=$(cd "$1" 2>/dev/null && pwd -P) || fail "no such folder: $1"
+  { [ -f "$folder/prompt.md" ] && [ -s "$folder/answer.md" ]; } || fail "not a review folder with an answer: $folder"
   readable "$question" "question file"
-  while [ -e "$folder/answer-$n.md" ] || [ -e "$folder/question-$n.md" ]; do n=$((n + 1)); done
+  # A failed follow-up leaves no answer, so asking again reuses its number.
+  while [ -s "$folder/answer-$n.md" ]; do n=$((n + 1)); done
   cp "$question" "$folder/question-$n.md" || fail "cannot copy into $folder"
-  earlier="answer.md"
-  local i=2
-  while [ "$i" -lt "$n" ]; do
-    [ -f "$folder/question-$i.md" ] && earlier="$earlier, question-$i.md"
-    [ -f "$folder/answer-$i.md" ] && earlier="$earlier, answer-$i.md"
-    i=$((i + 1))
-  done
+  for ((i = 2; i < n; i++)); do earlier="$earlier, question-$i.md, answer-$i.md"; done
   prompt="This is a follow-up to a review you gave in this folder. The original request is in prompt.md; the earlier turns, in order, are $earlier. Read them first, then answer the question below (also saved as question-$n.md). Stay a reviewer: read, do not change anything.
 
 $(cat "$question")"
