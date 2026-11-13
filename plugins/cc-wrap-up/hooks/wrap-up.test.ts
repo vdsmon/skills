@@ -279,14 +279,21 @@ test('urgent shows without a seam and notifies once per crossing', async ($, on)
   expect(seen.notified).toBe(2)
 })
 
-test('with the automatic wrap-up off, urgent warns of auto-compaction', { options: { autoTokens: 0 } }, async ($, on) => {
-  const seen = world(on)
-  seen.isDirty = true
-  await start($)
-  const ui = await band($)
-  await turn($, seen, 930_000)
-  expect(await lineText(ui)).toContain('auto-compact runs at 967k')
-})
+for (const [name, options, commands] of [
+  ['with the automatic wrap-up off', { autoTokens: 0 }, undefined],
+  ['with the auto line past auto-compaction', { autoTokens: 980_000 }, undefined],
+  ['without better-compact installed', {}, ['compact', 'clear']],
+] as const) {
+  test(`${name}, urgent warns of auto-compaction`, { options }, async ($, on) => {
+    const seen = world(on)
+    seen.isDirty = true
+    if (commands) seen.commands = [...commands]
+    await start($)
+    const ui = await band($)
+    await turn($, seen, 760_000)
+    expect(await lineText(ui)).toContain('auto-compact runs at 967k')
+  })
+}
 
 test('a compaction clears the cue and puts the line back at the start', async ($, on) => {
   const seen = world(on)

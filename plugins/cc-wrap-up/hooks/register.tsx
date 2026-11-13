@@ -3,6 +3,7 @@ import type { EngineInterface, Register, RenderSurface } from 'claude-code'
 
 import type { Payload, Phase, PrepKind, Wrap } from '../types'
 
+const AUTO_COMPACT_TOKENS = 967_000
 const AUTO_COMPACT_AT = '967k'
 const COMMAND = 'wrap-up'
 const TOOL = 'ready'
@@ -51,9 +52,9 @@ const formatTokens = (n: number) =>
 
 const lineOf = (w: Wrap) => w.line ?? cfg.start
 
-/** What the urgent cue warns of: the automatic wrap-up while it can still run, else auto-compaction. */
-const comingUp = (w: Wrap) =>
-  cfg.auto <= 0 || w.auto !== 'idle'
+/** What the urgent cue warns of: the automatic wrap-up when it will run first, else auto-compaction. */
+const comingUp = (w: Wrap, hasCompactPrep: boolean) =>
+  cfg.auto <= 0 || cfg.auto >= AUTO_COMPACT_TOKENS || w.auto !== 'idle' || !hasCompactPrep
     ? `auto-compact runs at ${AUTO_COMPACT_AT}, with no audit`
     : (w.tokens ?? 0) < cfg.auto
       ? `${SKILL.compact} runs by itself at ${formatTokens(cfg.auto)}`
@@ -114,7 +115,8 @@ async function onAnswer($: EngineInterface) {
   const { next, isNotify } = decide(w, tokens, isSeam)
   await update($, wrap, () => next)
   if (isNotify) {
-    await $.ui.notify(`${formatTokens(tokens)} tokens: wrap up before ${comingUp(next)}.`)
+    const hasCompactPrep = (await findPrep($, 'compact')) !== null
+    await $.ui.notify(`${formatTokens(tokens)} tokens: wrap up before ${comingUp(next, hasCompactPrep)}.`)
   }
 }
 
@@ -536,7 +538,7 @@ export const register: Register = (on, options) => {
     const handoff = hasHandoffPrep ? [<Button key="handoff" label="Hand off" hotkey="h" onPress={() => soon($, () => startPrep($, 'handoff'))} />] : []
     return row(
       w.phase === 'urgent'
-        ? `${size} · ${comingUp(w)}`
+        ? `${size} · ${comingUp(w, hasCompactPrep)}`
         : `${size} · good moment to wrap up`,
       w.phase === 'urgent' ? 'warning' : undefined,
       <Button key="compact" hotkey="c" label={hasCompactPrep ? 'Compact' : 'Compact now'} onPress={() => soon($, () => startPrep($, 'compact'))} />,
