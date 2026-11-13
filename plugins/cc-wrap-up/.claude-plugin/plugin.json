@@ -1,7 +1,7 @@
 {
   "name": "cc-wrap-up",
-  "version": "1.2.0",
-  "description": "Cues a wrap-up at a natural break in a long session, then compacts with better-compact's message or hands off with handoff's resume prompt, with no copy-paste. At 900k tokens it stops a turn still running and runs better-compact by itself, before auto-compaction does.",
+  "version": "1.3.0",
+  "description": "Cues a wrap-up at a natural break in a long session, then compacts with better-compact's message or hands off with handoff's resume prompt, with no copy-paste. At 800k tokens it stops a turn still running and runs better-compact by itself, before auto-compaction does.",
   "author": {
     "name": "Victor De Simone",
     "email": "victorsmoliveira@gmail.com",
@@ -31,8 +31,8 @@
     "urgentTokens": {
       "type": "number",
       "title": "Urgent at (tokens)",
-      "description": "Context size where the offer turns urgent and sends a notification. Auto-compaction runs at 967k on a 1M window, with no audit.",
-      "default": 920000,
+      "description": "Context size where the offer turns urgent and sends a notification, ahead of the automatic wrap-up. Auto-compaction runs at 967k on a 1M window, with no audit.",
+      "default": 750000,
       "min": 10000,
       "max": 1000000
     },
@@ -40,7 +40,7 @@
       "type": "number",
       "title": "Wrap up by itself at (tokens)",
       "description": "Context size where the mod stops a running turn and runs better-compact by itself, then compacts and resumes the task. 0 turns this off.",
-      "default": 900000,
+      "default": 800000,
       "min": 0,
       "max": 1000000
     }

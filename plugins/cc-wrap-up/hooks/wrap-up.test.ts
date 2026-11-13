@@ -264,20 +264,36 @@ test('urgent shows without a seam and notifies once per crossing', async ($, on)
   seen.isDirty = true
   await start($)
   const ui = await band($)
-  await turn($, seen, 930_000)
-  expect(await lineText(ui)).toContain('auto-compact')
+  await turn($, seen, 760_000)
+  expect(await lineText(ui)).toContain('better-compact runs by itself at 800k')
   expect(seen.notified).toBe(1)
   await press(ui, 'later')
   expect(await buttons(ui)).toEqual([])
-  await turn($, seen, 940_000)
+  await turn($, seen, 770_000)
   expect(await buttons(ui)).toEqual(['compact', 'handoff', 'later'])
   expect(seen.notified).toBe(1)
   await $.session.compact({ trigger: 'auto', messages: KEPT })
   await turn($, seen, 100_000)
   expect(await buttons(ui)).toEqual([])
-  await turn($, seen, 930_000)
+  await turn($, seen, 760_000)
   expect(seen.notified).toBe(2)
 })
+
+for (const [name, options, commands] of [
+  ['with the automatic wrap-up off', { autoTokens: 0 }, undefined],
+  ['with the auto line past auto-compaction', { autoTokens: 980_000 }, undefined],
+  ['without better-compact installed', {}, ['compact', 'clear']],
+] as const) {
+  test(`${name}, urgent warns of auto-compaction`, { options }, async ($, on) => {
+    const seen = world(on)
+    seen.isDirty = true
+    if (commands) seen.commands = [...commands]
+    await start($)
+    const ui = await band($)
+    await turn($, seen, 760_000)
+    expect(await lineText(ui)).toContain('auto-compact runs at 967k')
+  })
+}
 
 test('a compaction clears the cue and puts the line back at the start', async ($, on) => {
   const seen = world(on)
@@ -713,26 +729,26 @@ test('past the auto line inside a turn, the turn stops and better-compact runs u
   const seen = world(on)
   await start($)
   const ui = await band($)
-  await step($, seen, 899_000)
+  await step($, seen, 799_000)
   expect(seen.aborts).toEqual([])
-  await step($, seen, 905_000)
+  await step($, seen, 805_000)
   expect(seen.aborts).toEqual([LIVE])
   expect(seen.ran).toEqual([])
-  await stopped($, seen, 905_000)
+  await stopped($, seen, 805_000)
   expect(seen.toasts.join('\n')).toContain('Stopped the turn to run better-compact')
   expect(seen.ran).toEqual([{ command: 'better-compact:better-compact', args: '--unattended' }])
   expect(await lineText(ui)).toContain('Preparing to compact')
   await ready($, { ...COMPACT, now: true })
-  await turn($, seen, 930_000)
+  await turn($, seen, 830_000)
   await clock.settle()
   expect(seen.compactions.map(c => c.instructions)).toEqual([COMPACT.message])
   expect(seen.submits).toEqual([{ text: COMPACT.followUp, asUser: true }])
   // A compaction that leaves the context over the line does not stop the next turn;
   // the next crossing from under it does.
-  await step($, seen, 906_000)
+  await step($, seen, 806_000)
   expect(seen.aborts).toEqual([LIVE])
   await step($, seen, 100_000)
-  await step($, seen, 906_000)
+  await step($, seen, 806_000)
   expect(seen.aborts).toEqual([LIVE, LIVE])
 })
 
