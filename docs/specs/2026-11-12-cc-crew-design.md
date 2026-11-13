@@ -72,4 +72,6 @@ What builders proposed, and what was done with each, with the reason.
 - **Read Codex's JSON events for the session id and the usage refusal** (review script's builder). Not now: the event names could not be confirmed offline, and a misread refusal only ends in the log being shown; revisit if a real refusal is ever misread.
 - **`git archive` leaves out paths marked export-ignore** (review script's builder). Noted: this repository does not use it.
 
+Found on the review script's first live run (2026-11-12): it worked end to end (the answer file, the session line, exit 0), and its one blocker was a false alarm with a real cause. The script compared the base as it is now with the head, so a fix that had landed on main since the branch was cut read as deleted by the branch. The plan's sentence said "the diff from base to head" and the builder built exactly that; the diff now starts at the merge base.
+
 Found while building: `codex exec resume` has no sandbox option, so a follow-up is a fresh read-only session that reads the earlier question and answer as files, not the same thread.
