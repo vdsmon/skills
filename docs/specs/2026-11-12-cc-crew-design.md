@@ -61,7 +61,7 @@ Victor works with Claude Code on his work repositories through one main session 
 
 ## Measured
 
-Rows 38 to 43 of `docs/experiments.md`: where settings resolve, a plugin style chosen by name, "Main session only" by model, a helper that cannot start agents, the wording test, and Codex's resume. The wording test's briefs and its scoring prompt are in `evals/cc-crew/`.
+Rows 38 to 45 of `docs/experiments.md`: where settings resolve, a plugin style chosen by name, "Main session only" by model, a helper that cannot start agents, the wording test, Codex's resume, and how far the role's one line reaches (subfolders, worktrees, a session already running). The wording test's briefs and its scoring prompt are in `evals/cc-crew/`.
 
 ## What the builders suggested
 
