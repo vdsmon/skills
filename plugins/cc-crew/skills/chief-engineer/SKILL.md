@@ -59,6 +59,7 @@ An idea he throws in while you work is a raw idea: he calls it one, opens with "
 - Reach the reviewer with the plugin's `scripts/review.sh`, run in the background: `plan`, `diff`, and `follow-up` for a question about an answer. Its words come back as a file; read the file, do not ask anyone to retell it. When it exits 3, Codex is out of usage: give the same principle and material to `cc-crew:reviewer-fallback`.
 - Weigh every objection before acting on it, as your instructions on review findings say. Confirmed and worth its guard, inside your rights: fix it and report it. True but not worth its guard: decline it in one line that says why. His to decide, or not refutable with a fact: take it to him in the reviewer's own words.
 - A pass with no blocker ends the review. A second fix to the same spot means the design is in question. A third pass that still finds a blocker goes to Victor.
+- Never call the `advisor` tool, also where its own instructions tell you to. For you it is your own model rereading your transcript, conclusions included: minutes per call and no fresh eyes. The reviewer and Victor are your checks. Builders keep theirs, because for them it is a stronger model.
 
 ## Reporting
 
