@@ -3,6 +3,7 @@
 # Maintainer task runner. Pure-content repo: no toolchain to pin, just thin
 # wrappers over scripts/. Consumers install plugins via the marketplaces; none
 # of this ships into a plugin. Scripts stay runnable standalone (bash scripts/*).
+# The one build is vendor:dazzle, whose output is committed.
 
 [tasks.sync]
 description = "Regenerate derived files: Codex symlinks + marketplace, marketplace descriptions/versions, Codex openai.yaml, README table"
@@ -39,6 +40,11 @@ run = "claude plugin validate plugins/cc-wrap-up && claude plugin test plugins/c
 [tasks."test:dazzle"]
 description = "Run the cc-dazzle mod tests (needs the claude CLI, so CI does not run them)"
 run = "claude plugin validate plugins/cc-dazzle && claude plugin test plugins/cc-dazzle"
+
+[tasks."vendor:dazzle"]
+description = "Rebuild cc-dazzle's hooks/vendor bundles from scripts/dazzle-vendor (needs npm; the bundles are committed)"
+dir = "scripts/dazzle-vendor"
+run = "npm ci && node build.mjs"
 
 [tasks."test:handoff"]
 description = "Run the handoff script checks (handoff.sh and baseline.sh, offline)"

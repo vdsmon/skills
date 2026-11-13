@@ -155,7 +155,7 @@ const draw = (source: string, columns: number): string | null => {
     try {
       if (isChart) setChartSize(size.width, size.height)
       const art = renderMermaidAscii(prepared(padded), { useAscii: false, colorMode: 'none', paddingX: 3, paddingY: 1 }).replace(/[ \t]+$/gm, '').trimEnd().replace(/▶/g, '►').replace(/◀/g, '◄')
-      return (isChart ? labelBars(art, padded) : art.split('\n').filter(l => !/^[\s│|]*$/.test(l)).join('\n')).replaceAll(PAD, '')
+      return (isChart ? labelBars(art, padded) : art.split('\n').filter(l => !/^[\s│┆┃|]*$/.test(l)).join('\n')).replaceAll(PAD, '')
     } catch {
       return null
     }

@@ -16,6 +16,21 @@ $ git clone https://github.com/NahumLitvin/prismantis && cd prismantis
 $ git log --oneline 36d6c6c..HEAD
 ```
 
+## cc-dazzle's vendor build
+
+`plugins/cc-dazzle/hooks/vendor/` is built here, by `mise run vendor:dazzle`, and committed. Never edit a bundle by hand.
+
+- `scripts/dazzle-vendor/build.mjs` is prismantis's `scripts/build-vendor.mjs` at the "Last checked" commit, changed only on the lines marked `cc-dazzle`. `package.json` pins the versions upstream's lockfile has for esbuild, beautiful-mermaid and prismjs.
+- `scripts/dazzle-vendor/patches.mjs` holds cc-dazzle's own changes to beautiful-mermaid's source, and `back-edges.ts` the module they call. They route the back edges of flowcharts and state diagrams, which upstream draws over other edges. `plugins/cc-dazzle/hooks/back-edges.test.tsx` is their test.
+
+On a sync:
+
+1. Take upstream's new `build-vendor.mjs` whole and put the `cc-dazzle` lines back.
+2. Where upstream now loads a file that `patches.mjs` changes (`grid.ts` from prismantis #456 on), pass that handler's result through `ownPatches`, as the `draw.ts` handler does, and take the file out of `OWN_FILES`. esbuild loads a file through the first handler that matches, so the build stops when a patched file never reached `ownPatches`, and when a patch no longer finds its text.
+3. Run `node build.mjs --upstream-only` in `scripts/dazzle-vendor/` and compare `hooks/vendor/` with upstream's `plugin/hooks/vendor/` at that commit: the files must be the same byte for byte. Then run `mise run vendor:dazzle` and the tests.
+
+Upstream's test for the cycle hang (#370) expects the source; here that diagram draws, so `sync.test.tsx` expects the drawing.
+
 ## prismantis 0.32.1 to 0.44.0
 
 Ported, each with its upstream test (in `hooks/*sync*.test.tsx`, `png.test.tsx` and the tests they changed):
