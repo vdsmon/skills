@@ -155,6 +155,9 @@ function schedule($: EngineInterface, w: Watch, now: number) {
 }
 
 async function check($: EngineInterface, name: string) {
+  // A check run by hand (/watches check) arrives while a timer is still pending:
+  // cancel it, or two chains of checks run from then on.
+  timers.get(name)?.cancel()
   timers.delete(name)
   const w = (await load($)).find(x => x.name === name)
   if (!w) return
