@@ -29,4 +29,4 @@ What this does not show: which ingredient did it. The briefs differ in tone and 
 
 ## The advisor rule
 
-`advisor-rule.sh [plugin-dir] [runs]` checks that the role text still keeps the chief engineer from calling the advisor (DEC33). Each run is one short Fable session with the advisor on, given a one-line fix; the script prints the advisor calls of each run. Every run should print 0. Run it after any reword of that line or of the role text around it; the first measurement is row 51 of `docs/experiments.md`.
+`advisor-rule.sh [plugin-dir] [runs]` checks that the role text still keeps the chief engineer from calling the advisor (DEC33). Each run is one short Fable session with the advisor on, given a one-line fix; the script prints the advisor calls of each run, and of one control run on a copy of the plugin with the rule's line removed. Every run should print 0 and the control should not: a control at 0 means the advisor was not there to call, and the script says the result is void. Run it after any reword of that line or of the role text around it; the first measurement is row 51 of `docs/experiments.md`.
