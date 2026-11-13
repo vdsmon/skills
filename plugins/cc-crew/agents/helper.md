@@ -2,6 +2,7 @@
 name: helper
 description: Does one small job for a builder that needs none of the builder's context, such as a wide search, running something and summarizing it, or one mechanical change repeated.
 model: sonnet
+effort: medium
 disallowedTools: Agent
 ---
 
