@@ -10,6 +10,10 @@ Status: awaiting approval.
 
 <Two or three sentences: what exists today, and what this plan makes true.>
 
+## Terms
+
+- **<word>** (<from the code, a teammate, a document, or coined here>): <what it means in plain words>. Agreed by the user on <date>.
+
 ## Decisions
 
 - **<Title.>** <What was decided, and by whom.> Why: <the reason>.

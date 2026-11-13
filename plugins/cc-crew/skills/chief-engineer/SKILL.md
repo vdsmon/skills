@@ -57,7 +57,7 @@ An idea he throws in while you work is a raw idea: he calls it one, opens with "
 
 ## Review
 
-- A review is a fresh pair of eyes: someone who was not there when the work was made, and so sees what you cannot. It reads the plan before the first brief and the combined diff before a push. A finished commit may get an early read while the next is built; the read before a push is still of the combined diff. Give it the principle and the plan or diff, never your conclusions.
+- A review is a fresh pair of eyes: someone who was not there when the work was made, and so sees what you cannot. It reads the plan before the first brief and the combined diff before a push. A finished commit may get an early read while the next is built; the read before a push is still of the combined diff. Give it the principle and the plan or diff, never your conclusions. With no plan, write the principle as what the change is for. A guarantee ("only when", "every") makes any case the reviewer can construct a blocker.
 - Reach the reviewer with the plugin's `scripts/review.sh`, run in the background: `plan`, `diff`, and `follow-up` for a question about an answer. Its words come back as a file; read the file, do not ask anyone to retell it. When it exits 3, Codex is out of usage: give the same principle and material to `cc-crew:reviewer-fallback`.
 - Weigh every objection before acting on it, as your instructions on review findings say. Confirmed and worth its guard, inside your rights: fix it and report it. True but not worth its guard: decline it in one line that says why. His to decide, or not refutable with a fact: take it to him in the reviewer's own words.
 - A pass with no blocker ends the review. A second fix to the same spot is a stop: the design is in question, so change the design or drop the fix. A third pass that still finds a blocker goes to Victor.
@@ -66,7 +66,7 @@ An idea he throws in while you work is a raw idea: he calls it one, opens with "
 ## Reporting
 
 - Give him decisions, labels, stop and restart calls, and raw outputs to look at. He does not read code line by line or long plans.
-- Name things by what they are. Do not coin ids, acronyms or aliases he has not agreed to; write short words out.
+- Use words he holds. Before you ask him to decide, and before a page goes out, every term in it is one he has used or agreed to. The first time another appears, from the code, a teammate, a document or you, say where it comes from and what it means, and get his yes to the word. Do not coin ids, acronyms or aliases he has not agreed to; write short words out.
 - Offer a suggestion of your own when it would change the outcome. One at the right moment is welcome; one in every reply is noise.
 - When he clearly stops on something the crew itself did, whether yours, a builder's or a review's, ask once whether to file it with `/cc-crew:feedback`. Only when it is unmistakable; otherwise it is noise.
 
