@@ -39,6 +39,7 @@ case $FAKE_CODEX in
   empty) : > "$out"; exit 0 ;;
   usage) echo "ERROR: You've hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), or try again later."; exit 1 ;;
   fail) echo "ERROR: unexpected status 500 Internal Server Error"; exit 1 ;;
+  crash) exit 1 ;;
 esac
 EOF
 chmod +x "$tmp/bin/codex"
@@ -86,10 +87,13 @@ run ok follow-up "$folder" "$tmp/q.md"
 check "follow-up exits 0 with answer-2.md" '[ "$rc" -eq 0 ] && [ "$last" = "$folder/answer-2.md" ] && [ -s "$last" ]'
 check "follow-up has the model" 'has_args "$call" -m gpt-6-astra'
 check "follow-up is read-only" 'has_args "$call" --sandbox read-only'
-check "follow-up is not a resume" '! cat "$call"/[0-9]* | grep -qx resume'
+check "follow-up is a plain exec, not a resume" '[ "$(cat "$call/01")" = exec ] && [ "$(cat "$call/02")" != resume ]'
 check "follow-up prompt has the question and names the earlier answer" 'prompt_of "$call" | grep -q "Why is step 2 risky?" && prompt_of "$call" | grep -q "answer.md"'
+run usage follow-up "$folder" "$tmp/q.md"
+check "refused follow-up exits 3" '[ "$rc" -eq 3 ]'
 run ok follow-up "$folder" "$tmp/q.md"
-check "second follow-up writes answer-3.md" '[ "$last" = "$folder/answer-3.md" ] && prompt_of "$call" | grep -q "answer-2.md"'
+check "asking again after a refusal reuses number 3" '[ "$last" = "$folder/answer-3.md" ] && prompt_of "$call" | grep -q "answer-2.md"'
+check "a relative folder still gives absolute paths" '(cd "$tmp" && bash "$review" follow-up "${folder#"$tmp"/}" q.md < "$tmp/stdin-feed" | tail -n 1 | grep -qx "$folder/answer-4.md")'
 
 echo "--- failures"
 run usage plan "$tmp/principle.md" "$tmp/plan.md" "$tmp/out"
@@ -99,12 +103,11 @@ run fail plan "$tmp/principle.md" "$tmp/plan.md" "$tmp/out"
 check "other Codex failure exits 4 with the log tail" '[ "$rc" -eq 4 ] && printf "%s" "$err" | grep -q "500 Internal Server Error"'
 run empty plan "$tmp/principle.md" "$tmp/plan.md" "$tmp/out"
 check "empty answer exits 4, not 0" '[ "$rc" -eq 4 ]'
-# A principle that talks about usage limits must not turn a plain failure into 3.
+# The fake echoes the prompt into the log; a principle quoting a usage error must
+# not turn a failure with no error line of its own into 3.
 printf 'ERROR: You have hit your usage limit, said the old log.\n' > "$tmp/principle-usage.md"
-run fail plan "$tmp/principle-usage.md" "$tmp/plan.md" "$tmp/out"
+run crash plan "$tmp/principle-usage.md" "$tmp/plan.md" "$tmp/out"
 check "usage words echoed from the prompt still exit 4" '[ "$rc" -eq 4 ]'
-run usage follow-up "$folder" "$tmp/q.md"
-check "usage refusal in a follow-up exits 3" '[ "$rc" -eq 3 ]'
 sed 's/{{PRINCIPLE}}/nothing/' "$tmp/scripts/review-prompt-plan.md" > "$tmp/notoken.md" && cp "$tmp/scripts/review-prompt-plan.md" "$tmp/keep.md" && cp "$tmp/notoken.md" "$tmp/scripts/review-prompt-plan.md"
 run ok plan "$tmp/principle.md" "$tmp/plan.md" "$tmp/out"
 check "template without the token exits 4 and never calls codex" '[ "$rc" -eq 4 ] && [ ! -e "$call" ]'
@@ -121,13 +124,14 @@ head=$(git -C "$repo" rev-parse HEAD)
 # Dirty the checkout and move HEAD away from <head>.
 printf 'later\n' > "$repo/later.txt" && git -C "$repo" add later.txt && git -C "$repo" commit -q -m later
 printf 'dirty edit\n' > "$repo/keep.txt"; printf 'untracked\n' > "$repo/untracked.txt"; printf 'resurrected\n' > "$repo/gone.txt"
+printf '*.txt -diff\n' > "$repo/.gitattributes"
 run ok diff "$tmp/principle.md" "$repo" "$base" "$head" "$tmp/out"
 dfolder=$(dirname "$last")
 check "diff exits 0" '[ "$rc" -eq 0 ]'
 check "tree holds <head>'s version of a changed file" '[ "$(cat "$dfolder/tree/keep.txt")" = "keep v2" ]'
 check "deleted file is absent from the tree" '[ ! -e "$dfolder/tree/gone.txt" ]'
-check "nothing from after <head> or the working tree" '[ ! -e "$dfolder/tree/later.txt" ] && [ ! -e "$dfolder/tree/untracked.txt" ]'
-check "diff file records the deletion" 'grep -q "^deleted file mode" "$dfolder/diff.patch" && grep -q "^-doomed$" "$dfolder/diff.patch"'
+check "nothing from after <head> or the working tree" '[ ! -e "$dfolder/tree/later.txt" ] && [ ! -e "$dfolder/tree/untracked.txt" ] && [ ! -e "$dfolder/tree/.gitattributes" ]'
+check "diff records the deletion as text despite the checkout's .gitattributes" 'grep -q "^deleted file mode" "$dfolder/diff.patch" && grep -q "^-doomed$" "$dfolder/diff.patch"'
 check "diff prompt uses the diff template and principle" 'prompt_of "$call" | grep -q "^Stand-in diff template" && prompt_of "$call" | grep -qF "R&D first"'
 check "diff runs read-only in the snapshot folder" 'has_args "$call" --sandbox read-only && has_args "$call" -C "$dfolder"'
 run ok diff "$tmp/principle.md" "$repo" "$base" no-such-rev "$tmp/out"
