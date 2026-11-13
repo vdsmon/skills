@@ -272,3 +272,14 @@ test('a job watch cannot take the name of a running tracker', async ($, on) => {
   await clock.advance(2 * MIN)
   expect(seen.prompts.length).toBe(1)
 })
+
+test('a check run by hand does not leave a second timer running', async ($, on) => {
+  const { clock, seen } = world(on)
+  await start($)
+  await arm($, { keep: true, everyMinutes: 2 })
+  await $.command.run({ command: 'watches', args: 'check qa-74', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 120 } })
+  expect(seen.checks).toBe(2)
+  await clock.advance(10 * MIN)
+  // One check every 2 minutes from the manual one; with the old timer still alive it was two.
+  expect(seen.checks).toBe(7)
+})
