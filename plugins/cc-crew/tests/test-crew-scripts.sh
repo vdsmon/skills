@@ -19,7 +19,8 @@ snapshot() { (cd "$CC_CREW_HOME" && find . | sort && find . -type f | sort | whi
 line_of() { grep -n -F -- "$1" "$2" | head -n 1 | cut -d: -f1; }
 
 home empty
-check "open with nothing open says so and exits 0" bash -c "bash '$scripts/feedback.sh' open | grep -q '^No open entries; 0 closed.$'"
+check "open with nothing open says so" bash -c "bash '$scripts/feedback.sh' open | grep -q '^No open entries; 0 closed.$'"
+check "open with nothing open exits 0" fb open
 
 # file and open: "page" is filed a second before "builder", so the oldest-first order
 # disagrees with the order of the pieces' names.
