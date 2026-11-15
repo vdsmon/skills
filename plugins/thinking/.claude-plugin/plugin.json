@@ -1,6 +1,6 @@
 {
   "name": "thinking",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Modes of talking that build nothing: grilling stress-tests a plan one round of questions at a time, idea sharpens a raw idea, question answers a question with no edits. Also grill-with-docs and domain-modeling for terms in GLOSSARY.md.",
   "author": {
     "name": "Victor De Simone",
