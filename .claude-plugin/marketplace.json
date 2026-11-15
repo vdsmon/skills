@@ -55,7 +55,7 @@
       "name": "thinking",
       "source": "./plugins/thinking",
       "description": "Modes of talking that build nothing: grilling stress-tests a plan one round of questions at a time, idea sharpens a raw idea, question answers a question with no edits. Also grill-with-docs and domain-modeling for terms in GLOSSARY.md. Portable across SKILL.md-native hosts.",
-      "version": "1.0.0"
+      "version": "1.0.1"
     },
     {
       "name": "open-pr",

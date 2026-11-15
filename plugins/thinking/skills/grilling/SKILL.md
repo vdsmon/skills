@@ -8,7 +8,7 @@ Interview the user relentlessly until you reach a shared understanding. Map the 
 
 Work the tree in **rounds**. The **frontier** is every decision whose prerequisites are already settled: the questions you can ask _now_ without guessing at answers you haven't heard yet. Ask the whole frontier in one round: give each question your recommended answer and say how sure you are of it. Then wait for the user's answers before the next round. If the user asks for one question at a time, make every round a single question.
 
-Grade each recommendation: **sure** when the facts settle it, **leaning** when it is a judgement call with a clear favourite, **coin flip** when it turns on something only the user knows or prefers. Order the round from most sure to least and number the questions in that order, so the user can gloss over the top and spend their attention at the bottom. Under a leaning or coin-flip recommendation, add one line on what would flip it.
+Grade each recommendation: **sure** when the facts settle it, **leaning** when it is a judgement call with a clear favourite, **coin flip** when it turns on something only the user knows or prefers. Order the round from most sure to least and number the questions in that order, so the user can gloss over the top and spend their attention at the bottom. Number across the whole session, never per round: each round starts where the last one stopped, so a number like Q3 names one question for good. Under a leaning or coin-flip recommendation, add one line on what would flip it.
 
 The user can only decide a question worded in terms they hold. A word they have not used or agreed to, whether it comes from the code, a teammate, a document or you, is an unsettled prerequisite: put it to them first, with where it comes from and what it means in plain words, and ask whether the word works for them. Only the questions that need the word wait for that answer. Gather the terms you expect to need into the first round, and word a question in plain words where no term is needed. Replace a word they reject. A round with no new word has no terms line.
 
@@ -19,13 +19,13 @@ Format a round like so:
 
 ---
 
-**Q1. <question title>**: <question body, possibly several paragraphs or a list of choices>
+**Q<n>. <question title>**: <question body, possibly several paragraphs or a list of choices>
 
 Recommended (sure): <your recommended answer>
 
 ---
 
-**Q2. <question title>**: <question body>
+**Q<n+1>. <question title>**: <question body>
 
 Recommended (leaning): <your recommended answer>
 
