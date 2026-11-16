@@ -6,8 +6,10 @@ Usage:
   record.py check <plan.md>
 
 start creates <plans>/<name>/plan.md, <plans> being $CC_CREW_PLANS or ~/.claude/plans,
-then checks it. A file that already exists is left untouched and only checked, so a
-second session continues the same record. The file's path is always the last line.
+holds it for the session as plans.py hold does, then checks it. The name must fit the
+plan name rule, checked before anything is created. A file that already exists is left
+untouched, not held, and only checked, so a second session continues the same record
+without taking it over. The file's path is always the last line.
 
 check reads the Terms, Decisions, Open and Set aside sections and nothing else. It refuses, naming each line: a decision with no reason after "Why:", a
 term with no source in parentheses or no meaning, and a question number used twice
@@ -20,6 +22,9 @@ import os
 import re
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
+import plans  # noqa: E402  the crew's plans.py, which owns a plan file's first lines
 
 SECTIONS = ("Terms", "Decisions", "Open", "Set aside")
 FENCE_RE = re.compile(r"^\s*(```|~~~)")
@@ -39,7 +44,7 @@ REMINDER = (
 
 def template(name, subject):
     return (
-        f"# {name}\n\nStatus: grilling.\n\n"
+        f"# {name}\n\nPhase: grilling.\n\n"
         f"## Principle\n\nNot proposed yet.\n\n"
         f"## What this is for\n\n{subject}\n\n"
         "## Example\n\n## What I checked\n\n## Terms\n\n## Decisions\n\n## Open\n\n## Set aside\n"
@@ -142,15 +147,21 @@ def run_check(path):
 
 
 def run_start(name, subject):
-    root = os.environ.get("CC_CREW_PLANS") or str(Path.home() / ".claude" / "plans")
-    path = Path(root).expanduser() / name / "plan.md"
+    if not plans.valid_name(name):
+        print(f'record.py: "{name}" does not fit: {plans.NAME_RULE}', file=sys.stderr)
+        return 1
+    path = plans.plans_root() / name / "plan.md"
     if not path.exists():
+        session = os.environ.get("CLAUDE_CODE_SESSION_ID", "").strip()
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(template(name, subject), encoding="utf-8")
-        except OSError as err:
-            print(f"record.py: cannot write {path}: {err.strerror}", file=sys.stderr)
+            plans.hold(plans.Plan(path), session if plans.valid_session(session) else None)
+        except (OSError, plans.Unusable) as err:
+            print(f"record.py: cannot write {path}: {getattr(err, 'strerror', None) or err}", file=sys.stderr)
             return 2
+        if not plans.valid_session(session):
+            print("record.py: no session id in $CLAUDE_CODE_SESSION_ID, so the record is held by no session", file=sys.stderr)
     rc = run_check(path)
     print(path)
     return rc
