@@ -78,7 +78,8 @@ type Side = 'top' | 'bottom'
  * `end` comes from a box inside to the frame's border.
  */
 type Role = 'cross' | 'own' | 'start' | 'end'
-type Port = { edge: number; side: Side; x: number; role: Role }
+/** `link` is the part of the edge drawn inside the frame, which an `own` port has none of. */
+type Port = { edge: number; side: Side; x: number; role: Role; link: Link | null }
 /** A laid-out scope: its canvas, where edges meet its frame's border, and the frame's title lines. */
 type Laid = { canvas: Canvas; ports: Port[]; title: string[]; levels: Level[] }
 
@@ -348,7 +349,7 @@ function arrange(items: Item[], plan: Plan, title: string[] | null, pack: Packin
     const ends = [link.from, link.to].map(end => {
       if ('item' in end) return itemNode[index.get(end.item)!]!
       const node = add(end.side === 'top' ? 0 : bottomSlot, 'border')
-      node.port = { edge: link.edge.index, side: end.side, x: 0, role: end.role }
+      node.port = { edge: link.edge.index, side: end.side, x: 0, role: end.role, link }
       borderPorts.push(node.port)
       return node
     })
@@ -362,7 +363,7 @@ function arrange(items: Item[], plan: Plan, title: string[] | null, pack: Packin
   }
   for (const { edge, side } of plan.reserve) {
     const node = add(side === 'top' ? 0 : bottomSlot, 'border')
-    node.port = { edge, side, x: 0, role: 'own' }
+    node.port = { edge, side, x: 0, role: 'own', link: null }
     borderPorts.push(node.port)
   }
 
@@ -683,13 +684,11 @@ function arrange(items: Item[], plan: Plan, title: string[] | null, pack: Packin
     const { x, y } = boxAt(i)
     for (const port of it.sub.ports) {
       if (port.role !== 'start') continue
-      const link = plan.links.find(l => l.edge.index === port.edge)
-      const edge = link?.edge
-      const keys = link?.keys ?? [it.key, it.key]
+      const { edge, keys } = port.link!
       canvas.beginEdge(port.edge, keys[0], keys[1])
       canvas.junction(x + 2 + port.x, y, D)
       canvas.start(x + 2 + port.x, y)
-      if (edge && edge.headFrom !== 'none') canvas.set(x + 2 + port.x, y, headGlyph(edge.headFrom, '▲'), 'edge')
+      if (edge.headFrom !== 'none') canvas.set(x + 2 + port.x, y, headGlyph(edge.headFrom, '▲'), 'edge')
       canvas.endEdge()
     }
   })

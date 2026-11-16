@@ -15,9 +15,10 @@ import type { Drawing, DrawnEdge, Rect, Run } from './types'
  *    crosses straight through the border of a frame that holds one of its ends and not the other;
  * e  two edges share cells only on a common run into or out of one box, or where they cross straight;
  * f  every edge label is whole and nothing else is drawn on its cells;
- * g  everything the parser read is on the drawing: every box with its label, every frame with its
- *    title, every edge joined to its two boxes with its head and its label. An edge into the frame
- *    that holds its source ends just inside that frame's border.
+ * g  everything the parser read is on the drawing: every box with its label and its four corners,
+ *    every frame with its title, every edge joined to its two boxes with its label and its heads, an
+ *    arrow at the target pointing at it and one at the source pointing back along the line. An edge
+ *    into the frame that holds its source ends just inside that frame's border.
  * g reads the list of what must be drawn from the parsed source, never from the drawer's records,
  * so a layout step that drops a thing cannot hide it.
  */
@@ -30,7 +31,6 @@ export type Checked = { flow: Flow | null; failures: Failure[] }
 type Cell = [number, number]
 
 const LINE = /^[─-╿▲▼◄►o×]$/
-const CORNER = /^[┌┐└┘╭╮╰╯]$/
 const HEADS: Record<string, RegExp> = { arrow: /^[▲▼◄►]$/, circle: /^o$/, cross: /^×$/ }
 
 const inside = (r: Rect, [x, y]: Cell) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h
@@ -94,7 +94,14 @@ function checkDrawing(graph: Graph, drawing: Drawing, fail: (check: Check, what:
   }))
   const keyOf = (n: number) => (proxies.has(n) ? `g:${proxies.get(n)}` : `n:${n}`)
   const rects = new Map<string, Rect>([...drawing.boxes, ...drawing.frames].map(r => [r.key, r]))
-  const drawn = (r: Rect) => [[r.x, r.y], [r.x + r.w - 1, r.y], [r.x, r.y + r.h - 1], [r.x + r.w - 1, r.y + r.h - 1]].every(c => CORNER.test(glyph(c as Cell)))
+  const drawn = (r: Rect) => ([[r.x, r.y, '┌╭'], [r.x + r.w - 1, r.y, '┐╮'], [r.x, r.y + r.h - 1, '└╰'], [r.x + r.w - 1, r.y + r.h - 1, '┘╯']] as const).every(([x, y, corner]) => corner.includes(glyph([x, y])))
+  const cellsOf = new Map(drawing.edges.map(e => [e, new Set(e.cells.map(id))]))
+  /** The arrow a head beside or just inside `r` shows to point at it. */
+  const pointsAt = (r: Rect, [x, y]: Cell): string =>
+    (y === r.y - 1 || y === r.y + r.h - 2 ? '▼' : '') + (y === r.y + r.h || y === r.y + 1 ? '▲' : '') + (x === r.x - 1 || x === r.x + r.w - 2 ? '►' : '') + (x === r.x + r.w || x === r.x + 1 ? '◄' : '')
+  /** The arrow at the start of an edge points back the way its line comes from: away from its one next cell. */
+  const pointsBack = (e: DrawnEdge, [x, y]: Cell): string =>
+    ([[0, 1, '▲'], [0, -1, '▼'], [1, 0, '◄'], [-1, 0, '►']] as const).filter(([dx, dy]) => cellsOf.get(e)!.has(id([x + dx, y + dy]))).map(([, , a]) => a).join('')
 
   // g and c for boxes and frames
   graph.nodes.forEach((node, n) => {
@@ -122,7 +129,6 @@ function checkDrawing(graph: Graph, drawing: Drawing, fail: (check: Check, what:
   for (const e of drawing.edges) for (const run of e.label) for (const c of runCells(run)) labelCells.set(id(c), (labelCells.get(id(c)) ?? 0) + 1)
   const edgeCells = new Map<string, DrawnEdge[]>()
   for (const e of drawing.edges) for (const c of e.cells) edgeCells.get(id(c))?.push(e) ?? edgeCells.set(id(c), [e])
-  const cellsOf = new Map(drawing.edges.map(e => [e, new Set(e.cells.map(id))]))
   const allRects = [...drawing.boxes, ...drawing.frames]
 
   graph.edges.forEach((edge, k) => {
@@ -141,6 +147,9 @@ function checkDrawing(graph: Graph, drawing: Drawing, fail: (check: Check, what:
     if (!connected(e.cells)) fail('g-edge', `edge ${k}'s line has a gap`)
     if (!e.cells.every(c => LINE.test(glyph(c)))) fail('g-edge', `edge ${k}'s line is drawn over`)
     if (edge.headTo !== 'none' && !(e.head && HEADS[edge.headTo]!.test(glyph(e.head)))) fail('g-edge', `edge ${k} has no head`)
+    if (edge.headTo === 'arrow' && !pointsAt(toRect, end).includes(glyph(end))) fail('g-edge', `edge ${k}'s head ${glyph(end)} does not point at its target`)
+    if (edge.headFrom !== 'none' && !HEADS[edge.headFrom]!.test(glyph(start))) fail('g-edge', `edge ${k} has no head at its source`)
+    if (edge.headFrom === 'arrow' && pointsBack(e, start) !== glyph(start)) fail('g-edge', `edge ${k}'s head ${glyph(start)} at its source does not point back along its line`)
     if (edge.label !== null && e.label.length === 0) fail('g-edge', `edge ${k} has no label`)
     if (edge.label === null) return
     const parts = e.label.map(l => l.text)
