@@ -229,7 +229,8 @@ function unwrap(s: string, open: string, close: string): string | null {
  */
 export function cleanLabel(raw: string): string {
   const trimmed = stripHtmlTags(raw.trim()).trim()
-  const unquoted = (unwrap(trimmed, '"', '"') ?? unwrap(trimmed, "'", "'") ?? trimmed).trim()
+  // `\n` written in a label, as models often do, breaks it as `<br>` does.
+  const unquoted = (unwrap(trimmed, '"', '"') ?? unwrap(trimmed, "'", "'") ?? trimmed).trim().replaceAll('\\n', '\n')
   const md = unwrap(unquoted, '`', '`')
   return decodeHtmlEntities(md === null ? unquoted : stripMarkdown(md.trim()))
 }

@@ -62,6 +62,16 @@ test('a flowchart or state diagram never shows "diagram failed to render"', asyn
   }
 })
 
+test('a header that a semicolon ends reaches its drawer, as in Mermaid', () => {
+  for (const source of ['stateDiagram-v2; A --> B', 'stateDiagram; A --> B', 'flowchart TD; A --> B', 'graph LR;A-->B']) {
+    expect('art' in mermaidDiagram(source, 100)).toBe(true)
+  }
+  for (const kind of ['xychart-beta', 'sequenceDiagram', 'classDiagram', 'erDiagram', 'pie', 'gantt']) {
+    const drawn = mermaidDiagram(`${kind};`, 100)
+    expect('note' in drawn && /draw as source/.test(drawn.note)).toBe(false)
+  }
+})
+
 test('a diagram of any kind with a title in front matter draws as it does without one', () => {
   const sources = [
     'flowchart LR\n  A --> B',

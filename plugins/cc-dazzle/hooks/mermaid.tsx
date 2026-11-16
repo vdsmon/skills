@@ -61,7 +61,8 @@ const labelBars = (art: string, source: string): string => {
 
 const SUPPORTED = /^(flowchart|graph|statediagram(-v2)?|xychart(-beta)?|sequencediagram|classdiagram|erdiagram|pie|gantt)$/i
 
-const kindOf = (source: string) => source.replace(/^(\s*%%[^\n]*\n)+/, '').trim().split(/\s/)[0] ?? ''
+// The kind is the header's first word, which a `;` ends as a space does: `stateDiagram-v2; A --> B`.
+const kindOf = (source: string) => source.replace(/^(\s*%%[^\n]*\n)+/, '').trim().split(/[\s;]/)[0] ?? ''
 
 const unsupportedKind = (source: string): string | undefined => {
   const kind = kindOf(source)

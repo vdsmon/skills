@@ -90,6 +90,8 @@ const FLOWCHART: Form[] = [
   ['style and linkStyle', 'flowchart LR\n    id1(Start)-->id2(Stop)\n    style id1 fill:#f9f,stroke:#333,stroke-width:4px\n    linkStyle 0 stroke:#ff3,stroke-width:4px,color:red;', ['Start', 'Stop'], ['id1 --> id2']],
   ['classDef, class and :::', 'flowchart LR\n    A:::foo & B:::bar --> C:::foobar\n    classDef foo stroke:#f00\n    class A,B foo', ['A', 'B', 'C'], ['A --> C', 'B --> C']],
   ['an accessible title and description, on one line and over several', 'flowchart LR\n    accTitle: A title; with a semicolon\n    accDescr: A description\n    accDescr {\n      over several\n      lines\n    }\n    A --> B', ['A', 'B'], ['A --> B']],
+  ['a statement over several lines while a brace, a quote or a bracket is open', 'flowchart TD\n  A@{ shape: rect,\n    label: "hello"\n  } --> B\n  C["one\n  two"] --> D\n  E[three\n  four] --> F', ['hello', 'B', 'one\ntwo', 'D', 'three\nfour', 'F'], ['A --> B', 'C --> D', 'E --> F']],
+  ['\\n written in a label breaks it, in every label', 'flowchart TD\n  subgraph S[title\\nnext]\n    A[one\\ntwo] -->|three\\nfour| B\n  end', ['one\ntwo', 'B'], ['A --> B |three\nfour|'], ['title\nnext: A B']],
   ['spaces around links, no semicolons', 'flowchart LR\n    A[Hard edge] -->|Link text| B(Round edge)\n    B --> C{Decision}\n    C -->|One| D[Result one]', ['Hard edge', 'Round edge', 'Decision', 'Result one'], ['A --> B |Link text|', 'B --> C', 'C --> D |One|']],
 ]
 
@@ -113,6 +115,7 @@ const STATE: Form[] = [
   ['classDef, class, accTitle and accDescr', 'stateDiagram\n   direction TB\n   accTitle: This is the accessible title\n   accDescr: This is an accessible description\n   classDef movement font-style:italic\n   [*]--> Still\n   Still --> Moving\n   Moving --> Crash\n   class Still notMoving\n   class Moving, Crash movement\n   class end badBadEvent', ['●', 'Still', 'Moving', 'Crash'], ['[*] --> Still', 'Still --> Moving', 'Moving --> Crash']],
   ['an accessible description over several lines, beside a composite state', 'stateDiagram-v2\n    accDescr {\n      over several\n      lines\n    }\n    state Outer {\n      A --> B\n    }', ['A', 'B'], ['A --> B'], ['Outer: A B']],
   ['style, and keywords in any case', 'stateDiagram-v2\n    A --> B\n    style A fill:#f00\n    ACCTITLE: A title', ['A', 'B'], ['A --> B']],
+  ['\\n written in a state\'s description, a transition\'s label and a note breaks it', 'stateDiagram-v2\n    A : one\\ntwo\n    A --> B : three\\nfour\n    note right of B : five\\nsix', ['one\ntwo', 'B', 'five\nsix'], ['A --> B |three\nfour|', 'B -.- note@2']],
   ['the ::: operator', 'stateDiagram\n   classDef notMoving fill:white\n   [*] --> Still:::notMoving\n   Still --> Moving:::movement\n   Crash:::badBadEvent --> [*]', ['●', 'Still', 'Moving', 'Crash', '●'], ['[*] --> Still', 'Still --> Moving', 'Crash --> [*]']],
   ['spaces in a state\'s name', 'stateDiagram\n    classDef yourState font-style:italic\n    yswsii: Your state with spaces in it\n    [*] --> yswsii:::yourState\n    yswsii --> YetAnotherState', ['Your state with spaces in it', '●', 'YetAnotherState'], ['[*] --> yswsii', 'yswsii --> YetAnotherState']],
 ]
@@ -148,6 +151,9 @@ const PLACES: [place: string, source: (label: string) => string, syntax: string[
   ['inline link text', l => `flowchart TD\n  A -- ${l} --> B`, ['-->', '---', '--']],
   ['inline dotted link text', l => `flowchart TD\n  A -. ${l} .-> B`, ['-.->']],
   ['inline thick link text', l => `flowchart TD\n  A == ${l} ==> B`, ['==>']],
+  ['quoted inline link text', l => `flowchart TD\n  A -- "${l}" --> B`, []],
+  ['quoted inline dotted link text', l => `flowchart TD\n  A -. "${l}" .-> B`, []],
+  ['quoted inline thick link text', l => `flowchart TD\n  A == "${l}" ==> B`, []],
   ['a subgraph title in brackets', l => `flowchart TD\n  subgraph S[${l}]\n    A --> B\n  end`, BRACKETS],
   ['a quoted subgraph title', l => `flowchart TD\n  subgraph "${l}"\n    A --> B\n  end`, []],
   ['a state description', l => `stateDiagram-v2\n  A : ${l}\n  A --> B`, [';']],
@@ -177,4 +183,9 @@ test('where Mermaid reads a ; in a state label as the end of the statement, so d
 test('the two cases the review found draw whole', () => {
   expect(read('flowchart TD\n  A[foo;bar] --> B\n  C[#quot;] --> D')).toEqual({ boxes: ['foo;bar', 'B', '"', 'D'], edges: ['A --> B', 'C --> D'], frames: [], warnings: [] })
   expect(read('stateDiagram-v2\n  A --> B: sends --> signal')).toEqual({ boxes: ['A', 'B'], edges: ['A --> B |sends --> signal|'], frames: [], warnings: [] })
+})
+
+test('a bracket never closed costs its own line only, not the lines after it', () => {
+  const parsed = read('flowchart TD\n  A[never closed --> B\n  C --> D')!
+  expect([parsed.boxes, parsed.edges]).toEqual([['never closed --> B', 'C', 'D'], ['C --> D']])
 })

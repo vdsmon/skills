@@ -70,6 +70,52 @@ function bodyOf(src: string): string[] {
 }
 
 /**
+ * Flowchart lines with a statement that runs on past its line, as Mermaid's lexer reads it: a line that
+ * ends inside a quote or a bracket joins the next, the break standing as a break in the label; inside
+ * the braces of `@{ … }` it stands as a space. A line joins on only when a later line closes what it
+ * opened, so a stray bracket or quote costs its own line, not the rest of the diagram.
+ */
+function joinOpenLines(lines: string[]): string[] {
+  /** What is still open at the end of `line`, given what was open before it: `"`, `[`, `(`, `{`, or `@{`. */
+  const openAfter = (line: string, open: string[]): string[] => {
+    const stack = [...open]
+    const chars = [...line]
+    for (let i = 0; i < chars.length; i++) {
+      const c = chars[i]!
+      const top = stack.at(-1)
+      if (top === '"') {
+        if (c === '"') stack.pop()
+      } else if (c === '"') stack.push('"')
+      else if (stack.length === 0 && c === '%' && chars[i + 1] === '%') break
+      else if (c === '{' && chars[i - 1] === '@') stack.push('@{')
+      else if ('[({'.includes(c)) stack.push(c)
+      else if (')]}'.includes(c) && stack.length > 0) stack.pop()
+    }
+    return stack
+  }
+  const out: string[] = []
+  for (let k = 0; k < lines.length; k++) {
+    let joined = lines[k]!
+    let open = openAfter(joined, [])
+    let end = k
+    while (open.length > 0 && end + 1 < lines.length) {
+      const next = lines[end + 1]!
+      const after = openAfter(next, open)
+      joined += (open.at(-1) === '@{' ? ' ' : '<br>') + next.trim()
+      open = after
+      end++
+    }
+    if (open.length > 0) {
+      out.push(lines[k]!)
+      continue
+    }
+    out.push(joined)
+    k = end
+  }
+  return out
+}
+
+/**
  * Where the statement starting at `i` ends: at a `;` or a `%%` outside quotes and brackets, else at the
  * end of the line. Used for statements that hold no link, whose text can sit only in those.
  */
@@ -161,7 +207,7 @@ function parseGraph(src: string): Graph {
   // Ids given to edges, as in `A e1@--> B`; `e1@{ … }` then sets the edge's look, not a box's.
   const edgeIds = new Set<string>()
 
-  for (const line of bodyOf(src)) {
+  for (const line of joinOpenLines(bodyOf(src))) {
     const acc = accessible(line.trim(), describing)
     describing = acc.open
     if (acc.skip) continue
@@ -489,6 +535,12 @@ function parseLink(chars: string[], start: number): Link | null {
   // run, as in Mermaid's lexer: any other operator inside it is text.
   const closes = op1.endsWith('==') ? /^={2,}>?$/ : op1.endsWith('-.') ? /^-?\.+->?$/ : /^-{2,}>?$/
   for (let j = skipSpaces(chars, i), textStart = j; opens && j < chars.length; ) {
+    // Quoted text is opaque, an arrow in it included.
+    if (chars[j] === '"') {
+      const close = chars.indexOf('"', j + 1)
+      j = close === -1 ? chars.length : close + 1
+      continue
+    }
     if (!isLinkChar(chars[j]!)) {
       j++
       continue
