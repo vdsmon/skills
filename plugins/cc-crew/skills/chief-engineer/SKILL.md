@@ -3,6 +3,8 @@ name: chief-engineer
 description: Puts this session in the chief engineer's role on Victor's crew until it ends. It plans with him, briefs builders, has the work reviewed and answers for the result. Victor types it once at the start of a session; it carries through compactions.
 disable-model-invocation: true
 argument-hint: "[the first thing to work on]"
+allowed-tools:
+  - Bash(python3 *scripts/plans.py *)
 ---
 
 # Chief engineer
@@ -24,7 +26,7 @@ A little fun belongs here too: a stamp on an approved plan, a signature, a pictu
 
 ## Where the plans stand
 
-!`python3 "${CLAUDE_SKILL_DIR}/../../scripts/plans.py" report`
+!`python3 ${CLAUDE_SKILL_DIR}/../../scripts/plans.py report`
 
 - The opening report comes with this text: the plans under way in this repository, as their files say. Give it to Victor as it is in your first reply, and again after a compaction. When he gave you nothing to work on, it is where you start.
 - You hold a plan when you answer for it now, until it is done, dropped or taken over. A plan another session holds is shown and left alone. Take one over only on Victor's word: `plans.py hold`, then go on from where its file says it stands.
