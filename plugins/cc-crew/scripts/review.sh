@@ -3,12 +3,14 @@
 #
 #   review.sh plan <principle-file> <plan-file> <out-dir>
 #   review.sh diff <principle-file> <repo> <base> <head> <out-dir>
+#   review.sh grilling <principle-file> <record-file> <out-dir>
 #   review.sh follow-up <folder> <question-file>
 #
-# plan and diff make a fresh folder under <out-dir>; follow-up asks again in one.
-# Exit 0: the answer file's path is the last line of stdout. Exit 3: Codex refused
-# for usage (limit or quota). Exit 4: any other failure, with the log tail on stderr.
-# A plan or diff answer ends with the crew's reminder, which is not the reviewer's.
+# plan, diff and grilling make a fresh folder under <out-dir>; follow-up asks again
+# in one. Exit 0: the answer file's path is the last line of stdout. Exit 3: Codex
+# refused for usage (limit or quota). Exit 4: any other failure, with the log tail on
+# stderr. A plan, diff or grilling answer ends with the crew's reminder, which is not
+# the reviewer's.
 set -u
 set -o pipefail
 
@@ -20,7 +22,7 @@ PRINCIPLE_TOKEN='{{PRINCIPLE}}'
 fail() { echo "review.sh: $*" >&2; exit 4; }
 
 usage() {
-  sed -n '4,6p' "$0" | sed 's/^#  *//' >&2
+  sed -n '4,7p' "$0" | sed 's/^#  *//' >&2
   exit 4
 }
 
@@ -47,12 +49,19 @@ build_prompt() { # <template-name> <principle-file> <folder>
     || fail "cannot write $3/prompt.md"
 }
 
-# Closes a plan or diff answer with the weighing the chief engineer owes each
-# blocker. It goes here because this file is where a fix gets decided: the same
-# rule, always in view in the role text, was skipped at exactly this moment.
+# Closes an answer with the weighing the chief engineer owes each objection. It
+# goes here because this file is where a fix gets decided: the same rule, always in
+# view in the role text, was skipped at exactly this moment.
 add_reminder() { # <folder>
   local folder=$1 kind d n=0
   kind=$(basename "$folder"); kind=${kind%%-*}
+  # A grilling's objections go to the user as questions, not to a fix, and a grilling
+  # has no rounds of fixes to count.
+  if [ "$kind" = grilling ]; then
+    printf '\n---\n\nFrom the review script, not the reviewer. Weigh each objection before it reaches Victor: one that a fact settles gets one line naming the fact; the rest go to him as questions, in the reviewer'"'"'s own words.\n' \
+      >> "$folder/answer.md" || fail "cannot write the reminder into $folder/answer.md"
+    return
+  fi
   # Reads of one change share an output folder and a principle; another change
   # reviewed into the same output folder has its own principle.
   for d in "$(dirname "$folder")/$kind"-*; do
@@ -145,6 +154,17 @@ cmd_diff() {
   run_codex "$folder" "$folder/answer.md" "$folder/codex.log" "$(cat "$folder/prompt.md")" remind
 }
 
+cmd_grilling() {
+  [ $# -eq 3 ] || usage
+  readable "$1" "principle file"
+  readable "$2" "record file"
+  local folder
+  folder=$(new_folder "$3" grilling) || exit 4
+  { cp "$1" "$folder/principle.md" && cp "$2" "$folder/record.md"; } || fail "cannot copy into $folder"
+  build_prompt review-prompt-grilling.md "$1" "$folder"
+  run_codex "$folder" "$folder/answer.md" "$folder/codex.log" "$(cat "$folder/prompt.md")" remind
+}
+
 # `codex exec resume` takes no --sandbox flag, so nothing shows it stays read-only.
 # A follow-up is a fresh read-only session that reads the earlier turns as files.
 cmd_follow_up() {
@@ -166,6 +186,7 @@ $(cat "$question")"
 case ${1:-} in
   plan) shift; cmd_plan "$@" ;;
   diff) shift; cmd_diff "$@" ;;
+  grilling) shift; cmd_grilling "$@" ;;
   follow-up) shift; cmd_follow_up "$@" ;;
   *) usage ;;
 esac
