@@ -324,9 +324,25 @@ test('a box alone on its row wraps wider than the row of four under it needs', (
   }
 })
 
-// Each draws every sequence twice in both directions, so these batches are half the size of the others.
-for (let from = 0; from < DIAGRAMS.length; from += BATCH / 2) test(`diagrams ${from + 1} to ${Math.min(from + BATCH / 2, DIAGRAMS.length)}: rows wrapped wider leave every drawing of the sequence as wide and no taller, and change no choice`, () => {
-  for (const [name, source] of DIAGRAMS.slice(from, from + BATCH / 2)) {
+test('a row that cannot widen once placed costs the other rows nothing', () => {
+  // At 54 the row of four splits in two; widening every row at once came out wider once placed, and
+  // stepping them all back left the top box at the narrowest wrap, on 12 lines.
+  const source = `flowchart TD
+  T["mnntmb nkltip ddfihncn itssgof rz drhm tdttiab lmflrboak zikhbri gmhtdcoo hhv oivnkglau icbr lcmouz nnlbooz ccozhvhr"]
+  T --> A["go oergbm dtvra tmpoa ldsbbz ptvzbdn imbbk"]
+  T --> B["rihnh gkfpgmoacd cteotrtcb echcuorn piseecoa"]
+  T --> C["ulubmsfzcu vzikkc bbv mevbtf ki hcu"]
+  T --> D["zhmmfl gkiceoabrd ksn phrvgpb lpc vcuipmszke"]`
+  const checked = checkFlow(source, 54)
+  expect(checked.failures).toEqual([])
+  if (checked.flow?.kind !== 'drawn' || !checked.flow.fits) throw new Error('does not fit')
+  const top = checked.flow.drawing.boxes.find(b => b.key === 'n:0')!
+  expect(top.lines.length <= 6).toBe(true)
+})
+
+// Each widens every drawing of every sequence, one row at a time where it must, so these batches are a fifth of the others.
+for (let from = 0; from < DIAGRAMS.length; from += BATCH / 5) test(`diagrams ${from + 1} to ${Math.min(from + BATCH / 5, DIAGRAMS.length)}: rows wrapped wider leave every drawing of the sequence as wide and no taller, and change no choice`, () => {
+  for (const [name, source] of DIAGRAMS.slice(from, from + BATCH / 5)) {
     const graph = parseFlow(source)!
     for (const direction of ['down', 'right'] as const) {
       const [plain, roomy] = [[...drawings(graph, direction, false)], [...drawings(graph, direction)]]

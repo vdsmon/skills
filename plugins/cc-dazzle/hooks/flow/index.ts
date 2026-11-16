@@ -104,7 +104,8 @@ function roomier(graph: Graph, { laid, fit, narrowing }: Step, direction: Direct
   const { drawing } = laid
   // Left to right, a column is as wide as its widest box: there is no room to give the others.
   if (direction === 'right') return drawing
-  const wraps = new Map<string, number>()
+  /** Each row that has room: its boxes and the widest wrap its packed width allows. */
+  const rows: { boxes: string[]; wrap: number }[] = []
   for (const [scope, { width, levels }] of laid.scopes) {
     const room = scope === null ? drawing.width : width
     for (const level of levels) {
@@ -112,19 +113,30 @@ function roomier(graph: Graph, { laid, fit, narrowing }: Step, direction: Direct
       if (level.kind !== 'rank' || boxes.length === 0) continue
       const packed = level.nodes.at(-1)!.end
       const wrap = FITS.map(f => f.wrap).find(w => w > fit.wrap && packed + boxes.reduce((grow, n) => grow + n.across!(w) - (n.end - n.start), 0) <= room)
-      if (wrap !== undefined) for (const n of boxes) wraps.set(n.item!, wrap)
+      if (wrap !== undefined) rows.push({ boxes: boxes.map(n => n.item!), wrap })
     }
   }
-  // Placement can shift a widened row past what its packed width promised: then every widened row
-  // steps one wrap narrower, until the drawing holds or no row is left wider than the fit's.
-  const narrower = (w: number) => FITS.map(f => f.wrap).find(n => n < w)!
-  while (wraps.size > 0) {
+  const holds = (wraps: Map<string, number>) => {
     const wide = layout(graph, fit, { ...narrowing, wraps }, direction)
-    if (wide !== null && wide.drawing.width === drawing.width && wide.drawing.lines.length <= drawing.lines.length) return wide.drawing
-    for (const [key, w] of wraps) {
-      if (narrower(w) > fit.wrap) wraps.set(key, narrower(w))
-      else wraps.delete(key)
+    return wide !== null && wide.drawing.width === drawing.width && wide.drawing.lines.length <= drawing.lines.length ? wide.drawing : null
+  }
+  const wrapsOf = (taken: { boxes: string[]; wrap: number }[]) => new Map(taken.flatMap(r => r.boxes.map(b => [b, r.wrap] as const)))
+  if (rows.length === 0) return drawing
+  const all = holds(wrapsOf(rows))
+  if (all !== null) return all
+  // Placement can shift a widened row past what its packed width promised. Then the rows widen one at a
+  // time, each keeping the widest wrap that still holds with the rows before it, so a row that cannot
+  // widen costs the others nothing.
+  let best = drawing
+  const taken: { boxes: string[]; wrap: number }[] = []
+  for (const row of rows) {
+    for (const wrap of FITS.map(f => f.wrap).filter(w => w <= row.wrap && w > fit.wrap)) {
+      const tried = holds(wrapsOf([...taken, { boxes: row.boxes, wrap }]))
+      if (tried === null) continue
+      taken.push({ boxes: row.boxes, wrap })
+      best = tried
+      break
     }
   }
-  return drawing
+  return best
 }
