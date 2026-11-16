@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Offline checks for cut_briefs.py: a made-up plan with two builder items and one chief
 # engineer item cuts into two briefs, each holding its For, the plan's purpose when it has
-# one, the principle, its own fields and the shared section in that order; the plan is never
-# written; a plan with no builder item writes no brief and says so; a broken plan writes nothing.
+# one, the principle, its own fields, the ladder and the shared section in that order; the plan
+# is never written; a plan with no builder item writes no brief and says so; a broken plan, or
+# one that does not answer the ladder, writes nothing.
 set -u
 here=$(cd "$(dirname "$0")" && pwd)
 cut="$here/../skills/plan/scripts/cut_briefs.py"
@@ -28,6 +29,13 @@ Tea for the office. PURPOSE-MARK
 
 - The kettle is blue. DECISION-MARK
 
+## The ladder
+
+- Rung 1 Bench: boils one cup on the bench. LADDER-MARK
+- Rung 2 Office: a day in the office.
+
+Done means: Rung 2.
+
 ## Work
 
 ### Work item 1 Heater (builder)
@@ -40,11 +48,13 @@ Tea for the office. PURPOSE-MARK
   2. Add a thermostat. STEP-ONE-B
 - Limits: no gas. LIMITS-ONE
 - Done when: water reaches 100 C. DONE-ONE
+- After: nothing.
 - Runs with: Work item 2.
 
 ### Work item 2 Whistle (builder)
 
 - For: someone hears the water boil. FOR-TWO
+- After: Work item 1. AFTER-TWO
 - You own: `whistle/`. OWN-TWO
 - Where: the kettle repo. WHERE-TWO
 - Work, in order:
@@ -89,12 +99,25 @@ for n in 1 2; do
   check "brief $n: keeps the nested work list" 'grep -q "^  1\. .*STEP-$mine" "$b"'
   check "brief $n: holds Runs with" 'grep -q "^- Runs with: Work" "$b"'
   check "brief $n: For only once" '[ "$(grep -c "FOR-$mine" "$b")" = 1 ]'
-  check "brief $n: order For < principle < fields < shared" '[ "$(line_of FOR-$mine "$b")" -lt "$(line_of PRINCIPLE-MARK "$b")" ] && [ "$(line_of PRINCIPLE-MARK "$b")" -lt "$(line_of OWN-$mine "$b")" ] && [ "$(line_of DONE-$mine "$b")" -lt "$(line_of SHARED-MARK "$b")" ]'
+  check "brief $n: order For < principle < fields < ladder < shared" '[ "$(line_of FOR-$mine "$b")" -lt "$(line_of PRINCIPLE-MARK "$b")" ] && [ "$(line_of PRINCIPLE-MARK "$b")" -lt "$(line_of OWN-$mine "$b")" ] && [ "$(line_of DONE-$mine "$b")" -lt "$(line_of "## The ladder" "$b")" ] && [ "$(line_of LADDER-MARK "$b")" -lt "$(line_of SHARED-MARK "$b")" ]'
+  check "brief $n: holds the ladder whole, Done means included" '[ "$(grep -c "^- Rung " "$b")" = 2 ] && grep -q "^Done means: Rung 2\.$" "$b"'
   check "brief $n: ends with the shared section word for word" 'tail -n "$(wc -l < "$shared")" "$b" | diff -q - "$shared" >/dev/null'
   check "brief $n: nothing from the other items" '! grep -qE "[A-Z]+-$other|THREE" "$b"'
   check "brief $n: purpose section, heading included, right after For" '[ "$(sed -n "3,5p" "$b")" = "$(printf "## What this is for\n\nTea for the office. PURPOSE-MARK")" ] && [ "$(line_of PURPOSE-MARK "$b")" -lt "$(line_of PRINCIPLE-MARK "$b")" ]'
   check "brief $n: nothing from decisions" '! grep -q "DECISION-MARK" "$b"'
 done
+
+check "an After field leaves the For field's cut intact" '[ "$(sed -n 2p "$out/work-item-2.md")" = "" ] && [ "$(grep -c "AFTER-TWO" "$out/work-item-2.md")" = 1 ] && [ "$(line_of AFTER-TWO "$out/work-item-2.md")" -gt "$(line_of "### Work item 2" "$out/work-item-2.md")" ]'
+
+awk '/^## The ladder$/{skip=1; next} /^## /{skip=0} !skip' "$plan" > "$tmp/noladder.md"
+err=$(python3 "$cut" "$tmp/noladder.md" "$tmp/broken" 2>&1); rc=$?
+check "no ladder section: exits 1, names the one line that answers it, writes nothing" '[ $rc -eq 1 ] && echo "$err" | grep -qF "None, because <reason>." && [ ! -e "$tmp/broken" ]'
+awk '/^## The ladder$/{print; skip=1; next} /^## /{skip=0} !skip' "$plan" > "$tmp/emptyladder.md"
+python3 "$cut" "$tmp/emptyladder.md" "$tmp/broken" 2>/dev/null; rc=$?
+check "empty ladder section: exits 1, writes nothing" '[ $rc -eq 1 ] && [ ! -e "$tmp/broken" ]'
+awk '/^## The ladder$/{print; print ""; print "None, because the kettle is a toy."; skip=1; next} /^## /{print ""; skip=0} !skip' "$plan" > "$tmp/noneladder.md"
+python3 "$cut" "$tmp/noneladder.md" "$tmp/noneladder" >/dev/null; rc=$?
+check "a ladder of none: cuts, and the brief holds the line" '[ $rc -eq 0 ] && grep -q "^None, because the kettle is a toy\.$" "$tmp/noneladder/work-item-1.md"'
 
 awk '/^## What this is for$/{skip=1; next} /^## /{skip=0} !skip' "$plan" > "$tmp/nopurpose.md"
 python3 "$cut" "$tmp/nopurpose.md" "$tmp/nopurpose" >/dev/null; rc=$?

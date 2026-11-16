@@ -5,8 +5,10 @@ Usage: cut_briefs.py <plan.md> <out-dir>
 
 Each brief is the plan's own lines, in this order: the item's For field, the
 ## What this is for section when the plan has one, the ## Principle section, the
-item's heading and the rest of its body, then the ## Every brief section. Nothing is re-rendered: the item body is copied as written
-with only the For field lifted to the top. Briefs land in <out-dir>/work-item-<n>.md;
+item's heading and the rest of its body, the ## The ladder section, then the ## Every brief
+section. Nothing is re-rendered: the item body is copied as written with only the For field
+lifted to the top. A plan with no ladder section, or an empty one, is refused: every plan
+answers it, in one line "None, because <reason>." when it has no rungs. Briefs land in <out-dir>/work-item-<n>.md;
 stale work-item-*.md files there are removed, so the dir always matches the plan.
 
 Exits 0 when it wrote briefs or when the plan has no builder item (it says so),
@@ -16,7 +18,7 @@ import re
 import sys
 from pathlib import Path
 
-FIELDS = ("For", "You own", "Where", "Work", "Limits", "Done when", "Runs with")
+FIELDS = ("For", "You own", "Where", "Work", "Limits", "Done when", "After", "Runs with")
 FIELD_RE = re.compile(r"^- (%s)\b[^:\n]*:" % "|".join(re.escape(f) for f in FIELDS))
 ITEM_RE = re.compile(r"^### Work item (\d+)\b.*\(([^()]*)\)\s*$")
 FENCE_RE = re.compile(r"^\s*(```|~~~)")
@@ -75,6 +77,12 @@ def cut(plan_text):
     for need in ("Principle", "Every brief", "Work"):
         if need not in spans:
             raise PlanError(f"no '## {need}' section")
+    ladder = trim(lines[slice(*spans["The ladder"])]) if "The ladder" in spans else []
+    if len(ladder) < 2:
+        raise PlanError(
+            "no answer under '## The ladder': add the section above '## Work', with its rungs, "
+            "or the one line 'None, because <reason>.'"
+        )
     principle = trim(lines[slice(*spans["Principle"])])
     shared = trim(lines[slice(*spans["Every brief"])])
     purpose = trim(lines[slice(*spans["What this is for"])]) if "What this is for" in spans else []
@@ -94,7 +102,7 @@ def cut(plan_text):
             continue
         end = items[k + 1][0] if k + 1 < len(items) else w1
         heading, for_block, rest = cut_item(lines, i, end)
-        parts = [p for p in (for_block, purpose, principle, [heading] + rest, shared) if p]
+        parts = [p for p in (for_block, purpose, principle, [heading] + rest, ladder, shared) if p]
         briefs.append((n, "\n\n".join("\n".join(trim(p)).strip("\n") for p in parts) + "\n"))
     return briefs
 
