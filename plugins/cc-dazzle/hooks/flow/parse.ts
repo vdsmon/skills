@@ -22,6 +22,11 @@ function flushStatement(cur: string, out: string[]): string {
  * Quoted spans are opaque, so a label may contain `;` and `%%`.
  */
 export function splitStatements(line: string, out: string[]): void {
+  // An accessible title or description runs to the end of its line, `;` and all.
+  if (ACCESSIBLE_LINE.test(line)) {
+    flushStatement(line, out)
+    return
+  }
   const chars = [...line]
   let cur = ''
   let inQuotes = false
@@ -69,9 +74,30 @@ function headerKind(statements: string[]): string | null {
   return kind === '' ? null : asciiLower(kind)
 }
 
+const ACCESSIBLE_LINE = /^\s*acc(Title|Descr)\s*:/i
+/** An accessible description over several lines, `accDescr {` to `}`. */
+const ACCESSIBLE_BLOCK = /^accDescr\s*\{/i
+
+/**
+ * Whether `st` opens or is part of a statement that draws nothing: an accessible title or description.
+ * `open` is set while a block description runs, and the result says whether it still does.
+ */
+function accessible(st: string, open: boolean): { skip: boolean; open: boolean } {
+  if (open) return { skip: true, open: !st.includes('}') }
+  if (ACCESSIBLE_LINE.test(st)) return { skip: true, open: false }
+  if (ACCESSIBLE_BLOCK.test(st)) return { skip: true, open: !st.includes('}') }
+  return { skip: false, open: false }
+}
+
+/** A Mermaid source without its front matter (`---` lines around a title or config), which draws nothing. */
+export const withoutFrontMatter = (src: string) => src.replace(/^\s*---[ \t]*\r?\n[\s\S]*?\r?\n[ \t]*---[ \t]*(\r?\n|$)/, '')
+
+/** A markdown string, "`…`", may run over several lines; each line break is a break in the label. */
+const joinMarkdownLines = (src: string) => src.replace(/"`[^`"]*`"/g, md => md.replace(/[ \t]*\r?\n[ \t]*/g, '<br>'))
+
 /** The flowchart or state diagram `src` holds, or `null` for any other kind. */
 export function parseFlow(src: string): Graph | null {
-  src = stripControls(src)
+  src = joinMarkdownLines(withoutFrontMatter(stripControls(src)))
   const kind = headerKind(statementsOf(src))
   if (kind === 'graph' || kind === 'flowchart') return parseGraph(src)
   if (kind?.startsWith('statediagram')) return parseState(src)
@@ -84,9 +110,16 @@ function parseGraph(src: string): Graph {
   const statements = statementsOf(src)
   const graph = new Graph()
   let depth = 0
+  let describing = false
+  // Ids given to edges, as in `A e1@--> B`; `e1@{ … }` then sets the edge's look, not a box's.
+  const edgeIds = new Set<string>()
 
   for (const st of statements.slice(1)) {
-    switch (asciiLower(firstWord(st))) {
+    const acc = accessible(st, describing)
+    describing = acc.open
+    if (acc.skip) continue
+    // Mermaid's keywords are case-sensitive: `End` and `Style` are boxes.
+    switch (firstWord(st)) {
       case 'subgraph': {
         const [id, label] = parseSubgraphDecl(st.slice('subgraph'.length).trim())
         if (graph.openGroup(id, label, depth) === null) return graph
@@ -97,17 +130,19 @@ function parseGraph(src: string): Graph {
         if (depth > 0) depth--
         graph.closeGroup()
         continue
-      case 'classdef':
+      case 'classDef':
       case 'class':
       case 'style':
-      case 'linkstyle':
+      case 'linkStyle':
       case 'click':
       case 'direction':
         continue
       default:
         break
     }
-    parseStatement(st, graph)
+    const data = /^([^\s"[\](){}|@]+)@\{/.exec(st)
+    if (data !== null && edgeIds.has(data[1]!)) continue
+    parseStatement(st, graph, edgeIds)
     if (graph.overCap) return graph
   }
   return graph
@@ -143,7 +178,7 @@ function parseSubgraphDecl(rest: string): [string, string] {
  * mermaid.js. Whatever it could not read is recorded in `graph.warnings` rather
  * than failing the diagram — see the note on that field.
  */
-function parseStatement(st: string, graph: Graph): void {
+function parseStatement(st: string, graph: Graph, edgeIds: Set<string>): void {
   const chars = [...st]
   let i = 0
 
@@ -158,6 +193,11 @@ function parseStatement(st: string, graph: Graph): void {
   for (;;) {
     i = skipSpaces(chars, i)
     if (i >= chars.length) break
+    const edgeId = /^([^\s"[\](){}|]+)@(?=[^{"])/.exec(chars.slice(i).join(''))
+    if (edgeId !== null) {
+      edgeIds.add(edgeId[1]!)
+      i += [...edgeId[0]].length
+    }
     const link = parseLink(chars, i)
     if (!link) {
       graph.warnings.push(`dropped, expected a link: "${chars.slice(i).join('')}"`)
@@ -170,6 +210,11 @@ function parseStatement(st: string, graph: Graph): void {
       break
     }
     i = target.next
+    // An invisible link only places its boxes.
+    if (link.invisible) {
+      prev = target.group
+      continue
+    }
     for (const f of prev) {
       for (const t of target.group) {
         // `A <-- B` reads right-to-left: swap the endpoints so the arrow that
@@ -228,7 +273,7 @@ function parseNode(
   if (i === idStart) return null
   const id = chars.slice(idStart, i).join('')
 
-  const shaped = readShapeAt(chars, i)
+  const shaped = chars[i] === '@' && chars[i + 1] === '{' ? readShapeData(chars, i + 2) : readShapeAt(chars, i)
   if (shaped.unclosed !== undefined) {
     graph.warnings.push(`node "${id}": label is missing its closing \`${shaped.unclosed}\``)
   }
@@ -255,6 +300,26 @@ interface Shaped {
   after: number
   /** The closing token that was expected but never found. */
   unclosed?: string
+}
+
+const ROUND_SHAPES = new Set(['rounded', 'event', 'stadium', 'pill', 'terminal', 'circle', 'circ', 'sm-circ', 'small-circle', 'start', 'dbl-circ', 'double-circle', 'fr-circ', 'framed-circle', 'stop', 'f-circ', 'filled-circle', 'junction', 'cyl', 'cylinder', 'database', 'db'])
+const DIAMOND_SHAPES = new Set(['diamond', 'diam', 'decision', 'question', 'hex', 'hexagon', 'prepare'])
+
+/**
+ * The shape data of `id@{ shape: …, label: "…" }`, read from just inside its brace: its label, else
+ * none, and a shape near the one named.
+ */
+function readShapeData(chars: string[], start: number): Shaped {
+  let i = start
+  let inQuotes = false
+  for (; i < chars.length && (inQuotes || chars[i] !== '}'); i++) if (chars[i] === '"') inQuotes = !inQuotes
+  const body = chars.slice(start, i).join('')
+  const after = Math.min(chars.length, i + 1)
+  const field = (name: string) => new RegExp(`(?:^|[,{\\s])${name}\\s*:\\s*("(?:[^"]*)"|[^,}]*)`).exec(body)?.[1]?.trim()
+  const label = field('label')
+  const shape = asciiLower(field('shape') ?? '')
+  const shaped: Shaped = { shape: DIAMOND_SHAPES.has(shape) ? 'diamond' : ROUND_SHAPES.has(shape) ? 'round' : 'rect', label: label === undefined ? null : cleanLabel(label), after }
+  return i < chars.length ? shaped : { ...shaped, unclosed: '}' }
 }
 
 /** Dispatch on the bracket following an id to pick shape and closing token. */
@@ -324,6 +389,8 @@ interface Link {
   line: LineKind
   label: string | null
   next: number
+  /** `~~~`: the boxes are placed as if linked, with no edge between them. */
+  invisible?: boolean
 }
 
 /**
@@ -334,6 +401,10 @@ interface Link {
  */
 function parseLink(chars: string[], start: number): Link | null {
   let i = skipSpaces(chars, start)
+  if (chars[i] === '~' && chars[i + 1] === '~' && chars[i + 2] === '~') {
+    while (chars[i] === '~') i++
+    return { left: 'none', right: 'none', line: 'solid', label: null, next: i, invisible: true }
+  }
   let left: Head = 'none'
   // A leading `o`/`x` decorates the tail, but only directly before an operator.
   if (
@@ -428,6 +499,7 @@ function trailingHead(chars: string[], i: number): { head: Head; next: number } 
 function parseState(src: string): Graph {
   const graph = new Graph()
   let inNote = false
+  let describing = false
   let depth = 0
   // Concurrent regions of a composite state, split by `--`, each have their own start and end.
   const regions = new Map<number | null, number>()
@@ -437,6 +509,9 @@ function parseState(src: string): Graph {
       if (asciiLower(st) === 'end note') inNote = false
       continue
     }
+    const acc = accessible(st, describing)
+    describing = acc.open
+    if (acc.skip) continue
     st = dropStyleTags(st)
     const first = asciiLower(firstWord(st))
     let read: 'open' | true | null = true
@@ -451,7 +526,7 @@ function parseState(src: string): Graph {
       graph.closeGroup()
     } else if (first === '--') {
       regions.set(graph.curGroup, (regions.get(graph.curGroup) ?? 0) + 1)
-    } else if (['direction', 'classdef', 'class', 'hide', 'scale', 'acctitle', 'accdescr'].includes(first)) {
+    } else if (['direction', 'classdef', 'class', 'style', 'hide', 'scale'].includes(first)) {
       // Direction and styling carry no layout meaning here.
     } else if (st.includes('-->')) {
       read = parseTransition(st, graph, regions.get(graph.curGroup) ?? 0)

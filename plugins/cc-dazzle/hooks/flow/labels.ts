@@ -85,6 +85,8 @@ function decodeEntityBody(body: string): string | null {
  * for bracketed labels, or explicitly at each direct-push sink.
  */
 export function decodeHtmlEntities(s: string): string {
+  // Mermaid's own entity codes: `#quot;` for `&quot;`, `#9829;` for `&#9829;`.
+  s = s.replace(/#(\w+);/g, (code, body: string) => decodeEntityBody(/^\d+$/.test(body) ? `#${body}` : body) ?? code)
   if (!s.includes('&')) return s
   const chars = [...s]
   let out = ''
