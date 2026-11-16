@@ -279,6 +279,19 @@ EOF
   check "hold from a worktree names the main checkout" 'grep -qxF "Repository: $tmp/repo" "$CC_CREW_PLANS/pot/plan.md"'
   out=$(cd "$tmp/repo" && python3 "$plans" report)
   check "report in the main checkout lists it" 'printf "%s\n" "$out" | grep -qxF -- "- pot · grilling · held by this session"'
+  # Two submodules of one repository share the folder above their git data; each is its own repository.
+  git init -q "$tmp/sup" && git -C "$tmp/sup" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+  for sub in api web; do
+    git -C "$tmp/sup" -c protocol.file.allow=always submodule add -q "$tmp/repo" "$sub" 2>/dev/null
+    plan "pan-$sub" <<'EOF'
+# pan
+
+Phase: grilling.
+EOF
+    (cd "$tmp/sup/$sub" && python3 "$plans" hold "$CC_CREW_PLANS/pan-$sub/plan.md" --session sess-sub >/dev/null)
+  done
+  out=$(cd "$tmp/sup/api" && python3 "$plans" report --session sess-sub)
+  check "two submodules of one repository are two repositories" 'printf "%s\n" "$out" | grep -qxF -- "- pan-api · grilling · held by this session" && ! printf "%s\n" "$out" | grep -q "pan-web" && printf "%s\n" "$out" | grep -q "in another repository\|in other repositories"'
 fi
 
 echo "--- held names: the plan written to last, takeovers"

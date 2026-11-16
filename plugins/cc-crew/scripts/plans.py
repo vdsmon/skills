@@ -79,15 +79,22 @@ def valid_session(sid):
 
 
 def repository(cwd=None):
-    """The main checkout's folder for cwd: the parent of git's common dir, or cwd outside git."""
+    """The main checkout's folder for cwd, or cwd outside git.
+
+    It is the first worktree git lists: the same from every worktree of a repository. For a
+    submodule git lists its own git folder there, which is not where its files are but is its
+    alone, where the parent of git's common dir would be shared by its siblings.
+    """
     cwd = cwd or os.getcwd()
     try:
         out = subprocess.run(
-            ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            ["git", "worktree", "list", "--porcelain"],
             cwd=cwd, capture_output=True, text=True, timeout=10,
         )
-        if out.returncode == 0 and out.stdout.strip():
-            return os.path.realpath(os.path.dirname(out.stdout.strip().rstrip("/")))
+        if out.returncode == 0:
+            for line in out.stdout.splitlines():
+                if line.startswith("worktree "):
+                    return os.path.realpath(line[len("worktree "):])
     except (OSError, subprocess.SubprocessError):
         pass
     return os.path.realpath(cwd)
