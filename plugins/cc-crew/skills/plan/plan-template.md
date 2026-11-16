@@ -28,8 +28,14 @@ Page: <the page's link>
 
 ## The ladder
 
-- Rung 1 <name>: <what it runs>; <what it mocks or skips>; <what it cannot tell>; <its time and cost, measured, or "not measured yet">; <exists, or built by Work item n>.
-- Rung 2 <name>: <...>
+- Rung 1 <name>
+  - Runs: <what it runs>
+  - Mocks or skips: <what it mocks or skips>
+  - Cannot tell: <what it cannot tell>
+  - Time and cost: <measured, or "not measured yet">
+  - Built by: <Work item n; leave this line out when the rung exists>
+- Rung 2 <name>
+  - <...>
 
 Done means: Rung <n>.
 
