@@ -32,14 +32,16 @@ Send the plan to the reviewer: run, in the background, `"${CLAUDE_PLUGIN_ROOT}/s
 
 ## 3. Build the page
 
-The page is where you and the user align. It is one skeleton, so he finds the same things in the same places in every plan; the look is the plan's own, and differs from the other plans under way, because he tells his plans apart by it.
+The page is where you and the user align. It is one skeleton, so he finds the same things in the same places in every plan; the look is the plan's own.
 
-1. Make the plan's own pieces in `page/` beside the plan file: `look.css`, its colours for both themes and its typefaces, nothing about layout; `picture.html`, the whole in one picture (who does and judges what, or what changes); `new.html`, what is new since you talked (what the review changed, what you decided without asking, every word that still needs his yes), or one sentence saying nothing is; and `own.html` only when the plan has parts of its own, each under its own heading. Use no word that is not his or in Terms.
+1. Make the plan's own pieces in `page/` beside the plan file: `look.css`, its colours for both themes and its typefaces, nothing about layout, and a look that differs from every other plan under way, because he tells his plans apart by it; `picture.html`, the whole in one picture (who does and judges what, or what changes); `new.html`, what is new since you talked (what the review changed, what you decided without asking, every word that still needs his yes), or one sentence saying nothing is; and `own.html` only when the plan has parts of its own, each under its own heading. Use no word that is not his or in Terms.
 2. Sign, unless it is a draft: add the Signed line to the sign-off. Run `plans.py phase <plan.md> "awaiting approval"`.
 3. Run `python3 "${CLAUDE_SKILL_DIR}/scripts/page.py" <plan.md>`. It fills everything else from the plan file and writes `page.html` beside it; exit 1 names every missing piece. Never edit `page.html`: change the plan file or a piece and run it again.
 4. Publish `page.html` privately, write its link into the file's `Page:` line, run the script and publish again, and give him the link with two or three lines on what approval starts.
 
 On top the page shows the plan's name, where it stands, the principle and the version shown. Its blocks: "The whole, in one picture", "New since we talked", "The work", "The ladder", the plan's own parts, "What your approval starts", "Sign-off", "The words", "The record". In the phases grilling and awaiting approval they come in that order, all open; in building and done, "The work", "New since we talked" and "The ladder" lead, open, and the rest follow folded. A dropped plan takes the second order when he had approved it.
+
+The script serves a plan with `page/` beside its file. A plan whose page was written by hand before the script keeps that page to its end: never run the script on it, and wherever a step says to run the script and publish, bring that page up to date by hand.
 
 Experiments that run side by side are marked in the plan and shown on the page, or they do not run. His "approved" covers what the page showed him: anything that is his to decide and is not on it is not approved.
 
@@ -54,7 +56,7 @@ Experiments that run side by side are marked in the plan and shown on the page, 
 
 - Where a work item stands is written in the plan file: `plans.py item <plan.md> <n> <not started|under way|done> [note]` when it starts, at every handback and at the push. The note of a handback names its report and its commits; what the builder suggested, and what you did with it, goes under `## What the builders suggested`.
 - Whenever the plan cannot move, say who or what it waits on: `plans.py wait <plan.md> "<who or what>: <what for>"` (Victor's approval or answer, another plan's merge), and `plans.py go <plan.md>` when it moves again.
-- Every change to the plan file is followed by the page script and a publish to the same link; the script draws the work's states from the phase and the Progress section. That holds for a plan the script serves, one with `page/` beside its file. A plan whose page was written by hand before the script keeps that page to its end, republished by hand; never run the script on it.
+- Every change to the plan file is followed by the page script and a publish to the same link; the script draws the work's states from the phase and the Progress section. A hand-written page is kept, as section 3 says.
 - A comment on the page that shows something is unclear: change the plan file or the piece, republish, post nothing beyond the automatic reply, and resolve the thread.
 - Before the push, the combined diff goes to the reviewer: `review.sh diff <plan.md> <repo> <base> <head>`. A question about an answer goes through `review.sh follow-up <folder> <question-file>`.
 - Where Victor merges, the wait for his merge is part of shipping: `plans.py wait <plan.md> "Victor: the merge of pull request <n>"`, arm a watch on the pull request, and only then end your turn. A watch also wakes you when it is stuck or its check fails, so look at the pull request first: merged, `plans.py go <plan.md>` and finish what is left of shipping; not merged, leave the wait as it is and arm the watch again.
