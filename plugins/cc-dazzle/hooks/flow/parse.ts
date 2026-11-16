@@ -19,9 +19,10 @@ function flushStatement(cur: string, out: string[]): string {
 /**
  * Split one source line into statements on `;`, stopping at a `%%` comment.
  *
- * Quoted spans are opaque, so a label may contain `;` and `%%`.
+ * Quoted spans are opaque, so a label may contain `;` and `%%`. With `colonText`, as in a state
+ * diagram, a `%%` after a statement's first `:` belongs to its description or label, as in Mermaid.
  */
-export function splitStatements(line: string, out: string[]): void {
+export function splitStatements(line: string, out: string[], colonText = false): void {
   // An accessible title or description runs to the end of its line, `;` and all.
   if (ACCESSIBLE_LINE.test(line)) {
     flushStatement(line, out)
@@ -30,6 +31,7 @@ export function splitStatements(line: string, out: string[]): void {
   const chars = [...line]
   let cur = ''
   let inQuotes = false
+  let described = false
   for (let i = 0; i < chars.length; i++) {
     const c = chars[i]
     if (inQuotes) {
@@ -38,15 +40,51 @@ export function splitStatements(line: string, out: string[]): void {
     } else if (c === '"') {
       inQuotes = true
       cur += c
-    } else if (c === '%' && chars[i + 1] === '%') {
+    } else if (c === '%' && chars[i + 1] === '%' && !described) {
       break
     } else if (c === ';') {
       cur = flushStatement(cur, out)
+      described = false
     } else {
+      if (c === ':' && colonText) described = true
       cur += c
     }
   }
   flushStatement(cur, out)
+}
+
+/**
+ * The lines after the header, the first holding whatever follows the header on its own line after a
+ * `;`, as in `graph TD;A-->B`.
+ */
+function bodyOf(src: string): string[] {
+  const lines = srcLines(src)
+  for (let k = 0; k < lines.length; k++) {
+    const out: string[] = []
+    splitStatements(lines[k]!, out)
+    if (out.length === 0) continue
+    const semi = lines[k]!.indexOf(';')
+    return [semi === -1 ? '' : lines[k]!.slice(semi + 1), ...lines.slice(k + 1)]
+  }
+  return []
+}
+
+/**
+ * Where the statement starting at `i` ends: at a `;` or a `%%` outside quotes and brackets, else at the
+ * end of the line. Used for statements that hold no link, whose text can sit only in those.
+ */
+function statementEnd(chars: string[], i: number): number {
+  let depth = 0
+  let inQuotes = false
+  for (; i < chars.length; i++) {
+    const c = chars[i]!
+    if (c === '"') inQuotes = !inQuotes
+    else if (inQuotes) continue
+    else if ('[({'.includes(c)) depth++
+    else if (')]}'.includes(c)) depth = Math.max(0, depth - 1)
+    else if (depth === 0 && (c === ';' || (c === '%' && chars[i + 1] === '%'))) return i
+  }
+  return i
 }
 
 /** All statements in a source block, in order. */
@@ -109,45 +147,49 @@ export function parseFlow(src: string): Graph | null {
 
 // ----------------------------------------------------------------- flowchart
 
+const KEYWORDS = new Set(['subgraph', 'end', 'classDef', 'class', 'style', 'linkStyle', 'click', 'direction'])
+
+/**
+ * A flowchart, line by line. A statement ends where its syntax does, at a `;` or a `%%` outside every
+ * label, so a label keeps whatever characters it holds, as in Mermaid.
+ */
 function parseGraph(src: string): Graph {
-  const statements = statementsOf(src)
   const graph = new Graph()
-  graph.sideways = sideways(statements[0]!.split(/\s+/)[1])
+  graph.sideways = sideways(statementsOf(src)[0]!.split(/\s+/)[1])
   let depth = 0
   let describing = false
   // Ids given to edges, as in `A e1@--> B`; `e1@{ … }` then sets the edge's look, not a box's.
   const edgeIds = new Set<string>()
 
-  for (const st of statements.slice(1)) {
-    const acc = accessible(st, describing)
+  for (const line of bodyOf(src)) {
+    const acc = accessible(line.trim(), describing)
     describing = acc.open
     if (acc.skip) continue
-    // Mermaid's keywords are case-sensitive: `End` and `Style` are boxes.
-    switch (firstWord(st)) {
-      case 'subgraph': {
-        const [id, label] = parseSubgraphDecl(st.slice('subgraph'.length).trim())
-        if (graph.openGroup(id, label, depth) === null) return graph
-        depth++
+    const chars = [...line]
+    for (let i = 0; ; ) {
+      while (i < chars.length && (chars[i] === ' ' || chars[i] === '\t' || chars[i] === ';')) i++
+      if (i >= chars.length || (chars[i] === '%' && chars[i + 1] === '%')) break
+      const rest = chars.slice(i).join('')
+      // Mermaid's keywords are case-sensitive: `End` and `Style` are boxes.
+      const word = /^[A-Za-z]+(?![\w-])/.exec(rest)?.[0] ?? ''
+      const data = /^([^\s"[\](){}|@]+)@\{/.exec(rest)
+      if (KEYWORDS.has(word) || (data !== null && edgeIds.has(data[1]!))) {
+        const end = statementEnd(chars, i)
+        const st = chars.slice(i, end).join('').trim()
+        i = end
+        if (word === 'subgraph') {
+          const [id, label] = parseSubgraphDecl(st.slice('subgraph'.length).trim())
+          if (graph.openGroup(id, label, depth) === null) return graph
+          depth++
+        } else if (word === 'end') {
+          if (depth > 0) depth--
+          graph.closeGroup()
+        }
         continue
       }
-      case 'end':
-        if (depth > 0) depth--
-        graph.closeGroup()
-        continue
-      case 'classDef':
-      case 'class':
-      case 'style':
-      case 'linkStyle':
-      case 'click':
-      case 'direction':
-        continue
-      default:
-        break
+      i = parseStatement(chars, i, graph, edgeIds)
+      if (graph.overCap) return graph
     }
-    const data = /^([^\s"[\](){}|@]+)@\{/.exec(st)
-    if (data !== null && edgeIds.has(data[1]!)) continue
-    parseStatement(st, graph, edgeIds)
-    if (graph.overCap) return graph
   }
   return graph
 }
@@ -182,37 +224,32 @@ function parseSubgraphDecl(rest: string): [string, string] {
  * mermaid.js. Whatever it could not read is recorded in `graph.warnings` rather
  * than failing the diagram — see the note on that field.
  */
-function parseStatement(st: string, graph: Graph, edgeIds: Set<string>): void {
-  const chars = [...st]
-  let i = 0
+function parseStatement(chars: string[], start: number, graph: Graph, edgeIds: Set<string>): number {
+  let i = start
+  // Past a statement that could not be read, the next one starts after its `;`.
+  const skip = (warning: string) => {
+    graph.warnings.push(warning)
+    return statementEnd(chars, i)
+  }
 
   const head = parseNodeGroup(chars, i, graph)
-  if (!head) {
-    graph.warnings.push(`dropped, does not start with a node: "${st}"`)
-    return
-  }
+  if (!head) return skip(`dropped, does not start with a node: "${chars.slice(start).join('')}"`)
   let prev = head.group
   i = head.next
 
   for (;;) {
     i = skipSpaces(chars, i)
-    if (i >= chars.length) break
+    if (i >= chars.length || chars[i] === ';' || (chars[i] === '%' && chars[i + 1] === '%')) return i
     const edgeId = /^([^\s"[\](){}|]+)@(?=[^{"])/.exec(chars.slice(i).join(''))
     if (edgeId !== null) {
       edgeIds.add(edgeId[1]!)
       i += [...edgeId[0]].length
     }
     const link = parseLink(chars, i)
-    if (!link) {
-      graph.warnings.push(`dropped, expected a link: "${chars.slice(i).join('')}"`)
-      break
-    }
+    if (!link) return skip(`dropped, expected a link: "${chars.slice(i).join('')}"`)
     i = skipSpaces(chars, link.next)
     const target = parseNodeGroup(chars, i, graph)
-    if (!target) {
-      graph.warnings.push(`dropped, link has no target: "${st}"`)
-      break
-    }
+    if (!target) return skip(`dropped, link has no target: "${chars.slice(start).join('')}"`)
     i = target.next
     // An invisible link only places its boxes.
     if (link.invisible) {
@@ -232,7 +269,7 @@ function parseStatement(st: string, graph: Graph, edgeIds: Set<string>): void {
           headFrom: reversed ? link.right : link.left,
           line: link.line,
         })
-        if (!pushed) return
+        if (!pushed) return chars.length
       }
     }
     prev = target.group
@@ -425,7 +462,7 @@ function parseLink(chars: string[], start: number): Link | null {
   const op1 = chars.slice(opStart, i).join('')
   if (left === 'none' && op1.startsWith('<')) left = 'arrow'
 
-  let line = lineKind(op1)
+  const line = lineKind(op1)
   let right: Head = op1.includes('>') ? 'arrow' : 'none'
   if (right === 'none') {
     const trailing = trailingHead(chars, i)
@@ -438,7 +475,8 @@ function parseLink(chars: string[], start: number): Link | null {
   if (chars[skipSpaces(chars, i)] === '|') {
     i = skipSpaces(chars, i) + 1
     const lStart = i
-    while (i < chars.length && chars[i] !== '|') i++
+    // A quoted label may hold a `|` of its own.
+    for (let quoted = false; i < chars.length && (quoted || chars[i] !== '|'); i++) if (chars[i] === '"') quoted = !quoted
     const label = cleanLabel(chars.slice(lStart, i).join(''))
     if (chars[i] === '|') i++
     return { left, right, line, label: nonEmpty(label), next: i }
@@ -447,6 +485,9 @@ function parseLink(chars: string[], start: number): Link | null {
   // Only an opening `--`, `-.` or `==` takes inline text; a hyphen or dot inside the text, as in
   // `-- re-run -->`, is part of it, and the text ends at the next whole operator.
   const opens = right === 'none' && /^<?(--|-\.|==)$/.test(op1)
+  // Text opened by `--` ends only at a run of dashes, by `==` at a run of equals, by `-.` at a dotted
+  // run, as in Mermaid's lexer: any other operator inside it is text.
+  const closes = op1.endsWith('==') ? /^={2,}>?$/ : op1.endsWith('-.') ? /^-?\.+->?$/ : /^-{2,}>?$/
   for (let j = skipSpaces(chars, i), textStart = j; opens && j < chars.length; ) {
     if (!isLinkChar(chars[j]!)) {
       j++
@@ -455,7 +496,7 @@ function parseLink(chars: string[], start: number): Link | null {
     const op2Start = j
     while (j < chars.length && isLinkChar(chars[j]!)) j++
     const op2 = chars.slice(op2Start, j).join('')
-    if (op2Start === textStart || op2.startsWith('<') || (op2.length < 2 && !op2.includes('>'))) continue
+    if (op2Start === textStart || !closes.test(op2)) continue
     const text = chars.slice(textStart, op2Start).join('')
     if (op2.includes('>')) {
       right = 'arrow'
@@ -466,7 +507,6 @@ function parseLink(chars: string[], start: number): Link | null {
         j = trailing.next
       }
     }
-    if (line === 'solid') line = lineKind(op2)
     return { left, right, line, label: nonEmpty(cleanLabel(text)), next: j }
   }
 
@@ -503,7 +543,19 @@ function parseState(src: string): Graph {
   // Concurrent regions of a composite state, split by `--`, each have their own start and end.
   const regions = new Map<number | null, number>()
 
-  for (let st of statementsOf(src).slice(1)) {
+  // A note's lines are its text whole, `;` and `%%` included, as in Mermaid; other lines split into
+  // statements, a `%%` after a statement's `:` being part of its label.
+  const statements = function* () {
+    for (const line of bodyOf(src)) {
+      if (note !== null) yield line.trim()
+      else {
+        const out: string[] = []
+        splitStatements(line, out, true)
+        yield* out
+      }
+    }
+  }
+  for (let st of statements()) {
     if (note !== null) {
       if (asciiLower(st) !== 'end note') note.lines.push(st)
       else {
@@ -537,7 +589,7 @@ function parseState(src: string): Graph {
       if (depth === 0) graph.sideways = sideways(st.split(/\s+/)[1]?.toUpperCase())
     } else if (['classdef', 'class', 'style', 'hide', 'scale'].includes(first)) {
       // Styling carries no layout meaning here.
-    } else if (st.includes('-->')) {
+    } else if (st.split(':')[0]!.includes('-->')) {
       read = parseTransition(st, graph, regions.get(graph.curGroup) ?? 0)
     } else {
       read = parseStateDesc(st, graph)
@@ -599,45 +651,18 @@ function parseStateDecl(st: string, graph: Graph, depth: number): 'open' | true 
 
 /** `A --> B: label`, including chains `A --> B --> C`. */
 function parseTransition(st: string, graph: Graph, region: number): true | null {
-  let rest = st
-  let prev: number | null = null
-
-  for (;;) {
-    const split = splitOnce(rest, '-->')
-    if (!split) break
-    const [lhs, rhs] = split
-
-    const fromId = lhs.trimEnd().replace(/-+$/, '').trim()
-    let from: number
-    if (prev !== null) {
-      // Mid-chain: the source is the previous target, so nothing may precede.
-      if (fromId !== '') return null
-      from = prev
-    } else {
-      if (fromId === '') return null
-      const f = stateEndpoint(graph, fromId, true, region)
-      if (f === null) return null
-      from = f
-    }
-
-    const nextArrow = rhs.indexOf('-->')
-    const toPartRaw = nextArrow === -1 ? rhs : rhs.slice(0, nextArrow)
-    const tail = nextArrow === -1 ? '' : rhs.slice(nextArrow)
-
-    const colon = splitOnce(toPartRaw, ':')
-    const toPart = colon ? colon[0] : toPartRaw
-    const label = colon ? nonEmpty(cleanLabel(colon[1])) : null
-
-    const toId = toPart.trimStart().replace(/^>+/, '').trimEnd().replace(/-+$/, '').trim()
-    if (toId === '') return null
-    const to = stateEndpoint(graph, toId, false, region)
-    if (to === null) return null
-
-    if (!graph.pushEdge({ from, to, label, headTo: 'arrow', headFrom: 'none', line: 'solid' })) {
-      return true
-    }
-    prev = to
-    rest = tail
+  // The label follows the first `:`, and is text whole, arrows included; a state's id holds no `:`.
+  const colon = splitOnce(st, ':')
+  const label = colon ? nonEmpty(cleanLabel(colon[1])) : null
+  const ids = (colon ? colon[0] : st).split('-->').map(id => id.trim().replace(/^>+/, '').replace(/-+$/, '').trim())
+  if (ids.length < 2 || ids.some(id => id === '')) return null
+  let from = stateEndpoint(graph, ids[0]!, true, region)
+  for (const [k, id] of ids.slice(1).entries()) {
+    const to = stateEndpoint(graph, id, false, region)
+    if (from === null || to === null) return null
+    // In a chain, the label belongs to its last transition.
+    if (!graph.pushEdge({ from, to, label: k === ids.length - 2 ? label : null, headTo: 'arrow', headFrom: 'none', line: 'solid' })) return true
+    from = to
   }
   return true
 }

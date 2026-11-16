@@ -122,3 +122,59 @@ for (const [name, source, boxes, edges = [], frames = []] of [...FLOWCHART, ...S
     expect(read(source)).toEqual({ boxes, edges, frames, warnings: [] })
   })
 }
+
+// A label is the author's text. In every place a label sits, each character or operator that means
+// something elsewhere must give the same boxes, edges and frames as a plain word, with the label whole.
+const OPERATORS = [';', '-->', '---', '-.->', '==>', '&', '%%', '|', ':', '--', '[', ']', '(', ')', '{', '}']
+const BRACKETS = ['[', ']', '(', ')', '{', '}', '|']
+
+/**
+ * Each place, with the operators Mermaid's own grammar reads as syntax there, and so are left out:
+ * bare text in brackets or between pipes takes no bracket, pipe or quote; inline text ends at its own
+ * kind of operator; in a state diagram, a `;` ends a description, a transition's label and a one-line
+ * note, and a one-line note also ends at a `:`.
+ */
+const PLACES: [place: string, source: (label: string) => string, syntax: string[]][] = [
+  ...(
+    [
+      ['[', ']'], ['(', ')'], ['([', '])'], ['[[', ']]'], ['[(', ')]'], ['((', '))'], ['>', ']'],
+      ['{', '}'], ['{{', '}}'], ['[/', '/]'], ['[\\', '\\]'], ['(((', ')))'],
+    ] as const
+  ).map(([open, close]): (typeof PLACES)[number] => [`a box label in ${open}${close}`, l => `flowchart TD\n  A${open}${l}${close} --> B`, BRACKETS]),
+  ['a quoted box label', l => `flowchart TD\n  A["${l}"] --> B`, []],
+  ['shape data', l => `flowchart TD\n  A@{ shape: rect, label: "${l}" } --> B`, []],
+  ['a link label between pipes', l => `flowchart TD\n  A -->|${l}| B`, BRACKETS],
+  ['a quoted link label between pipes', l => `flowchart TD\n  A -->|"${l}"| B`, []],
+  ['inline link text', l => `flowchart TD\n  A -- ${l} --> B`, ['-->', '---', '--']],
+  ['inline dotted link text', l => `flowchart TD\n  A -. ${l} .-> B`, ['-.->']],
+  ['inline thick link text', l => `flowchart TD\n  A == ${l} ==> B`, ['==>']],
+  ['a subgraph title in brackets', l => `flowchart TD\n  subgraph S[${l}]\n    A --> B\n  end`, BRACKETS],
+  ['a quoted subgraph title', l => `flowchart TD\n  subgraph "${l}"\n    A --> B\n  end`, []],
+  ['a state description', l => `stateDiagram-v2\n  A : ${l}\n  A --> B`, [';']],
+  ['state … as', l => `stateDiagram-v2\n  state "${l}" as A\n  A --> B`, []],
+  ['a transition label', l => `stateDiagram-v2\n  A --> B : ${l}`, [';']],
+  ['a one-line note', l => `stateDiagram-v2\n  A --> B\n  note right of A : ${l}`, [';', ':']],
+  ['a note over several lines', l => `stateDiagram-v2\n  A --> B\n  note left of A\n    ${l}\n  end note`, []],
+]
+
+for (const [place, source, syntax] of PLACES) {
+  test(`every operator inside ${place} is text, save where Mermaid reads it as syntax`, () => {
+    const plain = JSON.stringify(read(source('a plain b')))
+    const wrong = OPERATORS.filter(op => !syntax.includes(op)).flatMap(op => {
+      const label = `a ${op} b`
+      const want = plain.replaceAll('a plain b', JSON.stringify(label).slice(1, -1))
+      const got = JSON.stringify(read(source(label)))
+      return got === want ? [] : [`${op}: ${got}`]
+    })
+    expect(wrong).toEqual([])
+  })
+}
+
+test('where Mermaid reads a ; in a state label as the end of the statement, so does the parser', () => {
+  expect(read('stateDiagram-v2\n  A --> B : a ; b')).toEqual({ boxes: ['A', 'B', 'b'], edges: ['A --> B |a|'], frames: [], warnings: [] })
+})
+
+test('the two cases the review found draw whole', () => {
+  expect(read('flowchart TD\n  A[foo;bar] --> B\n  C[#quot;] --> D')).toEqual({ boxes: ['foo;bar', 'B', '"', 'D'], edges: ['A --> B', 'C --> D'], frames: [], warnings: [] })
+  expect(read('stateDiagram-v2\n  A --> B: sends --> signal')).toEqual({ boxes: ['A', 'B'], edges: ['A --> B |sends --> signal|'], frames: [], warnings: [] })
+})
