@@ -1,3 +1,4 @@
+import type { DrawnBox } from './flow/types'
 import { graphemes, width } from './text'
 
 const DAY = 86400000
@@ -22,7 +23,11 @@ const pad = (text: string, size: number) => text + ' '.repeat(Math.max(0, size -
 
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n))
 
-export type ChartArt = { text: string; slices?: number[][] }
+/**
+ * A diagram drawn as text. A pie gives the slice each cell draws; a flowchart or state diagram gives
+ * its boxes as its drawer placed them, so they need not be found by their corners.
+ */
+export type ChartArt = { text: string; slices?: number[][]; boxes?: DrawnBox[] }
 
 const QUADRANTS = ' ▘▝▀▖▌▞▛▗▚▐▜▄▙▟█'
 

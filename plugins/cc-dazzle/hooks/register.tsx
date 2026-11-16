@@ -11,14 +11,14 @@ import { drawsHyperlinks, pathsToProbe, toolPathsToProbe } from './links'
 import { isReadOnlyCall } from './readonly'
 import type { Block } from './markdown'
 import { parse } from './markdown'
-import { artHues, boxArt, chartSeries, inlineMarks, mermaidArt, shortenEdgeLabels, unsupportedKind } from './mermaid'
+import { artHues, boxArt, chartSeries, inlineMarks, mermaidDiagram } from './mermaid'
 import type { DrawPaste } from './prompt'
 import { pasteLang, renderUserPrompt } from './prompt'
 import { openText, registerStretch, stretchBody, stretchNote, writtenText } from './stretch/index'
 import { deliveredText, isQueued, withQueued, withoutDelivered } from './queue'
 import type { Table } from './tables'
 import { MAX_ROWS, PREVIEW_ROWS, captionOf, isTabular, markdownTable, tableFooter, toolTable } from './tables'
-import { remember, width } from './text'
+import { remember } from './text'
 import type { Style } from './theme'
 import { THEME } from './theme'
 import { bashEdits, editNotes, hasShellOutput, renderBashEdits, renderDiffCard, renderExpandedShell, renderToolGroup, renderToolRow, withoutBashEdits } from './tools'
@@ -153,21 +153,12 @@ const drawMarkdown = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['
   for (const [i, block] of blocks.entries()) {
     if (block.kind !== 'code' || block.lang.toLowerCase() !== 'mermaid') continue
     const source = block.lines.join('\n')
-    let narrowest = Infinity
-    for (const max of [Infinity, 24, 12]) {
-      const text = max === Infinity ? source : shortenEdgeLabels(source, max)
-      const art = mermaidArt(text, columns)
-      const wide = art === null ? Infinity : Math.max(...art.text.split('\n').map(width))
-      narrowest = Math.min(narrowest, wide)
-      if (art === null || wide > columns - 6) continue
-      const series = chartSeries(text, columns)
-      drawn.set(i, { element: boxArt(el, style, art.text, `b${i}`, inlineMarks(source), art.slices, series), art: art.text, hues: () => artHues(style, art.text, art.slices, series) })
-      break
-    }
-    if (!drawn.has(i) && !block.isOpen) {
-      const kind = unsupportedKind(source)
-      drawn.set(i, { note: kind ? `${kind} diagrams draw as source for now` : narrowest === Infinity ? 'diagram failed to render' : `diagram is ${narrowest} cols, terminal is ${columns}` })
-    }
+    const diagram = mermaidDiagram(source, columns)
+    if ('art' in diagram) {
+      const { art } = diagram
+      const series = chartSeries(source, columns)
+      drawn.set(i, { element: boxArt(el, style, art, `b${i}`, inlineMarks(source), series), art: art.text, hues: () => artHues(style, art, series) })
+    } else if (!block.isOpen) drawn.set(i, { note: diagram.note })
   }
   const tip = notes?.press ? noteTip(blocks, text => void $.ui.toast(text)) : undefined
   return renderBlocks(el, notes ? { ...style, noteKey: instanceKey(notes.id) } : style, blocks, columns, drawn, copy, folder($, el, open), tip)

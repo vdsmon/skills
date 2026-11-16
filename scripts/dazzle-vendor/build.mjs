@@ -1,13 +1,10 @@
 // Builds plugins/cc-dazzle/hooks/vendor. This is scripts/build-vendor.mjs of NahumLitvin/prismantis
 // at 36d6c6c (MIT, see plugins/cc-dazzle/NOTICE), changed only where a comment says cc-dazzle: the
-// output paths and the calls to cc-dazzle's own patches in patches.mjs. With --upstream-only, which
-// leaves those patches out, it writes upstream's two bundles byte for byte.
+// output paths. It writes upstream's two bundles byte for byte.
 
 import { build, transformSync } from 'esbuild'
 import { readFileSync } from 'node:fs'
 import { basename } from 'node:path'
-// cc-dazzle
-import { OWN_FILES, checkOwnPatches, ownPatches } from './patches.mjs'
 
 const bundledPackages = new Set()
 const track = result => {
@@ -275,10 +272,8 @@ track(await build({
         const patched = src
           .replace(DRAW_ANCHOR, `${DRAW_ANCHOR}\n  for (const label of labelCanvases) clearLabelGaps(graph.canvas, label)`)
           .replace(DRAW_IMPORT, DRAW_IMPORT.replace('{ ', '{ clearLabelGaps, '))
-        // cc-dazzle: its patches go on top of upstream's, here and in the files upstream leaves alone.
-        return { contents: ownPatches(args.path, patched), loader: 'ts' }
+        return { contents: patched, loader: 'ts' }
       })
-      api.onLoad({ filter: OWN_FILES }, args => ({ contents: ownPatches(args.path, readFileSync(args.path, 'utf8')), loader: 'ts' }))
       api.onLoad({ filter: PATHFINDER }, args => {
         const src = readFileSync(args.path, 'utf8')
         if (!src.includes(PATH_LOOP)) throw new Error('pathfinder.ts getPath no longer pops the queue the same way')
@@ -298,9 +293,6 @@ track(await build({
     },
   }],
 }))
-
-// cc-dazzle
-checkOwnPatches()
 
 for (const name of bundledPackages) {
   const { license } = JSON.parse(readFileSync(`node_modules/${name}/package.json`, 'utf8'))

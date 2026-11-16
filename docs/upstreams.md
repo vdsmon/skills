@@ -8,6 +8,7 @@ Port every fix and every useful or cool feature. Leave a change out only when it
 |---|---|---|---|---|
 | cc-dazzle | [NahumLitvin/prismantis](https://github.com/NahumLitvin/prismantis) | fork `vdsmon/prismantis` 0.15.19, which split from upstream at 0.15.1 (`af067b6`) | 0.44.0 (`36d6c6c`) | 2026-11-06 |
 | cc-dazzle (stretchtext) | [pro-vi/cc-stretch](https://github.com/pro-vi/cc-stretch) | 0.3.3 (`4466e11`) | 0.5.4 (`e8f08cb`) | 2026-11-06 |
+| cc-dazzle (flowcharts and state diagrams) | [xl0/grok-mermaid](https://github.com/xl0/grok-mermaid), a port of the drawer in [xai-org/grok-build](https://github.com/xai-org/grok-build) | 0.2.3 (npm) | 0.2.3 | 2026-11-15 |
 
 To list what is new since the last check:
 
@@ -20,16 +21,27 @@ $ git log --oneline 36d6c6c..HEAD
 
 `plugins/cc-dazzle/hooks/vendor/` is built here, by `mise run vendor:dazzle`, and committed. Never edit a bundle by hand.
 
-- `scripts/dazzle-vendor/build.mjs` is prismantis's `scripts/build-vendor.mjs` at the "Last checked" commit, changed only on the lines marked `cc-dazzle`. `package.json` pins the versions upstream's lockfile has for esbuild, beautiful-mermaid and prismjs.
-- `scripts/dazzle-vendor/patches.mjs` holds cc-dazzle's own changes to beautiful-mermaid's source, and `back-edges.ts` the module they call. They route the back edges of flowcharts and state diagrams, which upstream draws over other edges. `plugins/cc-dazzle/hooks/back-edges.test.tsx` is their test.
+- `scripts/dazzle-vendor/build.mjs` is prismantis's `scripts/build-vendor.mjs` at the "Last checked" commit, changed only on the lines marked `cc-dazzle`, which set the output paths. `package.json` pins the versions upstream's lockfile has for esbuild, beautiful-mermaid and prismjs.
+- cc-dazzle changes nothing in beautiful-mermaid: the bundles are upstream's, byte for byte. It draws sequence, class and ER diagrams and xy charts. Flowcharts and state diagrams never reach it; `hooks/flow/` draws them.
 
 On a sync:
 
 1. Take upstream's new `build-vendor.mjs` whole and put the `cc-dazzle` lines back.
-2. Where upstream now loads a file that `patches.mjs` changes (`grid.ts` from prismantis #456 on), pass that handler's result through `ownPatches`, as the `draw.ts` handler does, and take the file out of `OWN_FILES`. esbuild loads a file through the first handler that matches, so the build stops when a patched file never reached `ownPatches`, and when a patch no longer finds its text.
-3. Run `node build.mjs --upstream-only` in `scripts/dazzle-vendor/` and compare `hooks/vendor/` with upstream's `plugin/hooks/vendor/` at that commit: the files must be the same byte for byte. Then run `mise run vendor:dazzle` and the tests.
+2. Run `mise run vendor:dazzle` and compare `hooks/vendor/` with upstream's `plugin/hooks/vendor/` at that commit: the files must be the same byte for byte. Then run the tests.
 
-Upstream's test for the cycle hang (#370) expects the source; here that diagram draws, so `sync.test.tsx` expects the drawing.
+Upstream's test for the cycle hang (#370) expects the source; here `hooks/flow/` draws that diagram, so `sync.test.tsx` expects the drawing. Upstream's fixes to beautiful-mermaid's flowchart layout (the rank table of #456, for one) have nothing to port to here.
+
+## cc-dazzle's flowchart drawer
+
+`plugins/cc-dazzle/hooks/flow/` draws flowcharts and state diagrams. It started as a copy of grok-mermaid 0.2.3's `src/` (Apache-2.0), and each file that still holds its code says so on its first line. No build: the mod loads the TypeScript.
+
+Kept from grok-mermaid: the parser (`parse.ts`, `graph.ts`), label wrapping (`labels.ts`), the canvas with its line bits (`canvas.ts`), and the ranking in `layout.ts`. Left out: its sequence, class and ER drawers, which beautiful-mermaid draws here; `ansi`, `source-box` and its width tables, which the mod has its own of.
+
+Replaced, because it is what drew wrong: its placement and routing. grok-mermaid ran every edge that skips a row or points back around the diagram on shared lanes, across the boxes beside it, wrote a label up to the first taken cell and cut the rest, cut box labels after 4 lines, read an id with hyphens as an edge, flattened composite states, and wrapped at one fixed width. Here lines and labels are placed like boxes on levels between the rows, so nothing is routed by search and nothing is cut; the drawer tries narrower wraps and then splits rows until the drawing fits; and one layout draws both directions.
+
+`flow/checks.ts` states the rules every drawing keeps, and the tests run them over `flow/corpus.ts` (the shapes of 24 flowcharts from real sessions, their words replaced), state and frame diagrams, and 200 random graphs, at five widths and in both directions. `flow/syntax.test.ts` holds the parser to the forms in Mermaid's documentation, apart from the drawer.
+
+On a look at upstream: read grok-mermaid's changelog for parser fixes and new syntax. Its layout fixes do not apply.
 
 ## prismantis 0.32.1 to 0.44.0
 

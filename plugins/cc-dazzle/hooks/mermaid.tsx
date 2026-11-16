@@ -2,7 +2,11 @@ import type { ElementTable, RenderElement } from 'claude-code'
 
 import type { ChartArt } from './charts'
 import { ganttText, pieText } from './charts'
-import { cells, graphemes, remember, width } from './text'
+import type { Flow } from './flow/index'
+import type { DrawnBox } from './flow/types'
+import { drawFlow } from './flow/index'
+import { withoutFrontMatter } from './flow/parse'
+import { cells, graphemes, remember, widestLine, width } from './text'
 import type { Style, Theme } from './theme'
 import { DIAGRAM_HUES } from './theme'
 import { renderMermaidAscii, setChartSize } from './vendor/mermaid-text.js'
@@ -55,19 +59,19 @@ const labelBars = (art: string, source: string): string => {
   return grid.map(row => row.join('').trimEnd()).join('\n').replace(/^\n/, '')
 }
 
-const SIDEWAYS = /^(\s*(?:flowchart|graph)[ \t]+)(LR|RL)\b/
-
 const SUPPORTED = /^(flowchart|graph|statediagram(-v2)?|xychart(-beta)?|sequencediagram|classdiagram|erdiagram|pie|gantt)$/i
 
-const kindOf = (source: string) => source.replace(/^(\s*%%[^\n]*\n)+/, '').trim().split(/\s/)[0] ?? ''
+// The kind is the header's first word, which a `;` ends as a space does: `stateDiagram-v2; A --> B`.
+const kindOf = (source: string) => source.replace(/^(\s*%%[^\n]*\n)+/, '').trim().split(/[\s;]/)[0] ?? ''
 
-export const unsupportedKind = (source: string): string | undefined => {
+const unsupportedKind = (source: string): string | undefined => {
   const kind = kindOf(source)
   return kind && !SUPPORTED.test(kind) ? kind : undefined
 }
 
-// Pies and gantts are drawn here, not by beautiful-mermaid. A pie is round while each slice can take
-// its own diagram hue, and falls back to one bar per slice past that or in a narrow terminal.
+// Flowcharts and state diagrams are drawn by flow/, pies and gantts here, not by beautiful-mermaid. A
+// pie is round while each slice can take its own diagram hue, and falls back to one bar per slice past
+// that or in a narrow terminal.
 // ganttText leaves 2 columns spare for upstream's frame; this box needs 6.
 const OWN: Record<string, (source: string, columns: number) => ChartArt | null> = {
   pie: (source, columns) => pieText(source, false, columns, DIAGRAM_HUES.length),
@@ -86,23 +90,49 @@ export const inlineMarks = (source: string): [string[], Mark][] =>
   [...source.matchAll(/<(i|em|b|strong|u|s|del)\b[^<>\n]*>([^<\n]+)<\/\1\s*>/gi)]
     .map(m => [cells(m[2]!.trim()), { [TAG_MARK[m[1]!.toLowerCase()]!]: true }] as [string[], Mark])
 
-const fitted = new Map<string, ChartArt | null>()
+/** A diagram's art, or the note shown above its source when it has none. */
+export type Diagram = { art: ChartArt } | { note: string }
 
-export const mermaidArt = (source: string, columns: number): ChartArt | null =>
-  remember(fitted, `${columns}:${source}`, () => {
+// The columns the frame and indent around a diagram take from the reply's width.
+const FRAME = 6
+
+type Drawn = { art: ChartArt; needs: number } | { note: string }
+
+const flowArt = (flow: Flow): Drawn =>
+  flow.kind === 'too-large' ? { note: 'diagram is too large to draw' }
+  : flow.kind === 'empty' ? { note: 'diagram has nothing to draw' }
+  : { art: { text: flow.drawing.lines.join('\n'), boxes: flow.drawing.boxes }, needs: flow.drawing.width }
+
+const drawnArt = new Map<string, Drawn>()
+
+// The art drawn for `columns`, whether or not it fits them.
+const artOf = (source: string, columns: number): Drawn =>
+  remember(drawnArt, `${columns}:${source}`, () => {
+    source = withoutFrontMatter(source)
+    const unsupported = unsupportedKind(source)
+    if (unsupported) return { note: `${unsupported} diagrams draw as source for now` }
     source = source.replace(INLINE_TAG, '')
-    if (source.length > 8000 || source.split('\n').length > MAX_LINES) return null
+    if (source.length > 8000 || source.split('\n').length > MAX_LINES) return { note: 'diagram is too large to draw' }
+    const flow = drawFlow(source, columns - FRAME)
+    if (flow) return flowArt(flow)
     const own = OWN[kindOf(source).toLowerCase()]
-    if (own) return own(source, columns)
-    const art = draw(source, columns)
-    const fits = (a: string) => a.split('\n').every(l => width(l) <= columns - 2)
-    const text = art === null || fits(art) || !SIDEWAYS.test(source) ? art : (draw(source.replace(SIDEWAYS, '$1TD'), columns) ?? art)
-    return text === null ? null : { text }
+    const drawn = own ? own(source, columns) : draw(source, columns)
+    const art = typeof drawn === 'string' ? { text: drawn } : drawn
+    return art === null ? { note: 'diagram failed to render' } : { art, needs: widestLine(art.text) }
   })
 
-export const mermaidText = (source: string, columns: number): string | null => mermaidArt(source, columns)?.text ?? null
+export const mermaidDiagram = (source: string, columns: number): Diagram => {
+  const drawn = artOf(source, columns)
+  if (!('art' in drawn)) return drawn
+  return drawn.needs > columns - FRAME ? { note: `diagram needs ${drawn.needs} cols, ${columns - FRAME} fit` } : { art: drawn.art }
+}
 
-const prepared = (padded: string) => unquoteCategories(padded.replace(/^(\s*%%[^\n]*\n)+/, '')).replace(/(-->|-\.->|==>|---|-\.-|===)[ \t]+\|/g, '$1|')
+export const mermaidText = (source: string, columns: number): string | null => {
+  const drawn = artOf(source, columns)
+  return 'art' in drawn ? drawn.art.text : null
+}
+
+const prepared = (padded: string) => unquoteCategories(padded.replace(/^(\s*%%[^\n]*\n)+/, ''))
 
 // A chart of two or more series is drawn a second time in truecolor with neutral role colors, so
 // each cell's series hue tells which series owns it.
@@ -132,7 +162,7 @@ const seriesOf = (colored: string): number[][] => {
 const seriesCache = new Map<string, number[][] | null>()
 
 export const chartSeries = (source: string, columns: number): number[][] | undefined => {
-  source = source.replace(INLINE_TAG, '')
+  source = withoutFrontMatter(source).replace(INLINE_TAG, '')
   if (!/^\s*xychart/.test(source) || (source.match(/^\s*(bar|line)\b/gm) ?? []).length < 2) return undefined
   const padded = padWide(source)
   const size = chartSize(columns, padded)
@@ -175,16 +205,15 @@ const barStart = (row: string[], c: number): number => {
   return start
 }
 
-const paint = (art: string, style: Style, series?: number[][]): (string | undefined)[][] => {
-  const t = style.theme
-  const grid = art.split('\n').map(cells)
-  const cell = (r: number, c: number) => grid[r]?.[c] ?? ''
-  const color: (string | undefined)[][] = grid.map(row => row.map(() => undefined))
-  const palette = DIAGRAM_HUES
-  const next = (i: number) => palette[i % palette.length]
-  const labels = new Map<string, string | undefined>()
+type Found = { r: number; c: number; r2: number; c2: number; label: string }
 
-  const rects: { r: number; c: number; r2: number; c2: number }[] = []
+/**
+ * The boxes of art drawn by the vendored package, found by their corners: a rectangle that holds
+ * another is a frame, not a box. Its label is the text inside it.
+ */
+const foundBoxes = (grid: string[][]): Found[] => {
+  const cell = (r: number, c: number) => grid[r]?.[c] ?? ''
+  const rects: Omit<Found, 'label'>[] = []
   for (let r = 0; r < grid.length; r++) {
     for (let c = 0; c < (grid[r]?.length ?? 0); c++) {
       if (!/[┌╭(]/.test(cell(r, c))) continue
@@ -198,9 +227,27 @@ const paint = (art: string, style: Style, series?: number[][]): (string | undefi
     }
   }
   const inside = (a: (typeof rects)[number], b: (typeof rects)[number]) => a !== b && b.r > a.r && b.r2 < a.r2 && b.c > a.c && b.c2 < a.c2
-  for (const box of rects.filter(a => !rects.some(b => inside(a, b)))) {
-    const { r, c, r2, c2 } = box
-    const label = grid.slice(r + 1, r2).map(row => row.slice(c + 1, c2).join('')).join(' ').trim()
+  return rects
+    .filter(a => !rects.some(b => inside(a, b)))
+    .map(({ r, c, r2, c2 }) => ({ r, c, r2, c2, label: grid.slice(r + 1, r2).map(row => row.slice(c + 1, c2).join('')).join(' ').trim() }))
+}
+
+/** A flowchart's boxes as its drawer placed them, in reading order, each labelled by its text. */
+const placedBoxes = (boxes: DrawnBox[]): Found[] =>
+  boxes
+    .map(b => ({ r: b.y, c: b.x, r2: b.y + b.h - 1, c2: b.x + b.w - 1, label: b.lines.map(l => l.text).join(' ') }))
+    .sort((a, b) => a.r - b.r || a.c - b.c)
+
+const paint = (art: ChartArt, style: Style, series?: number[][]): (string | undefined)[][] => {
+  const t = style.theme
+  const grid = art.text.split('\n').map(cells)
+  const cell = (r: number, c: number) => grid[r]?.[c] ?? ''
+  const color: (string | undefined)[][] = grid.map(row => row.map(() => undefined))
+  const palette = DIAGRAM_HUES
+  const next = (i: number) => palette[i % palette.length]
+  const labels = new Map<string, string | undefined>()
+
+  for (const { r, c, r2, c2, label } of art.boxes ? placedBoxes(art.boxes) : foundBoxes(grid)) {
     if (!labels.has(label)) labels.set(label, next(labels.size))
     const hue = labels.get(label)
     for (let y = r; y <= r2; y++) for (let x = c; x <= c2; x++) if (cell(y, x).trim()) color[y]![x] = hue
@@ -244,27 +291,30 @@ const paintPie = (art: string, slices: number[][], style: Style): (string | unde
 
 type Painted = { grid: string[][]; colors: (string | undefined)[][] }
 const painted = new WeakMap<Theme, Map<string, Painted>>()
-// Two pies can draw the same art and split it differently, so a pie is painted by its slices.
-const piePainted = new WeakMap<Theme, WeakMap<number[][], Painted>>()
+// Two pies can draw the same art and split it differently, and two flowcharts can draw the same art
+// with their boxes in different places, so either is painted by the list it came with.
+const listPainted = new WeakMap<Theme, WeakMap<object, Painted>>()
 
-const painting = (style: Style, art: string, slices?: number[][], series?: number[][]): Painted => {
-  if (!slices) {
+const painting = (style: Style, art: ChartArt, series?: number[][]): Painted => {
+  const colors = () => (art.slices ? paintPie(art.text, art.slices, style) : paint(art, style, series))
+  const list = art.slices ?? art.boxes
+  if (!list) {
     const cache = painted.get(style.theme) ?? new Map<string, Painted>()
     painted.set(style.theme, cache)
-    return remember(cache, art, () => ({ grid: art.split('\n').map(cells), colors: paint(art, style, series) }))
+    return remember(cache, art.text, () => ({ grid: art.text.split('\n').map(cells), colors: colors() }))
   }
-  const cache = piePainted.get(style.theme) ?? new WeakMap<number[][], Painted>()
-  piePainted.set(style.theme, cache)
-  const done = cache.get(slices) ?? { grid: art.split('\n').map(cells), colors: paintPie(art, slices, style) }
-  cache.set(slices, done)
+  const cache = listPainted.get(style.theme) ?? new WeakMap<object, Painted>()
+  listPainted.set(style.theme, cache)
+  const done = cache.get(list) ?? { grid: art.text.split('\n').map(cells), colors: colors() }
+  cache.set(list, done)
   return done
 }
 
 // The colors boxArt draws, one per cell, so the png copy keeps them.
-export const artHues = (style: Style, art: string, slices?: number[][], series?: number[][]): (string | undefined)[][] => painting(style, art, slices, series).colors
+export const artHues = (style: Style, art: ChartArt, series?: number[][]): (string | undefined)[][] => painting(style, art, series).colors
 
-export const boxArt = ({ Box, Text }: ElementTable, style: Style, art: string, key: string, marks: [string[], Mark][] = [], slices?: number[][], series?: number[][]): RenderElement => {
-  const { grid, colors } = painting(style, art, slices, series)
+export const boxArt = ({ Box, Text }: ElementTable, style: Style, art: ChartArt, key: string, marks: [string[], Mark][] = [], series?: number[][]): RenderElement => {
+  const { grid, colors } = painting(style, art, series)
   return (
     <Box key={key} flexDirection="column" paddingLeft={2}>
       {grid.map((chars, i) => {
@@ -287,15 +337,3 @@ export const boxArt = ({ Box, Text }: ElementTable, style: Style, art: string, k
     </Box>
   )
 }
-
-const EDGE_LABEL = /(-[-.=]+\s*)"([^"\n]+)"(\s*[-.=]+>)|\|([^|\n]+)\|/g
-
-const cap = (label: string, max: number) => {
-  const flat = label.replace(/<br\s*\/?>/gi, ' ').replace(/\s+/g, ' ').trim()
-  const chars = graphemes(flat)
-  return chars.length > max ? `${chars.slice(0, max - 1).join('').trimEnd()}…` : flat
-}
-
-export const shortenEdgeLabels = (source: string, max: number): string =>
-  source.replace(EDGE_LABEL, (m, open, quoted, close, piped) =>
-    quoted !== undefined ? `${open}"${cap(quoted, max)}"${close}` : `|${cap(piped, max)}|`)
