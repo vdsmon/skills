@@ -51,6 +51,24 @@ test('a flowchart or state diagram never shows "diagram failed to render"', asyn
   }
 })
 
+test('a diagram of any kind with a title in front matter draws as it does without one', () => {
+  const sources = [
+    'flowchart LR\n  A --> B',
+    'stateDiagram-v2\n  [*] --> A',
+    'pie\n  "a" : 1\n  "b" : 2',
+    'gantt\n  dateFormat YYYY-MM-DD\n  section S\n  Task :a1, 2026-01-01, 3d',
+    'xychart-beta\n  x-axis [a, b, c]\n  bar [1, 2, 3]',
+    'sequenceDiagram\n  A->>B: hi',
+    'classDiagram\n  class A',
+    'erDiagram\n  A ||--o{ B : has',
+  ]
+  for (const source of sources) {
+    const plain = mermaidDiagram(source, 100)
+    expect('art' in plain).toBe(true)
+    expect(mermaidDiagram(`---\ntitle: A title\n---\n${source}`, 100)).toEqual(plain)
+  }
+})
+
 // A 70-column terminal leaves the reply 66 of them, and the diagram's frame takes 6 of those.
 test('every scrambled real diagram draws in a 70-column terminal', () => {
   for (const source of CORPUS) expect('art' in mermaidDiagram(source, 66)).toBe(true)

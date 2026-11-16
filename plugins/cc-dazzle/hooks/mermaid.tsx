@@ -4,6 +4,7 @@ import type { ChartArt } from './charts'
 import { ganttText, pieText } from './charts'
 import type { Flow } from './flow/index'
 import { drawFlow } from './flow/index'
+import { withoutFrontMatter } from './flow/parse'
 import { cells, graphemes, remember, widestLine, width } from './text'
 import type { Style, Theme } from './theme'
 import { DIAGRAM_HUES } from './theme'
@@ -105,6 +106,7 @@ const drawnArt = new Map<string, Drawn>()
 // The art drawn for `columns`, whether or not it fits them.
 const artOf = (source: string, columns: number): Drawn =>
   remember(drawnArt, `${columns}:${source}`, () => {
+    source = withoutFrontMatter(source)
     const unsupported = unsupportedKind(source)
     if (unsupported) return { note: `${unsupported} diagrams draw as source for now` }
     source = source.replace(INLINE_TAG, '')
@@ -158,7 +160,7 @@ const seriesOf = (colored: string): number[][] => {
 const seriesCache = new Map<string, number[][] | null>()
 
 export const chartSeries = (source: string, columns: number): number[][] | undefined => {
-  source = source.replace(INLINE_TAG, '')
+  source = withoutFrontMatter(source).replace(INLINE_TAG, '')
   if (!/^\s*xychart/.test(source) || (source.match(/^\s*(bar|line)\b/gm) ?? []).length < 2) return undefined
   const padded = padWide(source)
   const size = chartSize(columns, padded)
