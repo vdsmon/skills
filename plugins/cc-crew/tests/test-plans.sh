@@ -279,6 +279,9 @@ EOF
   check "hold from a worktree names the main checkout" 'grep -qxF "Repository: $tmp/repo" "$CC_CREW_PLANS/pot/plan.md"'
   out=$(cd "$tmp/repo" && python3 "$plans" report)
   check "report in the main checkout lists it" 'printf "%s\n" "$out" | grep -qxF -- "- pot · grilling · held by this session"'
+  (cd "$tmp/work" && python3 "$plans" hold "$CC_CREW_PLANS/pot/plan.md" --session sess-taker >/dev/null)
+  check "taking a plan over from another folder keeps its repository" 'grep -qxF "Repository: $tmp/repo" "$CC_CREW_PLANS/pot/plan.md" && grep -qxF "Held by: sess-taker" "$CC_CREW_PLANS/pot/plan.md"'
+  (cd "$tmp/work" && python3 "$plans" hold "$CC_CREW_PLANS/pot/plan.md" >/dev/null)  # back to the session the next checks use
   # Two submodules of one repository share the folder above their git data; each is its own repository.
   git init -q "$tmp/sup" && git -C "$tmp/sup" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
   for sub in api web; do

@@ -370,12 +370,14 @@ def write(plan, change, session=None):
 
 
 def hold(plan, session, cwd=None):
-    """Write Repository for cwd's repository and Held by for session (absent session: Repository only)."""
+    """Write Held by for session, and Repository for cwd's repository when the file names none (absent session: Repository only)."""
     if not valid_name(plan.name):
         raise Refused(f'"{plan.name}" does not fit: {NAME_RULE}')
 
     def change(p):
-        p.set_first("Repository", repository(cwd))
+        # A plan belongs to the repository it was first held in: taking it over from another one must not move it.
+        if not p.first("Repository"):
+            p.set_first("Repository", repository(cwd))
         if session:
             p.set_first("Held by", session)
 

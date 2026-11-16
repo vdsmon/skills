@@ -59,7 +59,7 @@ Publish it privately, say which version of the plan it shows, write its link int
 - Once approved, the page becomes the board for the work: move the work graph to the top, draw each work item's state from the Progress section, each in its own colour (done, under way, not started), and fold away the sections he has already read.
 - A comment on the page that shows something is unclear: change the page, post nothing beyond the automatic reply, and resolve the thread.
 - Before the push, the combined diff goes to the reviewer: `review.sh diff <plan.md> <repo> <base> <head>`. A question about an answer goes through `review.sh follow-up <folder> <question-file>`.
-- Where Victor merges, the wait for his merge is part of shipping: `plans.py wait <plan.md> "Victor: the merge of pull request <n>"`, arm a watch on the pull request, and only then end your turn. When it wakes you, `plans.py go <plan.md>` and finish what is left of shipping.
+- Where Victor merges, the wait for his merge is part of shipping: `plans.py wait <plan.md> "Victor: the merge of pull request <n>"`, arm a watch on the pull request, and only then end your turn. A watch also wakes you when it is stuck or its check fails, so look at the pull request first: merged, `plans.py go <plan.md>` and finish what is left of shipping; not merged, leave the wait as it is and arm the watch again.
 
 ## 6. The closing step
 
