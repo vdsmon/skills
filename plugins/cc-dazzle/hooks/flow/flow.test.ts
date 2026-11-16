@@ -306,12 +306,11 @@ test('a note on a state draws as a box of its own, its text whole and its lines 
   expect(texts).toContain('first line|second line')
 })
 
-// 80 boxes with no edges split one row in half at each step, more steps than the budget gives.
+// 80 boxes with no edges split one row in half at each step, some 30 steps before they fit.
 const BOXES = `flowchart TD;\n${Array.from({ length: 80 }, (_, i) => `  N${i}[Worker ${i}]`).join('\n')}`
 
-test('a drawing the budget stopped narrowing says so, and one whose narrowing ran out does not', () => {
-  const cut = drawFlow(BOXES, 54)
-  expect(cut?.kind === 'drawn' && !cut.fits && cut.cut).toBe(true)
-  const done = drawFlow(UNFIT, 60)
-  expect(done?.kind === 'drawn' && !done.fits && !done.cut).toBe(true)
+test('narrowing runs until the drawing fits, however many steps that takes', () => {
+  const checked = checkFlow(BOXES, 54)
+  expect(checked.failures).toEqual([])
+  expect(checked.flow?.kind === 'drawn' && checked.flow.fits).toBe(true)
 })

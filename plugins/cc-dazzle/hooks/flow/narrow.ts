@@ -7,6 +7,7 @@
  */
 
 import type { Layout, Level, Narrowing, Scope } from './layout'
+import { SLOTS } from './layout'
 
 /** The narrowest an edge label wraps to. */
 const LABEL_WRAP = 8
@@ -24,6 +25,11 @@ const rightHalf = <T extends { start: number; end: number }>(things: T[], width:
  * The narrowing one step past `narrowing` for the drawing `laid`, or `null` when nothing is left to
  * narrow: the widest level of the top scope that can narrow does, and a row holding one frame narrows
  * that frame's widest level. `label` is the fit's wrap for edge labels.
+ *
+ * Narrowing always ends. A step adds a row, which never goes away and of which there are at most as
+ * many as boxes and frames; or wraps labels to 8 columns, once each; or raises the level of some labels
+ * between two rows, which never lowers and stays under `SLOTS`. Each kept bounded and only growing,
+ * no step repeats a narrowing already made.
  */
 export function narrower(laid: Layout, narrowing: Narrowing, label: number): Narrowing | null {
   const wrapOf = (edge: number) => narrowing.labels.get(edge)?.wrap ?? label
@@ -59,6 +65,8 @@ export function narrower(laid: Layout, narrowing: Narrowing, label: number): Nar
     }
     if (placed.length < 2) return null
     // The levels of labels under this one between the same two rows move down to make room.
+    const below = s.levels.filter(other => other.kind === 'label' && other.rank === level.rank && other.sub >= level.sub)
+    if (Math.max(...below.map(other => other.sub)) + 2 >= SLOTS) return null
     for (const other of s.levels) {
       if (other.kind !== 'label' || other.rank !== level.rank || other.sub <= level.sub) continue
       for (const n of other.nodes) if (n.edge !== null) next.set(n.edge, { wrap: wrapOf(n.edge), sub: subOf(n.edge) + 1 })

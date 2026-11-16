@@ -34,9 +34,9 @@ test('a diagram too wide for the terminal shows its source, with the columns it 
   await ui.unmount()
 })
 
-test('a diagram whose narrowing the budget stopped says it is too large to narrow, not what it needs', () => {
+test('a diagram that narrowing can fit draws, and one it cannot says how many columns it needs', () => {
   const boxes = `flowchart TD; ${Array.from({ length: 80 }, (_, i) => `N${i}[Worker ${i}]`).join('; ')}`
-  expect(mermaidDiagram(boxes, 60)).toEqual({ note: 'diagram is too large to narrow below 69 cols, 54 fit' })
+  expect('art' in mermaidDiagram(boxes, 60)).toBe(true)
   const chain = Array.from({ length: 50 }, (_, i) => `A${i}`)
   const note = mermaidDiagram(`flowchart TD\n  ${chain.join(' --> ')}\n  A0 --> ${chain.slice(2).join(' & ')}`, 96)
   expect('note' in note && /^diagram needs \d+ cols, 90 fit$/.test(note.note)).toBe(true)

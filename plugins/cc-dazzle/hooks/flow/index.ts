@@ -9,10 +9,9 @@ export type { Drawing } from './types'
 
 /**
  * A flowchart or state diagram drawn for `columns`: the first drawing that fits, else the narrowest
- * one with `fits` false; `cut` when the work budget, not the end of narrowing, stopped the search, so a
- * narrower drawing may exist. `too-large` is a source over a cap; `empty` one with nothing to draw.
+ * one with `fits` false. `too-large` is a source over a cap; `empty` one with nothing to draw.
  */
-export type Flow = { kind: 'drawn'; drawing: Drawing; fits: boolean; cut: boolean } | { kind: 'too-large' } | { kind: 'empty' }
+export type Flow = { kind: 'drawn'; drawing: Drawing; fits: boolean } | { kind: 'too-large' } | { kind: 'empty' }
 
 // From the widest labels to the narrowest, each with the gap between boxes it was measured with.
 export const FITS: Fit[] = [
@@ -22,13 +21,6 @@ export const FITS: Fit[] = [
   { wrap: 12, gap: 2, label: 14 },
   { wrap: 10, gap: 1, label: 12 },
 ]
-
-/**
- * The most narrowing steps times boxes and edges a diagram gets, since each step lays it out again and
- * a reply draws on every streamed prefix. The diagrams the tests run over take at most a fifth of it;
- * 78 labelled edges among 40 boxes, never narrow enough, stop after 17 steps instead of 124.
- */
-const NARROWING_WORK = 2048
 
 /**
  * `null` when the source is neither a flowchart nor a state diagram. A diagram draws top-down, unless
@@ -46,18 +38,14 @@ export function drawFlow(source: string, columns: number): Flow | null {
   return shorter ? right : down
 }
 
-/**
- * The first of `list` that fits `columns`, else the narrowest of them with `fits` false. The list
- * returns whether the budget cut it short.
- */
-export function drawnFor(list: Generator<Drawing, boolean>, columns: number): Flow {
+/** The first of `list` that fits `columns`, else the narrowest of them with `fits` false. */
+export function drawnFor(list: Iterable<Drawing>, columns: number): Flow {
   let narrowest: Drawing | undefined
-  for (let next = list.next(); ; next = list.next()) {
-    if (next.done) return narrowest === undefined ? { kind: 'too-large' } : { kind: 'drawn', drawing: narrowest, fits: false, cut: next.value }
-    const drawing = next.value
-    if (drawing.width <= columns) return { kind: 'drawn', drawing, fits: true, cut: false }
+  for (const drawing of list) {
+    if (drawing.width <= columns) return { kind: 'drawn', drawing, fits: true }
     if (narrowest === undefined || drawing.width < narrowest.width) narrowest = drawing
   }
+  return narrowest === undefined ? { kind: 'too-large' } : { kind: 'drawn', drawing: narrowest, fits: false }
 }
 
 /**
@@ -65,26 +53,23 @@ export function drawnFor(list: Generator<Drawing, boolean>, columns: number): Fl
  * labels to narrow, then, top-down, on the narrowest fit, one more for each step that splits a row or
  * narrows a level of labels, until nothing is left to narrow. A split row reads worse than a wrapped
  * label, so splitting waits until wrapping has failed; left to right never splits, since top-down
- * draws what wrapping alone does not fit. The caller stops at the first drawing that fits. Returns
- * true when the work budget ran out while something could still narrow.
+ * draws what wrapping alone does not fit. The caller stops at the first drawing that fits.
  */
-export function* drawings(graph: Graph, direction: Direction = 'down'): Generator<Drawing, boolean> {
+export function* drawings(graph: Graph, direction: Direction = 'down'): Generator<Drawing> {
   let last: Layout | null = null
   for (const fit of FITS) {
     last = layout(graph, fit, UNNARROWED, direction)
     if (last !== null) yield last.drawing
   }
-  if (direction === 'right') return false
+  if (direction === 'right') return
   const fit = FITS.at(-1)!
+  // Narrowing ends: see `narrower`, whose every step moves a bounded measure one way.
   let narrowing = UNNARROWED
-  const steps = Math.floor(NARROWING_WORK / (graph.nodes.length + graph.edges.length))
-  for (let step = 0; last !== null; step++) {
+  while (last !== null) {
     const next = narrower(last, narrowing, fit.label)
-    if (next === null) return false
-    if (step === steps) return true
+    if (next === null) return
     narrowing = next
     last = layout(graph, fit, narrowing)
     if (last !== null) yield last.drawing
   }
-  return false
 }

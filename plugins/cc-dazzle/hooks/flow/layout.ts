@@ -55,7 +55,7 @@ const PAD = 1
 const MAX_CANVAS_CELLS = 1 << 21
 const MAX_NODES = 1 << 14
 /** Slots per rank: a rank's level, then up to this many minus one levels of labels under it. */
-const SLOTS = 1 << 10
+export const SLOTS = 1 << 10
 
 const half = (n: number): number => Math.floor(n / 2)
 const widest = (lines: string[]): number => Math.max(0, ...lines.map(stringWidth))
