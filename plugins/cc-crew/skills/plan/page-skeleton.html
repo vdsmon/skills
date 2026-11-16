@@ -1,0 +1,208 @@
+<title>{{name}}</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<!-- A plan's page is made by cc-crew's page.py from this skeleton, the plan file and its page/ folder. Never edit a page by hand: change those and run page.py again. -->
+<style>
+/* Layout: one column; the top, then the parts in the order the plan's phase sets. The skeleton fixes it; a plan's look.css sets only these tokens. */
+:root {
+  /* Colours, light. look.css redefines any of them, for light and for dark. */
+  --bg: #f1f2f3; --surface: #fbfbfc; --fg: #1d2024; --muted: #5c636b; --line: #d4d8dc;
+  --accent: #5b6875; --on-accent: #ffffff; --accent-ink: #3f4a55; --accent-soft: #e3e7eb;
+  --done: #2d7a4c; --way: #2165a3; --idle: #767d84;
+  /* Typefaces: display for headings, body for text, mono for labels, hand for signatures. */
+  --display: "Helvetica Neue", Arial, sans-serif;
+  --body: "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --hand: "Bradley Hand", "Segoe Print", cursive;
+  /* Small touches: the band over the top (any background value) and the case of headings. */
+  --band: var(--accent);
+  --heading-case: none;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #16181b; --surface: #1f2226; --fg: #e9ebed; --muted: #a2a9b0; --line: #353a40;
+    --accent: #9aa7b4; --on-accent: #16181b; --accent-ink: #c3ccd5; --accent-soft: #2b3138;
+    --done: #63c58d; --way: #72b2ec; --idle: #8f969d;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #16181b; --surface: #1f2226; --fg: #e9ebed; --muted: #a2a9b0; --line: #353a40;
+  --accent: #9aa7b4; --on-accent: #16181b; --accent-ink: #c3ccd5; --accent-soft: #2b3138;
+  --done: #63c58d; --way: #72b2ec; --idle: #8f969d;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 1rem; line-height: 1.55; }
+.page { max-width: 1040px; margin: 0 auto; padding-block: 0 72px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; gap: 36px; }
+h1, h2, h3, h4 { font-family: var(--display); text-transform: var(--heading-case); text-wrap: balance; margin: 0; line-height: 1.15; }
+h1 { font-size: 2.8rem; font-weight: 700; letter-spacing: 0.01em; }
+h2 { font-size: 1.65rem; font-weight: 700; letter-spacing: 0.02em; }
+h3 { font-size: 1.2rem; font-weight: 600; letter-spacing: 0.03em; }
+h4 { font-size: 1.05rem; font-weight: 600; }
+p { margin: 0; }
+a { color: var(--accent-ink); }
+a:focus-visible, summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+code { font-family: var(--mono); font-size: 0.86em; background: var(--accent-soft); padding: 1px 5px; border-radius: 3px; overflow-wrap: anywhere; }
+.label { font-family: var(--mono); font-size: 0.78rem; letter-spacing: 0.04em; color: var(--muted); }
+.box { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+ul.plain { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 10px; }
+
+/* Text turned from the plan file's Markdown */
+.md { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.md ul, .md ol { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 8px; }
+.md li > .md { gap: 6px; }
+.md blockquote { margin: 0; padding-left: 14px; border-left: 3px solid var(--line); color: var(--muted); }
+.md pre { margin: 0; overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 10px 12px; font-family: var(--mono); font-size: 0.85rem; }
+.md pre code { background: none; padding: 0; }
+.md pre.raw { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* The top */
+.top { display: flex; flex-direction: column; gap: 14px; }
+.top::before { content: ""; display: block; height: 10px; margin-bottom: 14px; background: var(--band); }
+.top .row { display: flex; flex-wrap: wrap; gap: 6px 18px; justify-content: space-between; align-items: center; }
+.stands { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: baseline; }
+.phase { font-family: var(--display); font-weight: 700; font-size: 1rem; letter-spacing: 0.06em; text-transform: uppercase; background: var(--accent); color: var(--on-accent); padding: 3px 12px; border-radius: 3px; }
+.where { min-width: 0; }
+.waits { flex-basis: 100%; font-size: 0.95rem; color: var(--muted); }
+.waits b { color: var(--fg); }
+.principle { font-size: 1.3rem; line-height: 1.4; font-weight: 500; border-left: 8px solid var(--accent); padding: 4px 0 4px 16px; }
+
+/* A part: open, or folded until clicked */
+.part { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.part > summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding-bottom: 8px; border-bottom: 3px solid var(--fg); }
+.part > summary::-webkit-details-marker { display: none; }
+.part > summary::after { content: "fold"; font-family: var(--mono); font-size: 0.74rem; letter-spacing: 0.05em; color: var(--muted); }
+.part:not([open]) > summary::after { content: "open"; }
+.part:not([open]) > summary { border-bottom-style: dashed; border-bottom-width: 2px; }
+.part > .part-body { display: flex; flex-direction: column; gap: 16px; min-width: 0; padding-top: 16px; }
+.page[data-order="second"] .part:not([open]) > summary h2 { font-size: 1.3rem; color: var(--muted); }
+
+/* The work: one stage per row, top to bottom; items in a stage stand side by side */
+.gate { font-size: 0.95rem; border: 2px dashed var(--line); border-radius: 4px; padding: 8px 14px; color: var(--muted); }
+.stages { display: flex; flex-direction: column; gap: 6px; }
+.stage { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.stage + .stage::before { content: "↓"; align-self: center; font-size: 1.5rem; line-height: 1; color: var(--accent-ink); }
+.stage > .label { text-transform: uppercase; }
+.stage .row { display: flex; flex-wrap: wrap; gap: 12px; }
+.group { display: flex; flex-wrap: wrap; gap: 12px; flex: 1 1 260px; min-width: 0; }
+.group.together { flex-basis: 100%; border: 2px dashed var(--accent); border-radius: 6px; padding: 26px 10px 10px; position: relative; }
+.group.together::before { content: "run together"; position: absolute; top: 5px; left: 12px; font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--accent-ink); }
+.item { flex: 1 1 260px; background: var(--surface); border: 1px solid var(--line); border-left: 6px solid var(--idle); border-radius: 4px; padding: 10px 14px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.item .meta { display: flex; flex-wrap: wrap; gap: 6px 10px; justify-content: space-between; align-items: center; }
+.item .who { font-family: var(--mono); font-size: 0.74rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.item .title { font-weight: 600; }
+.item .for { font-size: 0.93rem; }
+.item .note, .item .after { font-size: 0.85rem; color: var(--muted); }
+.state { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.04em; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--idle); color: var(--idle); white-space: nowrap; }
+.item.s-done { border-left-color: var(--done); } .item.s-done .state { border-color: var(--done); color: var(--done); }
+.item.s-way { border-left-color: var(--way); } .item.s-way .state { border-color: var(--way); color: var(--way); }
+.item.s-done .state::before { content: "✓ "; }
+
+/* The ladder: two rails, the lowest rung at the bottom, the real run above the rails */
+.above { border: 2px dashed var(--line); border-radius: 4px; padding: 10px 16px; color: var(--muted); font-size: 0.95rem; }
+.ladder { display: flex; flex-direction: column-reverse; border-left: 10px solid var(--accent); border-right: 10px solid var(--accent); padding-block: 22px 0; }
+.ground { padding: 6px 16px; border-top: 4px solid var(--fg); font-family: var(--mono); font-size: 0.74rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); background: var(--bg); }
+.rung { border-top: 8px solid var(--accent); padding: 14px 18px 18px; display: flex; flex-direction: column; gap: 10px; min-width: 0; background: var(--surface); }
+.rung + .rung { margin-bottom: 18px; }
+.rung .head { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: baseline; }
+.rung .head h3 { font-size: 1.3rem; }
+.rung .sticker { font-family: var(--display); font-weight: 700; font-size: 0.85rem; letter-spacing: 0.08em; text-transform: uppercase; background: var(--fg); color: var(--bg); padding: 2px 10px; border-radius: 2px; }
+.rung.done-means { border-top-color: var(--fg); }
+.facts { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px 20px; }
+.facts li { min-width: 0; font-size: 0.95rem; padding-left: 10px; border-left: 2px solid var(--line); }
+.none { font-size: 1.1rem; border-left: 8px solid var(--line); padding: 4px 0 4px 14px; }
+
+/* Sign-off */
+.sigs { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px; }
+.sig { border-top: 2px solid var(--fg); padding-top: 8px; display: flex; flex-direction: column; gap: 2px; min-height: 96px; justify-content: flex-end; min-width: 0; }
+.sig .hand { font-family: var(--hand); font-size: 2.2rem; line-height: 1; color: var(--accent-ink); order: -1; padding-bottom: 4px; overflow-wrap: anywhere; }
+.sig .empty { order: -1; color: var(--muted); font-size: 0.9rem; padding-bottom: 14px; }
+.sig q { font-style: italic; }
+
+/* The words */
+.words { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin: 0; }
+.words > div { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 12px 14px; min-width: 0; }
+.words dt { font-family: var(--display); font-weight: 700; font-size: 1.15rem; letter-spacing: 0.03em; text-transform: var(--heading-case); }
+.words dd { margin: 4px 0 0; font-size: 0.95rem; }
+.words .from { display: block; font-family: var(--mono); font-size: 0.74rem; color: var(--muted); margin-top: 6px; }
+
+@media (max-width: 760px) {
+  h1 { font-size: 2.1rem; }
+  .ladder { border-left-width: 6px; border-right-width: 6px; }
+}
+</style>
+<style>
+{{look}}
+</style>
+
+<div class="page" data-phase="{{phase}}" data-order="{{order}}">
+
+<header class="top">
+  <div class="row">
+    <span class="label">cc-crew · plan · {{folder}}</span>
+    <span class="label">plan file of {{version}}</span>
+  </div>
+  <h1>{{name}}</h1>
+  <div class="stands"><span class="phase">{{phase}}</span><span class="where">{{where}}</span>{{waiting}}</div>
+  <p class="principle">{{principle}}</p>
+</header>
+
+<!-- parts: page.py places each part below in the order the phase sets, opening or folding it -->
+<!-- part picture -->
+<details class="part p-picture" data-part="picture"{{open}}>
+  <summary><h2>The whole, in one picture</h2></summary>
+  <div class="part-body">{{body}}</div>
+</details>
+<!-- /part -->
+<!-- part new -->
+<details class="part p-new" data-part="new"{{open}}>
+  <summary><h2>New since we talked</h2></summary>
+  <div class="part-body">{{body}}</div>
+</details>
+<!-- /part -->
+<!-- part work -->
+<details class="part p-work" data-part="work"{{open}}>
+  <summary><h2>The work</h2></summary>
+  <div class="part-body">{{body}}</div>
+</details>
+<!-- /part -->
+<!-- part ladder -->
+<details class="part p-ladder" data-part="ladder"{{open}}>
+  <summary><h2>The ladder</h2></summary>
+  <div class="part-body">{{body}}</div>
+</details>
+<!-- /part -->
+<!-- part own -->
+<details class="part p-own" data-part="own"{{open}}>
+  <summary>{{heading}}</summary>
+  <div class="part-body">{{body}}</div>
+</details>
+<!-- /part -->
+<!-- part approval -->
+<details class="part p-approval" data-part="approval"{{open}}>
+  <summary><h2>What your approval starts</h2></summary>
+  <div class="part-body">{{body}}</div>
+</details>
+<!-- /part -->
+<!-- part signoff -->
+<details class="part p-signoff" data-part="signoff"{{open}}>
+  <summary><h2>Sign-off</h2></summary>
+  <div class="part-body">{{body}}</div>
+</details>
+<!-- /part -->
+<!-- part words -->
+<details class="part p-words" data-part="words"{{open}}>
+  <summary><h2>The words</h2></summary>
+  <div class="part-body">{{body}}</div>
+</details>
+<!-- /part -->
+<!-- part record -->
+<details class="part p-record" data-part="record"{{open}}>
+  <summary><h2>The record</h2></summary>
+  <div class="part-body">{{body}}</div>
+</details>
+<!-- /part -->
+<!-- /parts -->
+
+</div>
