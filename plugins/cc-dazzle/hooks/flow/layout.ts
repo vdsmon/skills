@@ -1,71 +1,169 @@
 // From grok-mermaid 0.2.3 (Apache-2.0, see NOTICE), changed by cc-dazzle.
 
 /**
- * Graph layout, top-down: assign ranks, reorder within ranks to cut crossings, then relax positions
- * across so chains stay straight. Edges between adjacent ranks share "bus" rows; everything else is
- * routed beside the diagram through vertical "lanes".
+ * Graph layout, top-down. Boxes take ranks; each rank is a level of the drawing, and where an edge
+ * label needs room a level of labels sits between two ranks. An edge that spans several levels
+ * passes each as a one-column node, and its label is a node as wide as its text, so the layout places
+ * lines and labels as it places boxes and nothing is drawn on anything else. Between two levels lies
+ * a channel of rows where lines turn; a back edge leaves its box by the top and comes into its target
+ * from below. A frame is laid out on its own, with a level above and below its contents where edges
+ * cross its border, and becomes one node of the level around it.
  */
 
 import { Canvas, D, drawText, drawTextOverEdges, L, R, STY_DOT, STY_SOLID, STY_THICK, U } from './canvas'
-import type { Edge, Head, Node, Shape } from './graph'
-import { Graph } from './graph'
-import { fitLabel, measured, stringWidth, wrapLabel } from './labels'
+import type { Edge, Head, Shape } from './graph'
+import type { Graph } from './graph'
+import { stringWidth, wrapLabel } from './labels'
 import type { Drawing } from './types'
 
 /**
- * How tightly one drawing is packed: box labels wrap at `wrap` columns, boxes of a rank keep `gap`
- * columns apart, and edge labels are cut to `label` columns.
+ * How tightly one drawing is packed: box labels wrap at `wrap` columns, boxes of a level keep `gap`
+ * columns apart, and edge labels wrap at `label` columns.
  */
 export type Fit = { wrap: number; gap: number; label: number }
 
 /** Cells of padding between a box border and its text. */
 const PAD = 1
-const GAP_Y = 2
-/** Refuse to allocate a canvas larger than this many cells. */
+/** Refuse to allocate a canvas larger than this many cells, or to place more nodes than this. */
 const MAX_CANVAS_CELLS = 1 << 21
+const MAX_NODES = 1 << 14
 
-const sat = (a: number, b: number): number => Math.max(0, a - b)
 const half = (n: number): number => Math.floor(n / 2)
+const widest = (lines: string[]): number => Math.max(0, ...lines.map(stringWidth))
 
-export interface Placed {
-  x: number
-  y: number
-  w: number
-  h: number
-  cx: number
-  cy: number
-  rank: number
-}
-
-/** Per-node dimensions. `lay*` include room for self-edge loops and labels. */
-interface NodeSizes {
-  boxW: number[]
-  boxH: number[]
-  layW: number[]
-  extraH: number[]
-  selfLabelW: number[]
-}
-
-/** What to draw for a node: a box, or a group's frame holding its laid-out contents. */
-type NodeExtra = { kind: 'plain' } | { kind: 'frame'; sub: Canvas }
-
-interface RoutePlan {
-  canvasW: number
-  canvasH: number
-  /** Row just past each rank's boxes, where its bus rows begin. */
-  bandEnd: number[]
-  /** Bus track offset per edge. */
-  edgeBus: number[]
-  /** Column of the first lane track. */
-  laneBase: number
-  /** Lane track offset per edge. */
-  edgeLane: number[]
-}
-
-/** Draw a parsed flowchart or state diagram, or `null` when it is empty or over the cell cap. */
+/** Draw a parsed flowchart or state diagram, or `null` when it is empty or over a cap. */
 export function layout(graph: Graph, fit: Fit): Drawing | null {
-  const canvas = graph.groups.length === 0 ? layoutCanvas(graph, graph.nodes.map(() => ({ kind: 'plain' })), fit) : layoutGrouped(graph, fit)
-  return canvas && canvas.toDrawing()
+  const plans = planScopes(graph)
+  const laid = layScope(graph, null, plans, fit)
+  return laid && laid.canvas.toDrawing()
+}
+
+// ------------------------------------------------------------------- scopes
+
+type Side = 'top' | 'bottom'
+/**
+ * What an edge does where it meets a frame's border: `cross` passes through it to a box inside,
+ * `own` ends on the frame from outside, `start` leaves the frame's border for a box inside it, and
+ * `end` comes from a box inside to the frame's border.
+ */
+type Role = 'cross' | 'own' | 'start' | 'end'
+type Port = { edge: number; side: Side; x: number; role: Role }
+/** A laid-out scope: its canvas, where edges meet its frame's border, and the frame's title lines. */
+type Laid = { canvas: Canvas; ports: Port[]; title: string[] }
+
+type End = { item: string } | { side: Side; role: Role }
+/** An edge, or the part of one, drawn in a scope: `from` and `to` are its items or its frame's border. */
+type Link = { edge: Edge; keys: [string, string]; from: End; to: End; label: string | null }
+type Plan = { items: string[]; links: Link[]; reserve: { edge: number; side: Side }[]; ranks: number[] }
+
+/**
+ * Split the graph into scopes: the top level and each group. An edge is drawn in the innermost scope
+ * holding both its ends, between the items there that hold them; where an end lies inside a frame,
+ * each frame on the way draws the part from its border to the end.
+ */
+function planScopes(graph: Graph): Map<number | null, Plan> {
+  const plans = new Map<number | null, Plan>()
+  const plan = (s: number | null): Plan => plans.get(s) ?? plans.set(s, { items: [], links: [], reserve: [], ranks: [] }).get(s)!
+  const chain = (g: number | null): number[] => {
+    const out: number[] = []
+    for (let cur = g; cur !== null; cur = graph.groups[cur]!.parent) out.unshift(cur)
+    return out
+  }
+  const endOf = (n: number) => {
+    const group = graph.proxyOf(n)
+    return group === undefined ? { key: `n:${n}`, chain: chain(graph.nodeGroup[n]!), group } : { key: `g:${group}`, chain: chain(graph.groups[group]!.parent), group }
+  }
+  type EndOf = ReturnType<typeof endOf>
+  const itemAt = (e: EndOf, k: number): string => (e.chain.length > k ? `g:${e.chain[k]}` : e.key)
+
+  plan(null)
+  graph.nodes.forEach((_, n) => {
+    if (graph.proxyOf(n) === undefined) plan(graph.nodeGroup[n]!).items.push(`n:${n}`)
+  })
+  graph.groups.forEach((g, i) => {
+    plan(g.parent).items.push(`g:${i}`)
+    plan(i)
+  })
+
+  /** The parts of `edge` inside the frames of `e.chain` from depth `k` on, leaving or entering by `side`. */
+  const descend = (link: Omit<Link, 'from' | 'to' | 'label'>, e: EndOf, k: number, side: Side, leaving: boolean) => {
+    for (let j = k; j < e.chain.length; j++) {
+      const inner: End = { item: itemAt(e, j + 1) }
+      const border: End = { side, role: 'cross' }
+      plan(e.chain[j]!).links.push({ ...link, from: leaving ? inner : border, to: leaving ? border : inner, label: null })
+    }
+    if (e.group !== undefined) plan(e.group).reserve.push({ edge: link.edge.index, side })
+  }
+
+  const across: { link: Link; scope: number | null; f: EndOf; t: EndOf; k: number }[] = []
+  for (const edge of graph.edges) {
+    const f = endOf(edge.from)
+    const t = endOf(edge.to)
+    const base = { edge, keys: [f.key, t.key] as [string, string] }
+    let k = 0
+    while (k < f.chain.length && k < t.chain.length && f.chain[k] === t.chain[k]) k++
+    if (f.group !== undefined && k === f.chain.length && t.chain[k] === f.group) {
+      // From a frame to something inside it: the line leaves the frame's top border inward.
+      plan(f.group).links.push({ ...base, from: { side: 'top', role: 'start' }, to: { item: itemAt(t, k + 1) }, label: edge.label })
+      descend(base, t, k + 1, 'top', false)
+    } else if (t.group !== undefined && k === t.chain.length && f.chain[k] === t.group) {
+      plan(t.group).links.push({ ...base, from: { item: itemAt(f, k + 1) }, to: { side: 'bottom', role: 'end' }, label: edge.label })
+      descend(base, f, k + 1, 'bottom', true)
+    } else {
+      const scope = k === 0 ? null : f.chain[k - 1]!
+      const link: Link = { ...base, from: { item: itemAt(f, k) }, to: { item: itemAt(t, k) }, label: edge.label }
+      plan(scope).links.push(link)
+      across.push({ link, scope, f, t, k })
+    }
+  }
+  for (const p of plans.values()) {
+    const index = new Map(p.items.map((key, i) => [key, i]))
+    const pairs: [number, number][] = []
+    for (const l of p.links) {
+      if ('item' in l.from && 'item' in l.to && l.from.item !== l.to.item) pairs.push([index.get(l.from.item)!, index.get(l.to.item)!])
+    }
+    p.ranks = computeRanks(p.items.length, pairs)
+  }
+
+  for (const { link, scope, f, t, k } of across) {
+    if (!('item' in link.from && 'item' in link.to) || link.from.item === link.to.item) continue
+    const p = plan(scope)
+    const down = p.ranks[p.items.indexOf(link.to.item)]! > p.ranks[p.items.indexOf(link.from.item)]!
+    descend(link, f, k, down ? 'bottom' : 'top', true)
+    descend(link, t, k, down ? 'top' : 'bottom', false)
+  }
+  return plans
+}
+
+type Item = { key: string; label: string; shape: Shape; sub: Laid | null }
+
+function layScope(graph: Graph, scope: number | null, plans: Map<number | null, Plan>, fit: Fit): Laid | null {
+  const plan = plans.get(scope)!
+  const items: Item[] = []
+  for (const key of plan.items) {
+    const i = Number(key.slice(2))
+    if (key.startsWith('n')) {
+      items.push({ key, label: graph.nodes[i]!.label, shape: graph.nodes[i]!.shape, sub: null })
+    } else {
+      const sub = layScope(graph, i, plans, fit)
+      if (sub === null) return null
+      items.push({ key, label: graph.groups[i]!.label, shape: 'rect', sub })
+    }
+  }
+  if (scope === null) return arrange(items, plan, null, fit)
+  // The frame's own self-loops, drawn on its border by its parent, set the least height of its contents.
+  const key = `g:${scope}`
+  const own = plans.get(graph.groups[scope]!.parent)!.links.filter(l => 'item' in l.from && 'item' in l.to && l.from.item === key && l.to.item === key)
+  const least = own.length === 0 ? 0 : stackLoops(own.map(l => loopOf(l, fit))).box - 2
+  // A frame's title wraps to the frame's width when that is wider than the fit's.
+  const label = graph.groups[scope]!.label
+  const title = wrapLabel(label, fit.wrap)
+  const laid = arrange(items, plan, title, fit, least)
+  if (laid === null || title.length === 1) return laid
+  const wider = wrapLabel(label, laid.canvas.w - 1)
+  if (wider.length >= title.length) return laid
+  const again = arrange(items, plan, wider, fit, least)
+  return again !== null && again.canvas.w <= laid.canvas.w ? again : laid
 }
 
 // ------------------------------------------------------------------ ranking
@@ -74,27 +172,21 @@ export function layout(graph: Graph, fit: Fit): Drawing | null {
  * Longest-path ranking over the graph's DAG. Back edges (those closing a cycle) are excluded by a
  * DFS colouring pass, so `A --> B --> C --> A` still ranks 0, 1, 2.
  */
-export function computeRanks(graph: Graph): number[] {
-  const n = graph.nodes.length
+export function computeRanks(n: number, pairs: [number, number][]): number[] {
   const children: number[][] = Array.from({ length: n }, () => [])
   const indeg = new Array<number>(n).fill(0)
-  for (const e of graph.edges) {
-    if (e.from !== e.to) {
-      children[e.from]!.push(e.to)
-      indeg[e.to]!++
-    }
+  for (const [a, b] of pairs) {
+    children[a]!.push(b)
+    indeg[b]!++
   }
-
   const color = new Uint8Array(n)
   const dag: number[][] = Array.from({ length: n }, () => [])
   const order: number[] = []
-
   // Roots first so ranks grow from natural entry points, then any leftovers.
   const roots = [...Array(n).keys()].filter(i => indeg[i] === 0)
   for (const start of [...roots, ...Array(n).keys()]) {
     if (color[start] === 0) dfsDag(start, children, color, dag, order)
   }
-
   const rank = new Array<number>(n).fill(0)
   for (let i = order.length - 1; i >= 0; i--) {
     const u = order[i]!
@@ -127,439 +219,664 @@ function dfsDag(start: number, children: number[][], color: Uint8Array, dag: num
   }
 }
 
-/**
- * Reorder nodes within each rank to cut edge crossings (barycenter sweeps): alternate down and up
- * passes sort each rank by the mean position of its neighbours, keeping the ordering that crossed least.
- */
-export function orderRanks(byRank: number[][], edges: Edge[], ranks: number[]): void {
-  const n = ranks.length
-  if (byRank.length < 2 || n < 3) return
+// ------------------------------------------------------------------- levels
 
-  const parents: number[][] = Array.from({ length: n }, () => [])
-  const children: number[][] = Array.from({ length: n }, () => [])
-  for (const e of edges) {
-    if (e.from !== e.to && ranks[e.to]! > ranks[e.from]!) {
-      parents[e.to]!.push(e.from)
-      children[e.from]!.push(e.to)
-    }
-  }
+type Kind = 'item' | 'line' | 'label' | 'title' | 'border'
 
-  const pos = new Array<number>(n).fill(0)
-  const reindex = (row: number[]): void => {
-    for (let i = 0; i < row.length; i++) pos[row[i]!] = i
-  }
-  for (const row of byRank) reindex(row)
-
-  let best = byRank.map(row => [...row])
-  let bestCrossings = countCrossings(edges, ranks, pos)
-  if (bestCrossings === 0) return
-
-  for (let it = 0; it < 8; it++) {
-    const rows = it % 2 === 0 ? byRank.slice(1) : byRank.slice(0, -1).reverse()
-    const neigh = it % 2 === 0 ? parents : children
-    for (const row of rows) {
-      sortByBarycenter(row, neigh, pos)
-      reindex(row)
-    }
-    const crossings = countCrossings(edges, ranks, pos)
-    if (crossings < bestCrossings) {
-      bestCrossings = crossings
-      best = byRank.map(row => [...row])
-    }
-    if (bestCrossings === 0) break
-  }
-
-  for (let i = 0; i < byRank.length; i++) byRank[i]!.splice(0, byRank[i]!.length, ...best[i]!)
+/** Something placed on a level: a box or frame, a line passing through, a label, a frame's title. */
+interface LNode {
+  id: number
+  slot: number
+  kind: Kind
+  item: number
+  /** Columns the node takes left and right of its anchor, the column its lines align on. */
+  left: number
+  right: number
+  height: number
+  x: number
+  /** Neighbours on the levels above and below, each with where its port sits across it, as a fraction. */
+  ups: [number, number][]
+  downs: [number, number][]
+  /** Where a neighbour would put this node's anchor to line up with it: [neighbour, offset]. */
+  pullUp: [number, number][]
+  pullDown: [number, number][]
+  text: string[]
+  /** For a node on a frame's border, where an edge meets it. */
+  port: Port | null
 }
 
-function sortByBarycenter(row: number[], neigh: number[][], pos: number[]): void {
-  const keyed = row.map(v => ({
-    key: neigh[v]!.length === 0 ? pos[v]! : neigh[v]!.reduce((s, u) => s + pos[u]!, 0) / neigh[v]!.length,
-    v,
-  }))
-  keyed.sort((a, b) => a.key - b.key)
-  for (let i = 0; i < keyed.length; i++) row[i] = keyed[i]!.v
+/** A link's line through the levels, from its upper end to its lower end. */
+interface Path {
+  link: Link
+  nodes: number[]
+  /** Whether the link's source is its lower end: a back edge, or one leaving a frame by its top. */
+  reversed: boolean
+  /** Port columns relative to the anchors of the first and last node. */
+  upPort: number
+  lowPort: number
 }
 
-export function countCrossings(edges: Edge[], ranks: number[], pos: number[]): number {
-  const adjacent = edges
-    .filter(e => e.from !== e.to && ranks[e.to] === ranks[e.from]! + 1)
-    .map(e => [ranks[e.from]!, pos[e.from]!, pos[e.to]!] as const)
-  let crossings = 0
-  for (let i = 0; i < adjacent.length; i++) {
-    const a = adjacent[i]!
-    for (let j = i + 1; j < adjacent.length; j++) {
-      const b = adjacent[j]!
-      if (a[0] === b[0] && ((a[1] < b[1] && a[2] > b[2]) || (a[1] > b[1] && a[2] < b[2]))) crossings++
-    }
-  }
-  return crossings
-}
+type Loop = { link: Link; row: number; lines: string[] }
+
+const loopOf = (link: Link, fit: Fit): Loop => ({ link, row: 0, lines: link.label === null ? [] : wrapLabel(link.label, fit.label) })
 
 /**
- * Assign a horizontal centre to every node so nodes line up under their neighbours: each node
- * drifts toward the average of its neighbours while ranks keep their order and boxes keep `sep` apart.
+ * Stack an item's self-loops down its right side: each takes two rows, or as many as its label has
+ * lines. Gives the height the item's box needs and the rows the loops and labels take below its top.
  */
-export function assignPositions(byRank: number[][], size: number[], sep: number, edges: Edge[], ranks: number[]): number[] {
-  const n = size.length
-  const parents: number[][] = Array.from({ length: n }, () => [])
-  const children: number[][] = Array.from({ length: n }, () => [])
-  for (const e of edges) {
-    if (e.from !== e.to && ranks[e.to]! > ranks[e.from]!) {
-      parents[e.to]!.push(e.from)
-      children[e.from]!.push(e.to)
-    }
+function stackLoops(loops: Loop[]): { box: number; below: number } {
+  let row = 1
+  let below = 0
+  for (const loop of loops) {
+    loop.row = row
+    below = Math.max(below, row + 2, row + 1 + loop.lines.length)
+    row += Math.max(2, loop.lines.length)
   }
-
-  const pos = new Array<number>(n).fill(0)
-  for (const row of byRank) {
-    let x = 0
-    for (const v of row) {
-      const h = size[v]! / 2
-      x += h
-      pos[v] = x
-      x += h + sep
-    }
-  }
-
-  for (let it = 0; it < 10; it++) {
-    const rows = it % 2 === 0 ? byRank : [...byRank].reverse()
-    const neigh = it % 2 === 0 ? parents : children
-    for (const row of rows) relaxRank(row, neigh, pos, size, sep)
-  }
-
-  let minLeft = Number.POSITIVE_INFINITY
-  for (let v = 0; v < n; v++) minLeft = Math.min(minLeft, pos[v]! - size[v]! / 2)
-  if (!Number.isFinite(minLeft)) minLeft = 0
-  return Array.from({ length: n }, (_, v) => Math.max(0, Math.round(pos[v]! - minLeft)))
+  return { box: loops.at(-1)!.row + 3, below }
 }
 
-function relaxRank(nodes: number[], neigh: number[][], pos: number[], size: number[], sep: number): void {
-  const n = nodes.length
-  if (n === 0) return
-
-  const desired = nodes.map(v => (neigh[v]!.length === 0 ? pos[v]! : neigh[v]!.reduce((s, u) => s + pos[u]!, 0) / neigh[v]!.length))
-  const halfOf = (i: number): number => size[nodes[i]!]! / 2
-
-  // Sweep right then left and take the midpoint: this centres a node between the tightest packing
-  // that respects order from either side.
-  const left = new Array<number>(n)
-  for (let i = 0; i < n; i++) left[i] = i === 0 ? desired[i]! : Math.max(desired[i]!, left[i - 1]! + halfOf(i - 1) + sep + halfOf(i))
-  const right = new Array<number>(n)
-  for (let i = n - 1; i >= 0; i--) right[i] = i === n - 1 ? desired[i]! : Math.min(desired[i]!, right[i + 1]! - halfOf(i + 1) - sep - halfOf(i))
-  for (let i = 0; i < n; i++) pos[nodes[i]!] = (left[i]! + right[i]!) / 2
-  for (let i = 1; i < n; i++) {
-    const minP = pos[nodes[i - 1]!]! + halfOf(i - 1) + sep + halfOf(i)
-    if (pos[nodes[i]!]! < minP) pos[nodes[i]!] = minP
-  }
-}
-
-// ------------------------------------------------------------------- tracks
-
-/** A span competing for a track: `[start, end, from, to, edgeIndex]`. */
-type Span5 = [number, number, number, number, number]
+/** One link's stretch through a channel: from column `xu` on the level above to `xl` below. */
+type Seg = { path: number; xu: number; xl: number; up: string; low: string }
+/** Where a stretch turns: on one track, or with a dogleg on two joined by column `xf`. */
+type Turn = { t1: number; t2: number; xf: number | null }
 
 /**
- * Pack spans into as few parallel tracks as possible. Two spans share a track when they are two
- * cells apart, or when they share an endpoint, so edges fanning out of one node reuse a single row.
+ * Lay out one scope: its items, the links between them and, for a frame, the ports on its border.
+ * `title` is the frame's title, or `null` at the top level.
  */
-export function assignTracks(spans: Span5[]): { assigned: [number, number][]; count: number } {
-  const sorted = [...spans].sort((a, b) => {
-    for (let i = 0; i < 5; i++) if (a[i] !== b[i]) return a[i]! - b[i]!
-    return 0
-  })
-  const tracks: [number, number, number, number][][] = []
-  const assigned: [number, number][] = []
-  for (const [s, e, f, t, idx] of sorted) {
-    let slot = tracks.findIndex(members => members.every(([s2, e2, f2, t2]) => e2 + 2 <= s || e + 2 <= s2 || f2 === f || t2 === t))
-    if (slot === -1) {
-      tracks.push([])
-      slot = tracks.length - 1
+function arrange(items: Item[], plan: Plan, title: string[] | null, fit: Fit, least = 0): Laid | null {
+  const framed = title !== null
+  const ranks = plan.ranks
+  const maxRank = Math.max(-1, ...ranks)
+  const rankSlot = (r: number) => (framed ? 2 * r + 2 : 2 * r)
+  const bottomSlot = framed ? rankSlot(maxRank + 1) : -1
+  const nodes: LNode[] = []
+  const add = (slot: number, kind: Kind, item = -1): LNode => {
+    const node: LNode = { id: nodes.length, slot, kind, item, left: 0, right: 0, height: 0, x: 0, ups: [], downs: [], pullUp: [], pullDown: [], text: [], port: null }
+    nodes.push(node)
+    return node
+  }
+  const index = new Map(items.map((it, i) => [it.key, i]))
+  const itemNode = items.map((_, i) => add(rankSlot(ranks[i]!), 'item', i))
+  const titleNode = framed ? add(0, 'title') : null
+
+  // Links: self-loops apart, every other link becomes a path from its upper end to its lower end.
+  const loops: Loop[][] = items.map(() => [])
+  const paths: Path[] = []
+  const borderPorts: Port[] = []
+  for (const link of plan.links) {
+    const ends = [link.from, link.to].map(end => {
+      if ('item' in end) return itemNode[index.get(end.item)!]!
+      const node = add(end.side === 'top' ? 0 : bottomSlot, 'border')
+      node.port = { edge: link.edge.index, side: end.side, x: 0, role: end.role }
+      borderPorts.push(node.port)
+      return node
+    })
+    const [a, b] = ends as [LNode, LNode]
+    if (a === b) {
+      loops[a.item]!.push(loopOf(link, fit))
+      continue
     }
-    tracks[slot]!.push([s, e, f, t])
-    assigned.push([idx, slot])
+    const reversed = b.slot < a.slot
+    paths.push({ link, nodes: reversed ? [b.id, a.id] : [a.id, b.id], reversed, upPort: 0, lowPort: 0 })
   }
-  return { assigned, count: tracks.length }
-}
+  for (const { edge, side } of plan.reserve) {
+    const node = add(side === 'top' ? 0 : bottomSlot, 'border')
+    node.port = { edge, side, x: 0, role: 'own' }
+    borderPorts.push(node.port)
+  }
 
-/** Edges from rank `r` to `r + 1` that must jog sideways, so need a bus row. */
-function busSpans(graph: Graph, ranks: number[], centers: number[], r: number): Span5[] {
-  const out: Span5[] = []
-  graph.edges.forEach((e, i) => {
-    const jogs = Math.abs(centers[e.from]! - centers[e.to]!) > 1
-    if (e.from !== e.to && ranks[e.from] === r && ranks[e.to] === r + 1 && jogs) {
-      out.push([Math.min(centers[e.from]!, centers[e.to]!), Math.max(centers[e.from]!, centers[e.to]!), e.from, e.to, i])
+  // A labelled path puts its label in the middle gap it crosses; that gap becomes a level.
+  const labelSlot = paths.map(p => {
+    if (p.link.label === null) return -1
+    const top = nodes[p.nodes[0]!]!.slot
+    const gaps = (nodes[p.nodes[1]!]!.slot - top) / 2
+    return top + 1 + 2 * Math.floor((gaps - 1) / 2)
+  })
+  const lastSlot = framed ? bottomSlot : rankSlot(maxRank)
+  const slots = Array.from({ length: Math.max(0, lastSlot + 1) }, (_, s) => s).filter(s => s % 2 === 0 || labelSlot.includes(s))
+  paths.forEach((p, k) => {
+    const [up, low] = [nodes[p.nodes[0]!]!, nodes[p.nodes[1]!]!]
+    const between = slots.filter(s => s > up.slot && s < low.slot).map(s => {
+      const node = add(s, s === labelSlot[k] ? 'label' : 'line')
+      if (node.kind === 'label') node.text = wrapLabel(p.link.label!, fit.label)
+      return node.id
+    })
+    p.nodes = [up.id, ...between, low.id]
+  })
+  if (nodes.length > MAX_NODES) return null
+
+  // Ports on the items' borders. On a side, the lines leaving share one port and the heads coming in
+  // share another, except that two links between the same two ports would share both ends, so the
+  // second one gets a port of its own.
+  const groupsOf = items.map(() => ({ top: [] as number[][], bottom: [] as number[][] }))
+  const ends = items.map(() => ({ top: [] as number[], bottom: [] as number[] }))
+  paths.forEach((p, k) => {
+    const up = nodes[p.nodes[0]!]!
+    const low = nodes[p.nodes.at(-1)!]!
+    if (up.kind === 'item') ends[up.item]!.bottom.push(k)
+    if (low.kind === 'item') ends[low.item]!.top.push(k)
+  })
+  const framePort = (i: number, side: Side, k: number) => items[i]!.sub!.ports.find(q => q.edge === paths[k]!.link.edge.index && q.side === side)!
+  /**
+   * The port a head's line leaves from: its source's shared one. The source may sit inside a frame,
+   * so it is named by the edge, not by this scope's item.
+   */
+  const sourcePort = (k: number): string => `${paths[k]!.link.keys[0]}:${paths[k]!.link.edge.headFrom}`
+  items.forEach((it, i) => {
+    if (it.sub !== null) return
+    for (const side of ['top', 'bottom'] as const) {
+      const shared = new Map<string, number[]>()
+      const own: number[][] = []
+      const seen = new Set<string>()
+      for (const k of ends[i]![side]) {
+        // On the top, heads come in on paths that are not reversed; on the bottom, on reversed ones.
+        const coming = (side === 'top') !== paths[k]!.reversed
+        const far = sourcePort(k)
+        if (coming && seen.has(far)) own.push([k])
+        else {
+          if (coming) seen.add(far)
+          // A shared port shows one glyph, so only ends with the same head share it.
+          const { headTo, headFrom } = paths[k]!.link.edge
+          const key = coming ? `in:${headTo}` : `out:${headFrom}`
+          const group = shared.get(key)
+          if (group) group.push(k)
+          else shared.set(key, [k])
+        }
+      }
+      groupsOf[i]![side] = [...shared.values(), ...own]
     }
   })
-  return out
-}
 
-/** Edges skipping a rank or running backwards; these go around in a lane. */
-function laneSpans(graph: Graph, ranks: number[], placed: Placed[]): Span5[] {
-  const out: Span5[] = []
-  graph.edges.forEach((e, i) => {
-    if (e.from === e.to || ranks[e.to] === ranks[e.from]! + 1) return
-    const pf = placed[e.from]!
-    const pt = placed[e.to]!
-    out.push([Math.min(pf.cy, pt.cy), Math.max(pf.cy, pt.cy), e.from, e.to, i])
+  // Sizes, with room for the ports and for self-loops, which go on an item's right side, one under
+  // the other, each label beside its loop.
+  const sizes = items.map((it, i) => {
+    if (it.sub !== null) return { w: it.sub.canvas.w + 4, h: it.sub.canvas.h + 2, lines: [] as string[] }
+    const lines = wrapLabel(it.label, fit.wrap)
+    const ports = Math.max(groupsOf[i]!.top.length, groupsOf[i]!.bottom.length)
+    return { w: Math.max(widest(lines) + 2 * PAD + 2, ports + 2), h: lines.length + 2, lines }
   })
-  return out
-}
-
-/** An edge label as drawn in this item: on one line, cut to the fit's label width. */
-const edgeText = (label: string, fit: Fit): string => fitLabel(label.replace(/\s+/g, ' ').trim(), fit.label)
-
-// ----------------------------------------------------------------- placement
-
-function placeTd(ranks: number[], maxRank: number, byRank: number[][], sizes: NodeSizes, graph: Graph, placed: Placed[], fit: Fit): RoutePlan {
-  // Positions are rounded centres, which can leave every box a column off the left edge.
-  const centers = assignPositions(byRank, sizes.layW, fit.gap, graph.edges, ranks)
-  const left = Math.min(...centers.map((cx, i) => cx - half(sizes.boxW[i]!)))
-  if (left > 0) centers.forEach((cx, i) => (centers[i] = cx - left))
-
-  const edgeBus = new Array<number>(graph.edges.length).fill(0)
-  const busTracks = new Array<number>(maxRank + 1).fill(0)
-  for (let r = 0; r < maxRank; r++) {
-    const spans = busSpans(graph, ranks, centers, r)
-    if (spans.length === 0) continue
-    const { assigned, count } = assignTracks(spans)
-    for (const [idx, slot] of assigned) edgeBus[idx] = slot
-    busTracks[r] = count
+  const loopRight = items.map(() => 0)
+  items.forEach((it, i) => {
+    if (loops[i]!.length === 0) return
+    const { box, below } = stackLoops(loops[i]!)
+    // A frame was laid out tall enough for its loops; growing it here would part its contents from
+    // its bottom border.
+    if (it.sub === null) sizes[i]!.h = Math.max(sizes[i]!.h, box)
+    loopRight[i] = 2 + (loops[i]!.some(l => l.lines.length > 0) ? 1 + Math.max(...loops[i]!.map(l => widest(l.lines))) : 0)
+    itemNode[i]!.height = below
+  })
+  for (const node of nodes) {
+    if (node.kind === 'item') {
+      const { w, h } = sizes[node.item]!
+      node.left = half(w)
+      node.right = w - 1 - half(w) + loopRight[node.item]!
+      node.height = Math.max(node.height, h)
+    } else if (node.kind === 'label') {
+      node.right = 1 + widest(node.text)
+      node.height = node.text.length
+    } else if (node.kind === 'title') {
+      node.text = title!
+      node.right = widest(title!)
+      node.height = title!.length - 1
+    }
   }
 
-  const rankH = byRank.map(row => (row.length === 0 ? 3 : Math.max(...row.map(i => sizes.boxH[i]! + sizes.extraH[i]!))))
-  const rankY = new Array<number>(maxRank + 1).fill(0)
-  for (let r = 1; r <= maxRank; r++) rankY[r] = rankY[r - 1]! + rankH[r - 1]! + Math.max(GAP_Y, busTracks[r - 1]! + 1)
-  const canvasH = rankY[maxRank]! + rankH[maxRank]!
-  const bandEnd = Array.from({ length: maxRank + 1 }, (_, r) => rankY[r]! + rankH[r]!)
-
-  let diagramW = 1
-  byRank.forEach((row, r) => {
-    for (const idx of row) {
-      const w = sizes.boxW[idx]!
-      const h = sizes.boxH[idx]!
-      const cx = centers[idx]!
-      const x = sat(cx, half(w))
-      const y = rankY[r]! + half(rankH[r]! - h - sizes.extraH[idx]!)
-      placed[idx] = { x, y, w, h, cx, cy: y + half(h), rank: r }
-      diagramW = Math.max(diagramW, x + w)
-      if (sizes.extraH[idx]! > 0 && sizes.selfLabelW[idx]! > 0) diagramW = Math.max(diagramW, x + w + 2 + sizes.selfLabelW[idx]!)
+  // A frame's ports are fixed by its contents; ordering reads each as a fraction of the frame's place.
+  const frameOffset = (node: LNode, side: Side, k: number) => 2 + framePort(node.item, side, k).x - half(sizes[node.item]!.w)
+  const offsetFor = (node: LNode, side: Side, k: number) => (node.kind === 'item' && items[node.item]!.sub !== null ? frameOffset(node, side, k) : 0)
+  const span = (v: LNode) => v.left + v.right + 1
+  paths.forEach((p, k) => {
+    for (let j = 0; j + 1 < p.nodes.length; j++) {
+      const a = nodes[p.nodes[j]!]!
+      const b = nodes[p.nodes[j + 1]!]!
+      a.downs.push([b.id, offsetFor(b, 'top', k) / span(b)])
+      b.ups.push([a.id, offsetFor(a, 'bottom', k) / span(a)])
     }
   })
 
-  let contentW = diagramW
-  for (const e of graph.edges) {
-    if (e.from === e.to || e.label === null) continue
-    const lw = stringWidth(edgeText(e.label, fit))
-    contentW = ranks[e.to] === ranks[e.from]! + 1 ? Math.max(contentW, placed[e.to]!.cx + 2 + lw) : Math.max(contentW, diagramW + lw + 1)
+  // Order each level to cut crossings.
+  const bySlot = new Map<number, LNode[]>(slots.map(s => [s, []]))
+  for (const node of nodes) bySlot.get(node.slot)?.push(node)
+  const levels = slots.map(s => bySlot.get(s)!)
+  orderLevels(levels, nodes, titleNode)
+
+  // A box's ports take columns side by side around its centre, in the order of where their lines go.
+  const order = new Map<number, number>()
+  for (const level of levels) level.forEach((v, i) => order.set(v.id, i))
+  const offsets = new Map<string, number>()
+  items.forEach((it, i) => {
+    if (it.sub !== null) return
+    for (const side of ['top', 'bottom'] as const) {
+      const next = (k: number) => order.get(side === 'top' ? paths[k]!.nodes.at(-2)! : paths[k]!.nodes[1]!)!
+      const groups = groupsOf[i]![side].map(g => ({ g, at: g.reduce((s, k) => s + next(k), 0) / g.length })).sort((a, b) => a.at - b.at)
+      const first = -Math.ceil((groups.length - 1) / 2)
+      groups.forEach(({ g }, j) => {
+        for (const k of g) offsets.set(`${k}:${side}`, first + j)
+      })
+    }
+  })
+  const portOffset = (node: LNode, side: Side, k: number): number =>
+    node.kind !== 'item' ? 0 : items[node.item]!.sub !== null ? frameOffset(node, side, k) : offsets.get(`${k}:${side}`)!
+  paths.forEach((p, k) => {
+    p.upPort = portOffset(nodes[p.nodes[0]!]!, 'bottom', k)
+    p.lowPort = portOffset(nodes[p.nodes.at(-1)!]!, 'top', k)
+    for (let j = 0; j + 1 < p.nodes.length; j++) {
+      const a = nodes[p.nodes[j]!]!
+      const b = nodes[p.nodes[j + 1]!]!
+      const pa = j === 0 ? p.upPort : 0
+      const pb = j + 2 === p.nodes.length ? p.lowPort : 0
+      a.pullDown.push([b.id, pb - pa])
+      b.pullUp.push([a.id, pa - pb])
+    }
+  })
+  placeLevels(levels, nodes, fit.gap, titleNode)
+
+  // Heights, then channels: each pair of neighbouring levels with the stretches of line between them.
+  const levelH = levels.map(level => Math.max(0, ...level.map(n => n.height)))
+  const colOf = (p: Path, j: number) => nodes[p.nodes[j]!]!.x + (j === 0 ? p.upPort : j === p.nodes.length - 1 ? p.lowPort : 0)
+  const isRank = (s: number) => s % 2 === 0 && !(framed && (s === 0 || s === bottomSlot))
+  /** Whether path `k` passes through the border of the frame `node` on `side`, on to a box inside. */
+  const crosses = (node: LNode, side: Side, k: number) => node.kind === 'item' && items[node.item]!.sub !== null && framePort(node.item, side, k).role === 'cross'
+  const segsAt: Seg[][] = levels.map(() => [])
+  const headUp = levels.map(() => false)
+  const headDown = levels.map(() => false)
+  paths.forEach((p, k) => {
+    const upNode = nodes[p.nodes[0]!]!
+    const lowNode = nodes[p.nodes.at(-1)!]!
+    for (let j = 0; j + 1 < p.nodes.length; j++) {
+      const level = slots.indexOf(nodes[p.nodes[j]!]!.slot)
+      const xu = colOf(p, j)
+      const xl = colOf(p, j + 1)
+      segsAt[level]!.push({ path: k, xu, xl, up: `${p.nodes[j]}:${xu}`, low: `${p.nodes[j + 1]}:${xl}` })
+      if (j === 0 && upNode.kind === 'item' && p.reversed && !crosses(upNode, 'bottom', k)) headUp[level] = true
+      const last = j + 2 === p.nodes.length
+      if (last && ((lowNode.kind === 'item' && !p.reversed && !crosses(lowNode, 'top', k)) || roleOf(lowNode) === 'end')) headDown[level] = true
+    }
+  })
+  const turns = new Map<string, Turn>()
+  const chanRows: number[] = []
+  const chanTop: number[] = []
+  levels.forEach((_, li) => {
+    if (li + 1 === levels.length) return
+    const { turn, count } = channel(segsAt[li]!)
+    for (const [seg, t] of turn) turns.set(`${seg.path}:${li}`, t)
+    const top = headUp[li] ? 1 : 0
+    const min = isRank(slots[li]!) && isRank(slots[li + 1]!) ? 2 : slots[li]! % 2 === 1 ? 1 : 0
+    chanTop.push(top)
+    chanRows.push(Math.max(min, top + count + (headDown[li] ? 1 : 0)))
+  })
+  // Rows a frame's own self-loops need come in before its bottom level, which stays on its border.
+  const short = least - levelH.reduce((s, h) => s + h, 0) - chanRows.reduce((s, r) => s + r, 0)
+  if (short > 0 && chanRows.length > 0) chanRows[chanRows.length - 1]! += short
+  const levelY: number[] = []
+  let y = 0
+  levels.forEach((_, li) => {
+    levelY.push(y)
+    y += levelH[li]! + (chanRows[li] ?? 0)
+  })
+  const height = Math.max(1, y)
+  const trackRow = (li: number, t: number) => levelY[li]! + levelH[li]! + chanTop[li]! + t
+
+  let width = 1
+  for (const node of nodes) width = Math.max(width, node.x + node.right + 1)
+  for (const t of turns.values()) if (t.xf !== null) width = Math.max(width, t.xf + 1)
+  if (width * height > MAX_CANVAS_CELLS) return null
+  const canvas = new Canvas(width, height)
+
+  // Items: boxes, and frames with their contents.
+  const boxAt = (i: number) => {
+    const node = itemNode[i]!
+    const { w, h } = sizes[i]!
+    return { x: node.x - half(w), y: levelY[slots.indexOf(node.slot)]!, w, h }
+  }
+  items.forEach((it, i) => {
+    const p = boxAt(i)
+    if (it.sub === null) drawBox(canvas, p, it, sizes[i]!.lines)
+    else drawFrame(canvas, p, it, it.sub)
+  })
+  if (titleNode !== null) {
+    const titleRuns = title!.slice(1).map((text, li) => ({ x: titleNode.x, y: li, text }))
+    for (const run of titleRuns) drawText(canvas, run.text, run.x, run.y, 'text')
   }
 
-  const edgeLane = new Array<number>(graph.edges.length).fill(0)
-  const lanes = laneSpans(graph, ranks, placed)
-  let canvasW = contentW
-  let laneBase = 0
-  if (lanes.length > 0) {
-    const { assigned, count } = assignTracks(lanes)
-    for (const [idx, slot] of assigned) edgeLane[idx] = slot
-    canvasW = contentW + 1 + count
-    laneBase = contentW + 1
-  }
-
-  return { canvasW, canvasH, bandEnd, edgeBus, laneBase, edgeLane }
-}
-
-// -------------------------------------------------------------------- canvas
-
-/** A frame's title wraps to the frame's width when that is wider than the fit's. */
-const frameTitle = (label: string, sub: Canvas, fit: Fit): string[] => wrapLabel(label, Math.max(fit.wrap, sub.w - 2))
-
-const widest = (lines: string[]): number => Math.max(1, ...lines.map(stringWidth))
-
-/** Rank, place, draw and route a graph onto a fresh canvas. */
-function layoutCanvas(graph: Graph, extras: NodeExtra[], fit: Fit): Canvas | null {
-  const n = graph.nodes.length
-  if (n === 0) return null
-
-  const ranks = computeRanks(graph)
-  const maxRank = Math.max(...ranks, 0)
-
-  const byRank: number[][] = Array.from({ length: maxRank + 1 }, () => [])
-  for (let idx = 0; idx < ranks.length; idx++) byRank[ranks[idx]!]!.push(idx)
-  orderRanks(byRank, graph.edges, ranks)
-
-  const texts = extras.map((extra, i) => (extra.kind === 'frame' ? frameTitle(graph.nodes[i]!.label, extra.sub, fit) : wrapLabel(graph.nodes[i]!.label, fit.wrap)))
-  const boxW = extras.map((extra, i) => (extra.kind === 'frame' ? Math.max(extra.sub.w + 2, widest(texts[i]!) + 4) : widest(texts[i]!) + 2 * PAD + 2))
-  const boxH = extras.map((extra, i) => (extra.kind === 'frame' ? extra.sub.h + 1 + texts[i]!.length : texts[i]!.length + 2))
-
-  // A self-edge needs two rows below its box, and room beside it for a label.
-  const extraH = new Array<number>(n).fill(0)
-  const selfLabelW = new Array<number>(n).fill(0)
-  for (const e of graph.edges) {
-    if (e.from !== e.to) continue
-    extraH[e.from] = 2
-    if (e.label !== null) selfLabelW[e.from] = Math.max(selfLabelW[e.from]!, stringWidth(edgeText(e.label, fit)))
-  }
-  for (let i = 0; i < n; i++) if (extraH[i]! > 0) boxW[i] = Math.max(boxW[i]!, 7)
-
-  const sizes: NodeSizes = {
-    boxW,
-    boxH,
-    layW: boxW.map((w, i) => w + (selfLabelW[i]! > 0 ? 2 * (selfLabelW[i]! + 3) : 0)),
-    extraH,
-    selfLabelW,
-  }
-
-  const placed: Placed[] = Array.from({ length: n }, () => ({ x: 0, y: 0, w: 0, h: 0, cx: 0, cy: 0, rank: 0 }))
-  const plan = placeTd(ranks, maxRank, byRank, sizes, graph, placed, fit)
-  if (plan.canvasW * plan.canvasH > MAX_CANVAS_CELLS) return null
-
-  const canvas = new Canvas(plan.canvasW, plan.canvasH)
-  for (let idx = 0; idx < n; idx++) {
-    const extra = extras[idx]!
-    const node = graph.nodes[idx]!
-    if (extra.kind === 'frame') drawFrame(canvas, placed[idx]!, node, texts[idx]!, extra.sub)
-    else drawBox(canvas, placed[idx]!, node, texts[idx]!)
-  }
-
-  graph.edges.forEach((edge, i) => {
-    canvas.curStyle = edge.line === 'dotted' ? STY_DOT : edge.line === 'thick' ? STY_THICK : STY_SOLID
-    canvas.beginEdge({ index: edge.index, from: graph.nodes[edge.from]!.key, to: graph.nodes[edge.to]!.key, cells: [], head: null, label: [] })
-    const label = edge.label === null ? null : edgeText(edge.label, fit)
-    const from = placed[edge.from]!
-    const to = placed[edge.to]!
-    if (edge.from === edge.to) routeSelf(canvas, from, edge, label)
-    else if (to.rank === from.rank + 1) routeForward(canvas, from, to, edge, label, plan.bandEnd[from.rank]! + plan.edgeBus[i]!)
-    else routeBack(canvas, from, to, edge, label, plan.laneBase + plan.edgeLane[i]!)
+  // Labels, then lines.
+  const styleOf = (edge: Edge) => (edge.line === 'dotted' ? STY_DOT : edge.line === 'thick' ? STY_THICK : STY_SOLID)
+  paths.forEach((p, k) => {
+    const { edge, keys } = p.link
+    canvas.curStyle = styleOf(edge)
+    canvas.beginEdge(edge.index, keys[0], keys[1])
+    for (const node of p.nodes.map(id => nodes[id]!)) {
+      if (node.kind !== 'label') continue
+      node.text.forEach((text, li) => {
+        const run = { x: node.x + 2, y: levelY[slots.indexOf(node.slot)]! + li, text }
+        drawText(canvas, text, run.x, run.y, 'edgeLabel')
+        canvas.labelRun(run)
+      })
+    }
+    drawPath(canvas, p, k)
     canvas.endEdge()
   })
 
+  function drawPath(canvas: Canvas, p: Path, k: number): void {
+    const { edge } = p.link
+    const upNode = nodes[p.nodes[0]!]!
+    const lowNode = nodes[p.nodes.at(-1)!]!
+    const x0 = colOf(p, 0)
+    const xn = colOf(p, p.nodes.length - 1)
+    const upBox = upNode.kind === 'item' ? boxAt(upNode.item) : null
+    const lowBox = lowNode.kind === 'item' ? boxAt(lowNode.item) : null
+    const upCross = crosses(upNode, 'bottom', k)
+    const lowCross = crosses(lowNode, 'top', k)
+
+    // The upper end: the source leaving by a bottom border, a head under its target, or a frame's top.
+    const y0 = upBox === null ? 0 : p.reversed && !upCross ? upBox.y + upBox.h : upBox.y + upBox.h - 1
+    const yn = lowBox === null ? height - 1 : !p.reversed && !lowCross ? lowBox.y - 1 : lowBox.y
+    const points: [number, number][] = [[x0, y0]]
+    for (let j = 0; j + 1 < p.nodes.length; j++) {
+      const li = slots.indexOf(nodes[p.nodes[j]!]!.slot)
+      const t = turns.get(`${k}:${li}`)
+      if (!t) continue
+      const [xu, xl] = [colOf(p, j), colOf(p, j + 1)]
+      if (t.xf === null) points.push([xu, trackRow(li, t.t1)], [xl, trackRow(li, t.t1)])
+      else points.push([xu, trackRow(li, t.t1)], [t.xf, trackRow(li, t.t1)], [t.xf, trackRow(li, t.t2)], [xl, trackRow(li, t.t2)])
+    }
+    points.push([xn, yn])
+    for (let j = 0; j + 1 < points.length; j++) {
+      const [[ax, ay], [bx, by]] = [points[j]!, points[j + 1]!]
+      if (ax === bx) canvas.segV(ax, ay, by)
+      else canvas.segH(ay, ax, bx)
+    }
+    // A line that comes through the frame's border joins the border's crossing.
+    if (upNode.kind === 'border') canvas.addBits(x0, y0, U)
+    if (lowNode.kind === 'border' && roleOf(lowNode) !== 'end') canvas.addBits(xn, yn, D)
+
+    if (upBox !== null) {
+      if (upCross) canvas.junction(x0, y0, U | D)
+      else if (p.reversed) end(canvas, x0, y0, U, edge.headTo, '▲')
+      else leave(canvas, x0, y0, D, edge.headFrom, '▲')
+    }
+    if (lowBox !== null) {
+      if (lowCross) canvas.junction(xn, yn, U | D)
+      else if (p.reversed) leave(canvas, xn, yn, U, edge.headFrom, '▼')
+      else end(canvas, xn, yn, D, edge.headTo, '▼')
+    } else if (roleOf(lowNode) === 'end') end(canvas, xn, yn, D, edge.headTo, '▼')
+  }
+
+  // Self-loops on the right side of their box or frame.
+  items.forEach((_, i) => {
+    const { x, y, w } = boxAt(i)
+    for (const loop of loops[i]!) {
+      const { edge, keys } = loop.link
+      canvas.curStyle = styleOf(edge)
+      canvas.beginEdge(edge.index, keys[0], keys[1])
+      const row = y + loop.row
+      const [h, down, up] = edge.line === 'dotted' ? ['╌', '┐', '┘'] : edge.line === 'thick' ? ['━', '┓', '┛'] : ['─', '┐', '┘']
+      canvas.junction(x + w - 1, row, R)
+      canvas.start(x + w - 1, row)
+      if (edge.headFrom !== 'none') canvas.set(x + w - 1, row, headGlyph(edge.headFrom, '◄'), 'edge')
+      canvas.stroke(x + w, row, h!)
+      canvas.stroke(x + w + 1, row, down!)
+      canvas.stroke(x + w + 1, row + 1, up!)
+      if (edge.headTo === 'none') canvas.stroke(x + w, row + 1, h!)
+      else canvas.stroke(x + w, row + 1, headGlyph(edge.headTo, '◄'))
+      canvas.tip(x + w, row + 1)
+      loop.lines.forEach((text, li) => {
+        const run = { x: x + w + 3, y: row + 1 + li, text }
+        drawText(canvas, text, run.x, run.y, 'edgeLabel')
+        canvas.labelRun(run)
+      })
+      canvas.endEdge()
+    }
+  })
+
+  // Edges that leave a frame's own border for something inside it start on that border, which the
+  // frame's parent draws.
+  items.forEach((it, i) => {
+    if (it.sub === null) return
+    const { x, y } = boxAt(i)
+    for (const port of it.sub.ports) {
+      if (port.role !== 'start') continue
+      const link = plan.links.find(l => l.edge.index === port.edge)
+      const edge = link?.edge
+      const keys = link?.keys ?? [it.key, it.key]
+      canvas.beginEdge(port.edge, keys[0], keys[1])
+      canvas.junction(x + 2 + port.x, y, D)
+      canvas.start(x + 2 + port.x, y)
+      if (edge && edge.headFrom !== 'none') canvas.set(x + 2 + port.x, y, headGlyph(edge.headFrom, '▲'), 'edge')
+      canvas.endEdge()
+    }
+  })
+
   canvas.finalizeMask()
-  return canvas
+  for (const node of nodes) if (node.port) node.port.x = node.x
+  return { canvas, ports: borderPorts, title: title ?? [] }
 }
 
-// -------------------------------------------------------------------- groups
+const roleOf = (node: LNode): Role | undefined => node.port?.role
 
-type ItemKey = string
-const nodeKey = (i: number): ItemKey => `n:${i}`
-const groupKey = (i: number): ItemKey => `g:${i}`
+function headGlyph(head: Head, arrow: string): string {
+  return head === 'circle' ? 'o' : head === 'cross' ? '×' : arrow
+}
+
+/** Where a line leaves its source's border, with the source's own head if it has one. */
+function leave(canvas: Canvas, x: number, y: number, bits: number, head: Head, arrow: string): void {
+  canvas.junction(x, y, bits)
+  canvas.start(x, y)
+  if (head !== 'none') canvas.set(x, y, headGlyph(head, arrow), 'edge')
+}
+
+/** Where a line ends beside its target: its head, or a bare line end. */
+function end(canvas: Canvas, x: number, y: number, bits: number, head: Head, arrow: string): void {
+  if (head === 'none') {
+    canvas.addBits(x, y, bits)
+    canvas.tip(x, y)
+  } else canvas.head(x, y, headGlyph(head, arrow))
+}
+
+// ----------------------------------------------------------------- ordering
 
 /**
- * Lay out a diagram with groups (subgraphs, composite states). Each group becomes a framed box
- * holding its own laid-out canvas. An edge is drawn in the innermost scope containing both
- * endpoints; one crossing a group's boundary attaches to the frame instead of the node.
+ * Reorder each level to cut crossings (barycenter sweeps): alternate down and up passes sort each
+ * level by the mean position of its neighbours, keeping the ordering that crossed least. A frame's
+ * title stays first on its level.
  */
-function layoutGrouped(graph: Graph, fit: Fit): Canvas | null {
-  const proxy = new Map<number, number>()
-  graph.nodes.forEach((_, ni) => {
-    const gi = graph.proxyOf(ni)
-    if (gi !== undefined) proxy.set(ni, gi)
-  })
-
-  const groupChain = (g: number | null): number[] => {
-    const chain: number[] = []
-    let cur = g
-    while (cur !== null) {
-      chain.push(cur)
-      cur = graph.groups[cur]!.parent
+function orderLevels(levels: LNode[][], nodes: LNode[], pinned: LNode | null): void {
+  const pos = new Array<number>(nodes.length).fill(0)
+  const reindex = (level: LNode[]) => level.forEach((v, i) => (pos[v.id] = i))
+  levels.forEach(reindex)
+  const crossings = () => {
+    let count = 0
+    for (const level of levels) {
+      const segs = level.flatMap(v => v.downs.map(([d, f]) => [pos[v.id]!, pos[d]! + f] as const))
+      for (let i = 0; i < segs.length; i++) {
+        for (let j = i + 1; j < segs.length; j++) {
+          const [a, b] = [segs[i]!, segs[j]!]
+          if ((a[0] < b[0] && a[1] > b[1]) || (a[0] > b[0] && a[1] < b[1])) count++
+        }
+      }
     }
-    return chain.reverse()
+    return count
   }
-  const endpoint = (n: number): { key: ItemKey; chain: number[] } => {
-    const gi = proxy.get(n)
-    return gi === undefined ? { key: nodeKey(n), chain: groupChain(graph.nodeGroup[n]!) } : { key: groupKey(gi), chain: groupChain(graph.groups[gi]!.parent) }
+  let best = levels.map(l => [...l])
+  let bestCount = crossings()
+  for (let it = 0; it < 8 && bestCount > 0; it++) {
+    const sweep = it % 2 === 0 ? levels.slice(1) : levels.slice(0, -1).reverse()
+    for (const level of sweep) {
+      const keyed = level.map(v => {
+        const neigh = it % 2 === 0 ? v.ups : v.downs
+        return { v, key: v === pinned ? -1 : neigh.length === 0 ? pos[v.id]! : neigh.reduce((s, [u, f]) => s + pos[u]! + f, 0) / neigh.length }
+      })
+      keyed.sort((a, b) => a.key - b.key)
+      level.splice(0, level.length, ...keyed.map(k => k.v))
+      reindex(level)
+    }
+    const count = crossings()
+    if (count < bestCount) {
+      bestCount = count
+      best = levels.map(l => [...l])
+    }
   }
-
-  /** Edges bucketed by the scope that draws them; `null` is the top level. */
-  const scopeEdges = new Map<number | null, [ItemKey, ItemKey, number][]>()
-  graph.edges.forEach((e, ei) => {
-    const f = endpoint(e.from)
-    const t = endpoint(e.to)
-    let k = 0
-    while (k < f.chain.length && k < t.chain.length && f.chain[k] === t.chain[k]) k++
-    const scope = k === 0 ? null : f.chain[k - 1]!
-    const fKey = f.chain.length > k ? groupKey(f.chain[k]!) : f.key
-    const tKey = t.chain.length > k ? groupKey(t.chain[k]!) : t.key
-    const list = scopeEdges.get(scope)
-    if (list) list.push([fKey, tKey, ei])
-    else scopeEdges.set(scope, [[fKey, tKey, ei]])
-  })
-
-  const directNodes = new Map<number | null, number[]>()
-  graph.nodeGroup.forEach((g, ni) => {
-    if (proxy.has(ni)) return
-    const list = directNodes.get(g)
-    if (list) list.push(ni)
-    else directNodes.set(g, [ni])
-  })
-
-  return buildScope(graph, null, scopeEdges, directNodes, fit)
+  levels.forEach((level, i) => level.splice(0, level.length, ...best[i]!))
 }
 
-function buildScope(
-  graph: Graph,
-  scope: number | null,
-  scopeEdges: Map<number | null, [ItemKey, ItemKey, number][]>,
-  directNodes: Map<number | null, number[]>,
-  fit: Fit,
-): Canvas | null {
-  const items: ItemKey[] = (directNodes.get(scope) ?? []).map(nodeKey)
-  items.push(...graph.groups.flatMap((g, gi) => (g.parent === scope ? [groupKey(gi)] : [])))
-
-  if (items.length === 0) return new Canvas(1, 1)
-
-  const indexOf = new Map<ItemKey, number>()
-  const nodes: Node[] = []
-  const extras: NodeExtra[] = []
-  for (const item of items) {
-    indexOf.set(item, nodes.length)
-    const i = Number(item.slice(2))
-    if (item.startsWith('n')) {
-      nodes.push({ ...graph.nodes[i]! })
-      extras.push({ kind: 'plain' })
-    } else {
-      const sub = buildScope(graph, i, scopeEdges, directNodes, fit)
-      if (sub === null) return null
-      nodes.push({ key: item, label: graph.groups[i]!.label, shape: 'rect' })
-      extras.push({ kind: 'frame', sub })
+/**
+ * Give every node an anchor column so its lines run as straight as they can: level by level, each
+ * node goes where its neighbours' ports are, as near as keeping its level's order and `sep` columns
+ * between nodes allows. A level is placed by least squares on the columns it is pulled to (isotonic
+ * regression: neighbours that would collide move as one block, to the mean of their pulls).
+ */
+function placeLevels(levels: LNode[][], nodes: LNode[], sep: number, pinned: LNode | null): void {
+  // Boxes keep the fit's gap; lines and labels need only one empty column beside them.
+  const apart = (a: LNode, b: LNode) => a.right + 1 + (a.kind === 'item' || b.kind === 'item' || a.kind === 'title' ? sep : 1) + b.left
+  for (const level of levels) {
+    let x = 0
+    level.forEach((v, i) => {
+      x = i === 0 ? v.left : x + apart(level[i - 1]!, v)
+      v.x = x
+    })
+  }
+  const mean = (values: number[]) => values.reduce((s, v) => s + v, 0) / values.length
+  const place = (level: LNode[], pulls: (v: LNode) => [number, number][]) => {
+    type Block = { targets: number[]; value: number; size: number }
+    const blocks: Block[] = []
+    let offset = 0
+    level.forEach((v, i) => {
+      if (i > 0) offset += apart(level[i - 1]!, v)
+      const own = pulls(v).map(([u, d]) => nodes[u]!.x + d - offset)
+      let block: Block = { targets: own.length > 0 ? own : [v.x - offset], value: 0, size: 1 }
+      block.value = mean(block.targets)
+      while (blocks.length > 0 && blocks.at(-1)!.value >= block.value) {
+        const prev = blocks.pop()!
+        const targets = [...prev.targets, ...block.targets]
+        block = { targets, value: mean(targets), size: prev.size + block.size }
+      }
+      blocks.push(block)
+    })
+    let i = 0
+    offset = 0
+    for (const block of blocks) {
+      for (let k = 0; k < block.size; k++, i++) {
+        if (i > 0) offset += apart(level[i - 1]!, level[i]!)
+        level[i]!.x = block.value + offset
+      }
     }
   }
-
-  const edges: Edge[] = []
-  for (const [f, t, ei] of scopeEdges.get(scope) ?? []) {
-    const fi = indexOf.get(f)
-    const ti = indexOf.get(t)
-    if (fi === undefined || ti === undefined) continue
-    edges.push({ ...graph.edges[ei]!, from: fi, to: ti })
+  for (const level of levels) place(level, v => v.pullUp)
+  for (let it = 0; it < 8; it++) {
+    for (const level of it % 2 === 0 ? [...levels].reverse() : levels) place(level, v => [...v.pullUp, ...v.pullDown])
   }
+  for (const level of levels) {
+    level.forEach((v, i) => {
+      v.x = Math.round(v.x)
+      if (i > 0) v.x = Math.max(v.x, level[i - 1]!.x + apart(level[i - 1]!, v))
+    })
+  }
+  // Rounding and averaging leave lines a column or two off; move each node, within the room its level
+  // leaves it, to where the most of its lines run straight.
+  for (let it = 0; it < 4; it++) {
+    for (const level of it % 2 === 0 ? levels : [...levels].reverse()) {
+      level.forEach((v, i) => {
+        const pulls = [...v.pullUp, ...v.pullDown].map(([u, d]) => nodes[u]!.x + d)
+        const lo = i === 0 ? Number.NEGATIVE_INFINITY : level[i - 1]!.x + apart(level[i - 1]!, v)
+        const hi = i === level.length - 1 ? Number.POSITIVE_INFINITY : level[i + 1]!.x - apart(v, level[i + 1]!)
+        const cost = (x: number) => pulls.reduce((s, t) => s + Math.abs(x - t) + (x === t ? 0 : 0.5), 0)
+        for (const t of pulls) {
+          const x = Math.min(hi, Math.max(lo, t))
+          if (cost(x) < cost(v.x)) v.x = x
+        }
+      })
+    }
+  }
+  const shift = nodes.length === 0 ? 0 : -Math.min(...nodes.map(v => v.x - v.left))
+  for (const v of nodes) v.x += shift
+  if (pinned !== null) {
+    const level = levels.find(l => l.includes(pinned))!
+    pinned.x = pinned.left
+    level.forEach((v, i) => {
+      if (i > 0) v.x = Math.max(v.x, level[i - 1]!.x + apart(level[i - 1]!, v))
+    })
+  }
+}
 
-  // Layout reads only nodes and edges, so a bare Graph carrying those is enough.
-  const synth = new Graph()
-  synth.nodes = nodes
-  synth.edges = edges
-  return layoutCanvas(synth, extras, fit)
+// ----------------------------------------------------------------- channels
+
+/**
+ * Give each stretch that turns a track in its channel. A stretch leaving column x must turn above
+ * any other stretch arriving at x, or their lines would run over each other; when two stretches each
+ * need to be above the other, one of them turns twice, on a free column between two tracks.
+ * Stretches share a track when they are two columns apart or start or end at the same port.
+ */
+function channel(segs: Seg[]): { turn: Map<Seg, Turn>; count: number } {
+  type Unit = { seg: Seg; part: 0 | 1 | 2; a: number; b: number; from: number; to: number; up: string; low: string; track: number }
+  const turn = new Map<Seg, Turn>()
+  const jogs = segs.filter(s => s.xu !== s.xl)
+  const taken = new Set(segs.flatMap(s => [s.xu, s.xl]))
+  const units: Unit[] = jogs.map(seg => ({ seg, part: 0, a: Math.min(seg.xu, seg.xl), b: Math.max(seg.xu, seg.xl), from: seg.xu, to: seg.xl, up: seg.up, low: seg.low, track: -1 }))
+  const above = (a: Unit, b: Unit) => a !== b && (a.seg === b.seg ? a.part === 1 && b.part === 2 : a.from === b.to)
+  const done = new Set<Unit>()
+  const freeColumn = (u: Unit): number => {
+    const mid = Math.round((u.from + u.to) / 2)
+    for (let d = 0; ; d++) {
+      for (const x of [mid + d, mid - d]) if (x >= 0 && !taken.has(x)) return x
+    }
+  }
+  while (done.size < units.length) {
+    const left = units.filter(u => !done.has(u))
+    const ready = left.filter(u => !left.some(v => above(v, u))).sort((p, q) => p.a - q.a || p.b - q.b)
+    if (ready.length === 0) {
+      // Every stretch left waits on another: turn one of them twice, on a column nobody uses.
+      const u = left.find(v => v.part === 0)!
+      const xf = freeColumn(u)
+      taken.add(xf)
+      const second: Unit = { ...u, part: 2, a: Math.min(xf, u.seg.xl), b: Math.max(xf, u.seg.xl), from: xf, to: u.seg.xl, up: `dogleg:${xf}`, track: -1 }
+      Object.assign(u, { part: 1, a: Math.min(u.seg.xu, xf), b: Math.max(u.seg.xu, xf), to: xf, low: `dogleg:${xf}` })
+      units.push(second)
+      continue
+    }
+    for (const u of ready) {
+      let lowest = 0
+      for (const v of done) if (above(v, u)) lowest = Math.max(lowest, v.track + 1)
+      const clash = (v: Unit) => v.track === u.track && !(v.b + 2 <= u.a || u.b + 2 <= v.a) && v.up !== u.up && v.low !== u.low
+      u.track = lowest
+      while ([...done].some(clash)) u.track++
+      done.add(u)
+    }
+  }
+  let count = 0
+  for (const u of units) count = Math.max(count, u.track + 1)
+  for (const u of units) {
+    if (u.part === 2) continue
+    if (u.part === 0) turn.set(u.seg, { t1: u.track, t2: u.track, xf: null })
+    else {
+      const second = units.find(v => v.seg === u.seg && v.part === 2)!
+      turn.set(u.seg, { t1: u.track, t2: second.track, xf: u.to })
+    }
+  }
+  return { turn, count }
 }
 
 // ------------------------------------------------------------------- drawing
 
-function drawBox(canvas: Canvas, p: Placed, node: Node, lines: string[]): void {
-  outline(canvas, p, node.shape)
-  const inner = Math.max(1, sat(p.w, 2 * PAD + 2))
-  const runs = lines.map((text, li) => ({ x: p.x + 1 + PAD + half(sat(inner, stringWidth(text))), y: p.y + 1 + li, text }))
+type Box = { x: number; y: number; w: number; h: number }
+
+function drawBox(canvas: Canvas, p: Box, item: Item, lines: string[]): void {
+  outline(canvas, p, item.shape)
+  const inner = Math.max(1, p.w - 2 * PAD - 2)
+  const runs = lines.map((text, li) => ({ x: p.x + 1 + PAD + half(Math.max(0, inner - stringWidth(text))), y: p.y + 1 + li, text }))
   for (const run of runs) drawText(canvas, run.text, run.x, run.y, 'text')
-  canvas.boxes.push({ key: node.key, x: p.x, y: p.y, w: p.w, h: p.h, lines: runs })
+  canvas.boxes.push({ key: item.key, x: p.x, y: p.y, w: p.w, h: p.h, lines: runs })
 }
 
-function outline(canvas: Canvas, p: Placed, shape: Shape): void {
+function outline(canvas: Canvas, p: Box, shape: Shape): void {
   const { x, y, w, h } = p
   const right = x + w - 1
   const bottom = y + h - 1
-
   const rounded = shape === 'round' || shape === 'diamond'
   canvas.set(x, y, rounded ? '╭' : '┌', 'border')
   canvas.set(right, y, rounded ? '╮' : '┐', 'border')
   canvas.set(x, bottom, rounded ? '╰' : '└', 'border')
   canvas.set(right, bottom, rounded ? '╯' : '┘', 'border')
-
   // The perimeter is drawn as bits so edges can tee into it, but it is the box outline, so it
   // claims `border` rather than `edge`.
   for (let cx = x + 1; cx < right; cx++) {
@@ -570,111 +887,20 @@ function outline(canvas: Canvas, p: Placed, shape: Shape): void {
     canvas.addBits(x, cy, U | D, 'border')
     canvas.addBits(right, cy, U | D, 'border')
   }
-
   for (let cy = y; cy <= bottom; cy++) {
     for (let cx = x; cx <= right; cx++) canvas.occupied[canvas.idx(cx, cy)] = 1
   }
 }
 
-/** A frame: its title's first line on the top border, the rest under it, then its contents. */
-function drawFrame(canvas: Canvas, p: Placed, node: Node, title: string[], sub: Canvas): void {
+/**
+ * A frame: its contents one column in from its sides, and its title's first line on its top border;
+ * the rest of the title is part of the contents.
+ */
+function drawFrame(canvas: Canvas, p: Box, item: Item, sub: Laid): void {
   outline(canvas, p, 'rect')
+  canvas.blit(sub.canvas, p.x + 2, p.y + 1)
+  const title = sub.title
+  drawTextOverEdges(canvas, ` ${title[0]!} `, p.x + 1, p.y, 'text')
   const runs = title.map((text, i) => ({ x: p.x + 2, y: p.y + i, text }))
-  drawTextOverEdges(canvas, ` ${runs[0]!.text} `, p.x + 1, p.y, 'text')
-  for (const run of runs.slice(1)) drawText(canvas, run.text, run.x, run.y, 'text')
-  const top = p.y + title.length
-  canvas.blit(sub, p.x + 1 + half(p.w - 2 - sub.w), top + half(p.y + p.h - 1 - top - sub.h))
-  canvas.frames.push({ key: node.key, x: p.x, y: p.y, w: p.w, h: p.h, title: runs })
-}
-
-// ------------------------------------------------------------------- routing
-
-function headGlyph(head: Head, arrow: string): string {
-  return head === 'circle' ? 'o' : head === 'cross' ? '×' : arrow
-}
-
-/** Adjacent ranks: drop, jog along the bus row, drop into the head. */
-function routeForward(canvas: Canvas, from: Placed, to: Placed, edge: Edge, label: string | null, bus: number): void {
-  const tx = to.cx
-  // A jog of one column reads as a kink; snap straight instead.
-  const bx = Math.abs(from.cx - tx) <= 1 ? tx : from.cx
-  const by = from.y + from.h - 1
-  const headRow = to.y - 1
-
-  canvas.junction(bx, by, D)
-  canvas.segV(bx, by, bus)
-  if (bx === tx) {
-    canvas.segV(bx, bus, headRow)
-  } else {
-    canvas.segH(bus, bx, tx)
-    canvas.segV(tx, bus, headRow)
-  }
-
-  if (edge.headTo === 'none') {
-    canvas.addBits(tx, headRow, U)
-    canvas.tip(tx, headRow)
-  } else canvas.head(tx, headRow, headGlyph(edge.headTo, '▼'))
-  if (edge.headFrom !== 'none') canvas.set(bx, by, headGlyph(edge.headFrom, '▲'), 'edge')
-
-  if (label !== null) placeLabel(canvas, label, headRow, tx + 1)
-}
-
-/** A self-edge: a stub loop hanging below the box. */
-function routeSelf(canvas: Canvas, p: Placed, edge: Edge, label: string | null): void {
-  const bottom = p.y + p.h - 1
-  const exitX = p.cx + 1
-  const retX = p.x + p.w - 2
-  if (retX <= exitX || bottom + 2 >= canvas.h) return
-
-  const [v, h, bl, br] = edge.line === 'dotted' ? ['╎', '╌', '╰', '╯'] : edge.line === 'thick' ? ['┃', '━', '┗', '┛'] : ['│', '─', '╰', '╯']
-
-  canvas.junction(exitX, bottom, D)
-  canvas.stroke(exitX, bottom + 1, v)
-  canvas.stroke(exitX, bottom + 2, bl)
-  for (let x = exitX + 1; x < retX; x++) canvas.stroke(x, bottom + 2, h)
-  canvas.stroke(retX, bottom + 2, br)
-  canvas.head(retX, bottom + 1, headGlyph(edge.headTo, '▲'))
-  if (label !== null) placeLabel(canvas, label, bottom + 1, p.x + p.w + 1)
-}
-
-/** Skip or back edge: out the right side, along a lane, back in. */
-function routeBack(canvas: Canvas, from: Placed, to: Placed, edge: Edge, label: string | null, laneX: number): void {
-  const sx = from.x + from.w - 1
-  const sy = from.cy
-  const tx = to.x + to.w - 1
-  const tyc = to.cy
-
-  canvas.junction(sx, sy, R)
-  canvas.segH(sy, sx, laneX)
-  canvas.segV(laneX, sy, tyc)
-  canvas.segH(tyc, tx + 1, laneX)
-
-  if (edge.headTo === 'none') {
-    canvas.addBits(tx + 1, tyc, R)
-    canvas.tip(tx + 1, tyc)
-  } else canvas.head(tx + 1, tyc, headGlyph(edge.headTo, '◄'))
-  if (edge.headFrom !== 'none') canvas.set(sx, sy, headGlyph(edge.headFrom, '◄'), 'edge')
-
-  if (label !== null) placeLabel(canvas, label, sat(tyc, 1), sat(laneX, stringWidth(label) + 1))
-}
-
-/** Write an edge label, stopping at the first cell already taken. */
-function placeLabel(canvas: Canvas, text: string, row: number, startX: number): void {
-  if (row >= canvas.h) return
-  const run = { x: startX, y: row, text: '' }
-  let x = startX
-  for (const [c, cw] of measured(text)) {
-    if (cw === 0) continue
-    if (x + cw > canvas.w) break
-    let blocked = false
-    for (let k = 0; k < cw; k++) {
-      const i = canvas.idx(x + k, row)
-      if (canvas.ch[i] !== ' ' || canvas.mask[i] !== 0 || canvas.occupied[i]) blocked = true
-    }
-    if (blocked) break
-    drawText(canvas, c, x, row, 'edgeLabel')
-    run.text += c
-    x += cw
-  }
-  canvas.labelRun(run)
+  canvas.frames.push({ key: item.key, x: p.x, y: p.y, w: p.w, h: p.h, title: runs })
 }

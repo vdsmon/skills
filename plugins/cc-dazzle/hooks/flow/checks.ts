@@ -11,11 +11,13 @@ import type { Drawing, DrawnEdge, Rect, Run } from './types'
  * b  the drawing is no wider than the columns, or `fits` says it is not; its width is its widest row;
  * c  no label is cut: a box's, an edge's or a frame's text on the drawing, joined across its lines,
  *    is the source's label, with no "…" the source lacks;
- * d  no edge cell lies inside a box, or on a border other than at the edge's two ends;
+ * d  no edge cell lies inside a box, or on a border other than at the edge's two ends, save where it
+ *    crosses straight through the border of a frame that holds one of its ends and not the other;
  * e  two edges share cells only on a common run into or out of one box, or where they cross straight;
  * f  every edge label is whole and nothing else is drawn on its cells;
  * g  everything the parser read is on the drawing: every box with its label, every frame with its
- *    title, every edge joined to its two boxes with its head and its label.
+ *    title, every edge joined to its two boxes with its head and its label. An edge into the frame
+ *    that holds its source ends just inside that frame's border.
  * g reads the list of what must be drawn from the parsed source, never from the drawer's records,
  * so a layout step that drops a thing cannot hide it.
  */
@@ -36,6 +38,9 @@ const onBorder = (r: Rect, cell: Cell) => inside(r, cell) && (cell[0] === r.x ||
 /** A cell just outside a rect, beside one of its sides (not off a corner). */
 const besideOf = (r: Rect, [x, y]: Cell) =>
   ((x === r.x - 1 || x === r.x + r.w) && y >= r.y && y < r.y + r.h) || ((y === r.y - 1 || y === r.y + r.h) && x >= r.x && x < r.x + r.w)
+/** A cell just inside a rect, beside one of its sides. */
+const besideIn = (r: Rect, [x, y]: Cell) => inside(r, [x, y]) && !onBorder(r, [x, y]) && (x === r.x + 1 || x === r.x + r.w - 2 || y === r.y + 1 || y === r.y + r.h - 2)
+const holds = (outer: Rect, r: Rect) => outer !== r && r.x > outer.x && r.y > outer.y && r.x + r.w < outer.x + outer.w && r.y + r.h < outer.y + outer.h
 const same = (a: Cell, b: Cell) => a[0] === b[0] && a[1] === b[1]
 const id = ([x, y]: Cell) => `${x},${y}`
 
@@ -132,7 +137,7 @@ function checkDrawing(graph: Graph, drawing: Drawing, fail: (check: Check, what:
     const end = e.head
     if (!fromRect || !toRect || !start || !end) return fail('g-edge', `edge ${k} has no line`)
     if (!onBorder(fromRect, start)) fail('g-edge', `edge ${k} does not leave from its box`)
-    if (!besideOf(toRect, end)) fail('g-edge', `edge ${k} does not end beside its box`)
+    if (!(besideOf(toRect, end) || (holds(toRect, fromRect) && besideIn(toRect, end)))) fail('g-edge', `edge ${k} does not end beside its box`)
     if (!connected(e.cells)) fail('g-edge', `edge ${k}'s line has a gap`)
     if (!e.cells.every(c => LINE.test(glyph(c)))) fail('g-edge', `edge ${k}'s line is drawn over`)
     if (edge.headTo !== 'none' && !(e.head && HEADS[edge.headTo]!.test(glyph(e.head)))) fail('g-edge', `edge ${k} has no head`)
@@ -151,7 +156,16 @@ function checkDrawing(graph: Graph, drawing: Drawing, fail: (check: Check, what:
   // d and e
   for (const e of drawing.edges) {
     const ends = [e.cells[0], e.head ?? e.cells.at(-1)].filter((c): c is Cell => c !== undefined)
-    const over = e.cells.filter(c => !ends.some(end => same(end, c)) && (drawing.boxes.some(b => inside(b, c)) || drawing.frames.some(f => onBorder(f, c))))
+    const has = new Set(e.cells.map(id))
+    // Through the border, not along it: down across a top or bottom side, sideways across the others.
+    const through = (f: Rect, [x, y]: Cell) => {
+      const across = y === f.y || y === f.y + f.h - 1
+      const down = x === f.x || x === f.x + f.w - 1
+      return across !== down && (across ? has.has(id([x, y - 1])) && has.has(id([x, y + 1])) : has.has(id([x - 1, y])) && has.has(id([x + 1, y])))
+    }
+    const [from, to] = [rects.get(e.from), rects.get(e.to)]
+    const crosses = (f: Rect, c: Cell) => from !== undefined && to !== undefined && (holds(f, from) || f === from) !== (holds(f, to) || f === to) && through(f, c)
+    const over = e.cells.filter(c => !ends.some(end => same(end, c)) && (drawing.boxes.some(b => inside(b, c)) || drawing.frames.some(f => onBorder(f, c) && !crosses(f, c))))
     if (over.length > 0) fail('d', `edge ${e.index} runs over a box or a border on ${over.length} cells`)
   }
   // Cells two edges share where neither crosses the other straight, by pair.

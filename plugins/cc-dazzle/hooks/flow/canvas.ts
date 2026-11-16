@@ -17,6 +17,14 @@ export const STY_DOT = 1
 export const STY_THICK = 2
 export const STY_SOLID = 4
 
+type Cell = [number, number]
+
+/**
+ * The part of one edge drawn on a canvas. An edge that crosses a frame is drawn in pieces, one per
+ * frame it passes, which merge into one record as the frames are stamped into their parent.
+ */
+type Piece = { index: number; from: string; to: string; cells: Cell[]; start: Cell | null; head: Cell | null; label: Run[]; seen: Set<string> }
+
 /**
  * A grid of cells. Edges accumulate as direction bits rather than glyphs so that crossings and
  * junctions resolve whatever order they are drawn in; `finalizeMask` turns the bits into glyphs.
@@ -35,9 +43,8 @@ export class Canvas {
   curStyle: number = STY_SOLID
   boxes: DrawnBox[] = []
   frames: DrawnFrame[] = []
-  edges: DrawnEdge[] = []
-  private edge: DrawnEdge | null = null
-  private traced = new Set<number>()
+  private pieces = new Map<number, Piece>()
+  private edge: Piece | null = null
 
   constructor(w: number, h: number) {
     const n = w * h
@@ -61,11 +68,17 @@ export class Canvas {
     this.cls[i] = cls
   }
 
-  /** Record the cells drawn from here to `endEdge` as the line of `edge`. */
-  beginEdge(edge: DrawnEdge): void {
-    this.edges.push(edge)
-    this.edge = edge
-    this.traced.clear()
+  private piece(index: number, from: string, to: string): Piece {
+    const known = this.pieces.get(index)
+    if (known) return known
+    const made: Piece = { index, from, to, cells: [], start: null, head: null, label: [], seen: new Set() }
+    this.pieces.set(index, made)
+    return made
+  }
+
+  /** Record the cells drawn from here to `endEdge` as part of the line of edge `index`. */
+  beginEdge(index: number, from: string, to: string): void {
+    this.edge = this.piece(index, from, to)
   }
 
   endEdge(): void {
@@ -73,9 +86,15 @@ export class Canvas {
   }
 
   private trace(x: number, y: number): void {
-    if (!this.edge || this.traced.has(this.idx(x, y))) return
-    this.traced.add(this.idx(x, y))
+    if (!this.edge || this.edge.seen.has(`${x},${y}`)) return
+    this.edge.seen.add(`${x},${y}`)
     this.edge.cells.push([x, y])
+  }
+
+  /** Mark the cell on its source's border where the current edge leaves. */
+  start(x: number, y: number): void {
+    this.trace(x, y)
+    if (this.edge) this.edge.start = [x, y]
   }
 
   /** An edge's head glyph, drawn over whatever line bits reach that cell. */
@@ -133,16 +152,17 @@ export class Canvas {
       }
     }
     const run = (r: Run): Run => ({ ...r, x: r.x + ox, y: r.y + oy })
+    const at = (c: Cell | null): Cell | null => c && [c[0] + ox, c[1] + oy]
     for (const b of sub.boxes) this.boxes.push({ ...b, x: b.x + ox, y: b.y + oy, lines: b.lines.map(run) })
     for (const f of sub.frames) this.frames.push({ ...f, x: f.x + ox, y: f.y + oy, title: f.title.map(run) })
-    for (const e of sub.edges) {
-      this.edges.push({
-        ...e,
-        cells: e.cells.map(([x, y]) => [x + ox, y + oy]),
-        head: e.head && [e.head[0] + ox, e.head[1] + oy],
-        label: e.label.map(run),
-      })
+    for (const p of sub.pieces.values()) {
+      this.edge = this.piece(p.index, p.from, p.to)
+      for (const [x, y] of p.cells) this.trace(x + ox, y + oy)
+      this.edge.start ??= at(p.start)
+      this.edge.head ??= at(p.head)
+      this.edge.label.push(...p.label.map(run))
     }
+    this.edge = null
   }
 
   /** Add direction bits even to an occupied cell, so an edge can meet a border. */
@@ -199,7 +219,15 @@ export class Canvas {
       rows.push(row.slice(0, last))
     }
     while (rows.length > 0 && rows[rows.length - 1]!.length === 0) rows.pop()
-    return { rows, lines: rows.map(r => r.join('')), width, boxes: this.boxes, frames: this.frames, edges: this.edges }
+    const edges: DrawnEdge[] = [...this.pieces.values()].map(({ index, from, to, cells, start, head, label }) => ({
+      index,
+      from,
+      to,
+      cells: start ? [start, ...cells.filter(c => c[0] !== start[0] || c[1] !== start[1])] : cells,
+      head,
+      label,
+    }))
+    return { rows, lines: rows.map(r => r.join('')), width, boxes: this.boxes, frames: this.frames, edges }
   }
 }
 

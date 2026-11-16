@@ -84,6 +84,46 @@ export const STATES: Record<string, string> = {
 }
 
 /**
+ * Flowcharts whose edges meet frames every way they can: into and out of frames, across sibling
+ * frames, two frames deep, back up across a border, from a frame to a box inside it and back, and
+ * looping on a box inside a frame and on a frame.
+ */
+export const FRAMES: Record<string, string> = {
+  siblings: `flowchart TD
+    subgraph S[Stage one]
+      A[Start] --> B[Middle]
+    end
+    subgraph T[Stage two]
+      C[Check] --> D[Done]
+    end
+    B -->|hand over the work| C
+    D -->|send it back to the start| A
+    A -->|once more| A
+    T --> T
+    S --> D
+    B --> T
+    A --> X[Outside]
+    X --> B
+    X --> C`,
+  deep: `flowchart TD
+    subgraph O[Outer]
+      subgraph M[Middle]
+        subgraph I[Inner]
+          P[Deep one] --> Q[Deep two]
+        end
+      end
+      K[Keeper]
+    end
+    R[Root] -->|all the way in| P
+    Q -->|all the way out| Z[Leaf]
+    Z -.-> P
+    K --> Q
+    O --> M
+    Q --> O
+    M --> K`,
+}
+
+/**
  * The diagrams of cc-dazzle's old back-edge tests, which beautiful-mermaid drew with its patches:
  * each must still draw. The first of those tests drew corpus 2's shape, which the corpus covers.
  */
@@ -156,6 +196,7 @@ export const RANDOM: string[] = (() => {
 export const DIAGRAMS: [string, string][] = [
   ...CORPUS.map((source, i): [string, string] => [`corpus ${i + 1}`, source]),
   ...Object.entries(STATES).map(([name, source]): [string, string] => [`state ${name}`, source]),
+  ...Object.entries(FRAMES).map(([name, source]): [string, string] => [`frame ${name}`, source]),
   ...RETURNS.map((source, i): [string, string] => [`return ${i + 1}`, source]),
   ...RANDOM.map((source, i): [string, string] => [`random ${i + 1}`, source]),
 ]

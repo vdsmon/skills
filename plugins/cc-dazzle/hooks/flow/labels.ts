@@ -290,16 +290,3 @@ function wrapLine(label: string, width: number): string[] {
   if (lines.length === 0) lines.push('')
   return lines
 }
-
-/** Truncate to `inner` columns, leaving room for the ellipsis. */
-export function fitLabel(label: string, inner: number): string {
-  if (stringWidth(label) <= inner) return label
-  let out = ''
-  let used = 0
-  for (const [c, cw] of measured(label)) {
-    if (used + cw + 1 > inner) break
-    out += c
-    used += cw
-  }
-  return `${out}…`
-}

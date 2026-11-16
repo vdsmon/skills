@@ -429,6 +429,8 @@ function parseState(src: string): Graph {
   const graph = new Graph()
   let inNote = false
   let depth = 0
+  // Concurrent regions of a composite state, split by `--`, each have their own start and end.
+  const regions = new Map<number | null, number>()
 
   for (let st of statementsOf(src).slice(1)) {
     if (inNote) {
@@ -447,10 +449,12 @@ function parseState(src: string): Graph {
     } else if (st === '}') {
       if (depth > 0) depth--
       graph.closeGroup()
-    } else if (['direction', 'classdef', 'class', 'hide', 'scale', '--', 'acctitle', 'accdescr'].includes(first)) {
-      // Direction, styling and concurrency separators carry no layout meaning here.
+    } else if (first === '--') {
+      regions.set(graph.curGroup, (regions.get(graph.curGroup) ?? 0) + 1)
+    } else if (['direction', 'classdef', 'class', 'hide', 'scale', 'acctitle', 'accdescr'].includes(first)) {
+      // Direction and styling carry no layout meaning here.
     } else if (st.includes('-->')) {
-      read = parseTransition(st, graph)
+      read = parseTransition(st, graph, regions.get(graph.curGroup) ?? 0)
     } else {
       read = parseStateDesc(st, graph)
     }
@@ -499,7 +503,7 @@ function parseStateDecl(st: string, graph: Graph, depth: number): 'open' | true 
 }
 
 /** `A --> B: label`, including chains `A --> B --> C`. */
-function parseTransition(st: string, graph: Graph): true | null {
+function parseTransition(st: string, graph: Graph, region: number): true | null {
   let rest = st
   let prev: number | null = null
 
@@ -516,7 +520,7 @@ function parseTransition(st: string, graph: Graph): true | null {
       from = prev
     } else {
       if (fromId === '') return null
-      const f = stateEndpoint(graph, fromId, true)
+      const f = stateEndpoint(graph, fromId, true, region)
       if (f === null) return null
       from = f
     }
@@ -531,7 +535,7 @@ function parseTransition(st: string, graph: Graph): true | null {
 
     const toId = toPart.trimStart().replace(/^>+/, '').trimEnd().replace(/-+$/, '').trim()
     if (toId === '') return null
-    const to = stateEndpoint(graph, toId, false)
+    const to = stateEndpoint(graph, toId, false, region)
     if (to === null) return null
 
     if (!graph.pushEdge({ from, to, label, headTo: 'arrow', headFrom: 'none', line: 'solid' })) {
@@ -568,9 +572,12 @@ function dropStyleTags(st: string): string {
   return out.join('')
 }
 
-/** `[*]` is start or end depending on which side of the arrow it sits, one of each per composite state. */
-function stateEndpoint(graph: Graph, id: string, isSource: boolean): number | null {
-  if (id === '[*]') return graph.nodeIndex(`[*]${isSource ? 'start' : 'end'}@${graph.curGroup ?? ''}`, '●', 'round')
+/**
+ * `[*]` is start or end depending on which side of the arrow it sits, one of each per composite state
+ * and per concurrent region of it.
+ */
+function stateEndpoint(graph: Graph, id: string, isSource: boolean, region: number): number | null {
+  if (id === '[*]') return graph.nodeIndex(`[*]${isSource ? 'start' : 'end'}@${graph.curGroup ?? ''}#${region}`, '●', 'round')
   return graph.nodeIndex(id, null, 'round')
 }
 

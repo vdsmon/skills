@@ -1,17 +1,13 @@
 import { expect, test } from 'claude-code/testing'
 
-import type { Check, Checked } from './checks'
+import type { Checked } from './checks'
 import { checkFlow, joinsInto } from './checks'
 import { CORPUS } from './corpus'
-import { FAILING } from './failing'
 import { FITS, drawFlow } from './index'
 import { layout } from './layout'
 import { wrapLabel } from './labels'
 import { parseFlow } from './parse'
-import { DIAGRAMS, STATES, WIDTHS } from './sets'
-
-// The checks that need edges routed around boxes and labels wrapped, the drawer's next step.
-const EDGES: Check[] = ['c-edge', 'd', 'e', 'f', 'g-edge']
+import { DIAGRAMS, FRAMES, STATES, WIDTHS } from './sets'
 
 // Checked in batches, each its own test, so no test runs long; later tests read the same results.
 const BATCH = 50
@@ -22,9 +18,9 @@ const checkedBatch = (columns: number, from: number) =>
 const BATCHES = Array.from({ length: Math.ceil(DIAGRAMS.length / BATCH) }, (_, i) => i * BATCH)
 const checkedAll = () => WIDTHS.flatMap(columns => BATCHES.flatMap(from => checkedBatch(columns, from)))
 
-for (const columns of WIDTHS) for (const from of BATCHES) test(`diagrams ${from + 1} to ${Math.min(from + BATCH, DIAGRAMS.length)} draw at ${columns} columns, every box with its whole label and every frame with its whole title`, () => {
+for (const columns of WIDTHS) for (const from of BATCHES) test(`diagrams ${from + 1} to ${Math.min(from + BATCH, DIAGRAMS.length)} draw whole at ${columns} columns, every edge between boxes and every label on cells of its own`, () => {
   const batch = checkedBatch(columns, from)
-  expect(batch.flatMap(({ name, checked }) => checked.failures.filter(f => !EDGES.includes(f.check)).map(f => `${name}: ${f.check} ${f.what}`))).toEqual([])
+  expect(batch.flatMap(({ name, checked }) => checked.failures.map(f => `${name}: ${f.check} ${f.what}`))).toEqual([])
   expect(batch.every(({ checked }) => checked.flow?.kind === 'drawn')).toBe(true)
 })
 
@@ -46,10 +42,25 @@ test('a diagram that does not fit comes back as the narrowest of its drawings, w
   }
 })
 
-test('the edge checks fail on exactly the diagrams listed in failing.ts', () => {
-  const failing: Record<string, Set<string>> = {}
-  for (const { name, checked } of checkedAll()) for (const f of checked.failures) if (EDGES.includes(f.check)) (failing[name] ??= new Set()).add(f.check)
-  expect(Object.fromEntries(Object.entries(failing).map(([name, checks]) => [name, [...checks].sort().join(' ')]))).toEqual(FAILING)
+test('boxes of one row share their top line, and a frame keeps an empty column inside each side', () => {
+  const flow = drawFlow('flowchart TD\n  A --> B["two<br>lines"] & C[one]', 80)
+  if (flow?.kind !== 'drawn') throw new Error('not drawn')
+  const [b, c] = ['n:1', 'n:2'].map(key => flow.drawing.boxes.find(box => box.key === key)!)
+  expect(b!.y).toBe(c!.y)
+  const cramped = checkedAll().flatMap(({ name, checked }) => {
+    if (checked.flow?.kind !== 'drawn') return []
+    const { boxes, frames } = checked.flow.drawing
+    return frames.flatMap(f => [...boxes, ...frames].filter(r => r !== f && r.x > f.x && r.x < f.x + f.w && r.y > f.y && r.y < f.y + f.h && (r.x < f.x + 2 || r.x + r.w > f.x + f.w - 2)).map(() => name))
+  })
+  expect(cramped).toEqual([])
+})
+
+test('each concurrent region of a composite state has its own start and end', () => {
+  const graph = parseFlow(STATES.concurrent!)!
+  expect(graph.ids.filter(id => id.startsWith('[*]start')).length).toBe(3)
+  const flow = drawFlow('stateDiagram-v2\n  state Both {\n    [*] --> A\n    A --> [*]\n    --\n    [*] --> B\n    B --> [*]\n  }', 80)
+  if (flow?.kind !== 'drawn') throw new Error('not drawn')
+  expect(flow.drawing.boxes.filter(b => b.lines.some(l => l.text === '●')).length).toBe(4)
 })
 
 test('the parser reads every statement of every diagram the checks run over', () => {
@@ -57,7 +68,7 @@ test('the parser reads every statement of every diagram the checks run over', ()
 })
 
 // A reply draws its diagram on every streamed prefix of the source.
-const SOURCES = [...CORPUS, ...Object.values(STATES)]
+const SOURCES = [...CORPUS, ...Object.values(STATES), ...Object.values(FRAMES)]
 for (let from = 0; from < SOURCES.length; from += 4) test(`every prefix of sources ${from + 1} to ${Math.min(from + 4, SOURCES.length)} of the corpus and the state diagrams draws without throwing`, () => {
   for (const source of SOURCES.slice(from, from + 4)) for (let end = 1; end <= source.length; end++) drawFlow(source.slice(0, end), 80)
 })
