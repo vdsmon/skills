@@ -152,11 +152,13 @@ const seeded = (seed: number) => () => {
 
 const SYLLABLES = ['ka', 'lo', 'mi', 'ne', 'su', 'ta', 'vo', 'ri', 'de', 'po', 'zu', 'fa', 'gi', 'be', 'no']
 const SHAPES: [string, string][] = [['[', ']'], ['(', ')'], ['{', '}'], ['([', '])'], ['[[', ']]']]
-const LINKS = ['-->', '-.->', '==>', '---']
+const LINKS = ['-->', '-.->', '==>', '---', '<-->', 'o--o', 'x--x']
 
 /**
  * 200 flowcharts: 2 to 12 boxes, up to boxes + 3 edges, up to 4 of them back edges or self-loops,
- * about half the edges labelled, every label of 1 to 8 words, some words long enough to break.
+ * about half the edges labelled, every label of 1 to 8 words, some words long enough to break. Up to
+ * 3 frames, nested up to two deep, hold about half the boxes; an edge may start or end on a frame,
+ * repeat the edge before it between the same two ends, or carry a head at both ends.
  */
 export const RANDOM: string[] = (() => {
   const random = seeded(20261115)
@@ -172,10 +174,25 @@ export const RANDOM: string[] = (() => {
     const boxes = int(2, 12)
     const edges = int(1, boxes + 3)
     const returns = int(0, Math.min(4, edges))
-    const lines = Array.from({ length: boxes }, (_, i) => {
+    const frames = random() < 0.5 ? 0 : int(1, 3)
+    // A frame sits at the top or inside an earlier frame that is itself at the top: two deep at most.
+    const parent = Array.from({ length: frames }, (_, f) => (f > 0 && random() < 0.4 ? int(0, f - 1) : -1))
+    for (let f = 0; f < frames; f++) if (parent[f]! >= 0 && parent[parent[f]!]! >= 0) parent[f] = parent[parent[f]!]!
+    const home = Array.from({ length: boxes }, () => (frames > 0 && random() < 0.5 ? int(0, frames - 1) : -1))
+    const box = (i: number) => {
       const [open, close] = pick(SHAPES)
-      return `  n${i}${open}"${label()}"${close}`
-    })
+      return `n${i}${open}"${label()}"${close}`
+    }
+    const lines = Array.from({ length: boxes }, (_, i) => i).filter(i => home[i] === -1).map(i => `  ${box(i)}`)
+    const frame = (f: number, indent: string) => {
+      lines.push(`${indent}subgraph s${f}["${label()}"]`)
+      for (let i = 0; i < boxes; i++) if (home[i] === f) lines.push(`${indent}  ${box(i)}`)
+      for (let g = 0; g < frames; g++) if (parent[g] === f) frame(g, `${indent}  `)
+      lines.push(`${indent}end`)
+    }
+    for (let f = 0; f < frames; f++) if (parent[f] === -1) frame(f, '  ')
+    const end = (i: number) => (frames > 0 && random() < 0.1 ? `s${int(0, frames - 1)}` : `n${i}`)
+    let last = ''
     for (let k = 0; k < edges; k++) {
       let a = int(0, boxes - 1)
       let b = int(0, boxes - 1)
@@ -185,8 +202,11 @@ export const RANDOM: string[] = (() => {
         if (a === b) b = (a + 1) % boxes
         if (a > b) [a, b] = [b, a]
       }
+      const ends = k > 0 && random() < 0.15 ? last : `${end(a)} ${end(b)}`
+      last = ends
+      const [from, to] = ends.split(' ')
       const text = random() < 0.5 ? `|"${label()}"|` : ''
-      lines.push(`  n${a} ${pick(LINKS)}${text} n${b}`)
+      lines.push(`  ${from} ${pick(LINKS)}${text} ${to}`)
     }
     return `flowchart TD\n${lines.join('\n')}`
   })
