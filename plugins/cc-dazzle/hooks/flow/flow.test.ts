@@ -95,7 +95,7 @@ test('a row splits only after the narrowest wrap does not fit, and a split row d
     const graph = parseFlow(source)!
     for (const columns of [60, 80]) {
       const wrapped = FITS.map(fit => layout(graph, fit)!.drawing).find(d => d.width <= columns)
-      const flow = drawnFor(drawings(graph), columns)
+      const flow = drawnFor(drawings(graph, 'down', false), columns)
       if (wrapped !== undefined && flow?.kind === 'drawn') expect([name, columns, flow.drawing]).toEqual([name, columns, wrapped])
     }
   }
@@ -304,6 +304,37 @@ test('a note on a state draws as a box of its own, its text whole and its lines 
   const texts = checked.flow.drawing.boxes.map(b => b.lines.map(l => l.text).join('|'))
   expect(texts).toContain('Important information')
   expect(texts).toContain('first line|second line')
+})
+
+// A long box alone on its row over a row of four boxes that needs the narrowest wrap to fit.
+const ROW_OF_FOUR = `flowchart TD
+  T["tavo rime selo kuna bari foze lume tade posi vane kiro dume lasa nofi rupe gale"]
+  T --> A["kalo mine sute vora"]
+  T --> B["pide zuna kova lemi rasu"]
+  T --> C["fato gine rupo sale mive tako"]
+  T --> D["bena loso pira vute nami kesa dolu fime"]`
+
+test('a box alone on its row wraps wider than the row of four under it needs', () => {
+  for (const source of [ROW_OF_FOUR, ROW_OF_FOUR.replace('flowchart TD\n', 'flowchart TD\n  subgraph S[Within a frame]\n') + '\n  end']) {
+    const checked = checkFlow(source, 74)
+    expect(checked.failures).toEqual([])
+    if (checked.flow?.kind !== 'drawn' || !checked.flow.fits) throw new Error('does not fit')
+    const top = checked.flow.drawing.boxes.find(b => b.key === 'n:0')!
+    expect(top.lines.length <= 4).toBe(true)
+  }
+})
+
+// Each draws every sequence twice in both directions, so these batches are half the size of the others.
+for (let from = 0; from < DIAGRAMS.length; from += BATCH / 2) test(`diagrams ${from + 1} to ${Math.min(from + BATCH / 2, DIAGRAMS.length)}: rows wrapped wider leave every drawing of the sequence as wide and no taller, and change no choice`, () => {
+  for (const [name, source] of DIAGRAMS.slice(from, from + BATCH / 2)) {
+    const graph = parseFlow(source)!
+    for (const direction of ['down', 'right'] as const) {
+      const [plain, roomy] = [[...drawings(graph, direction, false)], [...drawings(graph, direction)]]
+      expect([name, direction, roomy.map(d => d.width)]).toEqual([name, direction, plain.map(d => d.width)])
+      expect([name, direction, roomy.every((d, i) => d.lines.length <= plain[i]!.lines.length)]).toEqual([name, direction, true])
+    }
+    if (!graph.sideways) for (const columns of [60, 100]) expect([name, columns, drawFlow(source, columns)]).toEqual([name, columns, drawnFor(drawings(graph), columns)])
+  }
 })
 
 // 80 boxes with no edges split one row in half at each step, some 30 steps before they fit.

@@ -27,13 +27,17 @@ import type { Drawing } from './types'
 export type Fit = { wrap: number; gap: number; label: number }
 
 /**
- * What narrowing a drawing past its fit has changed: the ranks of a scope's items, where rows were
- * split, and, by edge, a label wrapped narrower than the fit's or moved to a level of labels of its
- * own (`sub` orders the levels of labels between two rows).
+ * What a drawing changes past its fit: the ranks of a scope's items, where rows were split; by edge,
+ * a label wrapped narrower than the fit's or moved to a level of labels of its own (`sub` orders the
+ * levels of labels between two rows); and by box, a wrap wider than the fit's, where its row has room.
  */
-export type Narrowing = { ranks: Map<number | null, number[]>; labels: Map<number, { wrap: number; sub: number }> }
+export type Narrowing = {
+  ranks: Map<number | null, number[]>
+  labels: Map<number, { wrap: number; sub: number }>
+  wraps: Map<string, number>
+}
 
-export const UNNARROWED: Narrowing = { ranks: new Map(), labels: new Map() }
+export const UNNARROWED: Narrowing = { ranks: new Map(), labels: new Map(), wraps: new Map() }
 
 /** One level of a scope: what is on it, left to right, and the columns each takes when packed. */
 export type Level = {
@@ -41,11 +45,12 @@ export type Level = {
   /** The rank of a row; for a level of labels, the rank above it (-1 above the first) and its `sub`. */
   rank: number
   sub: number
-  nodes: { item: string | null; edge: number | null; start: number; end: number }[]
+  /** For a box, `across` gives the columns it takes when its label wraps at a given width. */
+  nodes: { item: string | null; edge: number | null; start: number; end: number; across?: (wrap: number) => number }[]
 }
 
-/** A scope as laid out: its levels, and the items and ranks it was laid out with. */
-export type Scope = { levels: Level[]; items: string[]; ranks: number[] }
+/** A scope as laid out: its width, its levels, and the items and ranks it was laid out with. */
+export type Scope = { width: number; levels: Level[]; items: string[]; ranks: number[] }
 
 export type Layout = { drawing: Drawing; scopes: Map<number | null, Scope> }
 
@@ -202,7 +207,7 @@ function layScope(graph: Graph, scope: number | null, plans: Map<number | null, 
     }
   }
   const report = (laid: Laid | null) => {
-    if (laid !== null) pack.scopes.set(scope, { levels: laid.levels, items: plan.items, ranks: plan.ranks })
+    if (laid !== null) pack.scopes.set(scope, { width: laid.canvas.w, levels: laid.levels, items: plan.items, ranks: plan.ranks })
     return laid
   }
   if (scope === null) return report(arrange(items, plan, null, pack))
@@ -475,15 +480,15 @@ function arrange(items: Item[], plan: Plan, title: string[] | null, pack: Packin
   // Sizes across and along the flow, with room for the ports and for self-loops, which go on an
   // item's far side across the flow, one after the other, each label beside its loop.
   const turned = pack.turned
+  const ports = items.map((_, i) => Math.max(groupsOf[i]!.top.length, groupsOf[i]!.bottom.length) + 2)
   const sizes = items.map((it, i) => {
     if (it.sub !== null) {
       const { w, h } = inset(it.sub, turned)
       return turned ? { w: h, h: w, lines: [] as string[] } : { w, h, lines: [] as string[] }
     }
-    const lines = wrapLabel(it.label, pack.wrap)
-    const ports = Math.max(groupsOf[i]!.top.length, groupsOf[i]!.bottom.length) + 2
+    const lines = wrapLabel(it.label, pack.narrowing.wraps.get(it.key) ?? pack.wrap)
     const [across, along] = turned ? [lines.length + 2, widest(lines) + 2 * PAD + 2] : [widest(lines) + 2 * PAD + 2, lines.length + 2]
-    return { w: Math.max(across, ports), h: along, lines }
+    return { w: Math.max(across, ports[i]!), h: along, lines }
   })
   const loopRight = items.map(() => 0)
   items.forEach((it, i) => {
@@ -754,7 +759,10 @@ function arrange(items: Item[], plan: Plan, title: string[] | null, pack: Packin
     let at = 0
     const placed = level.map((v, i) => {
       at = i === 0 ? v.left : at + apartBy(level[i - 1]!, v, pack.gap)
-      return { item: v.kind === 'item' ? items[v.item]!.key : null, edge: v.kind === 'label' ? v.edge : null, start: at - v.left, end: at + v.right + 1 }
+      const it = v.kind === 'item' ? items[v.item]! : null
+      const box = it !== null && it.sub === null && !turned
+      const across = (wrap: number) => Math.max(widest(wrapLabel(it!.label, wrap)) + 2 * PAD + 2, ports[v.item]!) + loopRight[v.item]!
+      return { item: it?.key ?? null, edge: v.kind === 'label' ? v.edge : null, start: at - v.left, end: at + v.right + 1, ...(box ? { across } : {}) }
     })
     const kind = isLabels(s) ? 'label' : isRank(s) ? 'rank' : 'border'
     return { kind, rank: Math.floor(s / SLOTS) - (framed ? 1 : 0), sub: isLabels(s) ? (s % SLOTS) - 1 : 0, nodes: placed }
