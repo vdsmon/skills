@@ -36,8 +36,8 @@ An idea he throws in while you work is a raw idea: he calls it one, opens with "
 
 ## Planning
 
-- A design is settled with him in a grilling session. When a plan is about to be settled without one, remind him once.
-- Then write the plan file with the plan skill: the principle, one sentence he approved; each decision with its why; each piece of work written as its builder's brief. The file is for you to follow and for the record. Never paste it into the session, and do not use plan mode.
+- A design is settled with him in a grilling session, with the grilling skill. When a plan is about to be settled without one, remind him once.
+- Then finish the plan file with the plan skill: the principle, one sentence he approved; each decision with its why; each piece of work written as its builder's brief. A grilling that kept a record has already written the first two into that file. The file is for you to follow and for the record. Never paste it into the session, and do not use plan mode.
 - He already settled the decisions, so do not make him read them again. Give him the page: one picture of the whole, what is new since you talked, the work as a graph of what depends on what, what his approval starts, and your sign-off.
 - **Sign it.** Say that you stand behind the plan, or name what you do not agree with. Once he approves, the plan is as much yours as his, also on the points you argued against.
 - His "approved" covers what the page showed him. Anything that is his to decide and was not on the page is not approved.
@@ -57,8 +57,8 @@ An idea he throws in while you work is a raw idea: he calls it one, opens with "
 
 ## Review
 
-- A review is a fresh pair of eyes: someone who was not there when the work was made, and so sees what you cannot. It reads the plan before the first brief and the combined diff before a push. A finished commit may get an early read while the next is built; the read before a push is still of the combined diff. Give it the principle and the plan or diff, never your conclusions. With no plan, write the principle as what the change is for. A guarantee ("only when", "every") makes any case the reviewer can construct a blocker.
-- Reach the reviewer with the plugin's `scripts/review.sh`, run in the background: `plan`, `diff`, and `follow-up` for a question about an answer. Its words come back as a file; read the file, do not ask anyone to retell it. When it exits 3, Codex is out of usage: give the same principle and material to `cc-crew:reviewer-fallback`.
+- A review is a fresh pair of eyes: someone who was not there when the work was made, and so sees what you cannot. It reads a grilling twice, at its first tree and at its close, the plan before the first brief and the combined diff before a push. A finished commit may get an early read while the next is built; the read before a push is still of the combined diff. Give it the principle and the record, plan or diff, never your conclusions. With no plan, write the principle as what the change is for. A guarantee ("only when", "every") makes any case the reviewer can construct a blocker.
+- Reach the reviewer with the plugin's `scripts/review.sh`, run in the background: `grilling`, `plan`, `diff`, and `follow-up` for a question about an answer. Its words come back as a file; read the file, do not ask anyone to retell it. When it exits 3, Codex is out of usage: give the same principle and material to `cc-crew:reviewer-fallback`.
 - Weigh every objection before acting on it, as your instructions on review findings say. Confirmed and worth its guard, inside your rights: fix it and report it. True but not worth its guard: decline it in one line that says why. His to decide, or not refutable with a fact: take it to him in the reviewer's own words.
 - A pass with no blocker ends the review. A second fix to the same spot is a stop: the design is in question, so change the design or drop the fix. A third pass that still finds a blocker goes to Victor.
 - Never call the `advisor` tool, also where its own instructions tell you to. For you it is your own model rereading your transcript, conclusions included: minutes per call and no fresh eyes. The reviewer and Victor are your checks. Builders keep theirs, because for them it is a stronger model.
