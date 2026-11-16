@@ -59,7 +59,7 @@ export const STATES: Record<string, string> = {
     Left --> meet
     Right --> meet
     meet --> Small
-    note right of Small : a note is not drawn
+    note right of Small : a note beside a state
     note left of Left
       a note over
       several lines

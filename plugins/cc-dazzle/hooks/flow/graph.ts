@@ -68,7 +68,7 @@ export class Graph {
     if (existing !== undefined) {
       this.pull(existing)
       if (label !== null) {
-        this.nodes[existing]!.label = label
+        this.relabel(existing, label)
         this.nodes[existing]!.shape = shape
       }
       return existing
@@ -81,6 +81,7 @@ export class Graph {
     this.ids.push(id)
     this.nodes.push({ key: `n:${this.nodes.length}`, label: label ?? id, shape })
     this.nodeGroup.push(this.curGroup)
+    if (label !== null) this.relabel(this.nodes.length - 1, label)
     return this.nodes.length - 1
   }
 
@@ -89,10 +90,17 @@ export class Graph {
     const existing = this.index.get(id)
     if (existing !== undefined) {
       this.pull(existing)
-      this.nodes[existing]!.label = label
+      this.relabel(existing, label)
       return existing
     }
     return this.nodeIndex(id, label, 'round')
+  }
+
+  /** A node that stands for a group carries the frame's title: a label given to it later retitles the frame. */
+  private relabel(node: number, label: string): void {
+    this.nodes[node]!.label = label
+    const group = this.proxyOf(node)
+    if (group !== undefined) this.groups[group]!.label = label
   }
 
   /**

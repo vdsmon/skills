@@ -95,12 +95,12 @@ export type Diagram = { art: ChartArt } | { note: string }
 // The columns the frame and indent around a diagram take from the reply's width.
 const FRAME = 6
 
-type Drawn = { art: ChartArt; needs: number } | { note: string }
+type Drawn = { art: ChartArt; needs: number; cut?: boolean } | { note: string }
 
 const flowArt = (flow: Flow): Drawn =>
   flow.kind === 'too-large' ? { note: 'diagram is too large to draw' }
   : flow.kind === 'empty' ? { note: 'diagram has nothing to draw' }
-  : { art: { text: flow.drawing.lines.join('\n'), boxes: flow.drawing.boxes }, needs: flow.drawing.width }
+  : { art: { text: flow.drawing.lines.join('\n'), boxes: flow.drawing.boxes }, needs: flow.drawing.width, cut: flow.cut }
 
 const drawnArt = new Map<string, Drawn>()
 
@@ -123,7 +123,9 @@ const artOf = (source: string, columns: number): Drawn =>
 export const mermaidDiagram = (source: string, columns: number): Diagram => {
   const drawn = artOf(source, columns)
   if (!('art' in drawn)) return drawn
-  return drawn.needs > columns - FRAME ? { note: `diagram needs ${drawn.needs} cols, ${columns - FRAME} fit` } : { art: drawn.art }
+  if (drawn.needs <= columns - FRAME) return { art: drawn.art }
+  // Narrowing stopped by its budget may have left a narrower drawing, so "needs" would not be true.
+  return { note: drawn.cut ? `diagram is too large to narrow below ${drawn.needs} cols, ${columns - FRAME} fit` : `diagram needs ${drawn.needs} cols, ${columns - FRAME} fit` }
 }
 
 export const mermaidText = (source: string, columns: number): string | null => {

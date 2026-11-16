@@ -280,10 +280,38 @@ test('two diagrams drawn one after the other keep their own wrap widths', () => 
   expect(drawFlow(wide, 160)).toEqual(before)
 })
 
-test('a source over a cap is too large to draw; one with no boxes has nothing to draw', () => {
+test('a source over a cap is too large to draw; one with no boxes and no frames has nothing to draw', () => {
   const many = `flowchart TD\n  Q --> ${Array.from({ length: 130 }, (_, i) => `N${i}`).join(' & ')}`
   expect(drawFlow(many, 80)).toEqual({ kind: 'too-large' })
   expect(drawFlow('flowchart TD', 80)).toEqual({ kind: 'empty' })
-  expect(drawFlow('stateDiagram-v2\n  note left of X\n  x\n  end note', 80)).toEqual({ kind: 'empty' })
+  expect(drawFlow('stateDiagram-v2\n  classDef quiet fill:#fff', 80)).toEqual({ kind: 'empty' })
   expect(drawFlow('pie\n  "a" : 1', 80)).toBeNull()
+})
+
+test('a diagram of one empty frame draws the frame', () => {
+  for (const source of ['flowchart TD\n  subgraph Empty\n  end', 'stateDiagram-v2\n  state Lonely {\n  }']) {
+    const checked = checkFlow(source, 60)
+    expect(checked.failures).toEqual([])
+    if (checked.flow?.kind !== 'drawn') throw new Error(`${source} not drawn`)
+    expect(checked.flow.drawing.frames.length).toBe(1)
+  }
+})
+
+test('a note on a state draws as a box of its own, its text whole and its lines kept, joined by a dotted line', () => {
+  const checked = checkFlow('stateDiagram-v2\n  A --> B\n  note right of A : Important information\n  note left of B\n    first line\n    second line\n  end note', 60)
+  expect(checked.failures).toEqual([])
+  if (checked.flow?.kind !== 'drawn') throw new Error('not drawn')
+  const texts = checked.flow.drawing.boxes.map(b => b.lines.map(l => l.text).join('|'))
+  expect(texts).toContain('Important information')
+  expect(texts).toContain('first line|second line')
+})
+
+// 80 boxes with no edges split one row in half at each step, more steps than the budget gives.
+const BOXES = `flowchart TD;\n${Array.from({ length: 80 }, (_, i) => `  N${i}[Worker ${i}]`).join('\n')}`
+
+test('a drawing the budget stopped narrowing says so, and one whose narrowing ran out does not', () => {
+  const cut = drawFlow(BOXES, 54)
+  expect(cut?.kind === 'drawn' && !cut.fits && cut.cut).toBe(true)
+  const done = drawFlow(UNFIT, 60)
+  expect(done?.kind === 'drawn' && !done.fits && !done.cut).toBe(true)
 })

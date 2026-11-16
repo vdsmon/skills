@@ -479,19 +479,13 @@ function lineKind(op: string): LineKind {
   return 'solid'
 }
 
-/** A trailing `o`/`x` head, only when followed by a statement boundary. */
+/**
+ * A trailing `o`/`x` head, written right after the operator. As in Mermaid, it belongs to the link
+ * even when a name follows it at once: `A---oB` is a circle link to `B`.
+ */
 function trailingHead(chars: string[], i: number): { head: Head; next: number } | null {
   const head: Head | null = chars[i] === 'o' ? 'circle' : chars[i] === 'x' ? 'cross' : null
-  if (head === null) return null
-  const after = chars[i + 1]
-  const boundary =
-    after === undefined ||
-    after === ' ' ||
-    after === '\t' ||
-    after === '|' ||
-    after === '&' ||
-    after === ';'
-  return boundary ? { head, next: i + 1 } : null
+  return head === null ? null : { head, next: i + 1 }
 }
 
 // --------------------------------------------------------------------- state
@@ -502,15 +496,21 @@ function trailingHead(chars: string[], i: number): { head: Head; next: number } 
  */
 function parseState(src: string): Graph {
   const graph = new Graph()
-  let inNote = false
+  // A note over several lines: the state it is on and its lines so far.
+  let note: { on: string; lines: string[] } | null = null
   let describing = false
   let depth = 0
   // Concurrent regions of a composite state, split by `--`, each have their own start and end.
   const regions = new Map<number | null, number>()
 
   for (let st of statementsOf(src).slice(1)) {
-    if (inNote) {
-      if (asciiLower(st) === 'end note') inNote = false
+    if (note !== null) {
+      if (asciiLower(st) !== 'end note') note.lines.push(st)
+      else {
+        addNote(graph, note.on, note.lines)
+        note = null
+      }
+      if (graph.overCap) return graph
       continue
     }
     const acc = accessible(st, describing)
@@ -520,8 +520,10 @@ function parseState(src: string): Graph {
     const first = asciiLower(firstWord(st))
     let read: 'open' | true | null = true
     if (first === 'note') {
-      // A single-line `note ... : text` needs no terminator.
-      if (!st.includes(':')) inNote = true
+      const on = /^note\s+(?:left|right)\s+of\s+([^\s:]+)\s*(?::(.*))?$/i.exec(st)
+      if (on === null) read = null
+      else if (on[2] === undefined) note = { on: on[1]!, lines: [] }
+      else addNote(graph, on[1]!, [on[2]])
     } else if (first === 'state') {
       read = parseStateDecl(st, graph, depth)
       if (read === 'open') depth++
@@ -543,7 +545,18 @@ function parseState(src: string): Graph {
     if (graph.overCap) return graph
     if (read === null) graph.warnings.push(`dropped, unreadable: "${st}"`)
   }
+  // A note still open when the source ends, as while a reply streams, draws what it has so far.
+  if (note !== null) addNote(graph, note.on, note.lines)
   return graph
+}
+
+/** A note: a box of its own holding its text, one line per line, joined to its state by a dotted line. */
+function addNote(graph: Graph, on: string, lines: string[]): void {
+  const state = graph.nodeIndex(on, null, 'round')
+  const text = lines.map(cleanLabel).filter(l => l !== '').join('\n')
+  if (state === null || text === '') return
+  const box = graph.nodeIndex(`note@${graph.nodes.length}`, text, 'rect')
+  if (box !== null) graph.pushEdge({ from: state, to: box, label: null, headTo: 'none', headFrom: 'none', line: 'dotted' })
 }
 
 /** `state "Label" as id`, `state id <<choice>>`, or `state id {`, which opens a group. */
