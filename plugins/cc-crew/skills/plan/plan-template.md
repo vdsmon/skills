@@ -26,7 +26,7 @@ Status: awaiting approval.
 
 Order: <what depends on what, and what runs side by side>.
 
-### Work 1 <title> (builder)
+### Work item 1 <title> (builder)
 
 - For: <what this piece is for, in one or two sentences>.
 - You own: <the files, and what is left to the builder>.
@@ -37,7 +37,7 @@ Order: <what depends on what, and what runs side by side>.
 - Done when: <what passes, and what cannot be known yet, with its fallback>.
 - Runs with: <the items built at the same time, or none>.
 
-### Work 2 <title> (chief engineer)
+### Work item 2 <title> (chief engineer)
 
 - For: <...>
 - Where: <...>

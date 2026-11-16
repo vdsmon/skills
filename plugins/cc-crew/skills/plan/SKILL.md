@@ -21,11 +21,11 @@ A grilling that kept a record already wrote this file: its principle, approved a
 - **What approval starts.** Everything his approval sets in motion that is his to decide: paid runs, edits outside the repository, merges, anything outward.
 - **Sign-off.** Yours. A plan you present carries your signature: you stand behind it, and it is ready for his. A plan you are not yet behind is a draft, unsigned, with what you do not agree with. You may withdraw your signature before work starts, and you say why.
 
-Name things by what they are. Number only what will be referred to, and write short words out ("Work 2").
+Name things by what they are. Number only what will be referred to, and write short words out ("Work item 2").
 
 ## 2. Have it reviewed
 
-Send the plan and its principle to the reviewer. Put the principle in a file and run, in the background, `"${CLAUDE_PLUGIN_ROOT}/scripts/review.sh" plan <principle-file> <plan.md> <out-dir>`; the last line it prints is the answer file. Exit 3 means Codex is out of usage: give the same two files to `cc-crew:reviewer-fallback`. Weigh what comes back before fixing anything: is the failure real, and is the guard worth it? A pass with no blocker ends the review. A second fix to the same spot is a stop: the design is in question, so change the design or drop the fix. A third pass that still finds a blocker goes to the user.
+Send the plan to the reviewer: run, in the background, `"${CLAUDE_PLUGIN_ROOT}/scripts/review.sh" plan <plan.md>`. It reads the principle from the file and puts its answers in `reviews/` beside it; the last line it prints is the answer file. Exit 3 means Codex is out of usage: the last line is then the folder the script prepared, and that folder goes to `cc-crew:reviewer-fallback`. Weigh what comes back before fixing anything: is the failure real, and is the guard worth it? A pass with no blocker ends the review. A second fix to the same spot is a stop: the design is in question, so change the design or drop the fix. A third pass that still finds a blocker goes to the user.
 
 ## 3. Build the page
 
@@ -46,7 +46,7 @@ Publish it privately, say which version of the plan it shows, and give him the l
 
 1. Record in the plan file which page version he approved, and anything agreed after it. On the page, add his signature and an approved stamp; each signature carries its date and time.
 2. Cut the briefs: `python3 "${CLAUDE_SKILL_DIR}/scripts/cut_briefs.py" <plan.md> <out-dir>`.
-3. Send each brief to a `cc-crew:builder` exactly as cut. Items marked to run together each get their own worktree.
+3. Start a `cc-crew:builder` for each brief and give it the brief's path, not its text or a summary of it: a file cannot be paraphrased. Items marked to run together each get their own worktree.
 
 ## 5. While it is built
 
@@ -54,4 +54,4 @@ Publish it privately, say which version of the plan it shows, and give him the l
 - Once approved, the page becomes the board for the work: move the work graph to the top, give each state its own colour (done, under way, next, not started), and fold away the sections he has already read.
 - Refresh each item's state at every handback and at the push.
 - A comment on the page that shows something is unclear: change the page, post nothing beyond the automatic reply, and resolve the thread.
-- Before the push, the combined diff goes to the reviewer: `review.sh diff <principle-file> <repo> <base> <head> <out-dir>`. A question about an answer goes through `review.sh follow-up <folder> <question-file>`.
+- Before the push, the combined diff goes to the reviewer: `review.sh diff <plan.md> <repo> <base> <head>`. A question about an answer goes through `review.sh follow-up <folder> <question-file>`.

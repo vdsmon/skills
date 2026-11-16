@@ -1,23 +1,29 @@
 #!/usr/bin/env bash
 # Ask the reviewer (Codex, model $REVIEW_MODEL) for a read-only review of a clean copy.
 #
-#   review.sh plan <principle-file> <plan-file> <out-dir>
-#   review.sh diff <principle-file> <repo> <base> <head> <out-dir>
-#   review.sh grilling <principle-file> <record-file> <out-dir>
+#   review.sh plan <plan-file> [<out-dir>]
+#   review.sh grilling <plan-file> [<out-dir>]
+#   review.sh diff <plan-file|purpose-file> <repo> <base> <head> [<out-dir>]
 #   review.sh follow-up <folder> <question-file>
 #
-# plan, diff and grilling make a fresh folder under <out-dir>; follow-up asks again
-# in one. Exit 0: the answer file's path is the last line of stdout. Exit 3: Codex
-# refused for usage (limit or quota). Exit 4: any other failure, with the log tail on
-# stderr. A plan, diff or grilling answer ends with the crew's reminder, which is not
-# the reviewer's.
+# A read is judged against the plan file's "## Principle" section. A grilling whose
+# principle is not proposed yet is read against "## What this is for", and a diff
+# with no plan takes a file that holds one sentence on what the change is for. plan,
+# grilling and diff make a fresh folder under <out-dir>, by default reviews/ beside
+# their first file; follow-up asks again in one. The last line of stdout is the
+# answer file's path on exit 0, and on exit 3, when Codex refused for usage (limit
+# or quota), the folder that holds what the fallback reviewer reads. Exit 4: any
+# other failure, with the log tail on stderr. A plan, diff or grilling answer ends
+# with the crew's reminder, which is not the reviewer's.
 set -u
 set -o pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
 REVIEW_MODEL=${REVIEW_MODEL:-gpt-6-astra}
-# The line in Work 1's templates that the principle file replaces.
+# The line in a prompt template that the principle replaces.
 PRINCIPLE_TOKEN='{{PRINCIPLE}}'
+# What record.py writes under "## Principle" until the grilling proposes one.
+NO_PRINCIPLE='Not proposed yet.'
 
 fail() { echo "review.sh: $*" >&2; exit 4; }
 
@@ -33,6 +39,34 @@ new_folder() { # <out-dir> <kind>
   local d
   d=$(mktemp -d "$1/$2-$(date +%Y%m%d-%H%M%S).XXXXXX") || fail "cannot create a folder under $1"
   cd "$d" && pwd -P
+}
+
+# Prints the body of a plan file's "## <title>" section, without its blank edges.
+section() { # <file> <title>
+  awk -v want="## $2" '
+    /^[[:space:]]*(```|~~~)/ { fenced = !fenced }
+    !fenced && /^## / { h = $0; sub(/[[:space:]]+$/, "", h); on = (h == want); next }
+    on { buf[++n] = $0; if ($0 ~ /[^[:space:]]/) { if (!first) first = n; last = n } }
+    END { for (i = first; first && i <= last; i++) print buf[i] }
+  ' "$1"
+}
+
+# Prints what a read is judged against: the principle of a plan file, or, for a
+# diff with no plan, the whole of a file that has no "## Principle" heading.
+principle_of() { # <plan|grilling|diff> <file>
+  local kind=$1 file=$2 text
+  if ! grep -q '^## Principle[[:space:]]*$' "$file"; then
+    [ "$kind" = diff ] || fail "$file has no \"## Principle\" section"
+    cat "$file" || fail "cannot read $file"
+    return
+  fi
+  text=$(section "$file" Principle)
+  if [ "$kind" = grilling ] && { [ -z "$text" ] || [ "$text" = "$NO_PRINCIPLE" ]; }; then
+    text=$(section "$file" 'What this is for')
+    [ -n "$text" ] || fail "$file proposes no principle and says nothing under \"## What this is for\""
+  fi
+  { [ -n "$text" ] && [ "$text" != "$NO_PRINCIPLE" ]; } || fail "$file proposes no principle yet"
+  printf '%s\n' "$text"
 }
 
 # Splits on the token instead of sed or ${//}: the principle may hold & / or \.
@@ -100,6 +134,7 @@ run_codex() { # <folder> <answer-file> <log-file> <prompt> [remind]
   if [ -n "$refusal" ]; then
     echo "review.sh: Codex refused for usage:" >&2
     printf '%s\n' "$refusal" >&2
+    printf '%s\n' "$folder"
     exit 3
   fi
 
@@ -112,21 +147,25 @@ run_codex() { # <folder> <answer-file> <log-file> <prompt> [remind]
   exit 4
 }
 
-cmd_plan() {
-  [ $# -eq 3 ] || usage
-  readable "$1" "principle file"
-  readable "$2" "plan file"
-  local folder
-  folder=$(new_folder "$3" plan) || exit 4
-  { cp "$1" "$folder/principle.md" && cp "$2" "$folder/plan.md"; } || fail "cannot copy into $folder"
-  build_prompt review-prompt-plan.md "$1" "$folder"
+# A grilling's record and a plan are one file at two moments, read with different
+# prompts under the name each prompt uses.
+cmd_plan_file() { # <plan|grilling> <name-in-folder> <plan-file> [<out-dir>]
+  local kind=$1 name=$2 principle folder
+  shift 2
+  { [ $# -ge 1 ] && [ $# -le 2 ]; } || usage
+  readable "$1" "plan file"
+  principle=$(principle_of "$kind" "$1") || exit 4
+  folder=$(new_folder "${2:-$(dirname "$1")/reviews}" "$kind") || exit 4
+  { printf '%s\n' "$principle" > "$folder/principle.md" && cp "$1" "$folder/$name"; } || fail "cannot copy into $folder"
+  build_prompt "review-prompt-$kind.md" "$folder/principle.md" "$folder"
   run_codex "$folder" "$folder/answer.md" "$folder/codex.log" "$(cat "$folder/prompt.md")" remind
 }
 
 cmd_diff() {
-  [ $# -eq 5 ] || usage
-  local principle=$1 repo=$2 base=$3 head=$4 out=$5 base_sha head_sha fork_sha upstream up_fork folder
-  readable "$principle" "principle file"
+  { [ $# -ge 4 ] && [ $# -le 5 ]; } || usage
+  local repo=$2 base=$3 head=$4 out=${5:-$(dirname "$1")/reviews} principle base_sha head_sha fork_sha upstream up_fork folder
+  readable "$1" "plan or purpose file"
+  principle=$(principle_of diff "$1") || exit 4
   base_sha=$(git -C "$repo" rev-parse --verify --quiet "$base^{commit}") || fail "not a commit in $repo: $base"
   head_sha=$(git -C "$repo" rev-parse --verify --quiet "$head^{commit}") || fail "not a commit in $repo: $head"
   # Diff from where the branch left <base>, not from <base> as it is now: work
@@ -141,7 +180,7 @@ cmd_diff() {
     fi
   fi
   folder=$(new_folder "$out" diff) || exit 4
-  cp "$principle" "$folder/principle.md" || fail "cannot copy into $folder"
+  printf '%s\n' "$principle" > "$folder/principle.md" || fail "cannot write into $folder"
   # Objects only, never the working tree: archive the commit, diff two commits, and
   # take .gitattributes from <head>, not from whatever the checkout holds.
   mkdir "$folder/tree" || fail "cannot create $folder/tree"
@@ -150,18 +189,7 @@ cmd_diff() {
   git -C "$repo" --attr-source="$head_sha" diff --no-ext-diff --no-textconv --no-color "$fork_sha" "$head_sha" > "$folder/diff.patch" \
     || fail "cannot diff $base...$head in $repo"
   printf 'base %s %s\nfork %s\nhead %s %s\n' "$base" "$base_sha" "$fork_sha" "$head" "$head_sha" > "$folder/revs.txt"
-  build_prompt review-prompt-diff.md "$principle" "$folder"
-  run_codex "$folder" "$folder/answer.md" "$folder/codex.log" "$(cat "$folder/prompt.md")" remind
-}
-
-cmd_grilling() {
-  [ $# -eq 3 ] || usage
-  readable "$1" "principle file"
-  readable "$2" "record file"
-  local folder
-  folder=$(new_folder "$3" grilling) || exit 4
-  { cp "$1" "$folder/principle.md" && cp "$2" "$folder/record.md"; } || fail "cannot copy into $folder"
-  build_prompt review-prompt-grilling.md "$1" "$folder"
+  build_prompt review-prompt-diff.md "$folder/principle.md" "$folder"
   run_codex "$folder" "$folder/answer.md" "$folder/codex.log" "$(cat "$folder/prompt.md")" remind
 }
 
@@ -184,9 +212,9 @@ $(cat "$question")"
 }
 
 case ${1:-} in
-  plan) shift; cmd_plan "$@" ;;
+  plan) shift; cmd_plan_file plan plan.md "$@" ;;
+  grilling) shift; cmd_plan_file grilling record.md "$@" ;;
   diff) shift; cmd_diff "$@" ;;
-  grilling) shift; cmd_grilling "$@" ;;
   follow-up) shift; cmd_follow_up "$@" ;;
   *) usage ;;
 esac
