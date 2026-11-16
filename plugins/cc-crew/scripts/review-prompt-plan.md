@@ -4,14 +4,15 @@ The plan must obey this principle:
 
 {{PRINCIPLE}}
 
-Builders are briefed mechanically from the plan's "Work" entries, each followed by its "Every brief" section word for word. What those texts say is what gets built.
+Builders are briefed mechanically: each brief is one "Work" entry with the plan's purpose, principle and "The ladder" section, followed by its "Every brief" section, word for word. What those texts say is what gets built.
 
 Judge the plan against its principle. For each objection give a concrete failure: the situation, and the wrong thing that then happens. Look hardest at:
 
 - a sentence that says more than its author can mean, where a builder who follows it faithfully builds the wrong thing;
 - two decisions, or a decision and a work item, that contradict each other;
 - a work item that cannot be built as written, or whose "done when" can pass while the thing does not work;
-- a role that ends up judging its own work, or a decision nobody is named for.
+- a role that ends up judging its own work, or a decision nobody is named for;
+- a cheaper run that would tell the same thing as the ladder's lowest rung: a NOTE, unless the rung the plan calls done can pass while the thing does not work.
 
 Label each objection BLOCKER (built as written, something fails or the wrong thing gets built) or NOTE (worth knowing, but the build would still be right). If the plan holds no blocker, say so in the first line.
 

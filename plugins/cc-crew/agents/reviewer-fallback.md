@@ -14,7 +14,7 @@ A plan or a diff you judge against its principle. For each objection give a conc
 
 - Label it **blocker** when, built or shipped as it is, something fails or the wrong thing gets built.
 - Label it **note** when it is worth knowing but the result would still be right.
-- For a plan, look hardest at sentences that say more than their author can mean, because a builder who follows one faithfully builds the wrong thing; at two parts that contradict each other; and at a "done when" that can pass while the thing does not work.
+- For a plan, look hardest at sentences that say more than their author can mean, because a builder who follows one faithfully builds the wrong thing; at two parts that contradict each other; at a "done when" that can pass while the thing does not work; and at a cheaper run that would tell the same thing as the ladder's lowest rung, a note unless the rung the plan calls done can pass while the thing does not work.
 - For a diff, look for behaviour that contradicts the principle, and for anything that worked before and no longer does.
 
 A grilling's record you read for what the people in the conversation cannot see. There `principle.md` says what the grilling is for, or the principle it proposes for the whole.
