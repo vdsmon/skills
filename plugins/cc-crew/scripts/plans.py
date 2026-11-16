@@ -6,7 +6,7 @@ Usage:
   plans.py phase <plan.md> <grilling|awaiting approval|building> [sentence...]
   plans.py wait <plan.md> <who or what>: <what for>
   plans.py go <plan.md>
-  plans.py progress <plan.md>
+  plans.py progress <plan.md>          (again after work items are added to or taken out of the plan)
   plans.py item <plan.md> <n> <not started|under way|done> [note...]
   plans.py close <plan.md> <done|dropped> <sentence...>
   plans.py report
@@ -230,7 +230,7 @@ class Plan:
             del self.lines[keys[key][0]]
 
     def fill_progress(self):
-        """Create or extend the Progress section; return the work item numbers added."""
+        """Make the Progress section mirror the work item headings; return (numbers added, numbers removed)."""
         numbers = self.work_items()
         if not numbers:
             raise Refused('the file has no "### Work item <n>" heading')
@@ -258,7 +258,11 @@ class Plan:
                 else:  # text of someone else's under the heading: the list goes above it
                     self.lines[pos:pos] = ([""] if pos == start + 1 else []) + [line, ""]
             added.append(n)
-        return added
+        # A work item taken out of the plan takes its line with it, whatever its state.
+        gone = [(i, n) for i, n, _, _ in self.progress() if n not in numbers]
+        for i, _ in sorted(gone, reverse=True):
+            del self.lines[i]
+        return added, [n for _, n in gone]
 
     def _add_progress_section(self):
         """Place a new Progress section before the "## " section that holds the first work item."""
@@ -423,10 +427,10 @@ def cmd_go(plan, args, session):
 def cmd_progress(plan, args, session):
     if args:
         raise Unusable("progress takes only the plan file")
-    added = write(plan, Plan.fill_progress, session)
+    added, removed = write(plan, Plan.fill_progress, session)
     done, total = plan.counts()
-    new = ", ".join(str(n) for n in added) if added else "none"
-    print(f"{plan.name}: {total} work items, {done} done; added: {new}")
+    listed = lambda numbers: ", ".join(str(n) for n in numbers) if numbers else "none"
+    print(f"{plan.name}: {total} work items, {done} done; added: {listed(added)}; removed: {listed(removed)}")
 
 
 def cmd_item(plan, args, session):
@@ -458,7 +462,8 @@ def cmd_close(plan, args, session):
     items = plan.progress() or []
     if end == "done":
         states = {n: state for _, n, state, _ in items}
-        for n in plan.work_items() + [n for _, n, _, _ in items if n not in plan.work_items()]:
+        # Only the work items the plan has now: a line left from one taken out does not hold it open.
+        for n in plan.work_items():
             if n not in states:
                 reasons.append(f"work item {n} has no Progress line")
             elif states[n] != "done":
@@ -471,7 +476,7 @@ def cmd_close(plan, args, session):
         p.drop_first("Held by")
 
     write(plan, change, session)
-    total = len(set(plan.work_items()) | {n for _, n, _, _ in items})
+    total = len(plan.work_items())
     plan_reads, diff_reads = reviewer_reads(plan)
     print(f"{plan.name}: Phase: {plan.first('Phase')}")
     print(f"Stamp: {total} work items; {plan_reads + diff_reads} reviewer reads ({plan_reads} of the plan, {diff_reads} of the diff).")

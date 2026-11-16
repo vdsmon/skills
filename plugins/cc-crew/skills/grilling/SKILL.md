@@ -71,4 +71,4 @@ When nothing is open or waiting:
 4. **The glossary.** When the repo has one, write the words marked for it in one change, shown as one diff, in the format of [GLOSSARY-FORMAT.md](GLOSSARY-FORMAT.md), on the branch the work will use when a plan follows. Offer a decision record only when the three conditions in [ADR-FORMAT.md](ADR-FORMAT.md) hold. Never create a glossary unasked.
 5. **The stamp**, once all of that is answered: the final picture, then `🔥 Grilled: <n> settled · 0 open · <m> set aside`.
 
-Do not act on the result until the user confirms you have reached a shared understanding. When work follows, the plan skill takes the record as the plan file.
+Do not act on the result until the user confirms you have reached a shared understanding. When work follows, the plan skill takes the record as the plan file. When none follows, the record is finished with the stamp: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/plans.py" close <plan.md> done "<what was settled>"`, or `dropped` for a grilling the user gave up, so that it leaves the report and gives the session its name back.

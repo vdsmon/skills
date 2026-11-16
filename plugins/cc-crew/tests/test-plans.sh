@@ -328,6 +328,29 @@ check "a session that holds nothing loses its held-name file" '[ ! -e "$held/ses
 run close "$f" done
 check "close without a sentence exits 2" '[ "$rc" -eq 2 ]'
 
+echo "--- a work item taken out of the plan"
+plan cup <<'EOF'
+# cup
+
+Phase: building.
+
+## Work
+
+### Work item 1 Handle (builder)
+
+### Work item 2 Saucer (builder)
+EOF
+c="$CC_CREW_PLANS/cup/plan.md"
+run progress "$c"
+run item "$c" 1 done
+grep -v '^### Work item 2' "$c" > "$tmp/cup.md" && cp "$tmp/cup.md" "$c"
+cp "$c" "$tmp/cup-stale.md"
+run progress "$c"
+check "progress run again drops the line of a work item taken out, and says so" '[ "$rc" -eq 0 ] && ! grep -q "^- Work item 2:" "$c" && printf "%s" "$out" | grep -q "removed: 2"'
+cp "$tmp/cup-stale.md" "$c"
+run close "$c" done "Shipped."
+check "a line left from a work item taken out does not hold the close" '[ "$rc" -eq 0 ] && grep -qxF "Phase: done. Shipped." "$c" && printf "%s" "$out" | grep -q "^Stamp: 1 work items"'
+
 echo "--- usage"
 run
 check "no command exits 2" '[ "$rc" -eq 2 ]'

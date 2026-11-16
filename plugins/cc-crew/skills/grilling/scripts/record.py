@@ -11,7 +11,8 @@ plan name rule, checked before anything is created. A file that already exists i
 untouched, not held, and only checked, so a second session continues the same record
 without taking it over. The file's path is always the last line.
 
-check reads the Terms, Decisions, Open and Set aside sections and nothing else. It refuses, naming each line: a decision with no reason after "Why:", a
+check reads the Terms, Decisions, Open and Set aside sections and nothing else, then
+brings the session's held-name file up to date, since the record is edited by hand. It refuses, naming each line: a decision with no reason after "Why:", a
 term with no source in parentheses or no meaning, and a question number used twice
 across Decisions and Open. Otherwise it prints what is settled and open, the next
 question's number and the agreed words.
@@ -171,7 +172,10 @@ def main(argv):
     if len(argv) >= 4 and argv[1] == "start" and argv[2].strip():
         return run_start(argv[2], " ".join(argv[3:]))
     if len(argv) == 3 and argv[1] == "check":
-        return run_check(Path(argv[2]))
+        rc = run_check(Path(argv[2]))
+        # The record is written by hand, so this is where the session's name catches up with it.
+        plans.sync_held({os.environ.get("CLAUDE_CODE_SESSION_ID", "").strip()})
+        return rc
     print("usage: record.py start <name> <subject...>\n       record.py check <plan.md>", file=sys.stderr)
     return 2
 

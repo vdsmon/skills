@@ -218,6 +218,17 @@ check "fenced items and other sections pass" '[ "$rc" -eq 0 ] && printf "%s\n" "
 echo "--- usage"
 run check "$tmp/missing.md"
 check "an unreadable file exits 2" '[ "$rc" -eq 2 ]'
+echo "--- check: the session's name follows the record it edited by hand"
+held="$HOME/.claude/.cc-autotitle/held/sess-g"
+run start mug-first "The first of two records one session holds."
+run start mug-second "The second, started later."
+check "the name is the record started last" '[ "$(cat "$held")" = mug-second ]'
+# A hand edit, as a grilling round makes it; a later timestamp stands in for the wait between rounds.
+printf '\n- A point set aside.\n' >> "$tmp/plans/mug-first/plan.md"
+touch -t 203001010000 "$tmp/plans/mug-first/plan.md"
+run check "$tmp/plans/mug-first/plan.md"
+check "after check, the name is the record edited by hand" '[ "$rc" -eq 0 ] && [ "$(cat "$held")" = mug-first ]'
+
 run start onlyname
 check "start without a subject exits 2" '[ "$rc" -eq 2 ] && printf "%s" "$err" | grep -q "^usage:"'
 run
