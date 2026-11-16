@@ -26,6 +26,14 @@ function world(on: On, entries: Record<string, unknown> = {}) {
     return { value: undefined }
   })
   on('store.keys', async () => ({ value: [...store.keys()] }))
+  // The files on disk; a read of a missing one goes to the kit's bottom hook,
+  // which rejects, as the real read does.
+  const files = new Map<string, string>()
+  on('env.get', async (_$, e) => ({ value: e.name === 'HOME' ? '/home/me' : undefined }))
+  on('fs.read', async (_$, e, next) => {
+    const text = files.get(e.path)
+    return text === undefined ? next(e) : { value: text }
+  })
   const seen = {
     forks: 0,
     prompts: [] as string[],
@@ -82,8 +90,16 @@ function world(on: On, entries: Record<string, unknown> = {}) {
     return applied
   }
 
-  return { clock, store, seen, start, prompt, turn, turns }
+  // Writes the session's held-name file, or removes it with no content.
+  function hold(content?: string) {
+    if (content === undefined) files.delete(HELD_FILE)
+    else files.set(HELD_FILE, content)
+  }
+
+  return { clock, store, seen, start, prompt, turn, turns, hold }
 }
+
+const HELD_FILE = `/home/me/.claude/.cc-autotitle/held/${SID}`
 
 // A /rename typed at the prompt.
 function rename($: Engine, name: string) {
@@ -370,4 +386,134 @@ test('a second check never starts while one runs', async ($, on) => {
   release()
   await w.clock.advance(0)
   expect(w.seen.forks).toBe(1)
+})
+
+test('a held name lands with the next prompt, and no model is asked while it holds', async ($, on) => {
+  const w = world(on)
+  await w.start($)
+  await w.turns($, 1)
+  w.hold('crew-where-plans-stand\n')
+  await w.turn($)
+  expect(await w.prompt($, 'Some host title')).toBe('crew-where-plans-stand')
+  await w.turn($)
+  await w.turns($, 20, 'crew-where-plans-stand')
+  expect(w.seen.forks).toBe(0)
+  expect(w.seen.renames).toEqual([])
+  expect(w.store.get(`s:${SID}`)).toMatchObject({ lastSet: 'crew-where-plans-stand', pinned: false })
+})
+
+test('a held name wins over a name set by hand and follows the file when it changes', async ($, on) => {
+  const w = world(on)
+  await w.start($)
+  await w.turns($, 1)
+  await rename($, 'my-own-name')
+  w.hold('plan-a')
+  expect(await w.prompt($, 'my-own-name')).toBe('plan-a')
+  await w.turn($)
+  w.hold('plan-b')
+  expect(await w.prompt($, 'plan-a')).toBe('plan-b')
+  await w.turn($)
+  expect(await w.prompt($, 'plan-b')).toBeUndefined()
+  expect(w.seen.forks).toBe(0)
+  expect(w.seen.renames).toEqual(['my-own-name'])
+})
+
+test('/autotitle reads the file too: a held name gone while the session sat idle frees it', async ($, on) => {
+  const w = world(on)
+  await w.start($)
+  w.hold('plan-a')
+  expect(await w.prompt($)).toBe('plan-a')
+  await w.turn($)
+  w.hold()
+  expect((await autotitle($)).text).toBe('Named this session pr-17-review-fixes.')
+  expect(w.seen.forks).toBe(1)
+})
+
+test('when the file is gone the session names itself again from the name it has', async ($, on) => {
+  const w = world(on)
+  await w.start($)
+  w.hold('plan-a')
+  expect(await w.prompt($)).toBe('plan-a')
+  await w.turn($)
+  await w.turns($, 20, 'plan-a')
+  expect(w.seen.forks).toBe(0)
+  // Gone during turn 22, seen at the next prompt: the next check is a full interval away, as after /autotitle on.
+  w.hold()
+  await w.turn($)
+  expect(w.seen.forks).toBe(0)
+  expect(await w.prompt($, 'plan-a')).toBeUndefined()
+  await w.turn($)
+  await w.turns($, 8, 'plan-a')
+  expect(w.seen.forks).toBe(0)
+  await w.turns($, 1, 'plan-a')
+  expect(w.seen.forks).toBe(1)
+  expect(w.seen.prompts[0]).toContain('The session is now named plan-a.')
+  expect(await w.prompt($, 'plan-a')).toBe('pr-17-review-fixes')
+})
+
+test('a held name of one word counts; a file that is not a name is ignored', async ($, on) => {
+  const w = world(on)
+  await w.start($)
+  w.hold('autotitle')
+  expect(await w.prompt($)).toBe('autotitle')
+  for (const bad of ['Plan A', 'plan_a', 'a-plan-name-that-runs-well-past-forty-chars', '', 'plan-a\nplan-b']) {
+    w.hold(bad)
+    expect(await w.prompt($, 'autotitle')).toBeUndefined()
+  }
+  expect((await autotitle($, 'status')).text).toContain(`The held-name file ${HELD_FILE} holds no kebab-case name of at most 40 characters, so it is ignored.`)
+  // Ignored like no file at all: the session names itself again.
+  await w.turn($)
+  await w.turns($, 10, 'autotitle')
+  expect(w.seen.forks).toBe(1)
+})
+
+test('/autotitle off stops a held name; on lets it land again', async ($, on) => {
+  const w = world(on)
+  await w.start($)
+  await autotitle($, 'off')
+  w.hold('plan-a')
+  expect(await w.prompt($, 'manual-name')).toBeUndefined()
+  await w.turn($)
+  await w.turns($, 15, 'manual-name')
+  expect(w.seen.renames).toEqual([])
+  expect(w.seen.forks).toBe(0)
+  const status = (await autotitle($, 'status')).text
+  expect(status).toContain('Off in this session.')
+  expect(status).toContain(`The held-name file ${HELD_FILE} names plan-a; it applies again after /autotitle on.`)
+  await autotitle($, 'on')
+  expect(await w.prompt($, 'manual-name')).toBe('plan-a')
+})
+
+test('/autotitle status names the held name and its file; /autotitle asks no model while it holds', async ($, on) => {
+  const w = world(on)
+  await w.start($)
+  w.hold('plan-a')
+  await w.prompt($)
+  expect((await autotitle($, 'status')).text).toContain(`Held name: plan-a, from ${HELD_FILE}.`)
+  expect((await autotitle($)).text).toContain('carries the held name plan-a')
+  expect(w.seen.forks).toBe(0)
+})
+
+test('state kept by the version before held names reads as no release', async ($, on) => {
+  // Every write lands without the held field, as the older version kept it.
+  on('state.set', async (_$, e, next) => {
+    const { held: _held, ...old } = e.value as Record<string, unknown>
+    return next({ ...e, value: old as typeof e.value })
+  })
+  const w = world(on)
+  await w.start($)
+  await w.turns($, 1)
+  await rename($, 'my-own-name')
+  await w.turns($, 30, 'my-own-name')
+  expect(w.seen.forks).toBe(0)
+  expect((await autotitle($, 'status')).text).toContain('Pinned: my-own-name was set by hand')
+})
+
+test('a non-interactive session carries a held name too', async ($, on) => {
+  const w = world(on)
+  await w.start($, false)
+  w.hold('plan-a')
+  expect(await w.prompt($)).toBe('plan-a')
+  await w.turns($, 20, 'plan-a')
+  expect(w.seen.forks).toBe(0)
 })

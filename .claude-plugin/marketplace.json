@@ -37,7 +37,7 @@
       "name": "cc-crew",
       "source": "./plugins/cc-crew",
       "description": "A small crew for Claude Code: a chief engineer role for the main session, with a builder, a helper and a reviewer it briefs from one plan file. A grilling settles the design, the plan becomes a page to align on and briefs for the builders, and two commands file and apply feedback on the crew. Claude Code only.",
-      "version": "0.10.0"
+      "version": "0.11.0"
     },
     {
       "name": "humanize",
@@ -66,8 +66,8 @@
     {
       "name": "cc-autotitle",
       "source": "./plugins/cc-autotitle",
-      "description": "Names each Claude Code session on its own: after a few turns it picks a short kebab-case name from the whole session, and renames it again when the work moves on. It never touches a name you set by hand. Claude Code only.",
-      "version": "1.0.0"
+      "description": "Names each Claude Code session on its own: after a few turns it picks a short kebab-case name from the whole session, and renames it again when the work moves on. A name another plugin holds for the session, such as a cc-crew plan, wins; otherwise a name you set by hand stays. Claude Code only.",
+      "version": "1.1.0"
     },
     {
       "name": "cc-dazzle",

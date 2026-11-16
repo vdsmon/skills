@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Offline checks for the grilling's record.py: start writes the skeleton under
-# $CC_CREW_PLANS (or ~/.claude/plans) and leaves an existing record untouched; check
+# $CC_CREW_PLANS (or ~/.claude/plans), holds it for the session, refuses a name that does
+# not fit and leaves an existing record untouched; check
 # refuses each failure it knows by line, prints its four lines in order, and reads
 # nothing outside the Terms, Decisions, Open and Set aside sections.
 set -u
@@ -11,8 +12,9 @@ check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; fail=1; fi; }
 
 tmp=$(cd "$(mktemp -d "${TMPDIR:-/tmp}/grilling-test.XXXXXX")" && pwd -P)
 trap 'rm -rf "$tmp"' EXIT
-export HOME="$tmp/home" CC_CREW_PLANS="$tmp/plans" LC_ALL=C
-mkdir -p "$HOME"
+export HOME="$tmp/home" CC_CREW_PLANS="$tmp/plans" CLAUDE_CODE_SESSION_ID=sess-g LC_ALL=C
+mkdir -p "$HOME" "$tmp/work"
+cd "$tmp/work" || exit 1
 reminder='Before this round goes out, print "New words:" with each term in it that the user has not used or agreed to, or "New words: none". Agreed so far: the words above, and the words of the repo'"'"'s glossary when it has one.'
 
 # run <args...>: sets rc, out (stdout), err (stderr), last (stdout's last line).
@@ -28,10 +30,12 @@ run start kettle "Tea for the office, & nothing / else."
 file="$tmp/plans/kettle/plan.md"
 check "start exits 0" '[ "$rc" -eq 0 ]'
 check "last line is the file's path" '[ "$last" = "$file" ] && [ -f "$file" ]'
-cat > "$tmp/expected.md" <<'EOF'
+cat > "$tmp/expected.md" <<EOF
 # kettle
 
-Status: grilling.
+Phase: grilling.
+Repository: $tmp/work
+Held by: sess-g
 
 ## Principle
 
@@ -54,6 +58,7 @@ Tea for the office, & nothing / else.
 ## Set aside
 EOF
 check "the skeleton is exact" 'cmp -s "$file" "$tmp/expected.md"'
+check "start holds the record: the session carries its name" '[ "$(cat "$HOME/.claude/.cc-autotitle/held/sess-g")" = kettle ]'
 check "a fresh record is checked too" 'printf "%s\n" "$out" | head -n 1 | grep -qxF "0 settled · 0 open · 0 waiting · 0 set aside" && printf "%s\n" "$out" | grep -qxF "Next question: Q1"'
 run start kettle words passed unquoted
 check "the subject may come as several words" '[ "$rc" -eq 0 ] && [ "$last" = "$file" ]'
@@ -63,7 +68,7 @@ echo "--- start: an existing record is left alone and checked"
 write "$file" <<'EOF'
 # kettle
 
-Status: grilling.
+Phase: grilling.
 
 ## Decisions
 
@@ -78,6 +83,14 @@ printf '## Decisions\n\n- **Q1. Colour.** Blue.\n' >> "$file"; cp "$file" "$tmp/
 run start kettle "Another subject"
 check "an existing refused record exits 1, still ends with the path, untouched" '[ "$rc" -eq 1 ] && [ "$last" = "$file" ] && printf "%s" "$err" | grep -q "line 10: decision has no" && cmp -s "$file" "$tmp/before.md"'
 
+echo "--- start: the name rule, and no session"
+run start Big_Kettle "Tea."
+check "a name that does not fit is refused before anything is created" '[ "$rc" -eq 1 ] && printf "%s" "$err" | grep -q "kebab-case" && [ ! -e "$tmp/plans/Big_Kettle" ]'
+run start "$(printf 'k%.0s' $(seq 41))" "Tea."
+check "a name over 40 characters is refused" '[ "$rc" -eq 1 ]'
+CLAUDE_CODE_SESSION_ID= run start mug "Coffee."
+check "with no session the record is written, named for its repository and held by no session" '[ "$rc" -eq 0 ] && grep -qxF "Repository: $tmp/work" "$last" && ! grep -q "^Held by:" "$last" && printf "%s" "$err" | grep -q "held by no session"'
+
 echo "--- start: ~/.claude/plans without CC_CREW_PLANS"
 CC_CREW_PLANS= run start teapot "Pour."
 check "default plans folder is ~/.claude/plans" '[ "$rc" -eq 0 ] && [ "$last" = "$HOME/.claude/plans/teapot/plan.md" ] && [ -f "$last" ]'
@@ -87,7 +100,7 @@ rec="$tmp/record.md"
 write "$rec" <<'EOF'
 # kettle
 
-Status: grilling.
+Phase: grilling.
 
 ## Principle
 
@@ -136,7 +149,7 @@ check "line 4: the reminder, word for word" '[ "$(printf "%s\n" "$out" | sed -n 
 check "check never writes the record" 'cmp -s "$rec" "$tmp/before.md"'
 
 echo "--- check: no agreed word yet"
-printf '# x\n\nStatus: grilling.\n\n## Open\n\n- **Q2. Lid.** Hinged.\n' > "$rec"
+printf '# x\n\nPhase: grilling.\n\n## Open\n\n- **Q2. Lid.** Hinged.\n' > "$rec"
 run check "$rec"
 check "Agreed words: none yet" '[ "$rc" -eq 0 ] && printf "%s\n" "$out" | grep -qxF "Agreed words: none yet" && printf "%s\n" "$out" | grep -qxF "Next question: Q3"'
 
@@ -144,7 +157,7 @@ echo "--- check: each refusal, named by line"
 write "$rec" <<'EOF'
 # x
 
-Status: grilling.
+Phase: grilling.
 
 ## Terms
 
@@ -179,7 +192,7 @@ echo "--- check: fences and later sections are never read"
 write "$rec" <<'EOF'
 # x
 
-Status: grilling.
+Phase: grilling.
 
 ## Decisions
 
@@ -205,6 +218,17 @@ check "fenced items and other sections pass" '[ "$rc" -eq 0 ] && printf "%s\n" "
 echo "--- usage"
 run check "$tmp/missing.md"
 check "an unreadable file exits 2" '[ "$rc" -eq 2 ]'
+echo "--- check: the session's name follows the record it edited by hand"
+held="$HOME/.claude/.cc-autotitle/held/sess-g"
+run start mug-first "The first of two records one session holds."
+run start mug-second "The second, started later."
+check "the name is the record started last" '[ "$(cat "$held")" = mug-second ]'
+# A hand edit, as a grilling round makes it; a later timestamp stands in for the wait between rounds.
+printf '\n- A point set aside.\n' >> "$tmp/plans/mug-first/plan.md"
+touch -t 203001010000 "$tmp/plans/mug-first/plan.md"
+run check "$tmp/plans/mug-first/plan.md"
+check "after check, the name is the record edited by hand" '[ "$rc" -eq 0 ] && [ "$(cat "$held")" = mug-first ]'
+
 run start onlyname
 check "start without a subject exits 2" '[ "$rc" -eq 2 ] && printf "%s" "$err" | grep -q "^usage:"'
 run

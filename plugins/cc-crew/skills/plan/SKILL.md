@@ -11,12 +11,14 @@ A design was settled with the user. Make it buildable, and align with him on the
 
 The plan file is `~/.claude/plans/<name>/plan.md`, in the shape of [plan-template.md](plan-template.md). It is for you to follow and for the record: do not paste it into the session, and do not use plan mode.
 
-A grilling that kept a record already wrote this file: its principle, approved at the close, its example, its terms and its decisions. Keep them as they are, and do not reword the principle. Its Open section must be empty: a question still open goes back to a grilling round, not into the plan. Add the sections below that the file lacks, and set its Status line. After a small grilling, which keeps no record, or with no grilling at all, write the whole file:
+A grilling that kept a record already wrote this file: its principle, approved at the close, its example, its terms and its decisions. Keep them as they are, and do not reword the principle. Its Open section must be empty: a question still open goes back to a grilling round, not into the plan. Add the sections below that the file lacks. After a small grilling, which keeps no record, or with no grilling at all, write the whole file:
+
+- **First lines.** Under the title the file says where the plan stands, and you change them only through `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/plans.py"`, at the moment something changes. `plans.py hold <plan.md>` names the repository and this session as the plan's holder; a grilling's record is held already. The plan's folder name is its name everywhere, also this session's, so it is kebab-case of at most 40 characters. `Page:` is the page's link, written by hand.
 
 - **Principle.** The one sentence he approved. Test it against every case you discussed: a sentence broader than you mean gets built faithfully.
 - **Terms.** Every word the plan uses that he did not bring himself: where it comes from (the code, a teammate, a document, you), what it means in plain words, and his yes to it. The file keeps them through a compaction.
 - **Decisions.** Each with who decided it and why. A decision without a reason cannot be applied to a new case; if he gave none, ask once.
-- **Work.** Each item is its builder's brief: what it is for first, what the builder owns, where, the work in order, each limit with its reason, what done means, what it runs beside. An item stands on its own: it may name another item, but never sends the reader there for instructions.
+- **Work.** Each item is its builder's brief: what it is for first, what the builder owns, where, the work in order, each limit with its reason, what done means, what it runs beside. An item stands on its own: it may name another item, but never sends the reader there for instructions. The last work item is shipping, yours, written for this plan: the combined diff to the reviewer, the push, the pull request, the merge, and what the repository needs after it.
 - **Every brief.** What every builder on this plan needs beyond the builder's own text: shared limits, who else is working where.
 - **What approval starts.** Everything his approval sets in motion that is his to decide: paid runs, edits outside the repository, merges, anything outward.
 - **Sign-off.** Yours. A plan you present carries your signature: you stand behind it, and it is ready for his. A plan you are not yet behind is a draft, unsigned, with what you do not agree with. You may withdraw your signature before work starts, and you say why.
@@ -40,18 +42,33 @@ The page is where you and the user align. It is free in form: design it for this
 7. Your sign-off, as a signature beside the place for his. A draft shows yours empty.
 8. The settled decisions, folded away as the record.
 
-Publish it privately, say which version of the plan it shows, and give him the link with two or three lines on what approval starts. His "approved" covers what the page showed him: anything that is his to decide and is not on it is not approved.
+Publish it privately, say which version of the plan it shows, write its link into the file's `Page:` line, run `plans.py phase <plan.md> "awaiting approval"`, and give him the link with two or three lines on what approval starts. His "approved" covers what the page showed him: anything that is his to decide and is not on it is not approved.
 
 ## 4. On "approved"
 
 1. Record in the plan file which page version he approved, and anything agreed after it. On the page, add his signature and an approved stamp; each signature carries its date and time.
-2. Cut the briefs: `python3 "${CLAUDE_SKILL_DIR}/scripts/cut_briefs.py" <plan.md> <out-dir>`.
-3. Start a `cc-crew:builder` for each brief and give it the brief's path, not its text or a summary of it: a file cannot be paraphrased. Items marked to run together each get their own worktree.
+2. `plans.py phase <plan.md> building`, then `plans.py progress <plan.md>`, which writes one line per work item into the file's Progress section.
+3. Cut the briefs: `python3 "${CLAUDE_SKILL_DIR}/scripts/cut_briefs.py" <plan.md> <out-dir>`.
+4. Start a `cc-crew:builder` for each brief and give it the brief's path, not its text or a summary of it: a file cannot be paraphrased. Items marked to run together each get their own worktree.
 
 ## 5. While it is built
 
+- Where a work item stands is written in the plan file: `plans.py item <plan.md> <n> <not started|under way|done> [note]` when it starts, at every handback and at the push. The note of a handback names its report and its commits; what the builder suggested, and what you did with it, goes under `## What the builders suggested`.
+- Whenever the plan cannot move, say who or what it waits on: `plans.py wait <plan.md> "<who or what>: <what for>"` (Victor's approval or answer, another plan's merge), and `plans.py go <plan.md>` when it moves again.
 - Every change to the plan file republishes the page.
-- Once approved, the page becomes the board for the work: move the work graph to the top, give each state its own colour (done, under way, next, not started), and fold away the sections he has already read.
-- Refresh each item's state at every handback and at the push.
+- Once approved, the page becomes the board for the work: move the work graph to the top, draw each work item's state from the Progress section, each in its own colour (done, under way, not started), and fold away the sections he has already read.
 - A comment on the page that shows something is unclear: change the page, post nothing beyond the automatic reply, and resolve the thread.
 - Before the push, the combined diff goes to the reviewer: `review.sh diff <plan.md> <repo> <base> <head>`. A question about an answer goes through `review.sh follow-up <folder> <question-file>`.
+- Where Victor merges, the wait for his merge is part of shipping: `plans.py wait <plan.md> "Victor: the merge of pull request <n>"`, arm a watch on the pull request, and only then end your turn. A watch also wakes you when it is stuck or its check fails, so look at the pull request first: merged, `plans.py go <plan.md>` and finish what is left of shipping; not merged, leave the wait as it is and arm the watch again.
+
+## 6. The closing step
+
+When the last work item is done, finish the plan, unasked. A plan is done when its own work is: a notice to the team or to other people, or a question about another piece, does not hold it open. An act of Victor's that the plan's own work needs does: the merge, a run only he may start.
+
+1. Record the decisions, and what the builders suggested, where the project keeps them.
+2. Remove the plan's worktrees and branches.
+3. Bring the page to its final state.
+4. `plans.py close <plan.md> done "<how it ended, and what is left for Victor>"`. It refuses while a work item is not done or the plan still waits on something, and it asks for one line on each point above: give them in your reply.
+5. Give him the stamp, from the counts it prints: `🚢 Shipped: <n> work items · <n> reads · pull request <n>`.
+
+A plan Victor drops is closed the same way, with `close <plan.md> dropped`. Its unmerged branches and worktrees stay until he says to delete them, and until he answers the plan waits on him.
