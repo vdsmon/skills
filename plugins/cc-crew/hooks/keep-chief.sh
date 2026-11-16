@@ -1,5 +1,6 @@
 #!/bin/bash
-# SessionStart hook for compactions: puts the chief engineer's role back in force when the session had it.
+# SessionStart hook for compactions: puts the chief engineer's role back in force when the session had it,
+# followed by the opening report of the plans under way in the session's repository.
 # Claude Code re-attaches invoked skills after a compaction, but only as context "where still relevant", and newest first
 # within a 25k-token budget, so the role typed at the start of a long session is the first one dropped.
 # Off switch: CC_CREW_KEEP_CHIEF=0.
@@ -18,6 +19,12 @@ skill=$root/skills/chief-engineer/SKILL.md
 [ -r "$skill" ] || exit 0
 
 printf '<cc-crew-chief>\nThe conversation was just compacted. Victor typed /cc-crew:chief-engineer in this session, so you are still the chief engineer on his crew. The role below is in force for the rest of this session, not background context. Follow its "After a compaction" section now.\n\n'
-awk 'f >= 2 { print } /^---$/ { f++ }' "$skill"
+# The role's "!`" line prints the opening report when the command is typed; nothing expands it here,
+# so it is left out and the report is printed below instead.
+awk 'f >= 2 && !/^!`/ { print } /^---$/ { f++ }' "$skill"
+cwd=$(field cwd)
+[ -n "$cwd" ] && [ -d "$cwd" ] || cwd=$PWD
+printf '\n'
+(cd "$cwd" && python3 "$root/scripts/plans.py" report --session "$(field session_id)" 2>/dev/null)
 printf '</cc-crew-chief>\n'
 exit 0
