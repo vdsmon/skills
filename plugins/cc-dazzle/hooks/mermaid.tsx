@@ -2,7 +2,9 @@ import type { ElementTable, RenderElement } from 'claude-code'
 
 import type { ChartArt } from './charts'
 import { ganttText, pieText } from './charts'
-import { cells, graphemes, remember, width } from './text'
+import type { Flow } from './flow/index'
+import { drawFlow } from './flow/index'
+import { cells, graphemes, remember, widestLine, width } from './text'
 import type { Style, Theme } from './theme'
 import { DIAGRAM_HUES } from './theme'
 import { renderMermaidAscii, setChartSize } from './vendor/mermaid-text.js'
@@ -55,19 +57,18 @@ const labelBars = (art: string, source: string): string => {
   return grid.map(row => row.join('').trimEnd()).join('\n').replace(/^\n/, '')
 }
 
-const SIDEWAYS = /^(\s*(?:flowchart|graph)[ \t]+)(LR|RL)\b/
-
 const SUPPORTED = /^(flowchart|graph|statediagram(-v2)?|xychart(-beta)?|sequencediagram|classdiagram|erdiagram|pie|gantt)$/i
 
 const kindOf = (source: string) => source.replace(/^(\s*%%[^\n]*\n)+/, '').trim().split(/\s/)[0] ?? ''
 
-export const unsupportedKind = (source: string): string | undefined => {
+const unsupportedKind = (source: string): string | undefined => {
   const kind = kindOf(source)
   return kind && !SUPPORTED.test(kind) ? kind : undefined
 }
 
-// Pies and gantts are drawn here, not by beautiful-mermaid. A pie is round while each slice can take
-// its own diagram hue, and falls back to one bar per slice past that or in a narrow terminal.
+// Flowcharts and state diagrams are drawn by flow/, pies and gantts here, not by beautiful-mermaid. A
+// pie is round while each slice can take its own diagram hue, and falls back to one bar per slice past
+// that or in a narrow terminal.
 // ganttText leaves 2 columns spare for upstream's frame; this box needs 6.
 const OWN: Record<string, (source: string, columns: number) => ChartArt | null> = {
   pie: (source, columns) => pieText(source, false, columns, DIAGRAM_HUES.length),
@@ -86,23 +87,48 @@ export const inlineMarks = (source: string): [string[], Mark][] =>
   [...source.matchAll(/<(i|em|b|strong|u|s|del)\b[^<>\n]*>([^<\n]+)<\/\1\s*>/gi)]
     .map(m => [cells(m[2]!.trim()), { [TAG_MARK[m[1]!.toLowerCase()]!]: true }] as [string[], Mark])
 
-const fitted = new Map<string, ChartArt | null>()
+/** A diagram's art, or the note shown above its source when it has none. */
+export type Diagram = { art: ChartArt } | { note: string }
 
-export const mermaidArt = (source: string, columns: number): ChartArt | null =>
-  remember(fitted, `${columns}:${source}`, () => {
+// The columns the frame and indent around a diagram take from the reply's width.
+const FRAME = 6
+
+type Drawn = { art: ChartArt; needs: number } | { note: string }
+
+const flowArt = (flow: Flow): Drawn =>
+  flow.kind === 'too-large' ? { note: 'diagram is too large to draw' }
+  : flow.kind === 'empty' ? { note: 'diagram has nothing to draw' }
+  : { art: { text: flow.drawing.lines.join('\n') }, needs: flow.drawing.width }
+
+const drawnArt = new Map<string, Drawn>()
+
+// The art drawn for `columns`, whether or not it fits them.
+const artOf = (source: string, columns: number): Drawn =>
+  remember(drawnArt, `${columns}:${source}`, () => {
+    const unsupported = unsupportedKind(source)
+    if (unsupported) return { note: `${unsupported} diagrams draw as source for now` }
     source = source.replace(INLINE_TAG, '')
-    if (source.length > 8000 || source.split('\n').length > MAX_LINES) return null
+    if (source.length > 8000 || source.split('\n').length > MAX_LINES) return { note: 'diagram is too large to draw' }
+    const flow = drawFlow(source, columns - FRAME)
+    if (flow) return flowArt(flow)
     const own = OWN[kindOf(source).toLowerCase()]
-    if (own) return own(source, columns)
-    const art = draw(source, columns)
-    const fits = (a: string) => a.split('\n').every(l => width(l) <= columns - 2)
-    const text = art === null || fits(art) || !SIDEWAYS.test(source) ? art : (draw(source.replace(SIDEWAYS, '$1TD'), columns) ?? art)
-    return text === null ? null : { text }
+    const drawn = own ? own(source, columns) : draw(source, columns)
+    const art = typeof drawn === 'string' ? { text: drawn } : drawn
+    return art === null ? { note: 'diagram failed to render' } : { art, needs: widestLine(art.text) }
   })
 
-export const mermaidText = (source: string, columns: number): string | null => mermaidArt(source, columns)?.text ?? null
+export const mermaidDiagram = (source: string, columns: number): Diagram => {
+  const drawn = artOf(source, columns)
+  if (!('art' in drawn)) return drawn
+  return drawn.needs > columns - FRAME ? { note: `diagram needs ${drawn.needs} cols, ${columns - FRAME} fit` } : { art: drawn.art }
+}
 
-const prepared = (padded: string) => unquoteCategories(padded.replace(/^(\s*%%[^\n]*\n)+/, '')).replace(/(-->|-\.->|==>|---|-\.-|===)[ \t]+\|/g, '$1|')
+export const mermaidText = (source: string, columns: number): string | null => {
+  const drawn = artOf(source, columns)
+  return 'art' in drawn ? drawn.art.text : null
+}
+
+const prepared = (padded: string) => unquoteCategories(padded.replace(/^(\s*%%[^\n]*\n)+/, ''))
 
 // A chart of two or more series is drawn a second time in truecolor with neutral role colors, so
 // each cell's series hue tells which series owns it.
@@ -287,15 +313,3 @@ export const boxArt = ({ Box, Text }: ElementTable, style: Style, art: string, k
     </Box>
   )
 }
-
-const EDGE_LABEL = /(-[-.=]+\s*)"([^"\n]+)"(\s*[-.=]+>)|\|([^|\n]+)\|/g
-
-const cap = (label: string, max: number) => {
-  const flat = label.replace(/<br\s*\/?>/gi, ' ').replace(/\s+/g, ' ').trim()
-  const chars = graphemes(flat)
-  return chars.length > max ? `${chars.slice(0, max - 1).join('').trimEnd()}…` : flat
-}
-
-export const shortenEdgeLabels = (source: string, max: number): string =>
-  source.replace(EDGE_LABEL, (m, open, quoted, close, piped) =>
-    quoted !== undefined ? `${open}"${cap(quoted, max)}"${close}` : `|${cap(piped, max)}|`)

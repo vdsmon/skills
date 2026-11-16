@@ -259,7 +259,7 @@ test('a mermaid flowchart draws in a rounded box, with its label and buttons abo
 test('a diagram too wide for the terminal falls back to its source with a note', async $ => {
   const workers = Array.from({ length: 16 }, (_, i) => `W${i + 1}[Worker ${i + 1}]`).join(' & ')
   const ui = await $.ui.mount(reply('```mermaid\nflowchart TD\n  Q[Queue] --> ' + workers + '\n```'))
-  expect((await ui.find({ type: 'Text', text: /^diagram is \d+ cols, terminal is \d+$/ }))?.props.color).toBe(t.codeComment)
+  expect((await ui.find({ type: 'Text', text: /^diagram needs \d+ cols, \d+ fit$/ }))?.props.color).toBe(t.codeComment)
   expect(await ui.find({ type: 'Text', text: /^ mermaid$/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /^flowchart TD$/ })).toBeDefined()
   expect(await labels(ui)).toEqual(['⧉ copy'])

@@ -1,0 +1,161 @@
+// The diagrams the drawer's checks run over, and the widths they run at.
+
+import { CORPUS } from './corpus'
+
+export const WIDTHS = [60, 80, 100, 120, 160]
+
+/** State diagrams written for the checks: composite states, nested ones, and edges across frames. */
+export const STATES: Record<string, string> = {
+  plain: `stateDiagram-v2
+    [*] --> Idle
+    Idle --> Running : start
+    Running --> Idle : stop
+    Running --> Done : finish all the queued work
+    Done --> [*]`,
+  composite: `stateDiagram-v2
+    [*] --> Ready
+    Ready --> Active : open the session
+    state Active {
+      [*] --> Working
+      Working --> Paused : pause
+      Paused --> Working : resume
+    }
+    Active --> Closed : close
+    Paused --> Closed : give up while paused
+    Closed --> [*]`,
+  nested: `stateDiagram-v2
+    [*] --> Outer
+    state Outer {
+      [*] --> First
+      First --> Inner
+      state Inner {
+        [*] --> Deep
+        Deep --> Deeper : go further down
+        Deeper --> [*]
+      }
+      Inner --> Last
+    }
+    Deeper --> First : climb back to the top of the outer state
+    Last --> Elsewhere : leave both frames
+    Elsewhere --> Deep : jump straight into the inner state`,
+  named: `stateDiagram-v2
+    state "Waiting for the reviewer to read the whole change" as Waiting {
+      Unread --> Reading : opens it
+      Reading --> Unread : closes the tab
+    }
+    state "Merged into the main branch" as Merged
+    [*] --> Unread
+    Reading --> Merged : approves
+    Merged --> [*]`,
+  shapes: `stateDiagram-v2
+    state check <<choice>>
+    state split <<fork>>
+    state meet <<join>>
+    [*] --> check
+    check --> Small : under the limit
+    check --> split : over the limit
+    split --> Left
+    split --> Right
+    Left --> meet
+    Right --> meet
+    meet --> Small
+    note right of Small : a note is not drawn
+    note left of Left
+      a note over
+      several lines
+    end note
+    Small --> Small : retry once more before giving up
+    Small --> [*]`,
+  concurrent: `stateDiagram-v2
+    [*] --> Both
+    state Both {
+      [*] --> NumLock
+      NumLock --> CapsLock : press
+      --
+      [*] --> ScrollOn
+      ScrollOn --> ScrollOff : press again
+    }
+    Both --> [*]`,
+  empty: `stateDiagram-v2
+    state Lonely {
+    }
+    [*] --> Lonely
+    Lonely --> Gone`,
+}
+
+/**
+ * The diagrams of cc-dazzle's old back-edge tests, which beautiful-mermaid drew with its patches:
+ * each must still draw. The first of those tests drew corpus 2's shape, which the corpus covers.
+ */
+export const RETURNS: string[] = [
+  'flowchart TD\n  A[Alpha] --> B[Beta] --> C[Gamma]\n  C -->|retry| A',
+  'flowchart LR\n  A --> B\n  B -->|one| A\n  B -->|two| A',
+  'graph TD\n  A --> B\n  B --> C\n  C --> A\n  C --> D\n  D --> B',
+  'flowchart TD\n  A[Start] --> B{OK?}\n  B -->|yes| C[Ship]\n  B -->|no| D[Fix]\n  D --> B',
+  'flowchart LR\n  A --> B --> C\n  C --> A\n  C -.-> B\n  B ==> A',
+  'flowchart LR\n  A[Alpha] --> B[Beta]\n  B -->|again| B',
+  'flowchart LR\n  A[Alpha] --> B[Beta] --> C[Gamma]\n  B -->|again| B',
+  'flowchart LR\n  subgraph one[First]\n    A[Alpha] --> B[Beta]\n    B -->|again| A\n  end\n  B --> C[Gamma]',
+  'flowchart LR\n  A --> B --> C\n  A --> D\n  C --> D',
+  'flowchart LR\n  subgraph one[First]\n    A[Alpha] --> B[Beta]\n  end\n  B --> C[Gamma]',
+  'flowchart LR\n  Q[Queue] --> A[One] & B[Two] & C[Three]\n  A & B & C --> D[Done]',
+  'flowchart TD\n  A --> B\n  B --> A\n  B --> C',
+]
+
+/** A fixed-seed generator, so the random graphs are the same on every run. */
+const seeded = (seed: number) => () => {
+  seed = (seed + 0x6d2b79f5) | 0
+  let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+}
+
+const SYLLABLES = ['ka', 'lo', 'mi', 'ne', 'su', 'ta', 'vo', 'ri', 'de', 'po', 'zu', 'fa', 'gi', 'be', 'no']
+const SHAPES: [string, string][] = [['[', ']'], ['(', ')'], ['{', '}'], ['([', '])'], ['[[', ']]']]
+const LINKS = ['-->', '-.->', '==>', '---']
+
+/**
+ * 200 flowcharts: 2 to 12 boxes, up to boxes + 3 edges, up to 4 of them back edges or self-loops,
+ * about half the edges labelled, every label of 1 to 8 words, some words long enough to break.
+ */
+export const RANDOM: string[] = (() => {
+  const random = seeded(20261115)
+  const int = (lo: number, hi: number) => lo + Math.floor(random() * (hi - lo + 1))
+  const pick = <T,>(list: T[]) => list[int(0, list.length - 1)]!
+  const word = () => {
+    const long = random() < 0.05
+    const parts = Array.from({ length: long ? int(6, 12) : int(1, 4) }, () => pick(SYLLABLES))
+    return long && random() < 0.5 ? parts.join('').replace(/(.{6})/g, '$1-').replace(/-$/, '') : parts.join('')
+  }
+  const label = () => Array.from({ length: int(1, 8) }, word).join(' ')
+  return Array.from({ length: 200 }, () => {
+    const boxes = int(2, 12)
+    const edges = int(1, boxes + 3)
+    const returns = int(0, Math.min(4, edges))
+    const lines = Array.from({ length: boxes }, (_, i) => {
+      const [open, close] = pick(SHAPES)
+      return `  n${i}${open}"${label()}"${close}`
+    })
+    for (let k = 0; k < edges; k++) {
+      let a = int(0, boxes - 1)
+      let b = int(0, boxes - 1)
+      if (k < returns) {
+        if (a < b) [a, b] = [b, a]
+      } else {
+        if (a === b) b = (a + 1) % boxes
+        if (a > b) [a, b] = [b, a]
+      }
+      const text = random() < 0.5 ? `|"${label()}"|` : ''
+      lines.push(`  n${a} ${pick(LINKS)}${text} n${b}`)
+    }
+    return `flowchart TD\n${lines.join('\n')}`
+  })
+})()
+
+/** Every diagram the checks run over, by name. */
+export const DIAGRAMS: [string, string][] = [
+  ...CORPUS.map((source, i): [string, string] => [`corpus ${i + 1}`, source]),
+  ...Object.entries(STATES).map(([name, source]): [string, string] => [`state ${name}`, source]),
+  ...RETURNS.map((source, i): [string, string] => [`return ${i + 1}`, source]),
+  ...RANDOM.map((source, i): [string, string] => [`random ${i + 1}`, source]),
+]
