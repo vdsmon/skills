@@ -65,7 +65,7 @@ Number questions across the whole session, never per round: Q3 names one questio
 
 When nothing is open or waiting:
 
-1. **Propose the principle**: one sentence for the whole. Build a case against each "every", "only" and "never" in it and reword until it survives. Write it into the record.
+1. **Propose the principle**: one sentence for the whole, short enough to remember: the idea the decisions follow from, not a list of them. Build a case against each "every", "only" and "never" in it and reword until it survives. Write it into the record.
 2. **Second fresh read**, unless small: the same command, with the proposed principle as the first file. Weigh what comes back as above; what survives is a last round.
 3. **Show only what the user did not actively decide**, in this order: the points set aside (each settled, dropped or carried into the plan); what was settled by no objection, one line each, as a last call; a words table that got no answer; a decision with no why, asked once; the principle, as a question, with the cases it survived. Do not repeat what they answered by number.
 4. **The glossary.** When the repo has one, write the words marked for it in one change, shown as one diff, in the format of [GLOSSARY-FORMAT.md](GLOSSARY-FORMAT.md), on the branch the work will use when a plan follows. Offer a decision record only when the three conditions in [ADR-FORMAT.md](ADR-FORMAT.md) hold. Never create a glossary unasked.
