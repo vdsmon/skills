@@ -251,6 +251,15 @@ run "$fx/plan.md"
 check "a fenced example with a heading and a field line stays inside its work item" '[ $rc -eq 0 ] && [ "$(grep -o "data-item=\"[0-9]\"" "$fx/page.html" | tr -d "\n")" = "data-item=\"1\"data-item=\"2\"data-item=\"3\"" ] && ! grep -q "Waits on Work item 9" "$fx/page.html"'
 check "a look's band may be a data URL that holds a semicolon" '[ $rc -eq 0 ] && grep -q "base64,PHN2Zz48L3N2Zz4=" "$fx/page.html"'
 
+# -- a rung whose name holds a colon, and the version shown ----------------------------------
+cn="$tmp/colon"; mkdir -p "$cn"; pieces "$cn"
+sed 's/^- Rung 1 \(.*\)$/- Rung 1 Unit tests: parser and writer/' "$base/plan.md" > "$cn/plan.md"
+touch -t 202601011000 "$cn/plan.md" "$cn/page/look.css" "$cn/page/picture.html"
+touch -t 202601021130 "$cn/page/new.html"
+run "$cn/plan.md"
+check "a rung's name may hold a colon when its facts are sub-items" '[ $rc -eq 0 ] && grep -q "Rung 1 · Unit tests: parser and writer" "$cn/page.html"'
+check "the version shown is the last change of the plan file or of a piece" 'grep -q "plan as of 2 Jan 2026, 11:30" "$cn/page.html"'
+
 # -- refusals ---------------------------------------------------------------------------------
 # refused <dir> <what the message names>: exit 1, the name in stderr, page.html unchanged.
 refused() {
@@ -311,8 +320,8 @@ PY
 }
 edit $'  - Cannot tell: the taste.\n' "" $'  - Mocks or skips: the mains.\n' ""
 check "a rung that lacks facts is refused, each named" 'refused "$r" "Rung 1 has no '"'"'Cannot tell:'"'"' sub-item" && echo "$err" | grep -q "Rung 1 has no '"'"'Mocks or skips:'"'"' sub-item"'
-edit $'- Rung 1 The bench test\n' $'- Rung 1 The bench test: runs it; mocks nothing\n'
-check "a rung in the one-line shape is refused" 'refused "$r" "Rung 1 gives its facts in one line"'
+edit $'- Rung 1 The bench test\n  - Runs: `make test; fast` on the bench.\n  - Mocks or skips: the mains.\n  - Cannot tell: the taste.\n  - Time and cost: 2 seconds, free.\n' $'- Rung 1 The bench test: runs it; mocks nothing\n'
+check "a rung in the one-line shape, with no sub-item, is refused" 'refused "$r" "Rung 1 gives its facts in one line"'
 edit $'  - Time and cost: 2 seconds, free.\n' $'  - Taste: sweet.\n'
 check "a fact under an unknown label is refused" 'refused "$r" "'"'"'- Taste: sweet.'"'"' is not a sub-item starting Runs" && echo "$err" | grep -q "Rung 1 has no '"'"'Time and cost:'"'"' sub-item"'
 python3 - "$base/plan.md" "$r/plan.md" <<'PY'

@@ -362,15 +362,14 @@ def rung(ls, problems):
     if not m:
         return None
     n, name = int(m.group(1)), m.group(2).strip().rstrip(":").strip()
-    if ": " in name:
+    subs = [(kind, " ".join(l.strip() for l in sub if l.strip())) for kind, sub in chunks(dedent(ls[1:]))]
+    subs = [(kind, text) for kind, text in subs if text]
+    if not subs and ": " in name:  # a name may hold a colon; with no sub-item under it, it is the older shape
         problems.append(f"Rung {n} gives its facts in one line: give each as a sub-item under '- Rung {n} <name>', starting {', '.join(FACTS[:4])} or {FACTS[4]}, then ':'")
         return None
     facts = {}
-    for kind, sub in chunks(dedent(ls[1:])):
-        text = " ".join(l.strip() for l in sub if l.strip())
+    for kind, text in subs:
         f = FACT_RE.match(text) if kind == "item" else None
-        if not text:
-            continue
         if not f:
             problems.append(f"Rung {n}: '{text}' is not a sub-item starting {', '.join(FACTS)}, then ':'")
         elif f.group(1) in facts:
@@ -684,7 +683,9 @@ def build(plan_path):
             parts.append(fill(templates[key], {"open": opened, "body": bodies[key]}))
 
     waiting = plan.waiting()
-    mtime = datetime.datetime.fromtimestamp(plan_path.stat().st_mtime)
+    # The version shown is the last change of anything the page is made from, a piece included.
+    sources = [plan_path] + [folder / name for name in pieces]
+    mtime = datetime.datetime.fromtimestamp(max(p.stat().st_mtime for p in sources))
     top = {
         "name": esc(title),
         "folder": esc(plan_path.parent.name),
