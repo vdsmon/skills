@@ -223,6 +223,19 @@ run "$np/plan.md"
 check "no Progress section: every item not started" '[ $rc -eq 0 ] && [ "$(grep -o "data-state=\"[^\"]*\"" "$np/page.html" | sort -u)" = "data-state=\"not started\"" ]'
 check "a ladder of None, because is that one line" '[ "$(py "$np/page.html" "re.search(r\"<h2>The ladder</h2></summary>\\s*<div class=\\\"part-body\\\">(.*?)</div>\\s*</details>\", s, re.S).group(1)")" = "<p class=\"none\">None, because the kettle is &lt;tiny&gt; &amp; cheap.</p>" ]'
 
+# -- an empty Progress section, and items that run together across stages ---------------------
+ep="$tmp/emptyprogress"; mkdir -p "$ep"; pieces "$ep"
+python3 - "$base/plan.md" "$ep/plan.md" <<'PY'
+import re, sys
+s = open(sys.argv[1]).read()
+s = re.sub(r"## Progress\n.*?(?=## Work)", "## Progress\n\n<Written by plans.py progress on approval.>\n\n", s, flags=re.S)
+s = s.replace("- After: Work item 1, Work item 2.", "- After: Work item 1.\n- Runs with: Work item 2.")
+open(sys.argv[2], "w").write(s)
+PY
+run "$ep/plan.md"
+check "a Progress section with no line yet: every item not started" '[ $rc -eq 0 ] && [ "$(grep -o "data-state=\"[^\"]*\"" "$ep/page.html" | sort -u)" = "data-state=\"not started\"" ]'
+check "items that run together in different stages each name the other" 'py "$ep/page.html" "bool(re.search(r\"data-item=\\\"3\\\".*?Runs with Work item 2\", s, re.S)) and bool(re.search(r\"data-item=\\\"2\\\".*?Runs with Work item 1, Work item 3\", s, re.S))" | grep -qx True'
+
 # -- refusals ---------------------------------------------------------------------------------
 # refused <dir> <what the message names>: exit 1, the name in stderr, page.html unchanged.
 refused() {

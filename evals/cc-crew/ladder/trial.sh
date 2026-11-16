@@ -68,7 +68,7 @@ PATH="$work/bin:$PATH" CC_CREW_PLANS="$work/plans" claude -p --model fable --plu
   --setting-sources project,local --permission-mode acceptEdits --add-dir "$work/plans" \
   --allowedTools Read Edit Write Grep Glob Skill \
     "Bash(mkdir *)" "Bash(ls *)" "Bash(date *)" "Bash(cat *)" "Bash(cp *)" "Bash(echo *)" "Bash(wc *)" "Bash(head *)" \
-    "Bash(python3 *plans.py *)" "Bash(python3 *page.py *)" \
+    "Bash(python3 *plans.py *)" "Bash(python3 \"*plans.py\" *)" "Bash(python3 *page.py *)" "Bash(python3 \"*page.py\" *)" \
     "Bash(*review.sh *)" "Bash(\"*review.sh\" *)" "Bash(python3 *cut_briefs.py *)" "Bash(python3 \"*cut_briefs.py\" *)" \
   --output-format stream-json --verbose "$prompt" > "$work/out.jsonl" 2> "$work/err.txt" < /dev/null
 rc=$?

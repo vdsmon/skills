@@ -280,7 +280,7 @@ def render_work(lines, progress, problems):
                     problems.append(f"{label}: '- {field}:' names Work item {r}, which is not another item of this plan")
 
     states = {}
-    if progress is not None:
+    if progress:  # no section, or one with no line yet (before approval): every item not started
         for _, n, state, note in progress:
             if n not in numbers:
                 problems.append(f"'## Progress' has a line for Work item {n}, which '## Work' does not hold")
@@ -312,6 +312,9 @@ def render_work(lines, progress, problems):
     if problems:
         return ""
 
+    # Each card names what it runs with, whichever side wrote the link: items that run together
+    # can stand in different stages, where no frame joins them.
+    together = {n: sorted(by_n[n]["with"] | {o for o in by_n if n in by_n[o]["with"]}) for n in by_n}
     stages = []
     for k in range(max(level.values()) + 1):
         members = sorted(n for n in by_n if level[n] == k)
@@ -330,7 +333,7 @@ def render_work(lines, progress, problems):
             groups.append(sorted(group))
         rows = []
         for group in groups:
-            cards = "".join(item_card(by_n[n], states.get(n, ("not started", ""))) for n in group)
+            cards = "".join(item_card(by_n[n], states.get(n, ("not started", "")), together[n]) for n in group)
             rows.append(f'<div class="group{" together" if len(group) > 1 else ""}">{cards}</div>')
         tag = "Waits on nothing" if k == 0 else "Then"
         stages.append(f'<div class="stage" data-stage="{k}"><span class="label">{tag}</span><div class="row">{"".join(rows)}</div></div>')
@@ -338,17 +341,19 @@ def render_work(lines, progress, problems):
     return f'{gate}<div class="stages">{"".join(stages)}</div>'
 
 
-def item_card(it, state):
+def item_card(it, state, together):
     word, note = state
     cls = {"done": "s-done", "under way": "s-way"}.get(word, "s-idle")
     who = it["who"][:1].upper() + it["who"][1:]
     after = ", ".join(f"Work item {d}" for d in it["after"])
+    beside = ", ".join(f"Work item {d}" for d in together)
     return (
         f'<div class="item {cls}" data-item="{it["n"]}" data-state="{esc(word)}">'
         f'<div class="meta"><span class="who">{esc(who)}</span><span class="state">{esc(word)}</span></div>'
         f'<span class="title">Work item {it["n"]} · {inline(it["title"])}</span>'
         f'<p class="for">For: {inline(it["for"])}</p>'
         + (f'<p class="after">Waits on {after}</p>' if after else "")
+        + (f'<p class="with">Runs with {beside}</p>' if beside else "")
         + (f'<p class="note">{inline(note)}</p>' if note else "")
         + "</div>"
     )
