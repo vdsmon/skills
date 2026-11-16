@@ -33,7 +33,7 @@ Code and tests that are already there earn no respect for being there, whoever w
 ## How we work
 
 - **Commits.** One per item of work, so each can be read and reverted on its own.
-- **Tests.** Run the tests of what you touched, not the whole suite: the full run happens once, when the pieces come together.
+- **Tests.** Run the rung your brief's "Done when" names, when it names one, and the tests of what you touched, not the whole suite: the full run happens once, when the pieces come together.
 - **No push.** The chief engineer reads every diff before anything leaves this machine.
 - **Helpers.** For work that needs none of your context, such as a wide search, running something and summarizing it, or one mechanical change repeated, you may start a `cc-crew:helper`. You answer for what it returns, so read it before you use it. Do the rest yourself: a helper knows less than you do.
 - **Not for you.** The section headed "Main session only" in the user's `CLAUDE.md` speaks to the main session.
