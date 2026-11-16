@@ -3,6 +3,7 @@ import type { ElementTable, RenderElement } from 'claude-code'
 import type { ChartArt } from './charts'
 import { ganttText, pieText } from './charts'
 import type { Flow } from './flow/index'
+import type { DrawnBox } from './flow/types'
 import { drawFlow } from './flow/index'
 import { withoutFrontMatter } from './flow/parse'
 import { cells, graphemes, remember, widestLine, width } from './text'
@@ -99,7 +100,7 @@ type Drawn = { art: ChartArt; needs: number } | { note: string }
 const flowArt = (flow: Flow): Drawn =>
   flow.kind === 'too-large' ? { note: 'diagram is too large to draw' }
   : flow.kind === 'empty' ? { note: 'diagram has nothing to draw' }
-  : { art: { text: flow.drawing.lines.join('\n') }, needs: flow.drawing.width }
+  : { art: { text: flow.drawing.lines.join('\n'), boxes: flow.drawing.boxes }, needs: flow.drawing.width }
 
 const drawnArt = new Map<string, Drawn>()
 
@@ -203,16 +204,15 @@ const barStart = (row: string[], c: number): number => {
   return start
 }
 
-const paint = (art: string, style: Style, series?: number[][]): (string | undefined)[][] => {
-  const t = style.theme
-  const grid = art.split('\n').map(cells)
-  const cell = (r: number, c: number) => grid[r]?.[c] ?? ''
-  const color: (string | undefined)[][] = grid.map(row => row.map(() => undefined))
-  const palette = DIAGRAM_HUES
-  const next = (i: number) => palette[i % palette.length]
-  const labels = new Map<string, string | undefined>()
+type Found = { r: number; c: number; r2: number; c2: number; label: string }
 
-  const rects: { r: number; c: number; r2: number; c2: number }[] = []
+/**
+ * The boxes of art drawn by the vendored package, found by their corners: a rectangle that holds
+ * another is a frame, not a box. Its label is the text inside it.
+ */
+const foundBoxes = (grid: string[][]): Found[] => {
+  const cell = (r: number, c: number) => grid[r]?.[c] ?? ''
+  const rects: Omit<Found, 'label'>[] = []
   for (let r = 0; r < grid.length; r++) {
     for (let c = 0; c < (grid[r]?.length ?? 0); c++) {
       if (!/[┌╭(]/.test(cell(r, c))) continue
@@ -226,9 +226,27 @@ const paint = (art: string, style: Style, series?: number[][]): (string | undefi
     }
   }
   const inside = (a: (typeof rects)[number], b: (typeof rects)[number]) => a !== b && b.r > a.r && b.r2 < a.r2 && b.c > a.c && b.c2 < a.c2
-  for (const box of rects.filter(a => !rects.some(b => inside(a, b)))) {
-    const { r, c, r2, c2 } = box
-    const label = grid.slice(r + 1, r2).map(row => row.slice(c + 1, c2).join('')).join(' ').trim()
+  return rects
+    .filter(a => !rects.some(b => inside(a, b)))
+    .map(({ r, c, r2, c2 }) => ({ r, c, r2, c2, label: grid.slice(r + 1, r2).map(row => row.slice(c + 1, c2).join('')).join(' ').trim() }))
+}
+
+/** A flowchart's boxes as its drawer placed them, in reading order, each labelled by its text. */
+const placedBoxes = (boxes: DrawnBox[]): Found[] =>
+  boxes
+    .map(b => ({ r: b.y, c: b.x, r2: b.y + b.h - 1, c2: b.x + b.w - 1, label: b.lines.map(l => l.text).join(' ') }))
+    .sort((a, b) => a.r - b.r || a.c - b.c)
+
+const paint = (art: ChartArt, style: Style, series?: number[][]): (string | undefined)[][] => {
+  const t = style.theme
+  const grid = art.text.split('\n').map(cells)
+  const cell = (r: number, c: number) => grid[r]?.[c] ?? ''
+  const color: (string | undefined)[][] = grid.map(row => row.map(() => undefined))
+  const palette = DIAGRAM_HUES
+  const next = (i: number) => palette[i % palette.length]
+  const labels = new Map<string, string | undefined>()
+
+  for (const { r, c, r2, c2, label } of art.boxes ? placedBoxes(art.boxes) : foundBoxes(grid)) {
     if (!labels.has(label)) labels.set(label, next(labels.size))
     const hue = labels.get(label)
     for (let y = r; y <= r2; y++) for (let x = c; x <= c2; x++) if (cell(y, x).trim()) color[y]![x] = hue
@@ -272,27 +290,30 @@ const paintPie = (art: string, slices: number[][], style: Style): (string | unde
 
 type Painted = { grid: string[][]; colors: (string | undefined)[][] }
 const painted = new WeakMap<Theme, Map<string, Painted>>()
-// Two pies can draw the same art and split it differently, so a pie is painted by its slices.
-const piePainted = new WeakMap<Theme, WeakMap<number[][], Painted>>()
+// Two pies can draw the same art and split it differently, and two flowcharts can draw the same art
+// with their boxes in different places, so either is painted by the list it came with.
+const listPainted = new WeakMap<Theme, WeakMap<object, Painted>>()
 
-const painting = (style: Style, art: string, slices?: number[][], series?: number[][]): Painted => {
-  if (!slices) {
+const painting = (style: Style, art: ChartArt, series?: number[][]): Painted => {
+  const colors = () => (art.slices ? paintPie(art.text, art.slices, style) : paint(art, style, series))
+  const list = art.slices ?? art.boxes
+  if (!list) {
     const cache = painted.get(style.theme) ?? new Map<string, Painted>()
     painted.set(style.theme, cache)
-    return remember(cache, art, () => ({ grid: art.split('\n').map(cells), colors: paint(art, style, series) }))
+    return remember(cache, art.text, () => ({ grid: art.text.split('\n').map(cells), colors: colors() }))
   }
-  const cache = piePainted.get(style.theme) ?? new WeakMap<number[][], Painted>()
-  piePainted.set(style.theme, cache)
-  const done = cache.get(slices) ?? { grid: art.split('\n').map(cells), colors: paintPie(art, slices, style) }
-  cache.set(slices, done)
+  const cache = listPainted.get(style.theme) ?? new WeakMap<object, Painted>()
+  listPainted.set(style.theme, cache)
+  const done = cache.get(list) ?? { grid: art.text.split('\n').map(cells), colors: colors() }
+  cache.set(list, done)
   return done
 }
 
 // The colors boxArt draws, one per cell, so the png copy keeps them.
-export const artHues = (style: Style, art: string, slices?: number[][], series?: number[][]): (string | undefined)[][] => painting(style, art, slices, series).colors
+export const artHues = (style: Style, art: ChartArt, series?: number[][]): (string | undefined)[][] => painting(style, art, series).colors
 
-export const boxArt = ({ Box, Text }: ElementTable, style: Style, art: string, key: string, marks: [string[], Mark][] = [], slices?: number[][], series?: number[][]): RenderElement => {
-  const { grid, colors } = painting(style, art, slices, series)
+export const boxArt = ({ Box, Text }: ElementTable, style: Style, art: ChartArt, key: string, marks: [string[], Mark][] = [], series?: number[][]): RenderElement => {
+  const { grid, colors } = painting(style, art, series)
   return (
     <Box key={key} flexDirection="column" paddingLeft={2}>
       {grid.map((chars, i) => {

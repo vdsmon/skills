@@ -1,8 +1,11 @@
 import { expect, test } from 'claude-code/testing'
 
-import { mermaidDiagram } from '../mermaid'
+import { artHues, mermaidDiagram } from '../mermaid'
 import { DIAGRAM_HUES, THEME } from '../theme'
 import { CORPUS } from './corpus'
+import { drawings, drawnFor } from './index'
+import { parseFlow } from './parse'
+import { DIAGRAMS } from './sets'
 
 // What the mod shows for a flowchart or a state diagram: its drawing when it fits, else its source
 // under a note that says why. "diagram failed to render" is never that note.
@@ -84,3 +87,42 @@ test('each box takes its own hue, lines of every style the diagram color, and he
   for (const head of [/^▼$/, /^▲$/]) expect(await color(head)).toBe(THEME.accent)
   await ui.unmount()
 })
+
+// Line, head and text colors apart from every box hue, so a cell's color says whether it was painted
+// as part of a box.
+const PROBE = { theme: { ...THEME, diagram: '#000001', accent: '#000002', diagramText: '#000003', number: '#000004', rule: '#000005' }, htmlCopy: null, cwd: '', home: '' }
+const BATCH = 50
+
+for (const direction of ['down', 'right'] as const) for (let from = 0; from < DIAGRAMS.length; from += BATCH) {
+  test(`diagrams ${from + 1} to ${Math.min(from + BATCH, DIAGRAMS.length)} drawn ${direction === 'down' ? 'top-down' : 'left to right'} paint exactly their boxes, each in one hue, the same label in the same hue`, () => {
+    const wrong = DIAGRAMS.slice(from, from + BATCH).flatMap(([name, source]) => {
+      const flow = drawnFor(drawings(parseFlow(source)!, direction), 80)
+      if (flow.kind !== 'drawn') return [`${name}: not drawn`]
+      const { lines, boxes, rows } = flow.drawing
+      const hues = artHues(PROBE, { text: lines.join('\n'), boxes })
+      const isHue = (h: string | undefined) => h !== undefined && DIAGRAM_HUES.includes(h)
+      const boxed = new Set<string>()
+      const order: string[] = []
+      const byLabel = new Map<string, string>()
+      for (const b of boxes.toSorted((p, q) => p.y - q.y || p.x - q.x)) {
+        const label = b.lines.map(l => l.text).join(' ')
+        const seen = new Set<string | undefined>()
+        for (let y = b.y; y < b.y + b.h; y++) for (let x = b.x; x < b.x + b.w; x++) {
+          boxed.add(`${x},${y}`)
+          if ((rows[y]?.[x] ?? ' ').trim()) seen.add(hues[y]?.[x])
+        }
+        const hue = [...seen][0]
+        if (seen.size !== 1 || !isHue(hue)) return [`${name}: box ${b.key} painted ${[...seen].join(' ')}`]
+        if (!byLabel.has(label)) {
+          byLabel.set(label, hue!)
+          order.push(hue!)
+        }
+        if (byLabel.get(label) !== hue) return [`${name}: box ${b.key} not in its label's hue`]
+      }
+      if (order.some((h, i) => h !== DIAGRAM_HUES[i % DIAGRAM_HUES.length])) return [`${name}: hues not handed out in reading order`]
+      const stray = hues.flatMap((row, y) => row.flatMap((h, x) => (isHue(h) && !boxed.has(`${x},${y}`) ? [`${x},${y}`] : [])))
+      return stray.length > 0 ? [`${name}: ${stray.length} cells outside every box painted a box hue`] : []
+    })
+    expect(wrong).toEqual([])
+  })
+}

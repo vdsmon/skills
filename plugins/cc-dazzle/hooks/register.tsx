@@ -157,7 +157,7 @@ const drawMarkdown = ($: EngineInterface, el: ReturnType<EngineInterface['ui']['
     if ('art' in diagram) {
       const { art } = diagram
       const series = chartSeries(source, columns)
-      drawn.set(i, { element: boxArt(el, style, art.text, `b${i}`, inlineMarks(source), art.slices, series), art: art.text, hues: () => artHues(style, art.text, art.slices, series) })
+      drawn.set(i, { element: boxArt(el, style, art, `b${i}`, inlineMarks(source), series), art: art.text, hues: () => artHues(style, art, series) })
     } else if (!block.isOpen) drawn.set(i, { note: diagram.note })
   }
   const tip = notes?.press ? noteTip(blocks, text => void $.ui.toast(text)) : undefined
