@@ -66,8 +66,8 @@
     {
       "name": "cc-autotitle",
       "source": "./plugins/cc-autotitle",
-      "description": "Names each Claude Code session on its own: after a few turns it picks a short kebab-case name from the whole session, and renames it again when the work moves on. It never touches a name you set by hand. Claude Code only.",
-      "version": "1.0.0"
+      "description": "Names each Claude Code session on its own: after a few turns it picks a short kebab-case name from the whole session, and renames it again when the work moves on. A name another plugin holds for the session, such as a cc-crew plan, wins; otherwise a name you set by hand stays. Claude Code only.",
+      "version": "1.1.0"
     },
     {
       "name": "cc-dazzle",

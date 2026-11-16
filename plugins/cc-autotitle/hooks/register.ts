@@ -7,6 +7,8 @@ const COMMAND = 'autotitle'
 // 2 to 10 parts: the prompt asks for 2 to 6 words, and a handle like pr-31 is two parts.
 const NAME = /^[a-z0-9]+(?:-[a-z0-9]+){1,9}$/
 const MAX_CHARS = 40
+// A plan's name, as a held name: kebab-case of any number of parts, so a one-word plan counts.
+const HELD = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 // Three failed checks in a row wait for the next scheduled check instead of forking every turn.
 const MAX_FAILURES = 3
 const KEEP_MS = 60 * 24 * 3_600_000
@@ -32,6 +34,7 @@ const FRESH: State = {
   pinned: false,
   failures: 0,
   isOff: false,
+  held: null,
   stats: { checks: 0, renames: 0, failures: 0 },
 }
 
@@ -53,7 +56,7 @@ const turnsOf = (value: unknown, fallback: number, min: number) => {
 
 const later = (turn: number) => (cfg.recheck > 0 ? turn + cfg.recheck : null)
 
-const due = (s: State) => !s.isOff && !s.pinned && (s.compacted || (s.nextAt !== null && s.turns >= s.nextAt))
+const due = (s: State) => !s.isOff && !s.pinned && !s.held && (s.compacted || (s.nextAt !== null && s.turns >= s.nextAt))
 
 function prompt(current: string | null, hint?: string) {
   const parts = [PROMPT]
@@ -74,7 +77,39 @@ function parse(text: string) {
 // desktop app's sentence-case one would be echoed and then dropped as not a name.
 const keepable = (name: string | null) => (name && parse(name) ? name : null)
 
-type Pick = { isNamed: true; name: string } | { isNamed: false; reason: string }
+// The held-name file belongs to the plugin that wrote it (cc-crew's plans.py),
+// which also removes it; this mod only reads it.
+async function heldFile($: EngineInterface, id: string) {
+  const home = await $.env.get('HOME')
+  if (!home) return null
+  const path = `${home}/.claude/.cc-autotitle/held/${id}`
+  const text = await $.fs.read(path).then(
+    t => (typeof t === 'string' ? t.trim() : ''),
+    () => null,
+  )
+  const name = text && text.length <= MAX_CHARS && HELD.test(text) ? text : null
+  return { path, text, name }
+}
+
+// Records the session's held name and returns it. When the file is gone the
+// session goes back to automatic names from the name it has, as after
+// /autotitle on, its next check a full interval away.
+async function follow($: EngineInterface, id: string) {
+  const held = (await heldFile($, id))?.name ?? null
+  let released = false
+  await update($, state, s => {
+    // State kept by an older version of the mod has no held field: no release.
+    const was = typeof s.held === 'string' ? s.held : null
+    if (was === held) return s.held === held ? s : { ...s, held }
+    if (held) return { ...s, held }
+    released = true
+    return { ...s, held: null, pinned: false, adopt: true, pending: null, pinOnApply: false, compacted: false, nextAt: later(s.turns) }
+  })
+  if (released) await save($)
+  return held
+}
+
+type Pick ={ isNamed: true; name: string } | { isNamed: false; reason: string }
 
 async function pick($: EngineInterface, current: string | null, hint?: string): Promise<Pick> {
   const reply = await $.model.fork({ prompt: prompt(current, hint) })
@@ -156,6 +191,13 @@ async function apply($: EngineInterface, title: string | null) {
   await update($, state, s => {
     name = undefined
     const seen = { ...s, lastSeen: title }
+    // A held name wins over a pin and over a picked name; only /autotitle off stops it.
+    if (s.held && !s.isOff) {
+      const base = { ...seen, lastSet: s.held, pinned: false, pending: null, pinOnApply: false }
+      if (title === s.held) return base
+      name = s.held
+      return { ...base, lastSeen: s.held, stats: { ...s.stats, renames: s.stats.renames + 1 } }
+    }
     // A name /autotitle could not apply at once: you asked for it, so it lands
     // over whatever the session is called.
     if (s.pinOnApply && s.pending) {
@@ -186,6 +228,7 @@ async function apply($: EngineInterface, title: string | null) {
 
 async function nameNow($: EngineInterface, hint?: string) {
   const s = await read($, state)
+  if (s.held && !s.isOff) return `This session carries the held name ${s.held}; /${COMMAND} status says where it comes from, /${COMMAND} off stops the mod here.`
   const r = await pick($, keepable(s.lastSeen ?? s.lastSet), hint)
   if (!r.isNamed) {
     await update($, state, cur => ({ ...cur, stats: { ...cur.stats, checks: cur.stats.checks + 1, failures: cur.stats.failures + 1 } }))
@@ -217,11 +260,20 @@ async function rename($: EngineInterface, name: string) {
 }
 
 async function report($: EngineInterface) {
+  const file = await heldFile($, await $.session.id())
   const s = await read($, state)
   const next = s.compacted ? 'the next turn' : s.nextAt === null ? 'none planned' : `after turn ${s.nextAt}`
+  const held =
+    !file || file.text === null || (file.name && !s.isOff)
+      ? ''
+      : file.name
+        ? `The held-name file ${file.path} names ${file.name}; it applies again after /${COMMAND} on.`
+        : `The held-name file ${file.path} holds no kebab-case name of at most ${MAX_CHARS} characters, so it is ignored.`
   const status = s.isOff
     ? 'Off in this session.'
-    : s.pinned
+    : file?.name
+      ? `Held name: ${file.name}, from ${file.path}. While that file is there the session carries this name and no model is asked for one.`
+      : s.pinned
       ? `Pinned: ${s.lastSeen ? `${s.lastSeen} was` : 'its name was'} set by hand, so it is not renamed. /${COMMAND} on lets it follow the work again.`
       : [
           s.lastSet ? `Last name set: ${s.lastSet}.` : 'No name set yet.',
@@ -233,9 +285,12 @@ async function report($: EngineInterface) {
   const recheck = cfg.recheck > 0 ? `every ${cfg.recheck} turns` : 'never'
   return [
     status,
+    held,
     `This session: turn ${s.turns}; ${s.stats.checks} checks, ${s.stats.renames} renames, ${s.stats.failures} failures.`,
     `Settings: first name after turn ${cfg.first}, re-check ${recheck}. /${COMMAND} names it now, /${COMMAND} off pauses it here.`,
-  ].join('\n\n')
+  ]
+    .filter(Boolean)
+    .join('\n\n')
 }
 
 export const register: Register = (on, options) => {
@@ -256,7 +311,9 @@ export const register: Register = (on, options) => {
 
   on('command.run', { command: 'autotitle' }, async ($, e) => {
     const arg = (e.args ?? '').trim()
-    await ensure($, await $.session.id())
+    const id = await $.session.id()
+    await ensure($, id)
+    await follow($, id)
     const word = arg.toLowerCase()
     if (word === 'off') {
       await update($, state, s => ({ ...s, isOff: true }))
@@ -312,15 +369,18 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
+  // A held name lands as the prompt's session title, which adds nothing to the
+  // model's context (a /rename run by the mod would leave its lines in the
+  // transcript). It is read in every session, -p and SDK ones included:
+  // reading a file costs nothing, and a background job is named by its plan.
   on('classic.UserPromptSubmit', async ($, e, next) => {
     let name: string | undefined
-    if (isInteractive) {
-      try {
-        await ensure($, e.session_id)
-        name = await apply($, e.session_title || null)
-      } catch {
-        // Never let bookkeeping break the prompt it rides on.
-      }
+    try {
+      await ensure($, e.session_id)
+      const held = await follow($, e.session_id)
+      if (isInteractive || held) name = await apply($, e.session_title || null)
+    } catch {
+      // Never let bookkeeping break the prompt it rides on.
     }
     const result = await next(e)
     return name ? { ...result, sessionTitle: name } : result

@@ -22,11 +22,15 @@ It replaces `cc-session-name`, which is gone. Uninstall that one if you still ha
 
 When it leaves the name alone:
 
-- **You named the session.** A `/rename` the mod did not run, a kebab-case name it did not set (say, a job renamed from the jobs list), any rename after the mod's own name, or a name a resumed session already had: the mod stops naming that session. `/autotitle on` lets it follow the work again from that name. A sentence-case title the host gave before the mod's first name, such as the desktop app's own, is replaced.
-- **Not interactive.** `claude -p` and SDK runs are never named.
+- **You named the session**, and no plugin holds a name for it (see below). A `/rename` the mod did not run, a kebab-case name it did not set (say, a job renamed from the jobs list), any rename after the mod's own name, or a name a resumed session already had: the mod stops naming that session. `/autotitle on` lets it follow the work again from that name. A sentence-case title the host gave before the mod's first name, such as the desktop app's own, is replaced.
+- **Not interactive.** `claude -p` and SDK runs are never named, except with a held name.
 - **Subagents.** Their turns do not count.
 
 A resumed session keeps its state: the mod saves the last name it set and whether the session is pinned, per session, and forgets entries older than 60 days.
+
+## A name another plugin holds
+
+Any plugin may hold a session's name in `~/.claude/.cc-autotitle/held/<session id>`: one line, a kebab-case name of at most 40 characters (cc-crew writes the plan a session holds). The plugin writes and removes the file; the mod only reads it, at each prompt, in every session. While it is there the session takes that name with the next prompt, over a hand-set one, and no model is asked; when it is gone the mod names the session again from the name it has, as after `/autotitle on`. Other content is ignored, and `/autotitle off` stops it too.
 
 ## What it costs
 
@@ -36,10 +40,10 @@ One fork per check: the cached conversation plus the prompt, and about 10 output
 
 | Command | What it does |
 | --- | --- |
-| `/autotitle` | Names the session now, and pins that name |
+| `/autotitle` | Names the session now, and pins that name; not while a name is held |
 | `/autotitle <hint>` | Same, steered by the hint ("focus on the PR part") |
 | `/autotitle off` / `on` | Pauses or resumes automatic names in this session; `on` also unpins |
-| `/autotitle status` | The state, the last name set, the next check, and this session's counts |
+| `/autotitle status` | The state, the last name set or the held name and its file, the next check, and this session's counts |
 
 ## Settings
 
