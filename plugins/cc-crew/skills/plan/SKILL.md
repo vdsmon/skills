@@ -9,7 +9,9 @@ A design was settled with the user. Make it buildable, and align with him on the
 
 ## 1. Write the plan file
 
-Write `~/.claude/plans/<name>/plan.md` in the shape of [plan-template.md](plan-template.md). The file is for you to follow and for the record: do not paste it into the session, and do not use plan mode.
+The plan file is `~/.claude/plans/<name>/plan.md`, in the shape of [plan-template.md](plan-template.md). It is for you to follow and for the record: do not paste it into the session, and do not use plan mode.
+
+A grilling that kept a record already wrote this file: its principle, approved at the close, its example, its terms and its decisions. Keep them as they are, and do not reword the principle. Its Open section must be empty: a question still open goes back to a grilling round, not into the plan. Add the sections below that the file lacks, and set its Status line. After a small grilling, which keeps no record, or with no grilling at all, write the whole file:
 
 - **Principle.** The one sentence he approved. Test it against every case you discussed: a sentence broader than you mean gets built faithfully.
 - **Terms.** Every word the plan uses that he did not bring himself: where it comes from (the code, a teammate, a document, you), what it means in plain words, and his yes to it. The file keeps them through a compaction.

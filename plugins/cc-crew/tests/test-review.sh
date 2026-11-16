@@ -18,6 +18,7 @@ cp "$here/../scripts/review.sh" "$tmp/scripts/review.sh"
 review="$tmp/scripts/review.sh"
 printf 'Stand-in plan template: judge the plan.\n{{PRINCIPLE}}\nEnd of plan template.\n' > "$tmp/scripts/review-prompt-plan.md"
 printf 'Stand-in diff template: judge the diff.\n{{PRINCIPLE}}\nEnd of diff template.\n' > "$tmp/scripts/review-prompt-diff.md"
+printf 'Stand-in grilling template: judge the record.\n{{PRINCIPLE}}\nEnd of grilling template.\n' > "$tmp/scripts/review-prompt-grilling.md"
 # & and \ break naive sed or ${//} substitution.
 printf 'Principle: R&D first, paths like C:\\tmp\\n stay literal.\n' > "$tmp/principle.md"
 printf '# Plan\nBuild the thing.\n' > "$tmp/plan.md"
@@ -119,6 +120,29 @@ sed 's/{{PRINCIPLE}}/nothing/' "$tmp/scripts/review-prompt-plan.md" > "$tmp/noto
 run ok plan "$tmp/principle.md" "$tmp/plan.md" "$tmp/out"
 check "template without the token exits 4 and never calls codex" '[ "$rc" -eq 4 ] && [ ! -e "$call" ]'
 cp "$tmp/keep.md" "$tmp/scripts/review-prompt-plan.md"
+
+echo "--- grilling: principle and record, its own reminder"
+printf '# kettle\n\nStatus: grilling.\n\n## Decisions\n\n- **Q1. Colour.** Blue. Why: it matches.\n' > "$tmp/record.md"
+grilling_reminder="From the review script, not the reviewer. Weigh each objection before it reaches Victor: one that a fact settles gets one line naming the fact; the rest go to him as questions, in the reviewer's own words."
+run ok grilling "$tmp/principle.md" "$tmp/record.md" "$tmp/out"
+gfolder=$(dirname "$last")
+check "grilling exits 0 with answer.md last" '[ "$rc" -eq 0 ] && [ "$(basename "$last")" = answer.md ] && [ -s "$last" ]'
+check "a fresh grilling-* folder" 'case $(basename "$gfolder") in grilling-*) true ;; *) false ;; esac'
+check "folder holds principle.md and record.md" 'cmp -s "$gfolder/principle.md" "$tmp/principle.md" && cmp -s "$gfolder/record.md" "$tmp/record.md"'
+check "prompt is the grilling template with the principle verbatim" 'prompt_of "$call" | grep -q "^Stand-in grilling template: judge the record.$" && prompt_of "$call" | grep -qF "R&D first, paths like C:\\tmp\\n stay literal." && ! prompt_of "$call" | grep -qF "{{PRINCIPLE}}"'
+check "grilling is read-only in its folder with the model" 'has_args "$call" --sandbox read-only && has_args "$call" -C "$gfolder" && has_args "$call" -m gpt-6-astra'
+check "answer keeps the review and ends with the grilling reminder, word for word" 'head -n 1 "$last" | grep -qx "The review." && [ "$(tail -n 1 "$last")" = "$grilling_reminder" ]'
+check "no plan or diff reminder in a grilling answer" '! grep -q "Before you fix anything above" "$last"'
+run ok grilling "$tmp/principle.md" "$tmp/record.md" "$tmp/out"
+check "a second grilling read counts no reads" '[ "$rc" -eq 0 ] && ! grep -q "^This is read" "$last"'
+run ok follow-up "$gfolder" "$tmp/q.md"
+check "follow-up works in a grilling folder" '[ "$rc" -eq 0 ] && [ "$last" = "$gfolder/answer-2.md" ] && has_args "$call" --sandbox read-only && ! grep -q "From the review script" "$last"'
+run usage grilling "$tmp/principle.md" "$tmp/record.md" "$tmp/out"
+check "a grilling read refused for usage exits 3" '[ "$rc" -eq 3 ]'
+run ok grilling "$tmp/principle.md" "$tmp/record.md"
+check "grilling with a missing argument exits 4, prints the grilling usage line, never calls codex" '[ "$rc" -eq 4 ] && [ ! -e "$call" ] && printf "%s" "$err" | grep -qxF "review.sh grilling <principle-file> <record-file> <out-dir>"'
+run ok grilling "$tmp/principle.md" "$tmp/no-record.md" "$tmp/out"
+check "a missing record exits 4 before codex" '[ "$rc" -eq 4 ] && [ ! -e "$call" ]'
 
 echo "--- diff snapshot: tree of <head>, never the working tree"
 repo="$tmp/repo"
