@@ -231,6 +231,66 @@ export class Canvas {
   }
 }
 
+/** Each glyph of a line as it reads with the axes swapped: a line down turns into one to the right. */
+const TURNED: Record<string, string> = {
+  '─': '│', '│': '─', '┐': '└', '└': '┐', '━': '┃', '┃': '━', '┓': '┗', '┗': '┓', '╌': '╎', '╎': '╌',
+  '▼': '►', '►': '▼', '▲': '◄', '◄': '▲',
+}
+const turnBits = (bits: number) => ((bits & U) && L) | ((bits & D) && R) | ((bits & L) && U) | ((bits & R) && D)
+
+/**
+ * The canvas as the layout sees it, which lays out every diagram top-down: `x` runs across the flow
+ * and `y` along it. Turned, a drawing reads left to right: each point swaps its axes, and line bits and
+ * glyphs turn with it. Text is not drawn through a view, since it stays level either way.
+ */
+export class View {
+  readonly canvas: Canvas
+  readonly turned: boolean
+
+  constructor(canvas: Canvas, turned: boolean) {
+    this.canvas = canvas
+    this.turned = turned
+  }
+
+  private at(x: number, y: number): [number, number] {
+    return this.turned ? [y, x] : [x, y]
+  }
+  private bits(bits: number): number {
+    return this.turned ? turnBits(bits) : bits
+  }
+  private glyph(glyph: string): string {
+    return this.turned ? TURNED[glyph] ?? glyph : glyph
+  }
+
+  addBits(x: number, y: number, bits: number): void {
+    this.canvas.addBits(...this.at(x, y), this.bits(bits))
+  }
+  junction(x: number, y: number, bits: number): void {
+    this.canvas.junction(...this.at(x, y), this.bits(bits))
+  }
+  start(x: number, y: number): void {
+    this.canvas.start(...this.at(x, y))
+  }
+  tip(x: number, y: number): void {
+    this.canvas.tip(...this.at(x, y))
+  }
+  head(x: number, y: number, glyph: string): void {
+    this.canvas.head(...this.at(x, y), this.glyph(glyph))
+  }
+  set(x: number, y: number, glyph: string, cls: Cls): void {
+    this.canvas.set(...this.at(x, y), this.glyph(glyph), cls)
+  }
+  stroke(x: number, y: number, glyph: string): void {
+    this.canvas.stroke(...this.at(x, y), this.glyph(glyph))
+  }
+  /** A straight line from one point to another, across or along the flow. */
+  line(ax: number, ay: number, bx: number, by: number): void {
+    const [[x0, y0], [x1, y1]] = [this.at(ax, ay), this.at(bx, by)]
+    if (x0 === x1) this.canvas.segV(x0, y0, y1)
+    else this.canvas.segH(y0, x0, x1)
+  }
+}
+
 /** Paint `text` at `x, y`, one grapheme cluster per cell; a wide cluster claims a second cell. */
 export function drawText(canvas: Canvas, text: string, x: number, y: number, cls: Cls): void {
   let cur = x

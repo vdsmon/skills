@@ -1,16 +1,20 @@
 // From grok-mermaid 0.2.3 (Apache-2.0, see NOTICE), changed by cc-dazzle.
 
 /**
- * Graph layout, top-down. Boxes take ranks; each rank is a level of the drawing, and where an edge
- * label needs room a level of labels sits between two ranks. An edge that spans several levels
- * passes each as a one-column node, and its label is a node as wide as its text, so the layout places
- * lines and labels as it places boxes and nothing is drawn on anything else. Between two levels lies
- * a channel of rows where lines turn; a back edge leaves its box by the top and comes into its target
- * from below. A frame is laid out on its own, with a level above and below its contents where edges
- * cross its border, and becomes one node of the level around it.
+ * Graph layout. Boxes take ranks; each rank is a level of the drawing, and where an edge label needs
+ * room a level of labels sits between two ranks. An edge that spans several levels passes each as a
+ * one-column node, and its label is a node as wide as its text, so the layout places lines and labels
+ * as it places boxes and nothing is drawn on anything else. Between two levels lies a channel where
+ * lines turn; a back edge leaves its box against the flow and comes into its target from the far side.
+ * A frame is laid out on its own, with a level before and after its contents where edges cross its
+ * border, and becomes one node of the level around it.
+ *
+ * The layout is written top-down: `x`, `left` and `right` run across the flow, `y` and `height` along
+ * it. Left to right is the same layout with each box, label and loop measured with its axes swapped,
+ * drawn through a turned `View`; only text and a frame's insets are placed in the canvas's own axes.
  */
 
-import { Canvas, D, drawText, drawTextOverEdges, L, R, STY_DOT, STY_SOLID, STY_THICK, U } from './canvas'
+import { Canvas, D, drawText, drawTextOverEdges, L, R, STY_DOT, STY_SOLID, STY_THICK, U, View } from './canvas'
 import type { Edge, Head, Shape } from './graph'
 import type { Graph } from './graph'
 import { stringWidth, wrapLabel } from './labels'
@@ -56,16 +60,29 @@ const SLOTS = 1 << 10
 const half = (n: number): number => Math.floor(n / 2)
 const widest = (lines: string[]): number => Math.max(0, ...lines.map(stringWidth))
 
+/** Which way ranks follow each other: down the rows, or right along the columns. */
+export type Direction = 'down' | 'right'
+
+/**
+ * Rows between two boxes one above the other in a drawing that reads left to right, at every fit:
+ * a row is about twice as tall as a column is wide, so one row parts them as the fit's gap does columns.
+ */
+const ROW_GAP = 1
+
 /** Draw a parsed flowchart or state diagram, or `null` when it is empty or over a cap. */
-export function layout(graph: Graph, fit: Fit, narrowing: Narrowing = UNNARROWED): Layout | null {
+export function layout(graph: Graph, fit: Fit, narrowing: Narrowing = UNNARROWED, direction: Direction = 'down'): Layout | null {
   const plans = planScopes(graph, narrowing)
   const scopes = new Map<number | null, Scope>()
-  const laid = layScope(graph, null, plans, { ...fit, narrowing, scopes })
+  const turned = direction === 'right'
+  const laid = layScope(graph, null, plans, { ...fit, gap: turned ? ROW_GAP : fit.gap, narrowing, scopes, turned })
   return laid && { drawing: laid.canvas.toDrawing(), scopes }
 }
 
-/** A fit with the narrowing applied past it, and where each scope reports how it was laid out. */
-type Packing = Fit & { narrowing: Narrowing; scopes: Map<number | null, Scope> }
+/**
+ * A fit with the narrowing applied past it, where each scope reports how it was laid out, and whether
+ * the drawing is turned to read left to right.
+ */
+type Packing = Fit & { narrowing: Narrowing; scopes: Map<number | null, Scope>; turned: boolean }
 
 const labelWrap = (edge: Edge, pack: Packing) => pack.narrowing.labels.get(edge.index)?.wrap ?? pack.label
 
@@ -189,19 +206,31 @@ function layScope(graph: Graph, scope: number | null, plans: Map<number | null, 
     return laid
   }
   if (scope === null) return report(arrange(items, plan, null, pack))
-  // The frame's own self-loops, drawn on its border by its parent, set the least height of its contents.
+  // The frame's own self-loops, drawn on its border by its parent, set the least length of its
+  // contents along the flow; turned, so does its title, which runs along the flow on its top border.
   const key = `g:${scope}`
   const own = plans.get(graph.groups[scope]!.parent)!.links.filter(l => 'item' in l.from && 'item' in l.to && l.from.item === key && l.to.item === key)
-  const least = own.length === 0 ? 0 : stackLoops(own.map(l => loopOf(l, pack))).box - 2
+  const loops = own.length === 0 ? 0 : stackLoops(own.map(l => loopOf(l, pack)), pack.turned).box - 2
+  const least = (title: string[]) => (pack.turned ? Math.max(loops, widest(title) + 2) : loops)
   // A frame's title wraps to the frame's width when that is wider than the fit's.
   const label = graph.groups[scope]!.label
   const title = wrapLabel(label, pack.wrap)
-  const laid = arrange(items, plan, title, pack, least)
+  const laid = arrange(items, plan, title, pack, least(title))
   if (laid === null || title.length === 1) return report(laid)
-  const wider = wrapLabel(label, laid.canvas.w - 1)
+  const wider = wrapLabel(label, laid.canvas.w - (pack.turned ? 2 : 1))
   if (wider.length >= title.length) return report(laid)
-  const again = arrange(items, plan, wider, pack, least)
+  const again = arrange(items, plan, wider, pack, least(wider))
   return report(again !== null && again.canvas.w <= laid.canvas.w ? again : laid)
+}
+
+/**
+ * Where a frame's contents sit inside it, and its size. Across the flow an empty line parts the
+ * contents from each border; along it the contents' first and last levels lie on the borders' inner
+ * side. Turned, the title's lines past its first come before the contents across the flow.
+ */
+function inset(sub: Laid, turned: boolean): { x: number; y: number; w: number; h: number } {
+  const { w, h } = sub.canvas
+  return turned ? { x: 1, y: sub.title.length + 1, w: w + 2, h: h + sub.title.length + 3 } : { x: 2, y: 1, w: w + 4, h: h + 2 }
 }
 
 // ------------------------------------------------------------------ ranking
@@ -301,18 +330,26 @@ type Loop = { link: Link; row: number; lines: string[] }
 const loopOf = (link: Link, pack: Packing): Loop => ({ link, row: 0, lines: link.label === null ? [] : wrapLabel(link.label, labelWrap(link.edge, pack)) })
 
 /**
- * Stack an item's self-loops down its right side: each takes two rows, or as many as its label has
- * lines. Gives the height the item's box needs and the rows the loops and labels take below its top.
+ * Stack an item's self-loops along its side across the flow: each takes two lines, or as many as its
+ * label takes along the flow, its lines top-down and its width turned, with a column after it. Gives
+ * the length the item's box needs along the flow and how far the loops and labels reach past its start.
  */
-function stackLoops(loops: Loop[]): { box: number; below: number } {
+function stackLoops(loops: Loop[], turned: boolean): { box: number; below: number } {
   let row = 1
   let below = 0
   for (const loop of loops) {
+    const along = turned ? widest(loop.lines) : loop.lines.length
     loop.row = row
-    below = Math.max(below, row + 2, row + 1 + loop.lines.length)
-    row += Math.max(2, loop.lines.length)
+    below = Math.max(below, row + 2, row + 1 + along)
+    row += Math.max(2, turned && along > 0 ? along + 1 : along)
   }
   return { box: loops.at(-1)!.row + 3, below }
+}
+
+/** How far an item's self-loops reach past its side across the flow: two lines, then their labels. */
+function loopsAcross(loops: Loop[], turned: boolean): number {
+  if (!loops.some(l => l.lines.length > 0)) return 2
+  return turned ? 2 + Math.max(...loops.map(l => l.lines.length)) : 3 + Math.max(...loops.map(l => widest(l.lines)))
 }
 
 /** One link's stretch through a channel: from column `xu` on the level above to `xl` below. */
@@ -339,7 +376,8 @@ function arrange(items: Item[], plan: Plan, title: string[] | null, pack: Packin
   }
   const index = new Map(items.map((it, i) => [it.key, i]))
   const itemNode = items.map((_, i) => add(rankSlot(ranks[i]!), 'item', i))
-  const titleNode = framed ? add(0, 'title') : null
+  // Top-down, a frame's title lies along its first level; turned, it lies across the flow, before it.
+  const titleNode = framed && !pack.turned ? add(0, 'title') : null
 
   // Links: self-loops apart, every other link becomes a path from its upper end to its lower end.
   const loops: Loop[][] = items.map(() => [])
@@ -434,22 +472,27 @@ function arrange(items: Item[], plan: Plan, title: string[] | null, pack: Packin
     }
   })
 
-  // Sizes, with room for the ports and for self-loops, which go on an item's right side, one under
-  // the other, each label beside its loop.
+  // Sizes across and along the flow, with room for the ports and for self-loops, which go on an
+  // item's far side across the flow, one after the other, each label beside its loop.
+  const turned = pack.turned
   const sizes = items.map((it, i) => {
-    if (it.sub !== null) return { w: it.sub.canvas.w + 4, h: it.sub.canvas.h + 2, lines: [] as string[] }
+    if (it.sub !== null) {
+      const { w, h } = inset(it.sub, turned)
+      return turned ? { w: h, h: w, lines: [] as string[] } : { w, h, lines: [] as string[] }
+    }
     const lines = wrapLabel(it.label, pack.wrap)
-    const ports = Math.max(groupsOf[i]!.top.length, groupsOf[i]!.bottom.length)
-    return { w: Math.max(widest(lines) + 2 * PAD + 2, ports + 2), h: lines.length + 2, lines }
+    const ports = Math.max(groupsOf[i]!.top.length, groupsOf[i]!.bottom.length) + 2
+    const [across, along] = turned ? [lines.length + 2, widest(lines) + 2 * PAD + 2] : [widest(lines) + 2 * PAD + 2, lines.length + 2]
+    return { w: Math.max(across, ports), h: along, lines }
   })
   const loopRight = items.map(() => 0)
   items.forEach((it, i) => {
     if (loops[i]!.length === 0) return
-    const { box, below } = stackLoops(loops[i]!)
-    // A frame was laid out tall enough for its loops; growing it here would part its contents from
-    // its bottom border.
+    const { box, below } = stackLoops(loops[i]!, turned)
+    // A frame was laid out long enough for its loops; growing it here would part its contents from
+    // its far border.
     if (it.sub === null) sizes[i]!.h = Math.max(sizes[i]!.h, box)
-    loopRight[i] = 2 + (loops[i]!.some(l => l.lines.length > 0) ? 1 + Math.max(...loops[i]!.map(l => widest(l.lines))) : 0)
+    loopRight[i] = loopsAcross(loops[i]!, turned)
     itemNode[i]!.height = below
   })
   for (const node of nodes) {
@@ -458,18 +501,25 @@ function arrange(items: Item[], plan: Plan, title: string[] | null, pack: Packin
       node.left = half(w)
       node.right = w - 1 - half(w) + loopRight[node.item]!
       node.height = Math.max(node.height, h)
+    } else if (node.kind === 'label' && turned) {
+      // Turned, a label sits over its line: every line of its text above the row the line runs on.
+      node.left = node.text.length
+      node.height = widest(node.text)
     } else if (node.kind === 'label') {
       node.right = 1 + widest(node.text)
       node.height = node.text.length
     } else if (node.kind === 'title') {
-      node.text = title!
       node.right = widest(title!)
       node.height = title!.length - 1
     }
   }
 
   // A frame's ports are fixed by its contents; ordering reads each as a fraction of the frame's place.
-  const frameOffset = (node: LNode, side: Side, k: number) => 2 + framePort(node.item, side, k).x - half(sizes[node.item]!.w)
+  const insetAcross = (i: number) => {
+    const at = inset(items[i]!.sub!, turned)
+    return turned ? at.y : at.x
+  }
+  const frameOffset = (node: LNode, side: Side, k: number) => insetAcross(node.item) + framePort(node.item, side, k).x - half(sizes[node.item]!.w)
   const offsetFor = (node: LNode, side: Side, k: number) => (node.kind === 'item' && items[node.item]!.sub !== null ? frameOffset(node, side, k) : 0)
   const span = (v: LNode) => v.left + v.right + 1
   paths.forEach((p, k) => {
@@ -548,10 +598,13 @@ function arrange(items: Item[], plan: Plan, title: string[] | null, pack: Packin
     if (li + 1 === levels.length) return
     const { turn, count } = channel(segsAt[li]!)
     for (const [seg, t] of turn) turns.set(`${seg.path}:${li}`, t)
-    const top = headUp[li] ? 1 : 0
+    // Turned, a label's text keeps an empty column from the lines and boxes before and after its
+    // level, as its rows keep it from them top-down.
+    const [lead, trail] = turned ? [isLabels(slots[li]!) ? 1 : 0, isLabels(slots[li + 1]!) ? 1 : 0] : [0, 0]
+    const top = (headUp[li] ? 1 : 0) + lead
     const min = isRank(slots[li]!) && isRank(slots[li + 1]!) ? 2 : isLabels(slots[li]!) ? 1 : 0
     chanTop.push(top)
-    chanRows.push(Math.max(min, top + count + (headDown[li] ? 1 : 0)))
+    chanRows.push(Math.max(min, top + count + (headDown[li] ? 1 : 0) + trail))
   })
   // Rows a frame's own self-loops need come in before its bottom level, which stays on its border.
   const short = least - levelH.reduce((s, h) => s + h, 0) - chanRows.reduce((s, r) => s + r, 0)
@@ -569,23 +622,22 @@ function arrange(items: Item[], plan: Plan, title: string[] | null, pack: Packin
   for (const node of nodes) width = Math.max(width, node.x + node.right + 1)
   for (const t of turns.values()) if (t.xf !== null) width = Math.max(width, t.xf + 1)
   if (width * height > MAX_CANVAS_CELLS) return null
-  const canvas = new Canvas(width, height)
+  const canvas = turned ? new Canvas(height, width) : new Canvas(width, height)
+  const view = new View(canvas, turned)
+  /** A box placed in the layout's axes, or in the canvas's, where text is drawn. */
+  const onCanvas = (b: Box): Box => (turned ? { x: b.y, y: b.x, w: b.h, h: b.w } : b)
 
   // Items: boxes, and frames with their contents.
-  const boxAt = (i: number) => {
+  const boxAt = (i: number): Box => {
     const node = itemNode[i]!
     const { w, h } = sizes[i]!
     return { x: node.x - half(w), y: levelY[slots.indexOf(node.slot)]!, w, h }
   }
   items.forEach((it, i) => {
-    const p = boxAt(i)
+    const p = onCanvas(boxAt(i))
     if (it.sub === null) drawBox(canvas, p, it, sizes[i]!.lines)
-    else drawFrame(canvas, p, it, it.sub)
+    else drawFrame(canvas, p, it, it.sub, inset(it.sub, turned))
   })
-  if (titleNode !== null) {
-    const titleRuns = title!.slice(1).map((text, li) => ({ x: titleNode.x, y: li, text }))
-    for (const run of titleRuns) drawText(canvas, run.text, run.x, run.y, 'text')
-  }
 
   // Labels, then lines.
   const styleOf = (edge: Edge) => (edge.line === 'dotted' ? STY_DOT : edge.line === 'thick' ? STY_THICK : STY_SOLID)
@@ -595,17 +647,18 @@ function arrange(items: Item[], plan: Plan, title: string[] | null, pack: Packin
     canvas.beginEdge(edge.index, keys[0], keys[1])
     for (const node of p.nodes.map(id => nodes[id]!)) {
       if (node.kind !== 'label') continue
+      const along = levelY[slots.indexOf(node.slot)]!
       node.text.forEach((text, li) => {
-        const run = { x: node.x + 2, y: levelY[slots.indexOf(node.slot)]! + li, text }
+        const run = turned ? { x: along, y: node.x - node.text.length + li, text } : { x: node.x + 2, y: along + li, text }
         drawText(canvas, text, run.x, run.y, 'edgeLabel')
         canvas.labelRun(run)
       })
     }
-    drawPath(canvas, p, k)
+    drawPath(p, k)
     canvas.endEdge()
   })
 
-  function drawPath(canvas: Canvas, p: Path, k: number): void {
+  function drawPath(p: Path, k: number): void {
     const { edge } = p.link
     const upNode = nodes[p.nodes[0]!]!
     const lowNode = nodes[p.nodes.at(-1)!]!
@@ -631,26 +684,25 @@ function arrange(items: Item[], plan: Plan, title: string[] | null, pack: Packin
     points.push([xn, yn])
     for (let j = 0; j + 1 < points.length; j++) {
       const [[ax, ay], [bx, by]] = [points[j]!, points[j + 1]!]
-      if (ax === bx) canvas.segV(ax, ay, by)
-      else canvas.segH(ay, ax, bx)
+      view.line(ax, ay, bx, by)
     }
     // A line that comes through the frame's border joins the border's crossing.
-    if (upNode.kind === 'border') canvas.addBits(x0, y0, U)
-    if (lowNode.kind === 'border' && roleOf(lowNode) !== 'end') canvas.addBits(xn, yn, D)
+    if (upNode.kind === 'border') view.addBits(x0, y0, U)
+    if (lowNode.kind === 'border' && roleOf(lowNode) !== 'end') view.addBits(xn, yn, D)
 
     if (upBox !== null) {
-      if (upCross) canvas.junction(x0, y0, U | D)
-      else if (p.reversed) end(canvas, x0, y0, U, edge.headTo, '▲')
-      else leave(canvas, x0, y0, D, edge.headFrom, '▲')
+      if (upCross) view.junction(x0, y0, U | D)
+      else if (p.reversed) end(view, x0, y0, U, edge.headTo, '▲')
+      else leave(view, x0, y0, D, edge.headFrom, '▲')
     }
     if (lowBox !== null) {
-      if (lowCross) canvas.junction(xn, yn, U | D)
-      else if (p.reversed) leave(canvas, xn, yn, U, edge.headFrom, '▼')
-      else end(canvas, xn, yn, D, edge.headTo, '▼')
-    } else if (roleOf(lowNode) === 'end') end(canvas, xn, yn, D, edge.headTo, '▼')
+      if (lowCross) view.junction(xn, yn, U | D)
+      else if (p.reversed) leave(view, xn, yn, U, edge.headFrom, '▼')
+      else end(view, xn, yn, D, edge.headTo, '▼')
+    } else if (roleOf(lowNode) === 'end') end(view, xn, yn, D, edge.headTo, '▼')
   }
 
-  // Self-loops on the right side of their box or frame.
+  // Self-loops on the far side of their box or frame across the flow.
   items.forEach((_, i) => {
     const { x, y, w } = boxAt(i)
     for (const loop of loops[i]!) {
@@ -659,17 +711,18 @@ function arrange(items: Item[], plan: Plan, title: string[] | null, pack: Packin
       canvas.beginEdge(edge.index, keys[0], keys[1])
       const row = y + loop.row
       const [h, down, up] = edge.line === 'dotted' ? ['╌', '┐', '┘'] : edge.line === 'thick' ? ['━', '┓', '┛'] : ['─', '┐', '┘']
-      canvas.junction(x + w - 1, row, R)
-      canvas.start(x + w - 1, row)
-      if (edge.headFrom !== 'none') canvas.set(x + w - 1, row, headGlyph(edge.headFrom, '◄'), 'edge')
-      canvas.stroke(x + w, row, h!)
-      canvas.stroke(x + w + 1, row, down!)
-      canvas.stroke(x + w + 1, row + 1, up!)
-      if (edge.headTo === 'none') canvas.stroke(x + w, row + 1, h!)
-      else canvas.stroke(x + w, row + 1, headGlyph(edge.headTo, '◄'))
-      canvas.tip(x + w, row + 1)
+      view.junction(x + w - 1, row, R)
+      view.start(x + w - 1, row)
+      if (edge.headFrom !== 'none') view.set(x + w - 1, row, headGlyph(edge.headFrom, '◄'), 'edge')
+      view.stroke(x + w, row, h!)
+      view.stroke(x + w + 1, row, down!)
+      view.stroke(x + w + 1, row + 1, up!)
+      if (edge.headTo === 'none') view.stroke(x + w, row + 1, h!)
+      else view.stroke(x + w, row + 1, headGlyph(edge.headTo, '◄'))
+      view.tip(x + w, row + 1)
+      // Beside the loop with a space between, or turned, under it.
       loop.lines.forEach((text, li) => {
-        const run = { x: x + w + 3, y: row + 1 + li, text }
+        const run = turned ? { x: row + 1, y: x + w + 2 + li, text } : { x: x + w + 3, y: row + 1 + li, text }
         drawText(canvas, text, run.x, run.y, 'edgeLabel')
         canvas.labelRun(run)
       })
@@ -682,13 +735,14 @@ function arrange(items: Item[], plan: Plan, title: string[] | null, pack: Packin
   items.forEach((it, i) => {
     if (it.sub === null) return
     const { x, y } = boxAt(i)
+    const across = x + insetAcross(i)
     for (const port of it.sub.ports) {
       if (port.role !== 'start') continue
       const { edge, keys } = port.link!
       canvas.beginEdge(port.edge, keys[0], keys[1])
-      canvas.junction(x + 2 + port.x, y, D)
-      canvas.start(x + 2 + port.x, y)
-      if (edge.headFrom !== 'none') canvas.set(x + 2 + port.x, y, headGlyph(edge.headFrom, '▲'), 'edge')
+      view.junction(across + port.x, y, D)
+      view.start(across + port.x, y)
+      if (edge.headFrom !== 'none') view.set(across + port.x, y, headGlyph(edge.headFrom, '▲'), 'edge')
       canvas.endEdge()
     }
   })
@@ -715,18 +769,18 @@ function headGlyph(head: Head, arrow: string): string {
 }
 
 /** Where a line leaves its source's border, with the source's own head if it has one. */
-function leave(canvas: Canvas, x: number, y: number, bits: number, head: Head, arrow: string): void {
-  canvas.junction(x, y, bits)
-  canvas.start(x, y)
-  if (head !== 'none') canvas.set(x, y, headGlyph(head, arrow), 'edge')
+function leave(view: View, x: number, y: number, bits: number, head: Head, arrow: string): void {
+  view.junction(x, y, bits)
+  view.start(x, y)
+  if (head !== 'none') view.set(x, y, headGlyph(head, arrow), 'edge')
 }
 
 /** Where a line ends beside its target: its head, or a bare line end. */
-function end(canvas: Canvas, x: number, y: number, bits: number, head: Head, arrow: string): void {
+function end(view: View, x: number, y: number, bits: number, head: Head, arrow: string): void {
   if (head === 'none') {
-    canvas.addBits(x, y, bits)
-    canvas.tip(x, y)
-  } else canvas.head(x, y, headGlyph(head, arrow))
+    view.addBits(x, y, bits)
+    view.tip(x, y)
+  } else view.head(x, y, headGlyph(head, arrow))
 }
 
 // ----------------------------------------------------------------- ordering
@@ -950,14 +1004,15 @@ function outline(canvas: Canvas, p: Box, shape: Shape): void {
 }
 
 /**
- * A frame: its contents one column in from its sides, and its title's first line on its top border;
- * the rest of the title is part of the contents.
+ * A frame: its contents at `at` inside it, its title's first line on its top border and the rest under
+ * that, where the contents leave room for them.
  */
-function drawFrame(canvas: Canvas, p: Box, item: Item, sub: Laid): void {
+function drawFrame(canvas: Canvas, p: Box, item: Item, sub: Laid, at: { x: number; y: number }): void {
   outline(canvas, p, 'rect')
-  canvas.blit(sub.canvas, p.x + 2, p.y + 1)
+  canvas.blit(sub.canvas, p.x + at.x, p.y + at.y)
   const title = sub.title
   drawTextOverEdges(canvas, ` ${title[0]!} `, p.x + 1, p.y, 'text')
   const runs = title.map((text, i) => ({ x: p.x + 2, y: p.y + i, text }))
+  for (const run of runs.slice(1)) drawText(canvas, run.text, run.x, run.y, 'text')
   canvas.frames.push({ key: item.key, x: p.x, y: p.y, w: p.w, h: p.h, title: runs })
 }

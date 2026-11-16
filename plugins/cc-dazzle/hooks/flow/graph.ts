@@ -49,6 +49,8 @@ export class Graph {
   /** Innermost group each node was first named in, parallel to `nodes`. */
   nodeGroup: (number | null)[] = []
   curGroup: number | null = null
+  /** Whether the source asks for the whole diagram left to right (`LR`) or right to left (`RL`). */
+  sideways = false
   /** Set when a cap was hit: the diagram is too large to draw. */
   overCap = false
   /**

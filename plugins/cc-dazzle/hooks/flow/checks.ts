@@ -1,7 +1,8 @@
 import { width } from '../text'
 import type { Graph } from './graph'
 import type { Flow } from './index'
-import { drawFlow } from './index'
+import { drawFlow, drawings, drawnFor } from './index'
+import type { Direction } from './layout'
 import { parseFlow } from './parse'
 import type { Drawing, DrawnEdge, Rect, Run } from './types'
 
@@ -64,17 +65,22 @@ export const joinsInto = (label: string, parts: string[]): boolean => {
   return at === whole.length
 }
 
-export function checkFlow(source: string, columns: number): Checked {
+/**
+ * Check the drawing the drawer picks for `columns`, or, given a `direction`, its drawing in that
+ * direction, whether or not the drawer would pick it.
+ */
+export function checkFlow(source: string, columns: number, direction?: Direction): Checked {
   const failures: Failure[] = []
   const fail = (check: Check, what: string) => failures.push({ check, what })
   let flow: Flow | null
+  let graph: Graph | null
   try {
-    flow = drawFlow(source, columns)
+    graph = parseFlow(source)
+    flow = direction === undefined ? drawFlow(source, columns) : graph && drawnFor(drawings(graph, direction), columns)
   } catch (error) {
     fail('a', `throws: ${String(error)}`)
     return { flow: null, failures }
   }
-  const graph = parseFlow(source)
   if (graph !== null && !graph.overCap && graph.nodes.length > 0 && flow?.kind !== 'drawn') fail('a', `parses but draws ${flow?.kind ?? 'nothing'}`)
   if (graph === null || flow?.kind !== 'drawn') return { flow, failures }
   const { drawing, fits } = flow

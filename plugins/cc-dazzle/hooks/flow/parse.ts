@@ -66,6 +66,9 @@ function splitOnce(s: string, sep: string): [string, string] | null {
 
 const nonEmpty = (s: string): string | null => (s === '' ? null : s)
 
+/** Whether a direction, as a flowchart's header or a `direction` statement names it, runs sideways. */
+const sideways = (direction: string | undefined) => direction === 'LR' || direction === 'RL' || direction === '>' || direction === '<'
+
 /** Diagram kind from the header statement, lowercased. */
 function headerKind(statements: string[]): string | null {
   const header = statements[0]
@@ -109,6 +112,7 @@ export function parseFlow(src: string): Graph | null {
 function parseGraph(src: string): Graph {
   const statements = statementsOf(src)
   const graph = new Graph()
+  graph.sideways = sideways(statements[0]!.split(/\s+/)[1])
   let depth = 0
   let describing = false
   // Ids given to edges, as in `A e1@--> B`; `e1@{ … }` then sets the edge's look, not a box's.
@@ -526,8 +530,11 @@ function parseState(src: string): Graph {
       graph.closeGroup()
     } else if (first === '--') {
       regions.set(graph.curGroup, (regions.get(graph.curGroup) ?? 0) + 1)
-    } else if (['direction', 'classdef', 'class', 'style', 'hide', 'scale'].includes(first)) {
-      // Direction and styling carry no layout meaning here.
+    } else if (first === 'direction') {
+      // Inside a composite state it sets only that state's direction, which the drawer does not follow.
+      if (depth === 0) graph.sideways = sideways(st.split(/\s+/)[1]?.toUpperCase())
+    } else if (['classdef', 'class', 'style', 'hide', 'scale'].includes(first)) {
+      // Styling carries no layout meaning here.
     } else if (st.includes('-->')) {
       read = parseTransition(st, graph, regions.get(graph.curGroup) ?? 0)
     } else {

@@ -3,8 +3,10 @@ import { expect, test } from 'claude-code/testing'
 import type { Checked } from './checks'
 import { checkFlow, joinsInto } from './checks'
 import { CORPUS } from './corpus'
-import { FITS, drawFlow, drawings } from './index'
+import { FITS, drawFlow, drawings, drawnFor } from './index'
+import type { Direction } from './layout'
 import { layout } from './layout'
+import type { Rect } from './types'
 import { wrapLabel } from './labels'
 import { parseFlow } from './parse'
 import { DIAGRAMS, FRAMES, STATES, WIDTHS } from './sets'
@@ -13,15 +15,43 @@ import { DIAGRAMS, FRAMES, STATES, WIDTHS } from './sets'
 const BATCH = 50
 type Run = { name: string; columns: number; checked: Checked }
 const runs = new Map<string, Run[]>()
-const checkedBatch = (columns: number, from: number) =>
-  runs.get(`${columns}:${from}`) ?? runs.set(`${columns}:${from}`, DIAGRAMS.slice(from, from + BATCH).map(([name, source]) => ({ name, columns, checked: checkFlow(source, columns) }))).get(`${columns}:${from}`)!
+/** The drawings the drawer picks, or, given a direction, the drawings in that direction. */
+const checkedBatch = (columns: number, from: number, direction?: Direction) => {
+  const key = `${columns}:${from}:${direction}`
+  return runs.get(key) ?? runs.set(key, DIAGRAMS.slice(from, from + BATCH).map(([name, source]) => ({ name, columns, checked: checkFlow(source, columns, direction) }))).get(key)!
+}
 const BATCHES = Array.from({ length: Math.ceil(DIAGRAMS.length / BATCH) }, (_, i) => i * BATCH)
-const checkedAll = () => WIDTHS.flatMap(columns => BATCHES.flatMap(from => checkedBatch(columns, from)))
+const checkedAll = (direction?: Direction) => WIDTHS.flatMap(columns => BATCHES.flatMap(from => checkedBatch(columns, from, direction)))
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+const sourceOf = (name: string) => DIAGRAMS.find(([n]) => n === name)![1]
 
-for (const columns of WIDTHS) for (const from of BATCHES) test(`diagrams ${from + 1} to ${Math.min(from + BATCH, DIAGRAMS.length)} draw whole at ${columns} columns, every edge between boxes and every label on cells of its own`, () => {
-  const batch = checkedBatch(columns, from)
-  expect(batch.flatMap(({ name, checked }) => checked.failures.map(f => `${name}: ${f.check} ${f.what}`))).toEqual([])
-  expect(batch.every(({ checked }) => checked.flow?.kind === 'drawn')).toBe(true)
+// The drawings the drawer picks, then every diagram drawn left to right whether or not the drawer
+// would pick that drawing, so the direction is held to the checks on every diagram and not only on
+// the short ones it draws so.
+for (const direction of [undefined, 'right'] as const) for (const columns of WIDTHS) for (const from of BATCHES) {
+  test(`diagrams ${from + 1} to ${Math.min(from + BATCH, DIAGRAMS.length)} draw whole ${direction === undefined ? '' : 'left to right '}at ${columns} columns, every edge between boxes and every label on cells of its own`, () => {
+    const batch = checkedBatch(columns, from, direction)
+    expect(batch.flatMap(({ name, checked }) => checked.failures.map(f => `${name}: ${f.check} ${f.what}`))).toEqual([])
+    expect(batch.every(({ checked }) => checked.flow?.kind === 'drawn')).toBe(true)
+  })
+}
+
+test('a diagram draws left to right only where its source runs sideways and that drawing fits in fewer rows; elsewhere it draws top-down', () => {
+  const right = new Map(checkedAll('right').map(({ name, columns, checked }) => [`${name}@${columns}`, checked.flow]))
+  let sideways = 0
+  const wrong = checkedAll().flatMap(({ name, columns, checked }) => {
+    const graph = parseFlow(sourceOf(name))!
+    // A source that does not run sideways never reaches the drawing left to right.
+    if (!graph.sideways) return []
+    const down = drawnFor(drawings(graph), columns)
+    if (same(checked.flow, down)) return []
+    sideways++
+    const turned = right.get(`${name}@${columns}`)
+    if (!same(checked.flow, turned) || turned?.kind !== 'drawn' || !turned.fits || down.kind !== 'drawn') return [`${name} at ${columns}`]
+    return turned.drawing.lines.length < down.drawing.lines.length ? [] : [`${name} at ${columns}: not shorter`]
+  })
+  expect(wrong).toEqual([])
+  expect(sideways > 0).toBe(true)
 })
 
 test('every diagram of the corpus, the state diagrams and the random graphs fits from 60 columns up', () => {
@@ -65,7 +95,7 @@ test('a row splits only after the narrowest wrap does not fit, and a split row d
     const graph = parseFlow(source)!
     for (const columns of [60, 80]) {
       const wrapped = FITS.map(fit => layout(graph, fit)!.drawing).find(d => d.width <= columns)
-      const flow = drawFlow(source, columns)
+      const flow = drawnFor(drawings(graph), columns)
       if (wrapped !== undefined && flow?.kind === 'drawn') expect([name, columns, flow.drawing]).toEqual([name, columns, wrapped])
     }
   }
@@ -93,15 +123,21 @@ test('a level of edge labels side by side wraps them narrower, then moves some t
   expect(new Set(labelTops(40)).size > 1).toBe(true)
 })
 
-test('boxes of one row share their top line, and a frame keeps an empty column inside each side', () => {
-  const flow = drawFlow('flowchart TD\n  A --> B["two<br>lines"] & C[one]', 80)
-  if (flow?.kind !== 'drawn') throw new Error('not drawn')
-  const [b, c] = ['n:1', 'n:2'].map(key => flow.drawing.boxes.find(box => box.key === key)!)
-  expect(b!.y).toBe(c!.y)
-  const cramped = checkedAll().flatMap(({ name, checked }) => {
+test('boxes of one rank share their first line, and a frame keeps an empty line inside each side across the flow', () => {
+  for (const [direction, first] of [['TD', 'y'], ['LR', 'x']] as const) {
+    const flow = drawFlow(`flowchart ${direction}\n  A --> B["two<br>lines"] & C[one]`, 80)
+    if (flow?.kind !== 'drawn') throw new Error('not drawn')
+    const [b, c] = ['n:1', 'n:2'].map(key => flow.drawing.boxes.find(box => box.key === key)!)
+    expect(b![first]).toBe(c![first])
+  }
+  const right = new Map(checkedAll('right').map(({ name, columns, checked }) => [`${name}@${columns}`, checked.flow]))
+  const cramped = [...checkedAll(), ...checkedAll('right')].flatMap(({ name, columns, checked }) => {
     if (checked.flow?.kind !== 'drawn') return []
+    const turned = same(checked.flow, right.get(`${name}@${columns}`))
     const { boxes, frames } = checked.flow.drawing
-    return frames.flatMap(f => [...boxes, ...frames].filter(r => r !== f && r.x > f.x && r.x < f.x + f.w && r.y > f.y && r.y < f.y + f.h && (r.x < f.x + 2 || r.x + r.w > f.x + f.w - 2)).map(() => name))
+    const within = (r: Rect, f: Rect) => r !== f && r.x > f.x && r.x < f.x + f.w && r.y > f.y && r.y < f.y + f.h
+    const tight = (r: Rect, f: Rect) => (turned ? r.y < f.y + 2 || r.y + r.h > f.y + f.h - 2 : r.x < f.x + 2 || r.x + r.w > f.x + f.w - 2)
+    return frames.flatMap(f => [...boxes, ...frames].filter(r => within(r, f) && tight(r, f)).map(() => `${name} at ${columns}`))
   })
   expect(cramped).toEqual([])
 })
@@ -182,13 +218,47 @@ test('a long box label draws whole on as many lines as it takes', () => {
   expect(flow.drawing.lines.join('\n')).not.toContain('…')
 })
 
-test('every direction draws top-down', () => {
-  for (const direction of ['LR', 'RL', 'BT', 'TD']) {
-    const flow = drawFlow(`flowchart ${direction}\n  A[First] --> B[Second]`, 80)
-    if (flow?.kind !== 'drawn') throw new Error('not drawn')
-    const [first, second] = ['n:0', 'n:1'].map(key => flow.drawing.boxes.find(b => b.key === key)!)
-    expect(second!.y > first!.y + first!.h).toBe(true)
-  }
+/** How the boxes of a drawing follow each other: `right` when each is right of the one before. */
+const wayOf = (source: string, columns: number) => {
+  const flow = drawFlow(source, columns)
+  if (flow?.kind !== 'drawn') throw new Error('not drawn')
+  const boxes = flow.drawing.boxes.toSorted((a, b) => Number(a.key.slice(2)) - Number(b.key.slice(2)))
+  const right = boxes.slice(1).every((b, i) => b.x > boxes[i]!.x + boxes[i]!.w - 1 && b.y === boxes[0]!.y)
+  const down = boxes.slice(1).every((b, i) => b.y > boxes[i]!.y + boxes[i]!.h - 1)
+  return { way: right ? 'right' : down ? 'down' : 'neither', rows: flow.drawing.lines.length, fits: flow.fits }
+}
+
+test('a short chain written left to right draws left to right in 3 rows; top-down, bottom-up and top-bottom draw top-down', () => {
+  const chain = 'A[First] --> B[Second] --> C[Third] --> D[Fourth]'
+  for (const direction of ['LR', 'RL']) expect(wayOf(`flowchart ${direction}\n  ${chain}`, 80)).toEqual({ way: 'right', rows: 3, fits: true })
+  expect(wayOf(`graph LR;\n  ${chain}`, 80).way).toBe('right')
+  for (const direction of ['>', '<']) expect(wayOf(`flowchart ${direction}\n  ${chain}`, 80).way).toBe('right')
+  for (const direction of ['^', 'v', 'BR']) expect(wayOf(`flowchart ${direction}\n  ${chain}`, 160).way).toBe('down')
+  for (const direction of ['TD', 'TB', 'BT']) expect(wayOf(`flowchart ${direction}\n  ${chain}`, 160).way).toBe('down')
+  expect(wayOf('stateDiagram-v2\n  direction LR\n  First --> Second\n  Second --> Third', 80).way).toBe('right')
+  // A composite state's own direction is not the diagram's.
+  expect(wayOf('stateDiagram-v2\n  First --> Second\n  state Second {\n    direction LR\n    a --> b\n  }', 80).way).toBe('down')
+})
+
+test('written left to right, a diagram draws top-down where that takes fewer rows or left to right does not fit', () => {
+  // Five boxes stacked in one column take more rows than one row of them under their source.
+  const fan = 'flowchart LR\n  A --> B & C & D & E & F'
+  expect(drawFlow(fan, 160)).toEqual(drawnFor(drawings(parseFlow(fan)!), 160))
+  const long = `flowchart LR\n  ${Array.from({ length: 12 }, (_, i) => `N${i}[Step ${i}]`).join(' --> ')}`
+  expect(wayOf(long, 200).way).toBe('right')
+  expect(wayOf(long, 60)).toEqual(expect.objectContaining({ way: 'down', fits: true }))
+})
+
+test('drawn left to right, a back edge leaves its source and comes into its target against the flow, its label over its line', () => {
+  const flow = drawFlow('flowchart LR\n  A[Alpha] --> B[Beta] --> C[Gamma]\n  C -->|retry| A', 80)
+  if (flow?.kind !== 'drawn') throw new Error('not drawn')
+  const [a, , c] = ['n:0', 'n:1', 'n:2'].map(key => flow.drawing.boxes.find(b => b.key === key)!)
+  const back = flow.drawing.edges.find(e => e.index === 2)!
+  expect(back.cells[0]![0]).toBe(c!.x)
+  expect(back.head![0]).toBe(a!.x + a!.w)
+  expect(flow.drawing.rows[back.head![1]]![back.head![0]]).toBe('◄')
+  const label = back.label[0]!
+  expect(back.cells.some(([x, y]) => y === label.y + 1 && x >= label.x && x < label.x + label.text.length)).toBe(true)
 })
 
 test('a composite state draws as a frame holding its states, nested ones too', () => {
