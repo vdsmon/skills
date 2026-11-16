@@ -40,8 +40,8 @@ export type Level = {
   nodes: { item: string | null; edge: number | null; start: number; end: number }[]
 }
 
-/** A scope as laid out: its width, its levels, and the items and ranks it was laid out with. */
-export type Scope = { width: number; levels: Level[]; items: string[]; ranks: number[] }
+/** A scope as laid out: its levels, and the items and ranks it was laid out with. */
+export type Scope = { levels: Level[]; items: string[]; ranks: number[] }
 
 export type Layout = { drawing: Drawing; scopes: Map<number | null, Scope> }
 
@@ -184,7 +184,7 @@ function layScope(graph: Graph, scope: number | null, plans: Map<number | null, 
     }
   }
   const report = (laid: Laid | null) => {
-    if (laid !== null) pack.scopes.set(scope, { width: laid.canvas.w, levels: laid.levels, items: plan.items, ranks: plan.ranks })
+    if (laid !== null) pack.scopes.set(scope, { levels: laid.levels, items: plan.items, ranks: plan.ranks })
     return laid
   }
   if (scope === null) return report(arrange(items, plan, null, pack))
