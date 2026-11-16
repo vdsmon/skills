@@ -26,7 +26,8 @@ FENCE_RE = re.compile(r"^\s*(```|~~~)")
 LABEL_RE = re.compile(r"^- \*\*Q(\d+)\.")
 ANY_Q_RE = re.compile(r"\bQ(\d+)\b")
 WHY_RE = re.compile(r"\bWhy:(.*)$")
-WAITS_RE = re.compile(r"\bWaits on Q\d+")
+# A question may wait on another question, on a word still to be agreed or on a lookup.
+WAITS_RE = re.compile(r"\bWaits on\b")
 TERM_RE = re.compile(r"^- \*\*(.+?)\*\* \((.+?)\):(.*)$")
 AGREED = "Agreed by the user on"
 REMINDER = (

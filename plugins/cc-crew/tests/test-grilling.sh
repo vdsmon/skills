@@ -170,6 +170,7 @@ check "a sound term is not refused" '! printf "%s" "$err" | grep -q "line 10:"'
 check "decision with no Why" 'printf "%s" "$err" | grep -q "line 14: decision has no \"Why:\""'
 check "decision with nothing after Why" 'printf "%s" "$err" | grep -q "line 15: decision has nothing after \"Why:\"" && printf "%s" "$err" | grep -q "line 16: decision has nothing after \"Why:\""'
 check "a question number used twice names both lines" 'printf "%s" "$err" | grep -q "line 15: Q2 appears more than once (lines 15, 20)" && printf "%s" "$err" | grep -q "line 20: Q2 appears more than once"'
+check "a question that waits on a word counts as waiting" 'printf "## Open\n\n- **Q1. A.** x. Waits on the word \"keep rule\".\n- **Q2. B.** y.\n" > "$tmp/ww.md" && python3 "$record" check "$tmp/ww.md" 2>/dev/null | head -n 1 | grep -qxF "0 settled · 1 open · 1 waiting · 0 set aside"'
 check "Waits on Q<n> is not a second use" 'printf "## Open\n\n- **Q1. A.** x.\n- **Q2. B.** y. Waits on Q1.\n" > "$tmp/w.md" && python3 "$record" check "$tmp/w.md" >/dev/null 2>&1'
 
 echo "--- check: fences and later sections are never read"

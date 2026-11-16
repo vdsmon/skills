@@ -59,7 +59,7 @@ Number questions across the whole session, never per round: Q3 names one questio
 - <point>
 ```
 
-`For the glossary.`, `Also applies to:` and `Waits on` appear only where they are true. Mark a word for the glossary only when it names a thing in the project; a label of this one plan is not a glossary word. A decision needs its why: when the user overruled your recommendation and gave no reason, ask once.
+`For the glossary.`, `Also applies to:` and `Waits on` appear only where they are true; `Waits on` names a question, a word still to be agreed or a lookup still running. A numbered question never leaves the record: one you drop moves to Decisions as dropped, with its why, so its number is never used again. Mark a word for the glossary only when it names a thing in the project; a label of this one plan is not a glossary word. A decision needs its why: when the user overruled your recommendation and gave no reason, ask once.
 
 ## The close
 
