@@ -25,7 +25,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 SKELETON = HERE.parent / "page-skeleton.html"
 sys.path.insert(0, str(HERE.parents[2] / "scripts"))
-from plans import FENCE_RE, PHASES, Plan, sections  # noqa: E402  (the readers of a plan file, shared)
+from plans import FENCE_RE, PHASES, Plan, headings, sections  # noqa: E402  (the readers of a plan file, shared)
 
 FIRST = ("picture", "new", "work", "ladder", "own", "approval", "signoff", "words", "record")
 SECOND = ("work", "new", "ladder", "own", "picture", "approval", "signoff", "words", "record")
@@ -229,20 +229,15 @@ def fmt_time(stamp):
 
 
 def render_work(lines, progress, problems):
-    intro, items, cur = [], [], None
-    for line in lines:
-        if line.startswith("### "):
-            m = ITEM_RE.match(line)
-            if not m:
-                problems.append(f"'## Work': the heading '{line.strip()}' is not '### Work item <n> <title> (<who>)'")
-                cur = None
-                continue
-            cur = {"n": int(m.group(1)), "title": m.group(2), "who": m.group(3).strip(), "body": []}
-            items.append(cur)
-        elif cur is not None:
-            cur["body"].append(line)
-        elif not items:
-            intro.append(line)
+    hs = headings(lines, 3)  # outside code fences: a brief may hold a fenced example with headings
+    intro, items = lines[:hs[0][0]] if hs else lines, []
+    for k, (i, _) in enumerate(hs):
+        m = ITEM_RE.match(lines[i])
+        if not m:
+            problems.append(f"'## Work': the heading '{lines[i].strip()}' is not '### Work item <n> <title> (<who>)'")
+            continue
+        end = hs[k + 1][0] if k + 1 < len(hs) else len(lines)
+        items.append({"n": int(m.group(1)), "title": m.group(2), "who": m.group(3).strip(), "body": lines[i + 1:end]})
     if not items:
         problems.append("'## Work' has no '### Work item <n> <title> (<who>)'")
         return ""
@@ -251,13 +246,15 @@ def render_work(lines, progress, problems):
         problems.append(f"'## Work' has Work item {n} twice")
 
     for it in items:
-        fields, name = {}, None
+        fields, name, fenced = {}, None, False
         for line in it["body"]:
-            m = FIELD_RE.match(line)
+            if FENCE_RE.match(line):
+                fenced = not fenced
+            m = None if fenced else FIELD_RE.match(line)
             if m:
                 name = m.group(1).strip()
                 fields.setdefault(name, []).append(m.group(2))
-            elif line.startswith("- ") or line.startswith("### "):
+            elif not fenced and line.startswith("- "):
                 name = None
             elif name is not None and line.strip():
                 fields[name].append(line.strip())
@@ -492,6 +489,24 @@ def render_terms(lines):
 # -- the plan's own pieces -------------------------------------------------------
 
 
+def declarations(block):
+    """A rule's declarations: split on semicolons outside strings and parentheses (a data URL holds one)."""
+    out, buf, quote, depth = [], "", None, 0
+    for ch in block:
+        if quote:
+            quote = None if ch == quote else quote
+        elif ch in "\"'":
+            quote = ch
+        elif ch in "()":
+            depth = max(0, depth + (1 if ch == "(" else -1))
+        elif ch == ";" and not depth:
+            out.append(buf)
+            buf = ""
+            continue
+        buf += ch
+    return out + [buf]
+
+
 def look_problems(css):
     """A look sets the skeleton's tokens on :root, and loads typefaces; nothing about layout."""
     css = re.sub(r"/\*.*?\*/", " ", css, flags=re.S)
@@ -529,7 +544,7 @@ def look_problems(css):
         elif ch == "}":
             kind = stack.pop() if stack else None
             if kind == "root":
-                for decl in buf.split(";"):
+                for decl in declarations(buf):
                     prop = decl.split(":", 1)[0].strip()
                     if prop and not prop.startswith("--") and prop != "color-scheme":
                         say(f"'{prop}' is not a token")

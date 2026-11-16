@@ -236,6 +236,21 @@ run "$ep/plan.md"
 check "a Progress section with no line yet: every item not started" '[ $rc -eq 0 ] && [ "$(grep -o "data-state=\"[^\"]*\"" "$ep/page.html" | sort -u)" = "data-state=\"not started\"" ]'
 check "items that run together in different stages each name the other" 'py "$ep/page.html" "bool(re.search(r\"data-item=\\\"3\\\".*?Runs with Work item 2\", s, re.S)) and bool(re.search(r\"data-item=\\\"2\\\".*?Runs with Work item 1, Work item 3\", s, re.S))" | grep -qx True'
 
+# -- a fenced example inside a work item, and a look whose band is a data URL -----------------
+fx="$tmp/fenced"; mkdir -p "$fx"; pieces "$fx"
+python3 - "$base/plan.md" "$fx/plan.md" <<'PY'
+import sys
+s = open(sys.argv[1]).read()
+old = "- You own: STEPS-HIDDEN\n"
+assert s.count(old) == 1
+s = s.replace(old, old + "- Work, in order:\n  1. Write the README like this:\n\n```markdown\n### Usage\n\n- After: Work item 9.\n```\n\n")
+open(sys.argv[2], "w").write(s)
+PY
+printf ':root { --band: url("data:image/svg+xml;base64,PHN2Zz48L3N2Zz4="); }\n' >> "$fx/page/look.css"
+run "$fx/plan.md"
+check "a fenced example with a heading and a field line stays inside its work item" '[ $rc -eq 0 ] && [ "$(grep -o "data-item=\"[0-9]\"" "$fx/page.html" | tr -d "\n")" = "data-item=\"1\"data-item=\"2\"data-item=\"3\"" ] && ! grep -q "Waits on Work item 9" "$fx/page.html"'
+check "a look's band may be a data URL that holds a semicolon" '[ $rc -eq 0 ] && grep -q "base64,PHN2Zz48L3N2Zz4=" "$fx/page.html"'
+
 # -- refusals ---------------------------------------------------------------------------------
 # refused <dir> <what the message names>: exit 1, the name in stderr, page.html unchanged.
 refused() {
