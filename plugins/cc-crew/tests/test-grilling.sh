@@ -43,6 +43,8 @@ Tea for the office, & nothing / else.
 
 ## Example
 
+## What I checked
+
 ## Terms
 
 ## Decisions

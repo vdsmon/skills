@@ -42,7 +42,7 @@ def template(name, subject):
         f"# {name}\n\nStatus: grilling.\n\n"
         f"## Principle\n\nNot proposed yet.\n\n"
         f"## What this is for\n\n{subject}\n\n"
-        "## Example\n\n## Terms\n\n## Decisions\n\n## Open\n\n## Set aside\n"
+        "## Example\n\n## What I checked\n\n## Terms\n\n## Decisions\n\n## Open\n\n## Set aside\n"
     )
 
 

@@ -4,7 +4,7 @@ What the grilling is for, or the principle it proposes for the whole:
 
 {{PRINCIPLE}}
 
-The record says where the grilling stands. "Open" holds the questions not yet answered, "Decisions" what the user settled and why, "Terms" the words agreed, "Set aside" the points parked for later, and "Principle" the one sentence proposed for the whole, once there is one.
+The record says where the grilling stands. "What I checked" holds the facts that were looked up and those that could not be, "Open" the questions not yet answered, "Decisions" what the user settled and why, "Terms" the words agreed, "Set aside" the points parked for later, and "Principle" the one sentence proposed for the whole, once there is one.
 
 Find what the people in the conversation cannot see. For each objection give something concrete: the question that is missing, or the situation and the wrong thing that then happens. Look hardest at:
 
