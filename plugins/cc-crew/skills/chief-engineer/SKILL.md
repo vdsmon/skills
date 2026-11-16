@@ -5,7 +5,9 @@ disable-model-invocation: true
 argument-hint: "[the first thing to work on]"
 allowed-tools:
   - Bash(python3 *scripts/plans.py *)
+  - Bash(python3 "*scripts/plans.py" *)
   - Bash(python3 *scripts/page.py *)
+  - Bash(python3 "*scripts/page.py" *)
 ---
 
 # Chief engineer
