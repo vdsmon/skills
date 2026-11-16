@@ -60,7 +60,7 @@ What a yes starts: a key with delete rights is created for the place you pick.
 
 **Set aside:** nothing.
 
-## Round two, after "the word is fine, no objection, 4 yes, 5 A, dry run is the default, and keep the auditors' monthly archives in mind"
+## Round two, after "the word is fine, no objection, 4 yes, 5 A, dry run is the default and the nightly job is the plain command, and keep the auditors' monthly archives in mind"
 
 **New words:** none
 
@@ -75,9 +75,9 @@ flowchart TD
 
 5 settled · 2 open · 1 waiting · 1 set aside
 
-**Q6. Dry run is the default.** You said yes to this ahead of its turn, and it breaks on Q3.
+**Q6. Dry run is the default, and the nightly job is the plain command.** You answered this ahead of its turn, and the two halves break on Q3.
 
-- Example: the 03:00 job starts with no switches, so it only prints the 40 archives it would delete. Every night, for good.
+- Example: the 03:00 job runs the plain command, which is a dry run, so it only prints the 40 archives it would delete. Every night, for good.
 - Recommended (leaning): dry run is the default at a terminal, and the scheduled job passes `--apply`.
 - Would flip it: you want the first weeks of nightly runs to delete nothing, on purpose.
 
@@ -119,8 +119,8 @@ flowchart TD
 
 **3. Q11. The principle**
 
-- Proposed: "The tool deletes an archive only when the keep rule names it and the bucket was listed in full."
-- Built cases it survives: a listing that fails halfway (nothing is deleted); a hand-made file in the root (the rule never names it); a first run with 369 archives to delete (allowed, and the alert says so).
+- Proposed: "The tool deletes an archive only when the keep rule does not keep it and the bucket was listed in full."
+- Built cases it survives: a listing that fails halfway (nothing is deleted); a hand-made file in the root (the tool looks only under `db/`, by Q1); a first run with 369 archives to delete (allowed, and the alert says so).
 - A first draft broke: "it never deletes an archive newer than 30 days" met an archive whose name carries the wrong date.
 - Recommended (leaning): this sentence.
 - Would flip it: you want the 30-day undo named in it.
