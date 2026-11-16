@@ -32,6 +32,8 @@ export type State = {
   /** Failed checks in a row. */
   failures: number
   isOff: boolean
+  /** The name the held-name file gives the session, while the file is there. */
+  held: string | null
   stats: Stats
 }
 
