@@ -1,6 +1,10 @@
 # <plan name>
 
-Status: awaiting approval.
+Phase: grilling. <grilling, awaiting approval, building, done or dropped, then one sentence on where the plan stands; set with plans.py>
+Waiting on: <who or what>: <what for; this line is there only while the plan cannot move>
+Repository: <written by plans.py hold>
+Held by: <written by plans.py hold>
+Page: <the page's link>
 
 ## Principle
 
@@ -37,11 +41,20 @@ Order: <what depends on what, and what runs side by side>.
 - Done when: <what passes, and what cannot be known yet, with its fallback>.
 - Runs with: <the items built at the same time, or none>.
 
-### Work item 2 <title> (chief engineer)
+### Work item 2 Ship (chief engineer)
 
-- For: <...>
+- For: <where the change is used once it lands>.
 - Where: <...>
+- Work, in order: <the combined diff to the reviewer; the push; the pull request and its checks; the merge, by the repository's rule; what the repository needs after it>.
 - Done when: <...>
+
+## Progress
+
+<Written by plans.py progress on approval: one line per work item, "- Work item 1: not started." The closing step follows the last work item and is not one.>
+
+## What the builders suggested
+
+- <What a builder proposed, and what was done with it, with the reason.>
 
 ## What "approved" starts
 
