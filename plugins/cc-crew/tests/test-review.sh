@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Offline checks for scripts/review.sh. A fake codex first on PATH records its
 # arguments one file each and acts out the outcome named in FAKE_CODEX. review.sh is
-# copied beside stand-in templates, so Work 1's real templates are never needed.
+# copied beside stand-in templates, so the real templates are never needed.
 set -u
 here=$(cd "$(dirname "$0")" && pwd)
 fail=0
@@ -21,7 +21,9 @@ printf 'Stand-in diff template: judge the diff.\n{{PRINCIPLE}}\nEnd of diff temp
 printf 'Stand-in grilling template: judge the record.\n{{PRINCIPLE}}\nEnd of grilling template.\n' > "$tmp/scripts/review-prompt-grilling.md"
 # & and \ break naive sed or ${//} substitution.
 printf 'Principle: R&D first, paths like C:\\tmp\\n stay literal.\n' > "$tmp/principle.md"
-printf '# Plan\nBuild the thing.\n' > "$tmp/plan.md"
+# plan_with <principle-file> <plan-file>: a plan whose "## Principle" section is that file.
+plan_with() { { printf '# Plan\n\n## Principle\n\n'; cat "$1"; printf '\n## Work\n\nBuild the thing.\n'; } > "$2"; }
+plan_with "$tmp/principle.md" "$tmp/plan.md"
 printf 'stdin that must not reach codex\n' > "$tmp/stdin-feed"
 
 # Fake codex: one file per argument in $FAKE_ARGS/<call>/, then FAKE_CODEX decides.
@@ -63,11 +65,11 @@ has_args() {
 prompt_of() { cat "$(ls "$1"/[0-9]* | tail -n 1)"; }
 
 echo "--- plan review: prompt, model, sandbox, answer"
-run ok plan "$tmp/principle.md" "$tmp/plan.md" "$tmp/out"
+run ok plan "$tmp/plan.md" "$tmp/out"
 folder=$(dirname "$last")
 check "plan exits 0" '[ "$rc" -eq 0 ]'
 check "last line is a non-empty answer.md" '[ "$(basename "$last")" = answer.md ] && [ -s "$last" ]'
-check "folder holds principle and plan" 'cmp -s "$folder/principle.md" "$tmp/principle.md" && cmp -s "$folder/plan.md" "$tmp/plan.md"'
+check "folder holds the plan and the principle read from it" 'cmp -s "$folder/principle.md" "$tmp/principle.md" && cmp -s "$folder/plan.md" "$tmp/plan.md"'
 check "prompt carries the principle verbatim" 'prompt_of "$call" | grep -qF "R&D first, paths like C:\\tmp\\n stay literal."'
 check "prompt carries the template text" 'prompt_of "$call" | grep -q "^Stand-in plan template: judge the plan.$" && prompt_of "$call" | grep -q "^End of plan template.$"'
 check "token is gone from the prompt" '! prompt_of "$call" | grep -qF "{{PRINCIPLE}}"'
@@ -81,7 +83,7 @@ check "answer keeps the review and ends with the script's reminder" 'head -n 1 "
 check "a first read says nothing about a second" '! grep -q "^This is read" "$last"'
 
 echo "--- REVIEW_MODEL from the environment"
-REVIEW_MODEL=other-model run ok plan "$tmp/principle.md" "$tmp/plan.md" "$tmp/out"
+REVIEW_MODEL=other-model run ok plan "$tmp/plan.md" "$tmp/out"
 check "REVIEW_MODEL overrides the model" 'has_args "$call" -m other-model'
 check "the same principle again is read 2, with the stop" 'grep -q "^This is read 2 of this change\. A blocker on a spot you already fixed is a stop" "$last"'
 
@@ -101,47 +103,62 @@ check "asking again after a refusal reuses number 3" '[ "$last" = "$folder/answe
 check "a relative folder still gives absolute paths" '(cd "$tmp" && bash "$review" follow-up "${folder#"$tmp"/}" q.md < "$tmp/stdin-feed" | tail -n 1 | grep -qx "$folder/answer-4.md")'
 
 echo "--- failures"
-run usage plan "$tmp/principle.md" "$tmp/plan.md" "$tmp/out"
+run usage plan "$tmp/plan.md" "$tmp/out"
 check "usage refusal exits 3" '[ "$rc" -eq 3 ]'
 check "usage refusal is reported" 'printf "%s" "$err" | grep -q "usage limit"'
-run fail plan "$tmp/principle.md" "$tmp/plan.md" "$tmp/out"
+check "a usage refusal's last line is the folder the fallback reads" '[ -d "$last" ] && cmp -s "$last/principle.md" "$tmp/principle.md" && cmp -s "$last/plan.md" "$tmp/plan.md"'
+run fail plan "$tmp/plan.md" "$tmp/out"
 check "other Codex failure exits 4 with the log tail" '[ "$rc" -eq 4 ] && printf "%s" "$err" | grep -q "500 Internal Server Error"'
-run empty plan "$tmp/principle.md" "$tmp/plan.md" "$tmp/out"
+run empty plan "$tmp/plan.md" "$tmp/out"
 check "empty answer exits 4, not 0" '[ "$rc" -eq 4 ]'
 # The fake echoes the prompt into the log; a principle quoting a usage error must
 # not turn a failure with no error line of its own into 3.
 printf 'ERROR: You have hit your usage limit, said the old log.\n' > "$tmp/principle-usage.md"
-run crash plan "$tmp/principle-usage.md" "$tmp/plan.md" "$tmp/out"
+plan_with "$tmp/principle-usage.md" "$tmp/plan-usage.md"
+run crash plan "$tmp/plan-usage.md" "$tmp/out"
 check "usage words echoed from the prompt still exit 4" '[ "$rc" -eq 4 ]'
 # Refused, failed and empty reads above left no answer, and this principle is new here.
-run ok plan "$tmp/principle-usage.md" "$tmp/plan.md" "$tmp/out"
+run ok plan "$tmp/plan-usage.md" "$tmp/out"
 check "another principle in the same output folder starts at read 1" '[ "$rc" -eq 0 ] && grep -q "^From the review script" "$last" && ! grep -q "^This is read" "$last"'
 sed 's/{{PRINCIPLE}}/nothing/' "$tmp/scripts/review-prompt-plan.md" > "$tmp/notoken.md" && cp "$tmp/scripts/review-prompt-plan.md" "$tmp/keep.md" && cp "$tmp/notoken.md" "$tmp/scripts/review-prompt-plan.md"
-run ok plan "$tmp/principle.md" "$tmp/plan.md" "$tmp/out"
+run ok plan "$tmp/plan.md" "$tmp/out"
 check "template without the token exits 4 and never calls codex" '[ "$rc" -eq 4 ] && [ ! -e "$call" ]'
 cp "$tmp/keep.md" "$tmp/scripts/review-prompt-plan.md"
 
-echo "--- grilling: principle and record, its own reminder"
-printf '# kettle\n\nStatus: grilling.\n\n## Decisions\n\n- **Q1. Colour.** Blue. Why: it matches.\n' > "$tmp/record.md"
+echo "--- the plan file alone: default folder, a plan with no principle"
+run ok plan "$tmp/plan.md"
+check "with no out-dir the answer lands in reviews/ beside the plan" '[ "$rc" -eq 0 ] && [ "$(dirname "$(dirname "$last")")" = "$tmp/reviews" ]'
+printf '# Plan\n\n## Work\n\nBuild the thing.\n' > "$tmp/plan-bare.md"
+run ok plan "$tmp/plan-bare.md" "$tmp/out"
+check "a plan with no principle section exits 4 before codex" '[ "$rc" -eq 4 ] && [ ! -e "$call" ] && printf "%s" "$err" | grep -qF "## Principle"'
+
+echo "--- grilling: the record alone, its own reminder"
+# The record as record.py starts it, so the two scripts agree on a principle not proposed yet.
+record=$(CC_CREW_PLANS="$tmp/plans" python3 "$here/../skills/grilling/scripts/record.py" start kettle "Tea for the office, R&D first." | tail -n 1)
+printf 'Tea for the office, R&D first.\n' > "$tmp/purpose.md"
 grilling_reminder="From the review script, not the reviewer. Weigh each objection before it reaches Victor: one that a fact settles gets one line naming the fact; the rest go to him as questions, in the reviewer's own words."
-run ok grilling "$tmp/principle.md" "$tmp/record.md" "$tmp/out"
+run ok grilling "$record" "$tmp/out"
 gfolder=$(dirname "$last")
 check "grilling exits 0 with answer.md last" '[ "$rc" -eq 0 ] && [ "$(basename "$last")" = answer.md ] && [ -s "$last" ]'
 check "a fresh grilling-* folder" 'case $(basename "$gfolder") in grilling-*) true ;; *) false ;; esac'
-check "folder holds principle.md and record.md" 'cmp -s "$gfolder/principle.md" "$tmp/principle.md" && cmp -s "$gfolder/record.md" "$tmp/record.md"'
-check "prompt is the grilling template with the principle verbatim" 'prompt_of "$call" | grep -q "^Stand-in grilling template: judge the record.$" && prompt_of "$call" | grep -qF "R&D first, paths like C:\\tmp\\n stay literal." && ! prompt_of "$call" | grep -qF "{{PRINCIPLE}}"'
+check "a record fresh from record.py is read against what the subject is for" 'cmp -s "$gfolder/principle.md" "$tmp/purpose.md" && cmp -s "$gfolder/record.md" "$record"'
+check "prompt is the grilling template with that sentence verbatim" 'prompt_of "$call" | grep -q "^Stand-in grilling template: judge the record.$" && prompt_of "$call" | grep -qxF "Tea for the office, R&D first." && ! prompt_of "$call" | grep -qF "{{PRINCIPLE}}"'
 check "grilling is read-only in its folder with the model" 'has_args "$call" --sandbox read-only && has_args "$call" -C "$gfolder" && has_args "$call" -m gpt-6-astra'
 check "answer keeps the review and ends with the grilling reminder, word for word" 'head -n 1 "$last" | grep -qx "The review." && [ "$(tail -n 1 "$last")" = "$grilling_reminder" ]'
 check "no plan or diff reminder in a grilling answer" '! grep -q "Before you fix anything above" "$last"'
-run ok grilling "$tmp/principle.md" "$tmp/record.md" "$tmp/out"
+sed 's/^Not proposed yet\.$/The kettle boils water and nothing else./' "$record" > "$tmp/record-closed.md"
+printf 'The kettle boils water and nothing else.\n' > "$tmp/kettle-principle.md"
+run ok grilling "$tmp/record-closed.md" "$tmp/out"
+check "once the record proposes a principle, the read is against it" '[ "$rc" -eq 0 ] && cmp -s "$(dirname "$last")/principle.md" "$tmp/kettle-principle.md"'
+run ok grilling "$record" "$tmp/out"
 check "a second grilling read counts no reads" '[ "$rc" -eq 0 ] && ! grep -q "^This is read" "$last"'
 run ok follow-up "$gfolder" "$tmp/q.md"
 check "follow-up works in a grilling folder" '[ "$rc" -eq 0 ] && [ "$last" = "$gfolder/answer-2.md" ] && has_args "$call" --sandbox read-only && ! grep -q "From the review script" "$last"'
-run usage grilling "$tmp/principle.md" "$tmp/record.md" "$tmp/out"
+run usage grilling "$record" "$tmp/out"
 check "a grilling read refused for usage exits 3" '[ "$rc" -eq 3 ]'
-run ok grilling "$tmp/principle.md" "$tmp/record.md"
-check "grilling with a missing argument exits 4, prints the grilling usage line, never calls codex" '[ "$rc" -eq 4 ] && [ ! -e "$call" ] && printf "%s" "$err" | grep -qxF "review.sh grilling <principle-file> <record-file> <out-dir>"'
-run ok grilling "$tmp/principle.md" "$tmp/no-record.md" "$tmp/out"
+run ok grilling
+check "grilling with no argument exits 4, prints the grilling usage line, never calls codex" '[ "$rc" -eq 4 ] && [ ! -e "$call" ] && printf "%s" "$err" | grep -qxF "review.sh grilling <plan-file> [<out-dir>]"'
+run ok grilling "$tmp/no-record.md" "$tmp/out"
 check "a missing record exits 4 before codex" '[ "$rc" -eq 4 ] && [ ! -e "$call" ]'
 
 echo "--- diff snapshot: tree of <head>, never the working tree"
@@ -159,12 +176,16 @@ printf '*.txt -diff\n' > "$repo/.gitattributes"
 run ok diff "$tmp/principle.md" "$repo" "$base" "$head" "$tmp/out"
 dfolder=$(dirname "$last")
 check "diff exits 0" '[ "$rc" -eq 0 ]'
+check "with no plan, the purpose file is the principle, whole" 'cmp -s "$dfolder/principle.md" "$tmp/principle.md"'
 check "tree holds <head>'s version of a changed file" '[ "$(cat "$dfolder/tree/keep.txt")" = "keep v2" ]'
 check "deleted file is absent from the tree" '[ ! -e "$dfolder/tree/gone.txt" ]'
 check "nothing from after <head> or the working tree" '[ ! -e "$dfolder/tree/later.txt" ] && [ ! -e "$dfolder/tree/untracked.txt" ] && [ ! -e "$dfolder/tree/.gitattributes" ]'
 check "diff records the deletion as text despite the checkout's .gitattributes" 'grep -q "^deleted file mode" "$dfolder/diff.patch" && grep -q "^-doomed$" "$dfolder/diff.patch"'
 check "diff prompt uses the diff template and principle" 'prompt_of "$call" | grep -q "^Stand-in diff template" && prompt_of "$call" | grep -qF "R&D first"'
 check "diff runs read-only in the snapshot folder" 'has_args "$call" --sandbox read-only && has_args "$call" -C "$dfolder"'
+plan_with "$tmp/kettle-principle.md" "$tmp/plans/kettle/plan-built.md"
+run ok diff "$tmp/plans/kettle/plan-built.md" "$repo" "$base" "$head"
+check "a diff given the plan file is read against its principle, into reviews/ beside it" '[ "$rc" -eq 0 ] && cmp -s "$(dirname "$last")/principle.md" "$tmp/kettle-principle.md" && [ "$(dirname "$(dirname "$last")")" = "$tmp/plans/kettle/reviews" ]'
 run ok diff "$tmp/principle.md" "$repo" "$base" no-such-rev "$tmp/out"
 check "unknown revision exits 4" '[ "$rc" -eq 4 ] && [ ! -e "$call" ]'
 # <base> has moved on since the branch was cut: its newer work is not this change's deletion.

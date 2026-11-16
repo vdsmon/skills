@@ -30,7 +30,7 @@ Tea for the office. PURPOSE-MARK
 
 ## Work
 
-### Work 1 Heater (builder)
+### Work item 1 Heater (builder)
 
 - For: the water gets hot. FOR-ONE
 - You own: `heater/`. OWN-ONE
@@ -40,9 +40,9 @@ Tea for the office. PURPOSE-MARK
   2. Add a thermostat. STEP-ONE-B
 - Limits: no gas. LIMITS-ONE
 - Done when: water reaches 100 C. DONE-ONE
-- Runs with: Work 2.
+- Runs with: Work item 2.
 
-### Work 2 Whistle (builder)
+### Work item 2 Whistle (builder)
 
 - For: someone hears the water boil. FOR-TWO
 - You own: `whistle/`. OWN-TWO
@@ -51,9 +51,9 @@ Tea for the office. PURPOSE-MARK
   1. Shape the spout. STEP-TWO
 - Limits: under 90 dB. LIMITS-TWO
 - Done when: it whistles at 100 C. DONE-TWO
-- Runs with: Work 1.
+- Runs with: Work item 1.
 
-### Work 3 Assembly (chief engineer)
+### Work item 3 Assembly (chief engineer)
 
 - For: one kettle. FOR-THREE
 - You own: the case. OWN-THREE
@@ -72,14 +72,14 @@ before=$(cksum < "$plan")
 out="$tmp/briefs"
 msg=$(python3 "$cut" "$plan" "$out"); rc=$?
 check "exits 0" '[ $rc -eq 0 ]'
-check "two briefs, one per builder item" '[ "$(ls "$out" | tr "\n" " ")" = "work-1.md work-2.md " ]'
+check "two briefs, one per builder item" '[ "$(ls "$out" | tr "\n" " ")" = "work-item-1.md work-item-2.md " ]'
 check "prints the brief paths" '[ "$(echo "$msg" | wc -l | tr -d " ")" = 2 ]'
 check "plan unchanged" '[ "$(cksum < "$plan")" = "$before" ]'
 
 shared="$tmp/shared.md"
 awk '/^## Every brief$/{on=1} on' "$plan" > "$shared"
 for n in 1 2; do
-  b="$out/work-$n.md"
+  b="$out/work-item-$n.md"
   if [ "$n" = 1 ]; then mine=ONE; other=TWO; else mine=TWO; other=ONE; fi
   check "brief $n: starts with its For" 'head -1 "$b" | grep -q "^- For: .*FOR-$mine$"'
   check "brief $n: holds the principle" 'grep -q "PRINCIPLE-MARK" "$b"'
@@ -98,7 +98,7 @@ done
 
 awk '/^## What this is for$/{skip=1; next} /^## /{skip=0} !skip' "$plan" > "$tmp/nopurpose.md"
 python3 "$cut" "$tmp/nopurpose.md" "$tmp/nopurpose" >/dev/null; rc=$?
-check "no purpose section: cuts as before, For then principle" '[ $rc -eq 0 ] && [ "$(sed -n 3p "$tmp/nopurpose/work-1.md")" = "## Principle" ] && ! grep -q "What this is for" "$tmp/nopurpose/work-1.md"'
+check "no purpose section: cuts as before, For then principle" '[ $rc -eq 0 ] && [ "$(sed -n 3p "$tmp/nopurpose/work-item-1.md")" = "## Principle" ] && ! grep -q "What this is for" "$tmp/nopurpose/work-item-1.md"'
 
 sed 's/(builder)/(chief engineer)/' "$plan" > "$tmp/nobuilder.md"
 msg=$(python3 "$cut" "$tmp/nobuilder.md" "$out"); rc=$?
@@ -109,12 +109,16 @@ check "no builder: no brief left in out-dir" '[ -z "$(ls "$out")" ]'
 grep -v "FOR-TWO" "$plan" > "$tmp/nofor.md"
 err=$(python3 "$cut" "$tmp/nofor.md" "$tmp/broken" 2>&1); rc=$?
 check "builder item without For: exits 1" '[ $rc -eq 1 ]'
-check "builder item without For: names the item" 'echo "$err" | grep -q "Work 2 Whistle"'
+check "builder item without For: names the item" 'echo "$err" | grep -q "Work item 2 Whistle"'
 check "builder item without For: writes nothing" '[ ! -e "$tmp/broken" ]'
+
+sed 's/^### Work item /### Work /' "$plan" > "$tmp/oldheading.md"
+err=$(python3 "$cut" "$tmp/oldheading.md" "$tmp/broken" 2>&1); rc=$?
+check "a heading that says Work 1: exits 1, names the heading wanted, writes nothing" '[ $rc -eq 1 ] && echo "$err" | grep -qF "### Work item <n> <title> (<who>)" && [ ! -e "$tmp/broken" ]'
 
 grep -v "^## Principle" "$plan" > "$tmp/noprinciple.md"
 python3 "$cut" "$tmp/noprinciple.md" "$tmp/broken" 2>/dev/null; rc=$?
 check "no principle section: exits 1, writes nothing" '[ $rc -eq 1 ] && [ ! -e "$tmp/broken" ]'
 
-check "plan as out-dir file refused" 'cp "$plan" "$tmp/work-1.md"; ! python3 "$cut" "$tmp/work-1.md" "$tmp" 2>/dev/null && grep -q FOR-ONE "$tmp/work-1.md"'
+check "plan as out-dir file refused" 'cp "$plan" "$tmp/work-item-1.md"; ! python3 "$cut" "$tmp/work-item-1.md" "$tmp" 2>/dev/null && grep -q FOR-ONE "$tmp/work-item-1.md"'
 exit $fail

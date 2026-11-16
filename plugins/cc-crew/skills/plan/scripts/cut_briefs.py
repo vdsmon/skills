@@ -6,8 +6,8 @@ Usage: cut_briefs.py <plan.md> <out-dir>
 Each brief is the plan's own lines, in this order: the item's For field, the
 ## What this is for section when the plan has one, the ## Principle section, the
 item's heading and the rest of its body, then the ## Every brief section. Nothing is re-rendered: the item body is copied as written
-with only the For field lifted to the top. Briefs land in <out-dir>/work-<n>.md;
-stale work-*.md files there are removed, so the dir always matches the plan.
+with only the For field lifted to the top. Briefs land in <out-dir>/work-item-<n>.md;
+stale work-item-*.md files there are removed, so the dir always matches the plan.
 
 Exits 0 when it wrote briefs or when the plan has no builder item (it says so),
 1 on a plan it cannot cut (it names the line and writes nothing), 2 on bad usage.
@@ -18,7 +18,7 @@ from pathlib import Path
 
 FIELDS = ("For", "You own", "Where", "Work", "Limits", "Done when", "Runs with")
 FIELD_RE = re.compile(r"^- (%s)\b[^:\n]*:" % "|".join(re.escape(f) for f in FIELDS))
-ITEM_RE = re.compile(r"^### Work (\d+)\b.*\(([^()]*)\)\s*$")
+ITEM_RE = re.compile(r"^### Work item (\d+)\b.*\(([^()]*)\)\s*$")
 FENCE_RE = re.compile(r"^\s*(```|~~~)")
 
 
@@ -85,10 +85,10 @@ def cut(plan_text):
     for k, (i, _) in enumerate(items):
         m = ITEM_RE.match(lines[i])
         if not m:
-            raise PlanError(f"line {i + 1}: item heading is not '### Work <n> <title> (<who>)'")
+            raise PlanError(f"line {i + 1}: item heading is not '### Work item <n> <title> (<who>)'")
         n, who = m.group(1), m.group(2).strip().lower()
         if n in seen:
-            raise PlanError(f"line {i + 1}: second Work {n}")
+            raise PlanError(f"line {i + 1}: second Work item {n}")
         seen.add(n)
         if who != "builder":
             continue
@@ -112,13 +112,13 @@ def main(argv):
     except PlanError as e:
         print(f"cut_briefs: {plan}: {e}; no brief written", file=sys.stderr)
         return 1
-    targets = [(out / f"work-{n}.md", text) for n, text in briefs]
+    targets = [(out / f"work-item-{n}.md", text) for n, text in briefs]
     if any(t == plan for t, _ in targets):
         print(f"cut_briefs: a brief would overwrite the plan {plan}; no brief written", file=sys.stderr)
         return 1
     out.mkdir(parents=True, exist_ok=True)
     keep = {t for t, _ in targets}
-    for old in out.glob("work-*.md"):
+    for old in out.glob("work-item-*.md"):
         if old not in keep and old != plan:
             old.unlink()
     if not briefs:
