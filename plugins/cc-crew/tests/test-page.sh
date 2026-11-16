@@ -58,8 +58,18 @@ Tea.
 
 ## The ladder
 
-- Rung 1 The bench test: runs `make test; fast`; mocks the mains; cannot tell the taste; 2 seconds, free; exists.
-- Rung 2 One real boil: boils a litre; cannot tell a full kettle; not measured yet; built by Work item 2.
+- Rung 1 The bench test
+  - Runs: `make test; fast` on the bench.
+  - Mocks or skips: the mains.
+  - Cannot tell: the taste.
+  - Time and cost: 2 seconds, free.
+- Rung 2 One real boil
+  - Runs: one litre,
+    boiled in the office. WRAP-MARK
+  - Mocks or skips: nothing.
+  - Cannot tell: a full kettle.
+  - Time and cost: not measured yet.
+  - Built by: Work item 2.
 - The real run, above the ladder: the office's morning tea.
 
 Done means: Rung 2.
@@ -120,8 +130,9 @@ for name in "The whole, in one picture" "New since we talked" "The work" "The la
   check "part '$name' appears once" '[ "$(grep -c -F "<h2>$name</h2>" "$f")" = 1 ]'
 done
 first="picture new work ladder approval signoff words record"
+opened() { py "$1" "\" \".join(re.findall(r\"data-part=\\\"(\\w+)\\\" open\", s))"; }
 check "awaiting approval: the first order" '[ "$(py "$f" "\" \".join(re.findall(r\"data-part=\\\"(\\w+)\\\"\", s))")" = "$first" ]'
-check "awaiting approval: every part open" '[ "$(grep -c "class=\"part .*\" open>" "$f")" = 8 ]'
+check "awaiting approval: every part open but the record" '[ "$(opened "$f")" = "picture new work ladder approval signoff words" ]'
 check "the top: name, phase, sentence, waiting, principle" 'grep -q "<h1>kettle</h1>" "$f" && grep -q "data-phase=\"awaiting approval\"" "$f" && grep -q "The page is out for a read." "$f" && grep -q "Waiting on <b>Victor</b>" "$f"'
 check "the plan's own pieces are in" 'grep -q PICTURE-MARK "$f" && grep -q NEW-MARK "$f" && grep -q -- "--accent: #c33" "$f"'
 
@@ -138,7 +149,8 @@ check "the Progress note and the Work intro show" 'grep -q NOTE-MARK "$f" && gre
 # -- the ladder, sign-off, words, record --------------------------------------------
 check "the ladder: lowest rung first in the rails" 'py "$f" "re.findall(r\"data-rung=\\\"(\\d)\\\"\", s)" | grep -qx "\[.1., .2.\]"'
 check "the ladder: the rung done means is marked" 'grep -q "class=\"rung done-means\" data-rung=\"2\"" "$f" && [ "$(grep -o "Done means this rung" "$f" | wc -l | tr -d " ")" = 1 ]'
-check "the ladder: a semicolon in backticks stays in its fact" 'grep -q "<code>make test; fast</code>" "$f"'
+check "the ladder: each fact under its label" 'grep -q "<dt>Runs</dt><dd><code>make test; fast</code> on the bench.</dd>" "$f" && grep -q "<dt>Built by</dt><dd>Work item 2.</dd>" "$f" && grep -q "<dt>Runs</dt><dd>one litre, boiled in the office. WRAP-MARK</dd>" "$f"'
+check "the ladder: Built by only where it is written" '[ "$(grep -o "<dt>Built by</dt>" "$f" | wc -l | tr -d " ")" = 1 ]'
 check "the ladder: the real run stands above" 'grep -q "class=\"above\">The real run" "$f"'
 check "sign-off: the signed line is a signature with its time" 'grep -q "signed 16 Nov 2026, 01:23" "$f"'
 check "sign-off: a missing Approved line leaves its place empty" 'grep -q "data-sig=\"approved\"><span class=\"empty\">" "$f"'
@@ -173,7 +185,6 @@ sed -e 's/^Phase: awaiting approval\./Phase: building./' -e '/^Waiting on:/d' "$
 run "$b/plan.md"
 second="work new ladder picture approval signoff words record"
 order() { py "$1" "\" \".join(re.findall(r\"data-part=\\\"(\\w+)\\\"\", s))"; }
-opened() { py "$1" "\" \".join(re.findall(r\"data-part=\\\"(\\w+)\\\" open\", s))"; }
 check "building: the second order" '[ $rc -eq 0 ] && [ "$(order "$b/page.html")" = "$second" ]'
 check "building: only the work, what is new and the ladder open" '[ "$(opened "$b/page.html")" = "work new ladder" ]'
 cat > "$b/page/own.html" <<'EOF'
@@ -260,9 +271,25 @@ s = open(sys.argv[1]).read().replace("- After: nothing.\n- Runs with: Work item 
 open(sys.argv[2], "w").write(s)
 PY
 check "After fields that wait in a circle are refused" 'refused "$r" "wait in a circle"'
+# edit <old> <new> [<old> <new> ...]: the base plan with each old text replaced, as the plan under refusal.
+edit() { python3 - "$base/plan.md" "$r/plan.md" "$@" <<'PY'
+import sys
+s, pairs = open(sys.argv[1]).read(), sys.argv[3:]
+for old, new in zip(pairs[::2], pairs[1::2]):
+    assert old in s, old
+    s = s.replace(old, new)
+open(sys.argv[2], "w").write(s)
+PY
+}
+edit $'  - Cannot tell: the taste.\n' "" $'  - Mocks or skips: the mains.\n' ""
+check "a rung that lacks facts is refused, each named" 'refused "$r" "Rung 1 has no '"'"'Cannot tell:'"'"' sub-item" && echo "$err" | grep -q "Rung 1 has no '"'"'Mocks or skips:'"'"' sub-item"'
+edit $'- Rung 1 The bench test\n' $'- Rung 1 The bench test: runs it; mocks nothing\n'
+check "a rung in the one-line shape is refused" 'refused "$r" "Rung 1 gives its facts in one line"'
+edit $'  - Time and cost: 2 seconds, free.\n' $'  - Taste: sweet.\n'
+check "a fact under an unknown label is refused" 'refused "$r" "'"'"'- Taste: sweet.'"'"' is not a sub-item starting Runs" && echo "$err" | grep -q "Rung 1 has no '"'"'Time and cost:'"'"' sub-item"'
 python3 - "$base/plan.md" "$r/plan.md" <<'PY'
 import sys
-s = open(sys.argv[1]).read().replace("exists.\n", "exists.\nDone means: Rung 1.\n", 1).replace("\nDone means: Rung 2.\n", "\n")
+s = open(sys.argv[1]).read().replace("2 seconds, free.\n", "2 seconds, free.\nDone means: Rung 1.\n", 1).replace("\nDone means: Rung 2.\n", "\n")
 s = s.replace("- Signed: the chief engineer, 2026-11-16 01:23.", "- Signed: the chief engineer, 2026-11-16 01:23.\n- Signed: the chief engineer, 2026-11-16 02:00.")
 s = s.replace("- For: one kettle.", "- For:")
 open(sys.argv[2], "w").write(s)

@@ -18,37 +18,16 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
+from plans import headings, sections  # noqa: E402  (the one reader of a plan file's sections)
+
 FIELDS = ("For", "You own", "Where", "Work", "Limits", "Done when", "After", "Runs with")
 FIELD_RE = re.compile(r"^- (%s)\b[^:\n]*:" % "|".join(re.escape(f) for f in FIELDS))
 ITEM_RE = re.compile(r"^### Work item (\d+)\b.*\(([^()]*)\)\s*$")
-FENCE_RE = re.compile(r"^\s*(```|~~~)")
 
 
 class PlanError(Exception):
     pass
-
-
-def headings(lines, level):
-    """(index, text) of each heading of exactly this level, outside code fences."""
-    out, fenced, mark = [], False, "#" * level + " "
-    for i, line in enumerate(lines):
-        if FENCE_RE.match(line):
-            fenced = not fenced
-        elif not fenced and line.startswith(mark):
-            out.append((i, line[len(mark):].strip()))
-    return out
-
-
-def sections(lines):
-    """Map each ## heading's text to its (start, end) line span, heading included."""
-    hs = headings(lines, 2)
-    spans = {}
-    for k, (i, text) in enumerate(hs):
-        end = hs[k + 1][0] if k + 1 < len(hs) else len(lines)
-        if text in spans:
-            raise PlanError(f"line {i + 1}: second '## {text}' section")
-        spans[text] = (i, end)
-    return spans
 
 
 def trim(block):
@@ -73,7 +52,9 @@ def cut_item(lines, start, end):
 def cut(plan_text):
     """Return [(n, brief text)] for every builder item; raise PlanError on a bad plan."""
     lines = plan_text.splitlines()
-    spans = sections(lines)
+    spans, twice = sections(lines)
+    if twice:
+        raise PlanError(f"line {twice[0][0] + 1}: second '## {twice[0][1]}' section")
     for need in ("Principle", "Every brief", "Work"):
         if need not in spans:
             raise PlanError(f"no '## {need}' section")

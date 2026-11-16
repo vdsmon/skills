@@ -143,5 +143,9 @@ grep -v "^## Principle" "$plan" > "$tmp/noprinciple.md"
 python3 "$cut" "$tmp/noprinciple.md" "$tmp/broken" 2>/dev/null; rc=$?
 check "no principle section: exits 1, writes nothing" '[ $rc -eq 1 ] && [ ! -e "$tmp/broken" ]'
 
+{ cat "$plan"; printf '\n## Decisions\n\n- Again.\n'; } > "$tmp/twice.md"
+err=$(python3 "$cut" "$tmp/twice.md" "$tmp/broken" 2>&1); rc=$?
+check "a section twice: exits 1, names its second line, writes nothing" '[ $rc -eq 1 ] && echo "$err" | grep -qE "line [0-9]+: second '"'"'## Decisions'"'"' section" && [ ! -e "$tmp/broken" ]'
+
 check "plan as out-dir file refused" 'cp "$plan" "$tmp/work-item-1.md"; ! python3 "$cut" "$tmp/work-item-1.md" "$tmp" 2>/dev/null && grep -q FOR-ONE "$tmp/work-item-1.md"'
 exit $fail

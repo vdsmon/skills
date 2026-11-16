@@ -8,8 +8,9 @@ and, when the plan has its own parts, page/own.html, all beside the plan file. W
 beside the plan file and prints its path. The plan file is only read: plans.py alone writes it.
 
 The page holds the top and nine parts. In the phases grilling and awaiting approval they stand in
-the first order, every part open; in building and done, in the second order, the parts already
-read folded. A dropped plan takes the second order when its sign-off holds an Approved line.
+the first order, every part open but the record; in building and done, in the second order, the
+parts already read folded. A dropped plan takes the second order when its sign-off holds an
+Approved line.
 
 Exits 0 when it wrote the page, 1 when it refuses (it names every missing piece and writes
 nothing), 2 on bad usage or a skeleton it cannot use.
@@ -24,11 +25,12 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 SKELETON = HERE.parent / "page-skeleton.html"
 sys.path.insert(0, str(HERE.parents[2] / "scripts"))
-from plans import PHASES, Plan  # noqa: E402  (the one reader of a plan's first lines and Progress)
+from plans import FENCE_RE, PHASES, Plan, sections  # noqa: E402  (the readers of a plan file, shared)
 
 FIRST = ("picture", "new", "work", "ladder", "own", "approval", "signoff", "words", "record")
 SECOND = ("work", "new", "ladder", "own", "picture", "approval", "signoff", "words", "record")
 OPEN_IN_SECOND = {"work", "new", "ladder"}
+FOLDED_IN_FIRST = {"record"}  # decisions he settled himself
 NAMES = {
     "picture": "The whole, in one picture", "new": "New since we talked", "work": "The work",
     "ladder": "The ladder", "approval": "What your approval starts", "signoff": "Sign-off",
@@ -37,13 +39,14 @@ NAMES = {
 SECTIONS = ("Principle", "The ladder", "Work", 'What "approved" starts', "Sign-off", "Terms", "Decisions")
 PIECES = ("look.css", "picture.html", "new.html")
 
-FENCE_RE = re.compile(r"^\s*(```|~~~)")
 LIST_RE = re.compile(r"^( *)([-*+]|\d+[.)])\s+(.*)$")
 TOP_ITEM_RE = re.compile(r"^[-*+]\s+")
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
 ITEM_RE = re.compile(r"^### Work item (\d+)\s+(.*?)\s*\(([^()]*)\)\s*$")
 FIELD_RE = re.compile(r"^- ([A-Z][^:\n]*?):\s*(.*)$")
-RUNG_RE = re.compile(r"^Rung\s+(\d+)\s+(.+?):\s+(.*)$", re.S)
+RUNG_RE = re.compile(r"^[-*+]\s+Rung\s+(\d+)\s+(.*)$")
+FACTS = ("Runs", "Mocks or skips", "Cannot tell", "Time and cost", "Built by")
+FACT_RE = re.compile(r"^[-*+]\s+(%s):\s*(.*)$" % "|".join(FACTS))
 DONE_RE = re.compile(r"^Done means:\s*Rung\s+(\d+)\.?\s*$")
 SIGNED_RE = re.compile(r"^- Signed:\s*(.+?),\s*(\d{4}-\d{2}-\d{2} \d{2}:\d{2})\.?\s*$")
 APPROVED_RE = re.compile(r"^- Approved:\s*(.+?),\s*(\d{4}-\d{2}-\d{2} \d{2}:\d{2})\.?\s*(.*?)\s*$")
@@ -220,22 +223,6 @@ def item_text(lines):
 # -- the plan file ---------------------------------------------------------------
 
 
-def split_sections(lines):
-    """({"## " title: body lines}, [duplicate titles]) outside code fences."""
-    out, dupes, fenced, current = {}, [], False, None
-    for line in lines:
-        if FENCE_RE.match(line):
-            fenced = not fenced
-        if not fenced and line.startswith("## "):
-            current = line[3:].strip()
-            if current in out:
-                dupes.append(current)
-            out[current] = []
-        elif current is not None:
-            out[current].append(line)
-    return out, dupes
-
-
 def fmt_time(stamp):
     d = datetime.datetime.strptime(stamp, "%Y-%m-%d %H:%M")
     return f"{d.day} {d:%b %Y, %H:%M}"
@@ -367,19 +354,31 @@ def item_card(it, state):
     )
 
 
-def clauses(text):
-    """Split a rung's facts on semicolons outside backticks."""
-    out, buf, code = [], "", False
-    for ch in text:
-        if ch == "`":
-            code = not code
-        if ch == ";" and not code:
-            out.append(buf)
-            buf = ""
+def rung(ls, problems):
+    """(n, name, {label: text}) of one "- Rung <n> <name>" item and its labelled sub-items, or None."""
+    m = RUNG_RE.match(ls[0].strip())
+    if not m:
+        return None
+    n, name = int(m.group(1)), m.group(2).strip().rstrip(":").strip()
+    if ": " in name:
+        problems.append(f"Rung {n} gives its facts in one line: give each as a sub-item under '- Rung {n} <name>', starting {', '.join(FACTS[:4])} or {FACTS[4]}, then ':'")
+        return None
+    facts = {}
+    for kind, sub in chunks(dedent(ls[1:])):
+        text = " ".join(l.strip() for l in sub if l.strip())
+        f = FACT_RE.match(text) if kind == "item" else None
+        if not text:
+            continue
+        if not f:
+            problems.append(f"Rung {n}: '{text}' is not a sub-item starting {', '.join(FACTS)}, then ':'")
+        elif f.group(1) in facts:
+            problems.append(f"Rung {n} has '{f.group(1)}:' twice")
+        elif not f.group(2).strip():
+            problems.append(f"Rung {n}: '{f.group(1)}:' is empty")
         else:
-            buf += ch
-    out.append(buf)
-    return [c.strip() for c in out if c.strip()]
+            facts[f.group(1)] = f.group(2).strip()
+    problems += [f"Rung {n} has no '{label}:' sub-item" for label in FACTS[:4] if label not in facts]
+    return n, name, facts
 
 
 def render_ladder(lines, problems):
@@ -394,18 +393,20 @@ def render_ladder(lines, problems):
     lines = [l for l in lines if not DONE_RE.match(l.strip())]
     for kind, ls in chunks(lines):
         if kind == "item":
-            text = item_text(ls)
-            m = RUNG_RE.match(text)
-            if not m:
-                above.append(text)
-            elif int(m.group(1)) in rungs:
-                problems.append(f"'## The ladder' has Rung {m.group(1)} twice")
+            found = rung(ls, problems)
+            if found is None and RUNG_RE.match(ls[0].strip()):
+                continue
+            if found is None:
+                above.append(item_text(ls))
+            elif found[0] in rungs:
+                problems.append(f"'## The ladder' has Rung {found[0]} twice")
             else:
-                rungs[int(m.group(1))] = (m.group(2), clauses(m.group(3)))
+                rungs[found[0]] = found[1:]
         else:
             intro.extend(ls)
     if not rungs:
-        problems.append("'## The ladder' has no '- Rung <n> <name>:' line and is not the one line 'None, because <reason>.'")
+        if not any(p.startswith("Rung ") for p in problems):
+            problems.append("'## The ladder' has no '- Rung <n> <name>' item and is not the one line 'None, because <reason>.'")
         return ""
     if done is None:
         problems.append("'## The ladder' has no line 'Done means: Rung <n>.'")
@@ -417,10 +418,10 @@ def render_ladder(lines, problems):
     for n in sorted(rungs):
         name, facts = rungs[n]
         sticker = '<span class="sticker">Done means this rung</span>' if n == done else ""
-        lis = "".join(f"<li>{inline(f)}</li>" for f in facts)
+        dl = "".join(f"<div><dt>{label}</dt><dd>{inline(facts[label])}</dd></div>" for label in FACTS if label in facts)
         steps.append(
             f'<div class="rung{" done-means" if n == done else ""}" data-rung="{n}">'
-            f'<div class="head"><h3>Rung {n} · {inline(name)}</h3>{sticker}</div><ul class="facts">{lis}</ul></div>'
+            f'<div class="head"><h3>Rung {n} · {inline(name)}</h3>{sticker}</div><dl class="facts">{dl}</dl></div>'
         )
     out.append(f'<div class="ladder">{"".join(steps)}</div>')
     return "".join(out)
@@ -616,20 +617,21 @@ def build(plan_path):
     phase = plan.phase()
     if phase is None:
         problems.append(f"no 'Phase:' line with one of: {', '.join(PHASES)}")
-    sections, dupes = split_sections(lines)
-    problems += [f"a second '## {d}' section" for d in dupes]
-    unfilled = [f"no '## {need}' section" if need not in sections else f"'## {need}' is empty"
-                for need in SECTIONS if not any(l.strip() for l in sections.get(need, []))]
+    spans, twice = sections(lines)
+    problems += [f"line {i + 1}: a second '## {t}' section" for i, t in twice]
+    texts = {t: lines[a + 1:b] for t, (a, b) in spans.items()}
+    unfilled = [f"no '## {need}' section" if need not in texts else f"'## {need}' is empty"
+                for need in SECTIONS if not any(l.strip() for l in texts.get(need, []))]
     if unfilled or phase is None:
         raise Refused(problems + unfilled)
 
     bodies = {
-        "work": render_work(sections["Work"], plan.progress(), problems),
-        "ladder": render_ladder(sections["The ladder"], problems),
-        "approval": md_block(sections['What "approved" starts']),
-        "signoff": render_signoff(sections["Sign-off"], problems),
-        "words": render_terms(sections["Terms"]),
-        "record": md_block(sections["Decisions"]),
+        "work": render_work(texts["Work"], plan.progress(), problems),
+        "ladder": render_ladder(texts["The ladder"], problems),
+        "approval": md_block(texts['What "approved" starts']),
+        "signoff": render_signoff(texts["Sign-off"], problems),
+        "words": render_terms(texts["Terms"]),
+        "record": md_block(texts["Decisions"]),
         "picture": pieces.get("picture.html", ""),
         "new": pieces.get("new.html", ""),
     }
@@ -637,7 +639,7 @@ def build(plan_path):
         raise Refused(problems)
 
     word, sentence = phase
-    approved = any(APPROVED_RE.match(l) for l in sections["Sign-off"])
+    approved = any(APPROVED_RE.match(l) for l in texts["Sign-off"])
     second = word in ("building", "done") or (word == "dropped" and approved)
     order = SECOND if second else FIRST
 
@@ -654,7 +656,8 @@ def build(plan_path):
 
     parts = []
     for key in order:
-        opened = "" if second and key not in OPEN_IN_SECOND else " open"
+        folded = key not in OPEN_IN_SECOND if second else key in FOLDED_IN_FIRST
+        opened = "" if folded else " open"
         if key == "own":
             parts += [fill(templates["own"], {"open": opened, "heading": h, "body": b}) for h, b in own]
         else:
@@ -670,7 +673,7 @@ def build(plan_path):
         "order": "second" if second else "first",
         "where": inline(sentence),
         "waiting": f'<span class="waits">Waiting on <b>{inline(waiting[0])}</b>: {inline(waiting[1])}</span>' if waiting else "",
-        "principle": inline(" ".join(l.strip() for l in sections["Principle"] if l.strip())),
+        "principle": inline(" ".join(l.strip() for l in texts["Principle"] if l.strip())),
         "look": pieces["look.css"],
     }
     a, b = region.span()

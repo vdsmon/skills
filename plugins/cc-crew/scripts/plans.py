@@ -100,6 +100,34 @@ def repository(cwd=None):
     return os.path.realpath(cwd)
 
 
+def headings(lines, level):
+    """(index, text) of each heading of exactly this level, outside code fences."""
+    out, fenced, mark = [], False, "#" * level + " "
+    for i, line in enumerate(lines):
+        if FENCE_RE.match(line):
+            fenced = not fenced
+        elif not fenced and line.startswith(mark):
+            out.append((i, line[len(mark):].strip()))
+    return out
+
+
+def sections(lines):
+    """A plan file's "## " sections, the one reader of them that the crew's scripts share.
+
+    Returns ({title: (heading index, end index)}, [(index, title) of each title met a second time]);
+    the span is the first section of that title.
+    """
+    hs = headings(lines, 2)
+    spans, twice = {}, []
+    for k, (i, text) in enumerate(hs):
+        end = hs[k + 1][0] if k + 1 < len(hs) else len(lines)
+        if text in spans:
+            twice.append((i, text))
+        else:
+            spans[text] = (i, end)
+    return spans, twice
+
+
 class Plan:
     """One plan file as lines; reads its first lines and Progress section, writes only those."""
 
@@ -149,14 +177,7 @@ class Plan:
 
     def _section(self, title):
         """(heading index, end index) of a "## <title>" section outside fences, or None."""
-        start = None
-        for i, line in self._unfenced():
-            if start is None:
-                if line.rstrip() == title:
-                    start = i
-            elif line.startswith("## "):
-                return start, i
-        return None if start is None else (start, len(self.lines))
+        return sections(self.lines)[0].get(title[3:].strip())
 
     # -- reading ---------------------------------------------------------------
 
