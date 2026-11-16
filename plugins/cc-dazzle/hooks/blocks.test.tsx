@@ -257,8 +257,9 @@ test('a mermaid flowchart draws in a rounded box, with its label and buttons abo
 })
 
 test('a diagram too wide for the terminal falls back to its source with a note', async $ => {
-  const workers = Array.from({ length: 16 }, (_, i) => `W${i + 1}[Worker ${i + 1}]`).join(' & ')
-  const ui = await $.ui.mount(reply('```mermaid\nflowchart TD\n  Q[Queue] --> ' + workers + '\n```'))
+  // Edges from the top to every box of a long chain pass each row as a line, which no split narrows.
+  const chain = Array.from({ length: 50 }, (_, i) => `A${i}`)
+  const ui = await $.ui.mount(reply(`\`\`\`mermaid\nflowchart TD\n  ${chain.join(' --> ')}\n  A0 --> ${chain.slice(2).join(' & ')}\n\`\`\``))
   expect((await ui.find({ type: 'Text', text: /^diagram needs \d+ cols, \d+ fit$/ }))?.props.color).toBe(t.codeComment)
   expect(await ui.find({ type: 'Text', text: /^ mermaid$/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /^flowchart TD$/ })).toBeDefined()

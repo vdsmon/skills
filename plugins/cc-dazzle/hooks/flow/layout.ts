@@ -22,21 +22,52 @@ import type { Drawing } from './types'
  */
 export type Fit = { wrap: number; gap: number; label: number }
 
+/**
+ * What narrowing a drawing past its fit has changed: the ranks of a scope's items, where rows were
+ * split, and, by edge, a label wrapped narrower than the fit's or moved to a level of labels of its
+ * own (`sub` orders the levels of labels between two rows).
+ */
+export type Narrowing = { ranks: Map<number | null, number[]>; labels: Map<number, { wrap: number; sub: number }> }
+
+export const UNNARROWED: Narrowing = { ranks: new Map(), labels: new Map() }
+
+/** One level of a scope: what is on it, left to right, and the columns each takes when packed. */
+export type Level = {
+  kind: 'rank' | 'label' | 'border'
+  /** The rank of a row; for a level of labels, the rank above it (-1 above the first) and its `sub`. */
+  rank: number
+  sub: number
+  nodes: { item: string | null; edge: number | null; start: number; end: number }[]
+}
+
+/** A scope as laid out: its width, its levels, and the items and ranks it was laid out with. */
+export type Scope = { width: number; levels: Level[]; items: string[]; ranks: number[] }
+
+export type Layout = { drawing: Drawing; scopes: Map<number | null, Scope> }
+
 /** Cells of padding between a box border and its text. */
 const PAD = 1
 /** Refuse to allocate a canvas larger than this many cells, or to place more nodes than this. */
 const MAX_CANVAS_CELLS = 1 << 21
 const MAX_NODES = 1 << 14
+/** Slots per rank: a rank's level, then up to this many minus one levels of labels under it. */
+const SLOTS = 1 << 10
 
 const half = (n: number): number => Math.floor(n / 2)
 const widest = (lines: string[]): number => Math.max(0, ...lines.map(stringWidth))
 
 /** Draw a parsed flowchart or state diagram, or `null` when it is empty or over a cap. */
-export function layout(graph: Graph, fit: Fit): Drawing | null {
-  const plans = planScopes(graph)
-  const laid = layScope(graph, null, plans, fit)
-  return laid && laid.canvas.toDrawing()
+export function layout(graph: Graph, fit: Fit, narrowing: Narrowing = UNNARROWED): Layout | null {
+  const plans = planScopes(graph, narrowing)
+  const scopes = new Map<number | null, Scope>()
+  const laid = layScope(graph, null, plans, { ...fit, narrowing, scopes })
+  return laid && { drawing: laid.canvas.toDrawing(), scopes }
 }
+
+/** A fit with the narrowing applied past it, and where each scope reports how it was laid out. */
+type Packing = Fit & { narrowing: Narrowing; scopes: Map<number | null, Scope> }
+
+const labelWrap = (edge: Edge, pack: Packing) => pack.narrowing.labels.get(edge.index)?.wrap ?? pack.label
 
 // ------------------------------------------------------------------- scopes
 
@@ -49,7 +80,7 @@ type Side = 'top' | 'bottom'
 type Role = 'cross' | 'own' | 'start' | 'end'
 type Port = { edge: number; side: Side; x: number; role: Role }
 /** A laid-out scope: its canvas, where edges meet its frame's border, and the frame's title lines. */
-type Laid = { canvas: Canvas; ports: Port[]; title: string[] }
+type Laid = { canvas: Canvas; ports: Port[]; title: string[]; levels: Level[] }
 
 type End = { item: string } | { side: Side; role: Role }
 /** An edge, or the part of one, drawn in a scope: `from` and `to` are its items or its frame's border. */
@@ -61,7 +92,7 @@ type Plan = { items: string[]; links: Link[]; reserve: { edge: number; side: Sid
  * holding both its ends, between the items there that hold them; where an end lies inside a frame,
  * each frame on the way draws the part from its border to the end.
  */
-function planScopes(graph: Graph): Map<number | null, Plan> {
+function planScopes(graph: Graph, narrowing: Narrowing): Map<number | null, Plan> {
   const plans = new Map<number | null, Plan>()
   const plan = (s: number | null): Plan => plans.get(s) ?? plans.set(s, { items: [], links: [], reserve: [], ranks: [] }).get(s)!
   const chain = (g: number | null): number[] => {
@@ -116,13 +147,15 @@ function planScopes(graph: Graph): Map<number | null, Plan> {
       across.push({ link, scope, f, t, k })
     }
   }
-  for (const p of plans.values()) {
+  // Split rows keep every linked pair of items in the order ranking gave them, so which side of a
+  // frame an edge crosses does not change.
+  for (const [scope, p] of plans) {
     const index = new Map(p.items.map((key, i) => [key, i]))
     const pairs: [number, number][] = []
     for (const l of p.links) {
       if ('item' in l.from && 'item' in l.to && l.from.item !== l.to.item) pairs.push([index.get(l.from.item)!, index.get(l.to.item)!])
     }
-    p.ranks = computeRanks(p.items.length, pairs)
+    p.ranks = narrowing.ranks.get(scope) ?? computeRanks(p.items.length, pairs)
   }
 
   for (const { link, scope, f, t, k } of across) {
@@ -137,7 +170,7 @@ function planScopes(graph: Graph): Map<number | null, Plan> {
 
 type Item = { key: string; label: string; shape: Shape; sub: Laid | null }
 
-function layScope(graph: Graph, scope: number | null, plans: Map<number | null, Plan>, fit: Fit): Laid | null {
+function layScope(graph: Graph, scope: number | null, plans: Map<number | null, Plan>, pack: Packing): Laid | null {
   const plan = plans.get(scope)!
   const items: Item[] = []
   for (const key of plan.items) {
@@ -145,25 +178,29 @@ function layScope(graph: Graph, scope: number | null, plans: Map<number | null, 
     if (key.startsWith('n')) {
       items.push({ key, label: graph.nodes[i]!.label, shape: graph.nodes[i]!.shape, sub: null })
     } else {
-      const sub = layScope(graph, i, plans, fit)
+      const sub = layScope(graph, i, plans, pack)
       if (sub === null) return null
       items.push({ key, label: graph.groups[i]!.label, shape: 'rect', sub })
     }
   }
-  if (scope === null) return arrange(items, plan, null, fit)
+  const report = (laid: Laid | null) => {
+    if (laid !== null) pack.scopes.set(scope, { width: laid.canvas.w, levels: laid.levels, items: plan.items, ranks: plan.ranks })
+    return laid
+  }
+  if (scope === null) return report(arrange(items, plan, null, pack))
   // The frame's own self-loops, drawn on its border by its parent, set the least height of its contents.
   const key = `g:${scope}`
   const own = plans.get(graph.groups[scope]!.parent)!.links.filter(l => 'item' in l.from && 'item' in l.to && l.from.item === key && l.to.item === key)
-  const least = own.length === 0 ? 0 : stackLoops(own.map(l => loopOf(l, fit))).box - 2
+  const least = own.length === 0 ? 0 : stackLoops(own.map(l => loopOf(l, pack))).box - 2
   // A frame's title wraps to the frame's width when that is wider than the fit's.
   const label = graph.groups[scope]!.label
-  const title = wrapLabel(label, fit.wrap)
-  const laid = arrange(items, plan, title, fit, least)
-  if (laid === null || title.length === 1) return laid
+  const title = wrapLabel(label, pack.wrap)
+  const laid = arrange(items, plan, title, pack, least)
+  if (laid === null || title.length === 1) return report(laid)
   const wider = wrapLabel(label, laid.canvas.w - 1)
-  if (wider.length >= title.length) return laid
-  const again = arrange(items, plan, wider, fit, least)
-  return again !== null && again.canvas.w <= laid.canvas.w ? again : laid
+  if (wider.length >= title.length) return report(laid)
+  const again = arrange(items, plan, wider, pack, least)
+  return report(again !== null && again.canvas.w <= laid.canvas.w ? again : laid)
 }
 
 // ------------------------------------------------------------------ ranking
@@ -229,6 +266,8 @@ interface LNode {
   slot: number
   kind: Kind
   item: number
+  /** For a label, its edge's index in the source. */
+  edge: number
   /** Columns the node takes left and right of its anchor, the column its lines align on. */
   left: number
   right: number
@@ -258,7 +297,7 @@ interface Path {
 
 type Loop = { link: Link; row: number; lines: string[] }
 
-const loopOf = (link: Link, fit: Fit): Loop => ({ link, row: 0, lines: link.label === null ? [] : wrapLabel(link.label, fit.label) })
+const loopOf = (link: Link, pack: Packing): Loop => ({ link, row: 0, lines: link.label === null ? [] : wrapLabel(link.label, labelWrap(link.edge, pack)) })
 
 /**
  * Stack an item's self-loops down its right side: each takes two rows, or as many as its label has
@@ -284,15 +323,16 @@ type Turn = { t1: number; t2: number; xf: number | null }
  * Lay out one scope: its items, the links between them and, for a frame, the ports on its border.
  * `title` is the frame's title, or `null` at the top level.
  */
-function arrange(items: Item[], plan: Plan, title: string[] | null, fit: Fit, least = 0): Laid | null {
+function arrange(items: Item[], plan: Plan, title: string[] | null, pack: Packing, least = 0): Laid | null {
   const framed = title !== null
   const ranks = plan.ranks
   const maxRank = Math.max(-1, ...ranks)
-  const rankSlot = (r: number) => (framed ? 2 * r + 2 : 2 * r)
+  // A rank's level takes the first of its slots; levels of labels under it take the next ones.
+  const rankSlot = (r: number) => (framed ? r + 1 : r) * SLOTS
   const bottomSlot = framed ? rankSlot(maxRank + 1) : -1
   const nodes: LNode[] = []
   const add = (slot: number, kind: Kind, item = -1): LNode => {
-    const node: LNode = { id: nodes.length, slot, kind, item, left: 0, right: 0, height: 0, x: 0, ups: [], downs: [], pullUp: [], pullDown: [], text: [], port: null }
+    const node: LNode = { id: nodes.length, slot, kind, item, edge: -1, left: 0, right: 0, height: 0, x: 0, ups: [], downs: [], pullUp: [], pullDown: [], text: [], port: null }
     nodes.push(node)
     return node
   }
@@ -314,7 +354,7 @@ function arrange(items: Item[], plan: Plan, title: string[] | null, fit: Fit, le
     })
     const [a, b] = ends as [LNode, LNode]
     if (a === b) {
-      loops[a.item]!.push(loopOf(link, fit))
+      loops[a.item]!.push(loopOf(link, pack))
       continue
     }
     const reversed = b.slot < a.slot
@@ -326,20 +366,25 @@ function arrange(items: Item[], plan: Plan, title: string[] | null, fit: Fit, le
     borderPorts.push(node.port)
   }
 
-  // A labelled path puts its label in the middle gap it crosses; that gap becomes a level.
+  // A labelled path puts its label in the middle gap it crosses, on the level of labels its narrowing
+  // names there; each such level exists only where a label needs it.
   const labelSlot = paths.map(p => {
     if (p.link.label === null) return -1
     const top = nodes[p.nodes[0]!]!.slot
-    const gaps = (nodes[p.nodes[1]!]!.slot - top) / 2
-    return top + 1 + 2 * Math.floor((gaps - 1) / 2)
+    const gaps = (nodes[p.nodes[1]!]!.slot - top) / SLOTS
+    return top + SLOTS * Math.floor((gaps - 1) / 2) + 1 + (pack.narrowing.labels.get(p.link.edge.index)?.sub ?? 0)
   })
   const lastSlot = framed ? bottomSlot : rankSlot(maxRank)
-  const slots = Array.from({ length: Math.max(0, lastSlot + 1) }, (_, s) => s).filter(s => s % 2 === 0 || labelSlot.includes(s))
+  const majors = Array.from({ length: Math.max(0, lastSlot / SLOTS + 1) }, (_, m) => m * SLOTS)
+  const slots = [...new Set([...majors, ...labelSlot.filter(s => s >= 0)])].sort((a, b) => a - b)
   paths.forEach((p, k) => {
     const [up, low] = [nodes[p.nodes[0]!]!, nodes[p.nodes[1]!]!]
     const between = slots.filter(s => s > up.slot && s < low.slot).map(s => {
       const node = add(s, s === labelSlot[k] ? 'label' : 'line')
-      if (node.kind === 'label') node.text = wrapLabel(p.link.label!, fit.label)
+      if (node.kind === 'label') {
+        node.text = wrapLabel(p.link.label!, labelWrap(p.link.edge, pack))
+        node.edge = p.link.edge.index
+      }
       return node.id
     })
     p.nodes = [up.id, ...between, low.id]
@@ -392,7 +437,7 @@ function arrange(items: Item[], plan: Plan, title: string[] | null, fit: Fit, le
   // the other, each label beside its loop.
   const sizes = items.map((it, i) => {
     if (it.sub !== null) return { w: it.sub.canvas.w + 4, h: it.sub.canvas.h + 2, lines: [] as string[] }
-    const lines = wrapLabel(it.label, fit.wrap)
+    const lines = wrapLabel(it.label, pack.wrap)
     const ports = Math.max(groupsOf[i]!.top.length, groupsOf[i]!.bottom.length)
     return { w: Math.max(widest(lines) + 2 * PAD + 2, ports + 2), h: lines.length + 2, lines }
   })
@@ -470,12 +515,13 @@ function arrange(items: Item[], plan: Plan, title: string[] | null, fit: Fit, le
       b.pullUp.push([a.id, pa - pb])
     }
   })
-  placeLevels(levels, nodes, fit.gap, titleNode)
+  placeLevels(levels, nodes, pack.gap, titleNode)
 
   // Heights, then channels: each pair of neighbouring levels with the stretches of line between them.
   const levelH = levels.map(level => Math.max(0, ...level.map(n => n.height)))
   const colOf = (p: Path, j: number) => nodes[p.nodes[j]!]!.x + (j === 0 ? p.upPort : j === p.nodes.length - 1 ? p.lowPort : 0)
-  const isRank = (s: number) => s % 2 === 0 && !(framed && (s === 0 || s === bottomSlot))
+  const isLabels = (s: number) => s % SLOTS !== 0
+  const isRank = (s: number) => !isLabels(s) && !(framed && (s === 0 || s === bottomSlot))
   /** Whether path `k` passes through the border of the frame `node` on `side`, on to a box inside. */
   const crosses = (node: LNode, side: Side, k: number) => node.kind === 'item' && items[node.item]!.sub !== null && framePort(node.item, side, k).role === 'cross'
   const segsAt: Seg[][] = levels.map(() => [])
@@ -502,7 +548,7 @@ function arrange(items: Item[], plan: Plan, title: string[] | null, fit: Fit, le
     const { turn, count } = channel(segsAt[li]!)
     for (const [seg, t] of turn) turns.set(`${seg.path}:${li}`, t)
     const top = headUp[li] ? 1 : 0
-    const min = isRank(slots[li]!) && isRank(slots[li + 1]!) ? 2 : slots[li]! % 2 === 1 ? 1 : 0
+    const min = isRank(slots[li]!) && isRank(slots[li + 1]!) ? 2 : isLabels(slots[li]!) ? 1 : 0
     chanTop.push(top)
     chanRows.push(Math.max(min, top + count + (headDown[li] ? 1 : 0)))
   })
@@ -650,7 +696,17 @@ function arrange(items: Item[], plan: Plan, title: string[] | null, fit: Fit, le
 
   canvas.finalizeMask()
   for (const node of nodes) if (node.port) node.port.x = node.x
-  return { canvas, ports: borderPorts, title: title ?? [] }
+  const report = levels.map((level, li): Level => {
+    const s = slots[li]!
+    let at = 0
+    const placed = level.map((v, i) => {
+      at = i === 0 ? v.left : at + apartBy(level[i - 1]!, v, pack.gap)
+      return { item: v.kind === 'item' ? items[v.item]!.key : null, edge: v.kind === 'label' ? v.edge : null, start: at - v.left, end: at + v.right + 1 }
+    })
+    const kind = isLabels(s) ? 'label' : isRank(s) ? 'rank' : 'border'
+    return { kind, rank: Math.floor(s / SLOTS) - (framed ? 1 : 0), sub: isLabels(s) ? (s % SLOTS) - 1 : 0, nodes: placed }
+  })
+  return { canvas, ports: borderPorts, title: title ?? [], levels: report }
 }
 
 const roleOf = (node: LNode): Role | undefined => node.port?.role
@@ -720,6 +776,9 @@ function orderLevels(levels: LNode[][], nodes: LNode[], pinned: LNode | null): v
   levels.forEach((level, i) => level.splice(0, level.length, ...best[i]!))
 }
 
+/** Columns between the anchors of two neighbours: boxes keep the fit's gap, lines and labels one column. */
+const apartBy = (a: LNode, b: LNode, sep: number) => a.right + 1 + (a.kind === 'item' || b.kind === 'item' || a.kind === 'title' ? sep : 1) + b.left
+
 /**
  * Give every node an anchor column so its lines run as straight as they can: level by level, each
  * node goes where its neighbours' ports are, as near as keeping its level's order and `sep` columns
@@ -727,8 +786,7 @@ function orderLevels(levels: LNode[][], nodes: LNode[], pinned: LNode | null): v
  * regression: neighbours that would collide move as one block, to the mean of their pulls).
  */
 function placeLevels(levels: LNode[][], nodes: LNode[], sep: number, pinned: LNode | null): void {
-  // Boxes keep the fit's gap; lines and labels need only one empty column beside them.
-  const apart = (a: LNode, b: LNode) => a.right + 1 + (a.kind === 'item' || b.kind === 'item' || a.kind === 'title' ? sep : 1) + b.left
+  const apart = (a: LNode, b: LNode) => apartBy(a, b, sep)
   for (const level of levels) {
     let x = 0
     level.forEach((v, i) => {

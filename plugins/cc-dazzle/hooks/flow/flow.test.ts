@@ -3,7 +3,7 @@ import { expect, test } from 'claude-code/testing'
 import type { Checked } from './checks'
 import { checkFlow, joinsInto } from './checks'
 import { CORPUS } from './corpus'
-import { FITS, drawFlow } from './index'
+import { FITS, drawFlow, drawings } from './index'
 import { layout } from './layout'
 import { wrapLabel } from './labels'
 import { parseFlow } from './parse'
@@ -24,22 +24,73 @@ for (const columns of WIDTHS) for (const from of BATCHES) test(`diagrams ${from 
   expect(batch.every(({ checked }) => checked.flow?.kind === 'drawn')).toBe(true)
 })
 
-test('every scrambled real diagram fits from 80 columns up', () => {
+test('every diagram of the corpus, the state diagrams and the random graphs fits from 60 columns up', () => {
   const wide = checkedAll().flatMap(({ name, columns, checked }) =>
-    name.startsWith('corpus ') && columns >= 80 && !(checked.flow?.kind === 'drawn' && checked.flow.fits && checked.flow.drawing.width <= columns) ? [`${name} at ${columns}`] : [])
+    !(checked.flow?.kind === 'drawn' && checked.flow.fits && checked.flow.drawing.width <= columns) ? [`${name} at ${columns}`] : [])
   expect(wide).toEqual([])
 })
 
-test('a diagram that does not fit comes back as the narrowest of its drawings, with its width', () => {
-  const unfit = checkedAll().filter(({ checked }) => checked.flow?.kind === 'drawn' && !checked.flow.fits)
-  expect(unfit.length > 0).toBe(true)
-  for (const { name, columns, checked } of unfit) {
-    if (checked.flow?.kind !== 'drawn') continue
-    const graph = parseFlow(DIAGRAMS.find(([n]) => n === name)![1])!
-    const widths = FITS.map(fit => layout(graph, fit)!.width)
-    expect(checked.flow.drawing.width).toBe(Math.min(...widths))
-    expect(checked.flow.drawing.width > columns).toBe(true)
+// Long edges from the top pass every row as lines, which no split narrows; a row of boxes and a level
+// of labels side by side give the narrowing something to do before it runs out.
+const chain = Array.from({ length: 36 }, (_, i) => `A${i}`)
+const UNFIT = `flowchart TD\n  ${chain.join(' --> ')}\n  A0 --> ${chain.slice(2).join(' & ')}\n  A1 -->|a label of several words| ${Array.from({ length: 6 }, (_, i) => `W${i}[Worker ${i}]`).join(' & ')}`
+
+test('a diagram that cannot fit comes back as the narrowest drawing the drawer can make, and fits at the width it says it needs', () => {
+  const graph = parseFlow(UNFIT)!
+  const all = [...drawings(graph)]
+  expect(all.length > FITS.length).toBe(true)
+  const checked = checkFlow(UNFIT, 60)
+  expect(checked.failures).toEqual([])
+  if (checked.flow?.kind !== 'drawn') throw new Error('not drawn')
+  expect(checked.flow.fits).toBe(false)
+  expect(checked.flow.drawing.width).toBe(Math.min(...all.map(d => d.width)))
+  expect(checked.flow.drawing.width < Math.min(...all.slice(0, FITS.length).map(d => d.width))).toBe(true)
+  const at = drawFlow(UNFIT, checked.flow.drawing.width)
+  expect(at?.kind === 'drawn' && at.fits).toBe(true)
+})
+
+for (const from of BATCHES) test(`diagrams ${from + 1} to ${Math.min(from + BATCH, DIAGRAMS.length)}, where they do not fit below 60 columns, fit at the width they say they need`, () => {
+  const untrue = [30, 45].flatMap(columns =>
+    DIAGRAMS.slice(from, from + BATCH).flatMap(([name, source]) => {
+      const flow = drawFlow(source, columns)
+      if (flow?.kind !== 'drawn' || flow.fits) return []
+      const at = drawFlow(source, flow.drawing.width)
+      return at?.kind === 'drawn' && at.fits ? [] : [`${name} at ${columns} says ${flow.drawing.width}`]
+    }))
+  expect(untrue).toEqual([])
+})
+
+test('a row splits only after the narrowest wrap does not fit, and a split row draws whole', () => {
+  for (const [name, source] of DIAGRAMS.filter(([name]) => name.startsWith('corpus '))) {
+    const graph = parseFlow(source)!
+    for (const columns of [60, 80]) {
+      const wrapped = FITS.map(fit => layout(graph, fit)!.drawing).find(d => d.width <= columns)
+      const flow = drawFlow(source, columns)
+      if (wrapped !== undefined && flow?.kind === 'drawn') expect([name, columns, flow.drawing]).toEqual([name, columns, wrapped])
+    }
   }
+  const row = `flowchart TD\n  Q[Queue] --> ${Array.from({ length: 8 }, (_, i) => `W${i}[Worker ${i}]`).join(' & ')}`
+  const tops = (columns: number) => {
+    const checked = checkFlow(row, columns)
+    expect(checked.failures).toEqual([])
+    if (checked.flow?.kind !== 'drawn') throw new Error('not drawn')
+    return new Set(checked.flow.drawing.boxes.filter(b => b.key !== 'n:0').map(b => b.y)).size
+  }
+  expect(tops(160)).toBe(1)
+  expect(tops(40) > 1).toBe(true)
+})
+
+test('a level of edge labels side by side wraps them narrower, then moves some to a level of their own', () => {
+  const source = `flowchart TD\n${['first', 'second', 'third', 'fourth'].map((n, i) => `  A -->|${n} label of several words| B${i}`).join('\n')}`
+  const labelTops = (columns: number) => {
+    const checked = checkFlow(source, columns)
+    expect(checked.failures).toEqual([])
+    if (checked.flow?.kind !== 'drawn') throw new Error('not drawn')
+    expect(checked.flow.fits).toBe(true)
+    return checked.flow.drawing.edges.map(e => e.label[0]!.y)
+  }
+  expect(new Set(labelTops(160)).size).toBe(1)
+  expect(new Set(labelTops(40)).size > 1).toBe(true)
 })
 
 test('boxes of one row share their top line, and a frame keeps an empty column inside each side', () => {

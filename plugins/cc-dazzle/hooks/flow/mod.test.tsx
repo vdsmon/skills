@@ -18,8 +18,9 @@ const reply = (text: string, columns = 100) => ({
 const fenced = (source: string) => '```mermaid\n' + source + '\n```'
 
 test('a diagram too wide for the terminal shows its source, with the columns it needs and the columns that fit', async $ => {
-  const workers = Array.from({ length: 16 }, (_, i) => `W${i + 1}[Worker ${i + 1}]`).join(' & ')
-  const ui = await $.ui.mount(reply(fenced('flowchart TD\n  Q[Queue] --> ' + workers)))
+  // Edges from the top to every box of a long chain pass each row as a line, which no split narrows.
+  const chain = Array.from({ length: 50 }, (_, i) => `A${i}`)
+  const ui = await $.ui.mount(reply(fenced(`flowchart TD\n  ${chain.join(' --> ')}\n  A0 --> ${chain.slice(2).join(' & ')}`)))
   const note = await ui.find({ type: 'Text', text: /^diagram needs \d+ cols, \d+ fit$/ })
   expect(note).toBeDefined()
   const [needs, fit] = (note!.text.match(/\d+/g) ?? []).map(Number)
@@ -50,9 +51,9 @@ test('a flowchart or state diagram never shows "diagram failed to render"', asyn
   }
 })
 
-// An 80-column terminal leaves the reply 76 of them.
-test('every scrambled real diagram draws in an 80-column terminal', () => {
-  for (const source of CORPUS) expect('art' in mermaidDiagram(source, 76)).toBe(true)
+// A 70-column terminal leaves the reply 66 of them, and the diagram's frame takes 6 of those.
+test('every scrambled real diagram draws in a 70-column terminal', () => {
+  for (const source of CORPUS) expect('art' in mermaidDiagram(source, 66)).toBe(true)
 })
 
 test('each box takes its own hue, lines of every style the diagram color, and heads the accent', async $ => {
