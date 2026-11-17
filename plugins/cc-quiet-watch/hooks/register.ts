@@ -6,7 +6,7 @@ const MIN = 60_000
 const MAX_WATCHES = 10
 const MAX_ERRORS = 3
 const OUTPUT_CAP = 6000
-const JUDGE_MODEL = 'claude-haiku-5-5'
+const JUDGE_MODEL = 'haiku'
 const JUDGE_SYSTEM =
   'You judge a watched job from the latest output of its status check. Reply with JSON only, no prose: ' +
   '{"status": "running" | "done" | "failed" | "needs_you", "line": "<one short line a person reads at a glance, with the key numbers>"}. ' +

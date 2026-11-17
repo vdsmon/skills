@@ -11,7 +11,9 @@ tmp=$(cd "$(mktemp -d "${TMPDIR:-/tmp}/review-test.XXXXXX")" && pwd -P)
 trap 'rm -rf "$tmp"' EXIT
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.invalid GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.invalid
 export HOME="$tmp" GIT_CONFIG_NOSYSTEM=1
-unset REVIEW_MODEL
+unset REVIEW_MODEL CODEX_HOME
+mkdir -p "$tmp/.codex"
+printf '%s' '{"models":[{"slug":"gpt-6.2-sol","visibility":"list"},{"slug":"gpt-6.2-astra","visibility":"list"},{"slug":"gpt-6.10-astra","visibility":"hide"},{"slug":"gpt-6-astra","visibility":"list"}]}' > "$tmp/.codex/models_cache.json"
 
 mkdir -p "$tmp/bin" "$tmp/scripts" "$tmp/out"
 cp "$here/../scripts/review.sh" "$tmp/scripts/review.sh"
@@ -73,7 +75,7 @@ check "folder holds the plan and the principle read from it" 'cmp -s "$folder/pr
 check "prompt carries the principle verbatim" 'prompt_of "$call" | grep -qF "R&D first, paths like C:\\tmp\\n stay literal."'
 check "prompt carries the template text" 'prompt_of "$call" | grep -q "^Stand-in plan template: judge the plan.$" && prompt_of "$call" | grep -q "^End of plan template.$"'
 check "token is gone from the prompt" '! prompt_of "$call" | grep -qF "{{PRINCIPLE}}"'
-check "model defaults to gpt-6-astra" 'has_args "$call" -m gpt-6-astra'
+check "model is the newest listed Astra" 'has_args "$call" -m gpt-6.2-astra'
 check "sandbox is read-only" 'has_args "$call" --sandbox read-only'
 check "reasoning effort high" "has_args \"\$call\" -c 'model_reasoning_effort=\"high\"'"
 check "runs in the fresh folder" 'has_args "$call" -C "$folder"'
@@ -86,12 +88,20 @@ echo "--- REVIEW_MODEL from the environment"
 REVIEW_MODEL=other-model run ok plan "$tmp/plan.md" "$tmp/out"
 check "REVIEW_MODEL overrides the model" 'has_args "$call" -m other-model'
 check "the same principle again is read 2, with the stop" 'grep -q "^This is read 2 of this change\. A blocker on a spot you already fixed is a stop" "$last"'
+cp "$tmp/.codex/models_cache.json" "$tmp/cache.bak"
+printf '%s' '{"models":[{"slug":"gpt-6.2-astra","visibility":"list"},{"slug":"gpt-6.10-astra","visibility":"list"}]}' > "$tmp/.codex/models_cache.json"
+run ok plan "$tmp/plan.md" "$tmp/out"
+check "versions compare as numbers" 'has_args "$call" -m gpt-6.10-astra'
+rm "$tmp/.codex/models_cache.json"
+run ok plan "$tmp/plan.md" "$tmp/out"
+check "no model list fails with exit 4 and says so" '[ "$rc" -eq 4 ] && grep -q "no Astra model" "$tmp/stderr"'
+mv "$tmp/cache.bak" "$tmp/.codex/models_cache.json"
 
 echo "--- follow-up: same folder, model and read-only sandbox again"
 printf 'Why is step 2 risky?\n' > "$tmp/q.md"
 run ok follow-up "$folder" "$tmp/q.md"
 check "follow-up exits 0 with answer-2.md" '[ "$rc" -eq 0 ] && [ "$last" = "$folder/answer-2.md" ] && [ -s "$last" ]'
-check "follow-up has the model" 'has_args "$call" -m gpt-6-astra'
+check "follow-up has the model" 'has_args "$call" -m gpt-6.2-astra'
 check "a follow-up answer carries no reminder" '! grep -q "From the review script" "$last"'
 check "follow-up is read-only" 'has_args "$call" --sandbox read-only'
 check "follow-up is a plain exec, not a resume" '[ "$(cat "$call/01")" = exec ] && [ "$(cat "$call/02")" != resume ]'
@@ -143,7 +153,7 @@ check "grilling exits 0 with answer.md last" '[ "$rc" -eq 0 ] && [ "$(basename "
 check "a fresh grilling-* folder" 'case $(basename "$gfolder") in grilling-*) true ;; *) false ;; esac'
 check "a record fresh from record.py is read against what the subject is for" 'cmp -s "$gfolder/principle.md" "$tmp/purpose.md" && cmp -s "$gfolder/record.md" "$record"'
 check "prompt is the grilling template with that sentence verbatim" 'prompt_of "$call" | grep -q "^Stand-in grilling template: judge the record.$" && prompt_of "$call" | grep -qxF "Tea for the office, R&D first." && ! prompt_of "$call" | grep -qF "{{PRINCIPLE}}"'
-check "grilling is read-only in its folder with the model" 'has_args "$call" --sandbox read-only && has_args "$call" -C "$gfolder" && has_args "$call" -m gpt-6-astra'
+check "grilling is read-only in its folder with the model" 'has_args "$call" --sandbox read-only && has_args "$call" -C "$gfolder" && has_args "$call" -m gpt-6.2-astra'
 check "answer keeps the review and ends with the grilling reminder, word for word" 'head -n 1 "$last" | grep -qx "The review." && [ "$(tail -n 1 "$last")" = "$grilling_reminder" ]'
 check "no plan or diff reminder in a grilling answer" '! grep -q "Before you fix anything above" "$last"'
 sed 's/^Not proposed yet\.$/The kettle boils water and nothing else./' "$record" > "$tmp/record-closed.md"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Ask the reviewer (Codex, model $REVIEW_MODEL) for a read-only review of a clean copy.
+# Ask the reviewer (Codex, the newest Astra or $REVIEW_MODEL) for a read-only review of a clean copy.
 #
 #   review.sh plan <plan-file> [<out-dir>]
 #   review.sh grilling <plan-file> [<out-dir>]
@@ -19,7 +19,6 @@ set -u
 set -o pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
-REVIEW_MODEL=${REVIEW_MODEL:-gpt-6-astra}
 # The line in a prompt template that the principle replaces.
 PRINCIPLE_TOKEN='{{PRINCIPLE}}'
 # What record.py writes under "## Principle" until the grilling proposes one.
@@ -30,6 +29,26 @@ fail() { echo "review.sh: $*" >&2; exit 4; }
 usage() {
   sed -n '4,7p' "$0" | sed 's/^#  *//' >&2
   exit 4
+}
+
+# Codex has no alias that follows the newest Astra, so read it from the model list
+# Codex keeps; REVIEW_MODEL pins one.
+review_model() {
+  [ -z "${REVIEW_MODEL:-}" ] || { printf '%s\n' "$REVIEW_MODEL"; return; }
+  python3 - "${CODEX_HOME:-$HOME/.codex}/models_cache.json" <<'PY'
+import json, re, sys
+try:
+    models = json.load(open(sys.argv[1]))["models"]
+except (OSError, ValueError, KeyError, TypeError):
+    sys.exit()
+found = []
+for m in models:
+    v = re.fullmatch(r"gpt-(\d+(?:\.\d+)*)-astra", m.get("slug", ""))
+    if v and m.get("visibility") == "list":
+        found.append((tuple(map(int, v.group(1).split("."))), m["slug"]))
+if found:
+    print(max(found)[1])
+PY
 }
 
 readable() { [ -f "$1" ] && [ -r "$1" ] || fail "cannot read $2: $1"; }
@@ -110,9 +129,11 @@ add_reminder() { # <folder>
 # Runs one read-only Codex session in <folder> and exits with the script's code.
 # With a fifth argument, a good answer gets the reminder.
 run_codex() { # <folder> <answer-file> <log-file> <prompt> [remind]
-  local folder=$1 answer=$2 log=$3 prompt=$4 rc sid refusal
+  local folder=$1 answer=$2 log=$3 prompt=$4 rc sid refusal model
+  model=$(review_model)
+  [ -n "$model" ] || fail "no Astra model in Codex's model list; run codex once, or set REVIEW_MODEL"
   codex exec -C "$folder" --skip-git-repo-check --sandbox read-only \
-    -m "$REVIEW_MODEL" -c model_reasoning_effort='"high"' --color never \
+    -m "$model" -c model_reasoning_effort='"high"' --color never \
     -o "$answer" "$prompt" </dev/null >"$log" 2>&1
   rc=$?
 

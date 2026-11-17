@@ -31,13 +31,13 @@
       "name": "cc-quiet-watch",
       "source": "./plugins/cc-quiet-watch",
       "description": "Watches long jobs on a timer and asks Haiku only when the output changed. It wakes the session only when the job is done, failed, stuck or needs you. Trackers keep watching a thread or page and wake it each time there is news. Claude Code only.",
-      "version": "1.1.1"
+      "version": "1.1.2"
     },
     {
       "name": "cc-crew",
       "source": "./plugins/cc-crew",
       "description": "A small crew for Claude Code: a chief engineer role for the main session, with a builder, a helper and a reviewer it briefs from one plan file. A grilling settles the design, the plan becomes a page to align on and briefs for the builders, and two commands file and apply feedback on the crew. Claude Code only.",
-      "version": "0.12.0"
+      "version": "0.13.0"
     },
     {
       "name": "humanize",
