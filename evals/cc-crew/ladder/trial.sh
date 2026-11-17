@@ -7,11 +7,14 @@
 # The two scripts are allowed here outright: a wake by a background task drops the role's
 # own pre-approval (#64), which the preapproval scripts measure by themselves.
 #
+# Each run writes into a folder of its own under <result-dir>, so a failed run never replaces
+# a good one, and the script exits with the session's own code.
+#
 #   trial.sh <plugin-dir> <result-dir>
 set -u
 plugin=$(cd "$1" && pwd)
 # Absolute before the script changes folder, or the copies at the end land in the scratch repository.
-mkdir -p "$2" && result=$(cd "$2" && pwd) || exit 1
+mkdir -p "$2" && result=$(cd "$2" && pwd)/run-$(date +%Y%m%d-%H%M%S) && mkdir "$result" || exit 1
 # Not under ~/.claude: the harness refuses edits there.
 work=$(mktemp -d "${TMPDIR:-/tmp}/ladder-trial.XXXXXX") || exit 1
 mkdir -p "$work/repo/scripts" "$work/plans" "$work/bin"
@@ -76,7 +79,7 @@ rc=$?
 secs=$(( $(date +%s) - start ))
 
 cp "$work/out.jsonl" "$work/err.txt" "$result/" || exit 1
-rm -rf "$result/plans" && cp -R "$work/plans" "$result/plans" || exit 1
+cp -R "$work/plans" "$result/plans" || exit 1
 python3 -I - "$work/out.jsonl" > "$result/summary.txt" <<'PY'
 import json, sys
 tools, denials, final, cost, turns = {}, [], "", None, None
@@ -111,4 +114,5 @@ PY
   echo "exit code: $rc; seconds: $secs; work folder: $work"
   echo "files under plans/:"; (cd "$result/plans" && find . -type f | sort)
 } >> "$result/summary.txt"
-echo "rung 3 finished: exit $rc, $secs seconds; see $result/summary.txt"
+echo "trial finished: exit $rc, $secs seconds; see $result/summary.txt"
+exit "$rc"
