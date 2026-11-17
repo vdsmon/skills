@@ -19,7 +19,7 @@ set -u
 set -o pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
-REVIEW_MODEL=${REVIEW_MODEL:-gpt-6-astra}
+REVIEW_MODEL=${REVIEW_MODEL:-gpt-6.2-astra}
 # The line in a prompt template that the principle replaces.
 PRINCIPLE_TOKEN='{{PRINCIPLE}}'
 # What record.py writes under "## Principle" until the grilling proposes one.
