@@ -31,8 +31,17 @@ Tea for the office. PURPOSE-MARK
 
 ## The ladder
 
-- Rung 1 Bench: boils one cup on the bench. LADDER-MARK
-- Rung 2 Office: a day in the office.
+- Rung 1 Bench
+  - Runs: one cup boiled on the bench. LADDER-MARK
+  - Mocks or skips: the office.
+  - Cannot tell: a day of use.
+  - Time and cost: 2 minutes, free.
+- Rung 2 Office
+  - Runs: a day in the office.
+  - Mocks or skips: nothing.
+  - Cannot tell: a year of use.
+  - Time and cost: not measured yet.
+  - Built by: Work item 3.
 
 Done means: Rung 2.
 
@@ -47,26 +56,28 @@ Done means: Rung 2.
   1. Wire the coil. STEP-ONE-A
   2. Add a thermostat. STEP-ONE-B
 - Limits: no gas. LIMITS-ONE
-- Done when: water reaches 100 C. DONE-ONE
+- Done when: Rung 1: water reaches 100 C. DONE-ONE
 - After: nothing.
 - Runs with: Work item 2.
 
 ### Work item 2 Whistle (builder)
 
 - For: someone hears the water boil. FOR-TWO
-- After: Work item 1. AFTER-TWO
+- After: nothing. AFTER-TWO
 - You own: `whistle/`. OWN-TWO
 - Where: the kettle repo. WHERE-TWO
 - Work, in order:
   1. Shape the spout. STEP-TWO
 - Limits: under 90 dB. LIMITS-TWO
-- Done when: it whistles at 100 C. DONE-TWO
+- Done when: Rung 1: it whistles at 100 C. DONE-TWO
 - Runs with: Work item 1.
 
 ### Work item 3 Assembly (chief engineer)
 
 - For: one kettle. FOR-THREE
 - You own: the case. OWN-THREE
+- Done when: Rung 2 passes.
+- After: Work item 1, Work item 2.
 
 ## Every brief
 
@@ -146,6 +157,41 @@ check "no principle section: exits 1, writes nothing" '[ $rc -eq 1 ] && [ ! -e "
 { cat "$plan"; printf '\n## Decisions\n\n- Again.\n'; } > "$tmp/twice.md"
 err=$(python3 "$cut" "$tmp/twice.md" "$tmp/broken" 2>&1); rc=$?
 check "a section twice: exits 1, names its second line, writes nothing" '[ $rc -eq 1 ] && echo "$err" | grep -qE "line [0-9]+: second '"'"'## Decisions'"'"' section" && [ ! -e "$tmp/broken" ]'
+
+# variant <name> <old> <new> [...]: the plan with each old text replaced, at $tmp/<name>.md.
+variant() { python3 - "$plan" "$tmp/$1.md" "${@:2}" <<'PY'
+import sys
+s, pairs = open(sys.argv[1]).read(), sys.argv[3:]
+for old, new in zip(pairs[::2], pairs[1::2]):
+    assert old in s, old
+    s = s.replace(old, new)
+open(sys.argv[2], "w").write(s)
+PY
+}
+# The checks below are the work items' and the ladder's, which page.py runs too through the
+# same reader in plans.py: a plan with a hand-written page meets them here.
+variant fenced "- Limits: no gas. LIMITS-ONE" $'- Limits: no gas. LIMITS-ONE\n\n  ```markdown\n- For: an example inside a fence. FENCED-FOR\n### Work item 9 Not an item (builder)\n  ```'
+python3 "$cut" "$tmp/fenced.md" "$tmp/fenced" >/dev/null 2>"$tmp/err"; rc=$?
+check "a fenced example with its own For and heading: cuts, the real For leads, the fence stays in the body" '[ $rc -eq 0 ] && head -1 "$tmp/fenced/work-item-1.md" | grep -q FOR-ONE && grep -q FENCED-FOR "$tmp/fenced/work-item-1.md" && [ ! -e "$tmp/fenced/work-item-9.md" ]'
+python3 - "$plan" "$tmp/tbd.md" <<'PY'
+import re, sys
+s = open(sys.argv[1]).read()
+open(sys.argv[2], "w").write(re.sub(r"(## The ladder\n\n).*?(\n## Work)", r"\1TBD\n\2", s, flags=re.S))
+PY
+err=$(python3 "$cut" "$tmp/tbd.md" "$tmp/broken" 2>&1); rc=$?
+check "a ladder that says TBD: exits 1, names the one line that answers it, writes nothing" '[ $rc -eq 1 ] && echo "$err" | grep -qF "None, because <reason>." && [ ! -e "$tmp/broken" ]'
+variant unnamed "- Done when: Rung 2 passes." "- Done when: the kettle stands assembled."
+err=$(python3 "$cut" "$tmp/unnamed.md" "$tmp/broken" 2>&1); rc=$?
+check "the rung Done means names, named by no work item: exits 1, says so, writes nothing" '[ $rc -eq 1 ] && echo "$err" | grep -qF "no work item'"'"'s '"'"'- Done when:'"'"' names Rung 2" && [ ! -e "$tmp/broken" ]'
+variant both "- After: nothing. AFTER-TWO" "- After: Work item 1. AFTER-TWO"
+err=$(python3 "$cut" "$tmp/both.md" "$tmp/broken" 2>&1); rc=$?
+check "an item that waits on and runs with the same item: exits 1, names both, writes nothing" '[ $rc -eq 1 ] && echo "$err" | grep -qF "Work item 2 Whistle both waits on and runs with Work item 1" && [ ! -e "$tmp/broken" ]'
+variant norung "- Done when: Rung 1: water reaches 100 C. DONE-ONE" "- Done when: water reaches 100 C. DONE-ONE"
+err=$(python3 "$cut" "$tmp/norung.md" "$tmp/broken" 2>&1); rc=$?
+check "a builder whose Done when names no rung: exits 1, writes nothing" '[ $rc -eq 1 ] && echo "$err" | grep -qF "Work item 1 Heater: '"'"'- Done when:'"'"' names no rung" && [ ! -e "$tmp/broken" ]'
+variant oneline $'- Rung 2 Office\n  - Runs: a day in the office.\n  - Mocks or skips: nothing.\n  - Cannot tell: a year of use.\n  - Time and cost: not measured yet.\n  - Built by: Work item 3.\n' $'- Rung 2 Office: a day in the office; nothing; a year of use.\n'
+err=$(python3 "$cut" "$tmp/oneline.md" "$tmp/broken" 2>&1); rc=$?
+check "a rung in the one-line shape: exits 1 as the page does, writes nothing" '[ $rc -eq 1 ] && echo "$err" | grep -qF "Rung 2 gives its facts in one line" && [ ! -e "$tmp/broken" ]'
 
 check "plan as out-dir file refused" 'cp "$plan" "$tmp/work-item-1.md"; ! python3 "$cut" "$tmp/work-item-1.md" "$tmp" 2>/dev/null && grep -q FOR-ONE "$tmp/work-item-1.md"'
 exit $fail

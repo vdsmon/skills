@@ -314,7 +314,7 @@ check "a missing section is refused by name" 'refused "$r" "no '"'"'## Decisions
 strip '^Done means: Rung 2\.\n'
 check "a ladder with rungs and no Done means is refused" 'refused "$r" "no line '"'"'Done means: Rung <n>.'"'"'"'
 strip '^- Done when: Rung 2 passes\.\n'
-check "a builder item whose Done when names no rung is refused" 'refused "$r" "Work item 2: '"'"'- Done when:'"'"' names no rung of the ladder"'
+check "a builder item whose Done when names no rung is refused" 'refused "$r" "Work item 2 Whistle: '"'"'- Done when:'"'"' names no rung of the ladder"'
 python3 - "$base/plan.md" "$r/plan.md" <<'PY'
 import re, sys
 s = open(sys.argv[1]).read()
@@ -322,7 +322,7 @@ open(sys.argv[2], "w").write(re.sub(r"## The ladder\n.*?(?=## Every brief)", "##
 PY
 check "a ladder of None, because with no reason is refused" 'refused "$r" "gives no reason"'
 strip '^- After: Work item 1, Work item 2\.\n'
-check "a work item with no After field is refused" 'refused "$r" "Work item 3 has no '"'"'- After:'"'"' field"'
+check "a work item with no After field is refused" 'refused "$r" "Work item 3 Assembly has no '"'"'- After:'"'"' field"'
 strip '^- Work item 2: under way\.\n'
 check "a work item with no Progress line is refused" 'refused "$r" "no line for Work item 2"'
 strip '^Phase: .*?\n'
@@ -349,6 +349,13 @@ edit $'- Rung 1 The bench test\n  - Runs: `make test; fast` on the bench.\n  - M
 check "a rung in the one-line shape, with no sub-item, is refused" 'refused "$r" "Rung 1 gives its facts in one line"'
 edit $'  - Time and cost: 2 seconds, free.\n' $'  - Taste: sweet.\n'
 check "a fact under an unknown label is refused" 'refused "$r" "'"'"'- Taste: sweet.'"'"' is not a sub-item starting Runs" && echo "$err" | grep -q "Rung 1 has no '"'"'Time and cost:'"'"' sub-item"'
+edit "- Done when: Rung 2 passes." "- Done when: Rung 1 passes."
+check "the rung Done means names, named by no work item, is refused" 'refused "$r" "no work item'"'"'s '"'"'- Done when:'"'"' names Rung 2"'
+edit $'- Done when: Rung 2 passes.\n- After: nothing.' $'- Done when: Rung 2 passes.\n- After: Work item 1.'
+check "an item that waits on and runs with the same item is refused" 'refused "$r" "Work item 2 Whistle both waits on and runs with Work item 1"'
+edit "- You own: STEPS-HIDDEN" $'- You own: STEPS-HIDDEN\n\n```markdown\n- For: an example inside a fence.\n```'
+run "$r/plan.md"
+check "a fenced For line is an example, not a second For" '[ $rc -eq 0 ] && grep -q "FOR-MARK" "$r/page.html" && ! grep -q "For: an example inside a fence" "$r/page.html"'
 python3 - "$base/plan.md" "$r/plan.md" <<'PY'
 import sys
 s = open(sys.argv[1]).read().replace("2 seconds, free.\n", "2 seconds, free.\nDone means: Rung 1.\n", 1).replace("\nDone means: Rung 2.\n", "\n")
@@ -356,7 +363,7 @@ s = s.replace("- Signed: the chief engineer, 2026-11-16 01:23.", "- Signed: the 
 s = s.replace("- For: one kettle.", "- For:")
 open(sys.argv[2], "w").write(s)
 PY
-check "a second Signed line and an empty For are refused" 'refused "$r" "a second '"'"'- Signed:'"'"' line" && echo "$err" | grep -q "Work item 3: '"'"'- For:'"'"' is empty"'
+check "a second Signed line and an empty For are refused" 'refused "$r" "a second '"'"'- Signed:'"'"' line" && echo "$err" | grep -q "Work item 3 Assembly: '"'"'- For:'"'"' is empty"'
 python3 - "$r/plan.md" <<'PY'
 import sys
 s = open(sys.argv[1]).read().replace("\n- Signed: the chief engineer, 2026-11-16 02:00.", "").replace("- For:\n", "- For: one kettle.\n")

@@ -128,6 +128,243 @@ def sections(lines):
     return spans, twice
 
 
+# -- a plan file's work items and ladder -------------------------------------------
+# One reader, with the checks on them, shared by page.py and cut_briefs.py, so that a plan file
+# passes or fails the same checks in both. report and badge never use it: they run at every
+# session start and every refresh of the status line, and stay as cheap as reading first lines.
+
+WORK_ITEM_RE = re.compile(r"^### Work item (\d+)\s+(.*?)\s*\(([^()]*)\)\s*$")
+FIELD_RE = re.compile(r"^- ([A-Z][^:\n]*?):\s*(.*)$")
+TOP_ITEM_RE = re.compile(r"^[-*+]\s+")
+RUNG_RE = re.compile(r"^[-*+]\s+Rung\s+(\d+)\s+(.*)$")
+FACTS = ("Runs", "Mocks or skips", "Cannot tell", "Time and cost", "Built by")
+FACT_RE = re.compile(r"^[-*+]\s+(%s):\s*(.*)$" % "|".join(FACTS))
+DONE_RE = re.compile(r"^Done means:\s*Rung\s+(\d+)\.?\s*$")
+REF_RE = re.compile(r"\bWork item (\d+)\b")
+LADDER_ANSWER = "add the section above '## Work', with its rungs, or the one line 'None, because <reason>.'"
+
+
+def indent(line):
+    return len(line) - len(line.lstrip(" "))
+
+
+def dedent(lines):
+    cut = min((indent(l) for l in lines if l.strip()), default=0)
+    return [l[cut:] for l in lines]
+
+
+def chunks(lines):
+    """Split lines into ("item", lines) for each top-level list item and ("text", lines) between."""
+    out = []
+    for line in lines:
+        if TOP_ITEM_RE.match(line):
+            out.append(["item", [line]])
+        elif out and out[-1][0] == "item" and (
+            indent(line) > 0 or (line.strip() and out[-1][1][-1].strip()) or not line.strip()
+        ):
+            out[-1][1].append(line)
+        elif out and out[-1][0] == "text":
+            out[-1][1].append(line)
+        else:
+            out.append(["text", [line]])
+    return [(kind, ls) for kind, ls in out]
+
+
+def item_text(lines):
+    """A top-level list item's text on one line, without its marker."""
+    return TOP_ITEM_RE.sub("", " ".join(l.strip() for l in lines if l.strip()), count=1)
+
+
+class Reading:
+    """A plan file's work items and its ladder, read once, with every problem found in them.
+
+    items: [{n, title, who, start, end, fields: [(name, first index, end index)], for, after,
+    with, done_when, level}], line indexes into the lines given, fields outside code fences.
+    rungs: {n: (name, {label: text})}; done: the rung "Done means" names; none: the one line
+    "None, because <reason>." when the ladder has no rungs; above and ladder_text: the section's
+    other list items and its text, for the page.
+    """
+
+    def __init__(self, lines):
+        self.lines, self.problems = lines, []
+        self.items, self.intro = [], []
+        self.rungs, self.done, self.none, self.above, self.ladder_text = {}, None, None, [], []
+        spans, _ = sections(lines)
+        self._ladder(spans.get("The ladder"))
+        self._work(spans.get("Work"))
+        self._links()
+
+    # -- the ladder --
+
+    def _ladder(self, span):
+        body = self.lines[span[0] + 1:span[1]] if span else []
+        filled = [l.strip() for l in body if l.strip()]
+        if not filled:
+            self.problems.append(f"no answer under '## The ladder': {LADDER_ANSWER}")
+            return
+        if len(filled) == 1 and filled[0].startswith("None, because"):
+            if not filled[0][len("None, because"):].strip(" ."):
+                self.problems.append("'## The ladder' says 'None, because' and gives no reason")
+            self.none = filled[0]
+            return
+        dones = [int(m.group(1)) for m in (DONE_RE.match(l) for l in filled) if m]
+        if len(dones) > 1:
+            self.problems.append("'## The ladder' has more than one 'Done means:' line")
+        self.done = dones[-1] if dones else None
+        refused = False
+        for kind, ls in chunks([l for l in body if not DONE_RE.match(l.strip())]):
+            if kind == "text":
+                self.ladder_text.extend(ls)
+            elif not RUNG_RE.match(ls[0].strip()):
+                self.above.append(item_text(ls))
+            else:
+                found = self._rung(ls)
+                if found is None:
+                    refused = True
+                elif found[0] in self.rungs:
+                    self.problems.append(f"'## The ladder' has Rung {found[0]} twice")
+                else:
+                    self.rungs[found[0]] = found[1:]
+        if not self.rungs:
+            if not refused:
+                self.problems.append("'## The ladder' has no '- Rung <n> <name>' item and is not the one line 'None, because <reason>.'")
+        elif self.done is None:
+            self.problems.append("'## The ladder' has no line 'Done means: Rung <n>.'")
+        elif self.done not in self.rungs:
+            self.problems.append(f"'## The ladder': 'Done means: Rung {self.done}.' names a rung the ladder does not have")
+
+    def _rung(self, ls):
+        """(n, name, {label: text}) of one "- Rung <n> <name>" item and its labelled sub-items, or None."""
+        m = RUNG_RE.match(ls[0].strip())
+        n, name = int(m.group(1)), m.group(2).strip().rstrip(":").strip()
+        subs = [(kind, " ".join(l.strip() for l in sub if l.strip())) for kind, sub in chunks(dedent(ls[1:]))]
+        subs = [(kind, text) for kind, text in subs if text]
+        if not subs and ": " in name:  # a name may hold a colon; with no sub-item under it, it is the older shape
+            self.problems.append(f"Rung {n} gives its facts in one line: give each as a sub-item under '- Rung {n} <name>', starting {', '.join(FACTS[:4])} or {FACTS[4]}, then ':'")
+            return None
+        facts = {}
+        for kind, text in subs:
+            f = FACT_RE.match(text) if kind == "item" else None
+            if not f:
+                self.problems.append(f"Rung {n}: '{text}' is not a sub-item starting {', '.join(FACTS)}, then ':'")
+            elif f.group(1) in facts:
+                self.problems.append(f"Rung {n} has '{f.group(1)}:' twice")
+            elif not f.group(2).strip():
+                self.problems.append(f"Rung {n}: '{f.group(1)}:' is empty")
+            else:
+                facts[f.group(1)] = f.group(2).strip()
+        self.problems += [f"Rung {n} has no '{label}:' sub-item" for label in FACTS[:4] if label not in facts]
+        return n, name, facts
+
+    # -- the work items --
+
+    def _work(self, span):
+        if span is None:
+            self.problems.append("no '## Work' section")
+            return
+        a, b = span
+        hs = [(a + 1 + i, t) for i, t in headings(self.lines[a + 1:b], 3)]
+        self.intro = self.lines[a + 1:hs[0][0] if hs else b]
+        for k, (i, _) in enumerate(hs):
+            m = WORK_ITEM_RE.match(self.lines[i])
+            if not m:
+                self.problems.append(f"line {i + 1}: the heading '{self.lines[i].strip()}' is not '### Work item <n> <title> (<who>)'")
+                continue
+            end = hs[k + 1][0] if k + 1 < len(hs) else b
+            self.items.append({"n": int(m.group(1)), "title": m.group(2), "who": m.group(3).strip(),
+                               "start": i, "end": end, "fields": self._fields(i + 1, end)})
+        if not self.items and not hs:
+            self.problems.append("'## Work' has no '### Work item <n> <title> (<who>)'")
+        numbers = [it["n"] for it in self.items]
+        for n in sorted({n for n in numbers if numbers.count(n) > 1}):
+            self.problems.append(f"'## Work' has Work item {n} twice")
+        for it in self.items:
+            self._item(it)
+
+    def _fields(self, start, end):
+        """[(name, first index, end index)] of an item's "- Name:" fields outside code fences.
+
+        A field runs to the next top-level "- " line outside a fence, its trailing blank lines left out.
+        """
+        out, fenced = [], False
+        for j in range(start, end):
+            line = self.lines[j]
+            if FENCE_RE.match(line):
+                fenced = not fenced
+                continue
+            if fenced or not line.startswith("- "):
+                continue
+            if out and out[-1][2] is None:
+                out[-1][2] = j
+            m = FIELD_RE.match(line)
+            if m:
+                out.append([m.group(1).strip(), j, None])
+        if out and out[-1][2] is None:
+            out[-1][2] = end
+        for f in out:
+            while f[2] > f[1] + 1 and not self.lines[f[2] - 1].strip():
+                f[2] -= 1
+        return [tuple(f) for f in out]
+
+    def value(self, it, name):
+        """[text of each field of this name] in the item, each on one line without its label."""
+        out = []
+        for field, s, e in it["fields"]:
+            if field == name:
+                first = FIELD_RE.match(self.lines[s]).group(2)
+                out.append(" ".join([first] + [l.strip() for l in self.lines[s + 1:e] if l.strip()]).strip())
+        return out
+
+    def _item(self, it):
+        label = f"Work item {it['n']} {it['title']}"
+        fors = self.value(it, "For")
+        if len(fors) != 1:
+            self.problems.append(f"{label} has no '- For:' field" if not fors else f"{label} has {len(fors)} '- For:' fields, not one")
+        elif not fors[0]:
+            self.problems.append(f"{label}: '- For:' is empty")
+        it["for"] = fors[0] if fors else ""
+        after = self.value(it, "After")
+        if not after:
+            self.problems.append(f"{label} has no '- After:' field (the work items it waits on, or 'nothing')")
+        it["after"] = sorted({int(x) for x in REF_RE.findall(" ".join(after))})
+        if after and not it["after"] and not re.match(r"^(nothing|none)\b", after[0], re.I):
+            self.problems.append(f"{label}: '- After:' names no 'Work item <n>' and is not 'nothing'")
+        it["with"] = sorted({int(x) for x in REF_RE.findall(" ".join(self.value(it, "Runs with")))})
+        it["done_when"] = {int(x) for x in re.findall(r"\bRung (\d+)\b", " ".join(self.value(it, "Done when")))}
+
+    def _links(self):
+        """What holds between items, and between the work and the ladder."""
+        by_n = {it["n"]: it for it in self.items}
+        for it in self.items:
+            label = f"Work item {it['n']} {it['title']}"
+            for field, refs in (("After", it["after"]), ("Runs with", it["with"])):
+                for r in refs:
+                    if r not in by_n or r == it["n"]:
+                        self.problems.append(f"{label}: '- {field}:' names Work item {r}, which is not another item of this plan")
+            for r in sorted(set(it["after"]) & set(it["with"])):
+                self.problems.append(f"{label} both waits on and runs with Work item {r}: an item that waits on another does not run beside it")
+            if self.rungs and it["who"].lower() == "builder" and not it["done_when"] & set(self.rungs):
+                self.problems.append(f"{label}: '- Done when:' names no rung of the ladder; say which rung this builder must pass")
+        if self.done in self.rungs and self.items and not any(self.done in it["done_when"] for it in self.items):
+            self.problems.append(f"'Done means: Rung {self.done}.' but no work item's '- Done when:' names Rung {self.done}: name it in the item that runs it, so the plan cannot close before that rung ran")
+
+        level = {}
+
+        def depth(n, seen):
+            if n not in level:
+                if n in seen:
+                    raise ValueError(n)
+                deps = [d for d in by_n[n]["after"] if d in by_n and d != n]
+                level[n] = 1 + max((depth(d, seen | {n}) for d in deps), default=-1)
+            return level[n]
+
+        try:
+            for n in by_n:
+                by_n[n]["level"] = depth(n, set())
+        except ValueError as loop:
+            self.problems.append(f"'- After:' fields wait in a circle through Work item {loop.args[0]}")
+
+
 class Plan:
     """One plan file as lines; reads its first lines and Progress section, writes only those."""
 
