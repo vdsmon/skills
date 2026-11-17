@@ -1,6 +1,6 @@
 {
   "name": "cc-crew",
-  "version": "0.12.1",
+  "version": "0.12.2",
   "description": "A small crew for Claude Code: a chief engineer role for the main session, with a builder, a helper and a reviewer it briefs from one plan file. A grilling settles the design, the plan becomes a page to align on and briefs for the builders, and two commands file and apply feedback on the crew.",
   "author": {
     "name": "Victor De Simone",
