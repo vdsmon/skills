@@ -47,7 +47,7 @@ Experiments that run side by side are work items marked `Runs with:`, which the 
 
 ## 4. On "approved"
 
-1. Record his approval in the sign-off's Approved line, with his words, and under it which published version of the page he approved and anything agreed after it.
+1. Record his approval in the sign-off's Approved line, which holds his words and nothing else, and in a paragraph below the two lines which published version of the page he approved and anything agreed after it.
 2. `plans.py phase <plan.md> building`, then `plans.py progress <plan.md>`, which writes one line per work item into the file's Progress section. Run the page script and publish.
 3. Cut the briefs: `python3 "${CLAUDE_SKILL_DIR}/scripts/cut_briefs.py" <plan.md> <out-dir>`.
 4. Start a `cc-crew:builder` for each brief and give it the brief's path, not its text or a summary of it: a file cannot be paraphrased. Items marked to run together each get their own worktree.

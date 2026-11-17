@@ -10,10 +10,11 @@
 #   trial.sh <plugin-dir> <result-dir>
 set -u
 plugin=$(cd "$1" && pwd)
-result=$2
+# Absolute before the script changes folder, or the copies at the end land in the scratch repository.
+mkdir -p "$2" && result=$(cd "$2" && pwd) || exit 1
 # Not under ~/.claude: the harness refuses edits there.
 work=$(mktemp -d "${TMPDIR:-/tmp}/ladder-trial.XXXXXX") || exit 1
-mkdir -p "$work/repo/scripts" "$work/plans" "$work/bin" "$result"
+mkdir -p "$work/repo/scripts" "$work/plans" "$work/bin"
 
 cat > "$work/repo/scripts/backup.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -74,8 +75,8 @@ PATH="$work/bin:$PATH" CC_CREW_PLANS="$work/plans" claude -p --model fable --plu
 rc=$?
 secs=$(( $(date +%s) - start ))
 
-cp "$work/out.jsonl" "$work/err.txt" "$result/" 2>/dev/null
-rm -rf "$result/plans" && cp -R "$work/plans" "$result/plans"
+cp "$work/out.jsonl" "$work/err.txt" "$result/" || exit 1
+rm -rf "$result/plans" && cp -R "$work/plans" "$result/plans" || exit 1
 python3 -I - "$work/out.jsonl" > "$result/summary.txt" <<'PY'
 import json, sys
 tools, denials, final, cost, turns = {}, [], "", None, None

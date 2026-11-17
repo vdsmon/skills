@@ -29,13 +29,13 @@ What this does not show: which ingredient did it. The briefs differ in tone and 
 
 ## The ladder and the page
 
-`ladder/` holds what measured cc-crew 0.12.0 (rows 62 to 65 of `docs/experiments.md`). Each script takes the plugin's folder and spends tokens.
+`ladder/` holds what measured cc-crew 0.13.0 (rows 62 to 66 of `docs/experiments.md`). Each script takes the plugin's folder and spends tokens.
 
-- `preapproval-quoted.sh`, `preapproval-second-turn.sh`, `preapproval-after-wake.sh`: short Haiku sessions with user settings off. They show how far the role's `allowed-tools` reach: both quotings of a script's path, a second message, and not past a wake by a background task.
+- `preapproval-quoted.sh`, `preapproval-second-turn.sh`, `preapproval-after-wake.sh`, `preapproval-role-loads.sh`, `preapproval-other-script.sh`: short Haiku sessions with user settings off. They show how far the role's `allowed-tools` reach: both quotings of a script's path, a second message, the role's own opening report, not past a wake by a background task, and not to another repository's script of the same name.
 - `trial.sh <plugin-dir> <result-dir>`: one Fable session, about half an hour, that takes a settled design to a plan file and a page. Read the plan file it leaves for its ladder and its "Done when" lines, and its folder for `page.html`.
 - `sequence.py <out.jsonl>`: the order of a print-mode session's tool calls, each allowed or denied, with the system events between them.
 
-Run the three short ones again after an upgrade of Claude Code: what they measure is the harness, not the crew's text.
+Run the short ones again after an upgrade of Claude Code: what they measure is the harness, not the crew's text.
 
 ## The advisor rule
 

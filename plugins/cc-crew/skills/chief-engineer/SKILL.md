@@ -3,10 +3,10 @@ name: chief-engineer
 description: Puts this session in the chief engineer's role on Victor's crew until it ends. It plans with him, briefs builders, has the work reviewed and answers for the result. Victor types it to start the role; a session already in the role may invoke it to re-read the text.
 argument-hint: "[the first thing to work on]"
 allowed-tools:
-  - Bash(python3 *scripts/plans.py *)
-  - Bash(python3 "*scripts/plans.py" *)
-  - Bash(python3 *scripts/page.py *)
-  - Bash(python3 "*scripts/page.py" *)
+  - Bash(python3 *cc-crew/*scripts/plans.py *)
+  - Bash(python3 "*cc-crew/*scripts/plans.py" *)
+  - Bash(python3 *cc-crew/*skills/plan/scripts/page.py *)
+  - Bash(python3 "*cc-crew/*skills/plan/scripts/page.py" *)
 ---
 
 # Chief engineer

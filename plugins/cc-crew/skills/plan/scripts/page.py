@@ -36,7 +36,9 @@ NAMES = {
     "ladder": "The ladder", "approval": "What your approval starts", "signoff": "Sign-off",
     "words": "The words", "record": "The record",
 }
-SECTIONS = ("Principle", "The ladder", "Work", 'What "approved" starts', "Sign-off", "Terms", "Decisions")
+SECTIONS = ("Principle", "The ladder", "Work", 'What "approved" starts', "Sign-off", "Decisions")
+NO_NEW_WORD = '<p class="none">No new word: every word on this page is yours.</p>'
+STYLE_RE = re.compile(r"(<style\b[^>]*>)(.*?)(</style>)", re.S | re.I)
 PIECES = ("look.css", "picture.html", "new.html")
 
 LIST_RE = re.compile(r"^( *)([-*+]|\d+[.)])\s+(.*)$")
@@ -228,7 +230,7 @@ def fmt_time(stamp):
     return f"{d.day} {d:%b %Y, %H:%M}"
 
 
-def render_work(lines, progress, problems):
+def render_work(lines, progress, rungs, problems):
     hs = headings(lines, 3)  # outside code fences: a brief may hold a fenced example with headings
     intro, items = lines[:hs[0][0]] if hs else lines, []
     for k, (i, _) in enumerate(hs):
@@ -262,6 +264,9 @@ def render_work(lines, progress, problems):
         if "For" not in fields:
             problems.append(f"{label} has no '- For:' field")
         it["for"] = " ".join(fields.get("For", [])).strip()
+        named = {int(x) for x in re.findall(r"\bRung (\d+)\b", " ".join(fields.get("Done when", [])))}
+        if rungs and it["who"].lower() == "builder" and not named & rungs:
+            problems.append(f"{label}: '- Done when:' names no rung of the ladder; say which rung this builder must pass")
         if "For" in fields and not it["for"]:
             problems.append(f"{label}: '- For:' is empty")
         if "After" not in fields:
@@ -385,6 +390,8 @@ def rung(ls, problems):
 def render_ladder(lines, problems):
     filled = [l.strip() for l in lines if l.strip()]
     if len(filled) == 1 and filled[0].startswith("None, because"):
+        if not filled[0][len("None, because"):].strip(" ."):
+            problems.append("'## The ladder' says 'None, because' and gives no reason")
         return f'<p class="none">{inline(filled[0])}</p>'
     intro, above, rungs = [], [], {}
     dones = [int(m.group(1)) for m in (DONE_RE.match(l.strip()) for l in lines) if m]
@@ -433,8 +440,8 @@ def render_signoff(lines, problems):
     for kind, ls in chunks(lines):
         first = ls[0]
         if kind == "item" and first.startswith(("- Signed:", "- Approved:")):
-            text = "- " + item_text(ls)
-            m = (SIGNED_RE if first.startswith("- Signed:") else APPROVED_RE).match(text)
+            m = (SIGNED_RE if first.startswith("- Signed:") else APPROVED_RE).match(first.strip())
+            after.extend(l.strip() for l in ls[1:])  # what stands under the line is text, never his words
             if not m:
                 shape = "- Signed: the chief engineer, <YYYY-MM-DD HH:MM>." if first.startswith("- Signed:") else '- Approved: <name>, <YYYY-MM-DD HH:MM>. "<his words>"'
                 problems.append(f"'## Sign-off': the line '{first.strip()}' is not '{shape}'")
@@ -558,6 +565,13 @@ def look_problems(css):
     return problems
 
 
+def piece(name, text):
+    """One of the plan's own pieces, its styles held to itself: a rule in it reaches nothing outside it."""
+    scoped = STYLE_RE.sub(
+        lambda m: f'{m.group(1)}@scope (.piece[data-piece="{name}"]) {{\n{m.group(2)}\n}}{m.group(3)}', text)
+    return f'<div class="piece" data-piece="{name}">{scoped}</div>'
+
+
 def own_parts(text, problems):
     """[(heading html, body html)] from page/own.html, one part per <h2>."""
     pieces = re.split(r"(?=<h2\b)", text, flags=re.I)
@@ -644,15 +658,16 @@ def build(plan_path):
     if unfilled or phase is None:
         raise Refused(problems + unfilled)
 
+    rungs = {int(m.group(1)) for m in (RUNG_RE.match(l.strip()) for l in texts["The ladder"] if not l.startswith(" ")) if m}
     bodies = {
-        "work": render_work(texts["Work"], plan.progress(), problems),
+        "work": render_work(texts["Work"], plan.progress(), rungs, problems),
         "ladder": render_ladder(texts["The ladder"], problems),
         "approval": md_block(texts['What "approved" starts']),
         "signoff": render_signoff(texts["Sign-off"], problems),
-        "words": render_terms(texts["Terms"]),
+        "words": render_terms(texts.get("Terms", [])) or NO_NEW_WORD,
         "record": md_block(texts["Decisions"]),
-        "picture": pieces.get("picture.html", ""),
-        "new": pieces.get("new.html", ""),
+        "picture": piece("picture", pieces.get("picture.html", "")),
+        "new": piece("new", pieces.get("new.html", "")),
     }
     if problems:
         raise Refused(problems)
@@ -678,7 +693,8 @@ def build(plan_path):
         folded = key not in OPEN_IN_SECOND if second else key in FOLDED_IN_FIRST
         opened = "" if folded else " open"
         if key == "own":
-            parts += [fill(templates["own"], {"open": opened, "heading": h, "body": b}) for h, b in own]
+            parts += [fill(templates["own"], {"open": opened, "heading": h, "body": piece(f"own-{k}", b)})
+                      for k, (h, b) in enumerate(own, 1)]
         else:
             parts.append(fill(templates[key], {"open": opened, "body": bodies[key]}))
 
@@ -689,7 +705,7 @@ def build(plan_path):
     top = {
         "name": esc(title),
         "folder": esc(plan_path.parent.name),
-        "version": f"{mtime.day} {mtime:%b %Y, %H:%M}",
+        "version": f"{mtime.day} {mtime:%b %Y, %H:%M:%S}",
         "phase": esc(word),
         "order": "second" if second else "first",
         "where": inline(sentence),

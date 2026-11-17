@@ -93,13 +93,14 @@ Starts on approval. GATE-MARK
 - For: the water gets hot, whole sentence one;
   and the second line of For. FOR-MARK
 - You own: STEPS-HIDDEN
-- Done when: DONE-HIDDEN
+- Done when: Rung 1 passes. DONE-HIDDEN
 - After: nothing.
 - Runs with: Work item 2.
 
 ### Work item 2 Whistle (builder)
 
 - For: someone hears the boil.
+- Done when: Rung 2 passes.
 - After: nothing.
 - Runs with: Work item 1.
 
@@ -258,7 +259,23 @@ touch -t 202601011000 "$cn/plan.md" "$cn/page/look.css" "$cn/page/picture.html"
 touch -t 202601021130 "$cn/page/new.html"
 run "$cn/plan.md"
 check "a rung's name may hold a colon when its facts are sub-items" '[ $rc -eq 0 ] && grep -q "Rung 1 · Unit tests: parser and writer" "$cn/page.html"'
-check "the version shown is the last change of the plan file or of a piece" 'grep -q "plan as of 2 Jan 2026, 11:30" "$cn/page.html"'
+check "the version shown is the last change of the plan file or of a piece, to the second" 'grep -q "plan as of 2 Jan 2026, 11:30:00" "$cn/page.html"'
+
+# -- no new word, words under the approval, a piece's own styles -----------------------------
+nw="$tmp/nowords"; mkdir -p "$nw"; pieces "$nw"
+python3 - "$base/plan.md" "$nw/plan.md" <<'PY'
+import re, sys
+s = open(sys.argv[1]).read()
+s, n = re.subn(r"## Terms\n.*?(?=## )", "", s, flags=re.S)
+assert n == 1
+s += '- Approved: Victor, 2026-11-16 01:36. "go"\n  Approved on page version 3. Defer the rollout.\n'
+open(sys.argv[2], "w").write(s)
+PY
+printf '<style>.row { flex-direction: column; }</style><p>PICTURE-MARK</p>\n' > "$nw/page/picture.html"
+run "$nw/plan.md"
+check "a plan with no Terms section says that no word is new" '[ $rc -eq 0 ] && grep -q "No new word: every word on this page is yours." "$nw/page.html"'
+check "what stands under the Approved line is not put in his words" 'grep -q "<q>go</q>" "$nw/page.html" && grep -q "Approved on page version 3. Defer the rollout." "$nw/page.html"'
+check "a piece's styles are held to the piece" 'grep -q "<style>@scope (.piece\[data-piece=\"picture\"\]) {" "$nw/page.html" && grep -q "<div class=\"piece\" data-piece=\"picture\">" "$nw/page.html"'
 
 # -- refusals ---------------------------------------------------------------------------------
 # refused <dir> <what the message names>: exit 1, the name in stderr, page.html unchanged.
@@ -292,10 +309,18 @@ s = open(sys.argv[1]).read()
 open(sys.argv[2], "w").write(re.sub(sys.argv[3], "", s, flags=re.S | re.M))
 PY
 }
-strip '^## Terms\n.*?(?=^## )'
-check "a missing section is refused by name" 'refused "$r" "no '"'"'## Terms'"'"' section"'
+strip '^## Decisions\n.*?(?=^## )'
+check "a missing section is refused by name" 'refused "$r" "no '"'"'## Decisions'"'"' section"'
 strip '^Done means: Rung 2\.\n'
 check "a ladder with rungs and no Done means is refused" 'refused "$r" "no line '"'"'Done means: Rung <n>.'"'"'"'
+strip '^- Done when: Rung 2 passes\.\n'
+check "a builder item whose Done when names no rung is refused" 'refused "$r" "Work item 2: '"'"'- Done when:'"'"' names no rung of the ladder"'
+python3 - "$base/plan.md" "$r/plan.md" <<'PY'
+import re, sys
+s = open(sys.argv[1]).read()
+open(sys.argv[2], "w").write(re.sub(r"## The ladder\n.*?(?=## Every brief)", "## The ladder\n\nNone, because.\n\n", s, flags=re.S))
+PY
+check "a ladder of None, because with no reason is refused" 'refused "$r" "gives no reason"'
 strip '^- After: Work item 1, Work item 2\.\n'
 check "a work item with no After field is refused" 'refused "$r" "Work item 3 has no '"'"'- After:'"'"' field"'
 strip '^- Work item 2: under way\.\n'

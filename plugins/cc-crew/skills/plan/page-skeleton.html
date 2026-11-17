@@ -75,6 +75,8 @@ ul.plain { margin: 0; padding-left: 20px; display: flex; flex-direction: column;
 .part > summary::after { content: "fold"; font-family: var(--mono); font-size: 0.74rem; letter-spacing: 0.05em; color: var(--muted); }
 .part:not([open]) > summary::after { content: "open"; }
 .part:not([open]) > summary { border-bottom-style: dashed; border-bottom-width: 2px; }
+/* A plan's own piece: page.py holds its styles to this box, which takes no place in the layout. */
+.piece { display: contents; }
 .part > .part-body { display: flex; flex-direction: column; gap: 16px; min-width: 0; padding-top: 16px; }
 .page[data-order="second"] .part:not([open]) > summary h2 { font-size: 1.3rem; color: var(--muted); }
 
