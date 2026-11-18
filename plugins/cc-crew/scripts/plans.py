@@ -10,7 +10,7 @@ Usage:
   plans.py item <plan.md> <n> <not started|under way|done> [note...]
   plans.py close <plan.md> <done|dropped> <sentence...>
   plans.py report
-  plans.py badge <session id>
+  plans.py badge <session id> [<transcript.jsonl>]
 
 The session is $CLAUDE_CODE_SESSION_ID, or --session <id> anywhere on the line. Plans are
 <plans>/<name>/plan.md, <plans> being $CC_CREW_PLANS or ~/.claude/plans.
@@ -25,6 +25,7 @@ and the only program they start is git (report alone).
 
 Exits 0 on success, 1 on a refusal, 2 on bad usage or a file that cannot be read or written.
 """
+import calendar
 import json
 import os
 import re
@@ -672,11 +673,17 @@ def cmd_phase(plan, args, session):
     print(f"{plan.name}: Phase: {plan.first('Phase')}")
 
 
+WAIT_MAX = 24
+WAIT_EXAMPLE = "Victor: the merge of #121"
+
+
 def cmd_wait(plan, args, session):
     text = " ".join(args).strip()
     who, colon, what = text.partition(":")
     if not colon or not who.strip() or not what.strip():
-        raise Unusable("wait takes <who or what>: <what for>, for example: Victor: the merge of pull request 121")
+        raise Unusable(f"wait takes <who or what>: <what for>, for example: {WAIT_EXAMPLE}")
+    if len(what.strip()) > WAIT_MAX:
+        raise Unusable(f"say what for in {WAIT_MAX} characters or fewer, as the status line shows it whole; for example: {WAIT_EXAMPLE}")
     write(plan, lambda p: p.set_first("Waiting on", f"{who.strip()}: {what.strip()}"), session)
     print(f"{plan.name}: Waiting on: {plan.first('Waiting on')}")
 
@@ -856,17 +863,62 @@ def report(session, cwd=None):
     return "\n".join(lines)
 
 
-def badge(session):
+# The badge shares a status line row that cuts what does not fit, so every part of it is short.
+BADGE_PHASES = {"grilling": "🔥", "awaiting approval": "👀", "building": "🔨"}
+
+
+def session_state(transcript):
+    """(epoch seconds of Victor's last typed prompt or AskUserQuestion answer or 0.0, the session's
+    current name or None) from the transcript, read from the end so a long one costs only its tail."""
+    answered, title = None, None
+    try:
+        with open(transcript, "rb") as fh:
+            end = fh.seek(0, os.SEEK_END)
+            carry = b""
+            while end > 0 and (answered is None or title is None):
+                start = max(0, end - (1 << 20))
+                fh.seek(start)
+                lines = (fh.read(end - start) + carry).split(b"\n")
+                carry = lines.pop(0) if start else b""
+                for raw in reversed(lines):
+                    wants_answer = answered is None and b'"type":"user"' in raw
+                    wants_title = title is None and b'"type":"custom-title"' in raw
+                    if not (wants_answer or wants_title):
+                        continue
+                    try:
+                        entry = json.loads(raw)
+                    except ValueError:
+                        continue
+                    if wants_title and entry.get("type") == "custom-title":
+                        title = entry.get("customTitle") or ""
+                        continue
+                    origin, result = entry.get("origin"), entry.get("toolUseResult")
+                    if wants_answer and ((isinstance(origin, dict) and origin.get("kind") == "human") or (
+                            isinstance(result, dict) and "answers" in result)):
+                        answered = calendar.timegm(time.strptime(entry["timestamp"][:19], "%Y-%m-%dT%H:%M:%S"))
+                    if answered is not None and title is not None:
+                        break
+                end = start
+    except (OSError, KeyError, TypeError, ValueError):
+        pass
+    return answered or 0.0, title or None
+
+
+def badge(session, transcript=None):
     plan = latest_held(session)
     if plan is None:
         return ""
-    parts = [plan.name]
+    answered, title = session_state(transcript) if transcript else (0.0, None)
+    # The session's name already shows the plan's name when cc-autotitle named the session after it.
+    parts = [] if title == plan.name else [plan.name]
     phase, counts = plan.phase(), plan.counts()
     if phase:
-        parts.append(phase[0] + (f" {counts[0]}/{counts[1]}" if counts else ""))
+        parts.append(BADGE_PHASES.get(phase[0], phase[0]) + (f" {counts[0]}/{counts[1]}" if counts else ""))
     waiting = plan.waiting()
-    if waiting and waiting[0].lower() == "victor" and waiting[1]:
-        parts.append(f"waiting on you: {waiting[1]}")
+    # The chief clears a wait only when it gets to it, often at the end of its turn: once Victor has
+    # answered since the plan was last written, the wait is his no longer.
+    if waiting and waiting[0].lower() == "victor" and waiting[1] and answered < mtime(plan.path):
+        parts.append(f"⏳ {waiting[1]}")
     return "".join(f" · {p}" for p in parts)
 
 
@@ -897,8 +949,8 @@ def main(argv):
         if command == "report" and not rest:
             print(report(session))
             return 0
-        if command == "badge" and len(rest) == 1:
-            out = badge(rest[0])
+        if command == "badge" and len(rest) in (1, 2):
+            out = badge(*rest)
             if out:
                 sys.stdout.write(out)
             return 0
