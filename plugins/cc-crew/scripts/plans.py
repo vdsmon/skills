@@ -11,6 +11,7 @@ Usage:
   plans.py close <plan.md> <done|dropped> <sentence...>
   plans.py report
   plans.py badge <session id> [<transcript.jsonl>]
+  plans.py turn-end                    (a Stop hook's input on stdin)
 
 The session is $CLAUDE_CODE_SESSION_ID, or --session <id> anywhere on the line. Plans are
 <plans>/<name>/plan.md, <plans> being $CC_CREW_PLANS or ~/.claude/plans.
@@ -25,13 +26,13 @@ and the only program they start is git (report alone).
 
 Exits 0 on success, 1 on a refusal, 2 on bad usage or a file that cannot be read or written.
 """
-import calendar
 import json
 import os
 import re
 import subprocess
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 PHASES = ("grilling", "awaiting approval", "building", "done", "dropped")
@@ -863,11 +864,41 @@ def report(session, cwd=None):
     return "\n".join(lines)
 
 
-# The badge shares a status line row that cuts what does not fit, so every part of it is short.
+# The badge shares a status line row that cuts what does not fit, so every part of it is short:
+# kinds and counts, never free text a model wrote.
 BADGE_PHASES = {"grilling": "🔥", "awaiting approval": "👀", "building": "🔨"}
-
-
 TURN_OVER = ("end_turn", "stop_sequence", "max_tokens")
+# Tools that hold the turn on Victor's answer while they run.
+ASKS = {"AskUserQuestion": "question", "ExitPlanMode": "plan approval"}
+DOING = {"Bash": "shell", "Read": "reading", "Grep": "reading", "Glob": "reading", "Edit": "editing", "Write": "editing",
+         "NotebookEdit": "editing", "WebFetch": "web", "WebSearch": "web", "Skill": "skill", "Monitor": "monitor"}
+
+
+def turns_dir():
+    return Path.home() / ".claude" / ".cc-crew" / "turns"
+
+
+def stamp(entry):
+    """A transcript entry's time in epoch seconds, or None."""
+    try:
+        return datetime.fromisoformat(entry["timestamp"].replace("Z", "+00:00")).timestamp()
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return None
+
+
+def short_agent(kind):
+    """cc-crew:builder -> builder."""
+    return (kind or "agent").rsplit(":", 1)[-1]
+
+
+def doing(tool):
+    """What a running tool_use block says the session is doing, as one or two words."""
+    name, given = tool.get("name") or "", tool.get("input") or {}
+    if name in ("Agent", "Task"):
+        return short_agent(given.get("subagent_type"))
+    if name.startswith("mcp__"):
+        return name.split("__")[1]
+    return DOING.get(name, name.lower() or "working")
 
 
 def turn_over(entry):
@@ -883,45 +914,57 @@ def turn_over(entry):
 
 
 def session_state(transcript):
-    """From the transcript, read from the end so a long one costs only its tail:
-    (epoch seconds of Victor's last typed prompt or AskUserQuestion answer, or 0.0;
-     the session's current name, or None; whether its turn is over, or None when the transcript does not say)."""
-    answered = title = over = None
+    """What the transcript says, read from the end so a long one costs only its tail: a dict with
+    answered: epoch seconds of Victor's last typed prompt or AskUserQuestion answer (0.0 when none);
+    title: the session's current name or None; over: whether its turn is over (None when it does not say);
+    last: the epoch seconds of the last user or assistant entry; tools: the tool_use blocks of the last
+    entry when it is an assistant's, which are what the turn is running."""
+    state = {"answered": None, "title": None, "over": None, "last": None, "tools": None}
     try:
         with open(transcript, "rb") as fh:
             end = fh.seek(0, os.SEEK_END)
             carry = b""
-            while end > 0 and None in (answered, title, over):
+            while end > 0 and None in state.values():
                 start = max(0, end - (1 << 20))
                 fh.seek(start)
                 lines = (fh.read(end - start) + carry).split(b"\n")
                 carry = lines.pop(0) if start else b""
                 for raw in reversed(lines):
-                    wanted = (title is None and b'"type":"custom-title"' in raw) or (
-                        answered is None and b'"type":"user"' in raw) or (
-                        over is None and (b'"type":"assistant"' in raw or b'"type":"system"' in raw or b'"type":"user"' in raw))
-                    if not wanted:
+                    talk = b'"type":"user"' in raw or b'"type":"assistant"' in raw
+                    if not ((state["title"] is None and b'"type":"custom-title"' in raw)
+                            or (talk and (state["answered"] is None or state["last"] is None or state["tools"] is None))
+                            or (state["over"] is None and (talk or b'"type":"system"' in raw))):
                         continue
                     try:
                         entry = json.loads(raw)
                     except ValueError:
                         continue
                     kind = entry.get("type")
-                    if title is None and kind == "custom-title":
-                        title = entry.get("customTitle") or ""
-                    if over is None:
-                        over = turn_over(entry)
-                    if answered is None and kind == "user":
+                    if state["title"] is None and kind == "custom-title":
+                        state["title"] = entry.get("customTitle") or ""
+                    if state["over"] is None:
+                        state["over"] = turn_over(entry)
+                    if kind not in ("user", "assistant") or entry.get("isMeta"):
+                        continue
+                    if state["last"] is None:
+                        state["last"] = stamp(entry) or 0.0
+                    if state["tools"] is None:
+                        content = (entry.get("message") or {}).get("content")
+                        state["tools"] = [b for b in content if isinstance(b, dict) and b.get("type") == "tool_use"] \
+                            if kind == "assistant" and isinstance(content, list) else []
+                    if state["answered"] is None and kind == "user":
                         origin, result = entry.get("origin"), entry.get("toolUseResult")
                         if (isinstance(origin, dict) and origin.get("kind") == "human") or (
                                 isinstance(result, dict) and "answers" in result):
-                            answered = calendar.timegm(time.strptime(entry["timestamp"][:19], "%Y-%m-%dT%H:%M:%S"))
-                    if None not in (answered, title, over):
+                            state["answered"] = stamp(entry) or 0.0
+                    if None not in state.values():
                         break
                 end = start
-    except (OSError, KeyError, TypeError, ValueError):
+    except OSError:
         pass
-    return answered or 0.0, title or None, over
+    state["answered"] = state["answered"] or 0.0
+    state["title"] = state["title"] or None
+    return state
 
 
 def armed_watches(session):
@@ -937,33 +980,93 @@ def armed_watches(session):
     return names
 
 
-def badge(session, transcript=None):
-    """The plan the session holds, where it stands, and what the session is doing now, each part after " · ".
-    The status comes last and starts with ✋ only when the move is Victor's, so badge.sh can color it."""
-    plan = latest_held(session)
-    answered, title, over = session_state(transcript) if transcript else (0.0, None, None)
-    parts = []
-    if plan is not None:
-        # The session's name already shows the plan's name when cc-autotitle named the session after it.
-        if title != plan.name:
-            parts.append(plan.name)
-        phase, counts = plan.phase(), plan.counts()
-        if phase:
-            parts.append(BADGE_PHASES.get(phase[0], phase[0]) + (f" {counts[0]}/{counts[1]}" if counts else ""))
+def turn_end(hook_input):
+    """Record what the session's Stop hook says is still out when its turn ends: background tasks and wakeups.
+    Kinds only, never their descriptions, which the badge has no room for."""
+    data = json.loads(hook_input)
+    session = data.get("session_id") or ""
+    if not valid_session(session):
+        return
+    tasks = [{"type": t.get("type") or "task", "agent": t.get("agent_type")} for t in data.get("background_tasks") or []
+             if isinstance(t, dict)]
+    crons = [{"recurring": bool(c.get("recurring"))} for c in data.get("session_crons") or [] if isinstance(c, dict)]
+    path = turns_dir() / f"{session}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{session}.{os.getpid()}.tmp")
+    tmp.write_text(json.dumps({"tasks": tasks, "crons": crons}), encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def turn_record(session, last):
+    """The Stop hook's record of this session's last turn end, or None when there is none written since the
+    transcript's last user or assistant entry: an interrupted turn, a restart or a hook not loaded yet."""
+    path = turns_dir() / f"{session}.json"
+    if not valid_session(session) or last is None or mtime(path) < last:
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def counted(labels):
+    """['builder', 'shell', 'shell'] -> ['builder', '2 shells'], in first-seen order."""
+    seen = {}
+    for label in labels:
+        seen[label] = seen.get(label, 0) + 1
+    return [label if n == 1 else f"{n} {label}s" for label, n in seen.items()]
+
+
+def waits(session, record):
+    """What a session whose turn is over waits on, from the Stop record and cc-quiet-watch's store."""
+    items = []
+    if record:
+        items += counted(short_agent(t.get("agent")) if t.get("type") == "subagent" else t.get("type") or "task"
+                         for t in record.get("tasks") or [])
+    items += armed_watches(session)
+    if record:
+        items += counted("loop" if c.get("recurring") else "wakeup" for c in record.get("crons") or [])
+    return items
+
+
+def status(session, s, plan):
+    """What the session is doing now, from its transcript's state s, as the badge's last part. It starts
+    with ✋ exactly when the move is Victor's, so badge.sh can color it."""
     waiting = plan.waiting() if plan is not None else None
     on_victor = bool(waiting and waiting[0].lower() == "victor" and waiting[1])
     # The chief clears a wait only when it gets to it, often at the end of its turn: once Victor has
     # answered since the plan was last written, the wait is his no longer.
-    if on_victor and answered < mtime(plan.path):
-        parts.append(f"✋ {waiting[1]}")
-    elif over is False:
-        parts.append("⚙ working")
-    elif over and waiting and not on_victor:
-        parts.append(f"⏳ {waiting[0]}: {waiting[1]}")
-    elif over and (watches := armed_watches(session)):
-        parts.append(f"⏳ {watches[0]}" + (f" +{len(watches) - 1}" if len(watches) > 1 else ""))
-    elif over:
-        parts.append("✋ your turn")
+    if on_victor and s["answered"] < mtime(plan.path):
+        return f"✋ {waiting[1]}"
+    if s["over"] is False:
+        asks = [ASKS[t.get("name")] for t in s["tools"] or [] if t.get("name") in ASKS]
+        if asks:
+            return f"✋ {asks[0]}"
+        return "⚙ " + (doing(s["tools"][-1]) if s["tools"] else "thinking")
+    if not s["over"]:
+        return ""
+    items = [f"{waiting[0]}: {waiting[1]}"] if waiting and not on_victor else []
+    items += waits(session, turn_record(session, s["last"]))
+    if not items:
+        return "💤 idle"
+    return "⏳ " + ", ".join(items[:2]) + (f" +{len(items) - 2}" if len(items) > 2 else "")
+
+
+def badge(session, transcript=None):
+    """The plan the session holds, where it stands, and what the session is doing now, each part after " · "."""
+    plan = latest_held(session)
+    s = session_state(transcript) if transcript else {"answered": 0.0, "title": None, "over": None, "last": None, "tools": None}
+    parts = []
+    if plan is not None:
+        # The session's name already shows the plan's name when cc-autotitle named the session after it.
+        if s["title"] != plan.name:
+            parts.append(plan.name)
+        phase, counts = plan.phase(), plan.counts()
+        if phase:
+            parts.append(BADGE_PHASES.get(phase[0], phase[0]) + (f" {counts[0]}/{counts[1]}" if counts else ""))
+    now = status(session, s, plan)
+    if now:
+        parts.append(now)
     return "".join(f" · {p}" for p in parts)
 
 
@@ -993,6 +1096,9 @@ def main(argv):
     try:
         if command == "report" and not rest:
             print(report(session))
+            return 0
+        if command == "turn-end" and not rest:
+            turn_end(sys.stdin.read())
             return 0
         if command == "badge" and len(rest) in (1, 2):
             out = badge(*rest)
