@@ -190,13 +190,13 @@ run badge sess-a "$tmp/t.jsonl"
 check "a wait set after Victor last spoke shows, whatever else came later" 'printf "%s" "$out" | grep -q "✋"'
 answered typed 2999-01-01T00:00:00.000Z > "$tmp/t.jsonl"
 run badge sess-a "$tmp/t.jsonl"
-check "a typed prompt after the wait hides it, and the turn is under way" '[ "$out" = " · kettle · 🔨 0/3 · ⚙ working" ]'
+check "a typed prompt after the wait hides it, and the turn is under way" '[ "$out" = " · kettle · 🔨 0/3 · ⚙ thinking" ]'
 answered asked 2999-01-01T00:00:00.000Z > "$tmp/t.jsonl"
 run badge sess-a "$tmp/t.jsonl"
-check "an answered question after the wait hides it" '[ "$out" = " · kettle · 🔨 0/3 · ⚙ working" ]'
+check "an answered question after the wait hides it" '[ "$out" = " · kettle · 🔨 0/3 · ⚙ thinking" ]'
 { answered typed 2999-01-01T00:00:00.000Z; printf '{"type":"system","subtype":"turn_duration"}\n'; } > "$tmp/t.jsonl"
 run badge sess-a "$tmp/t.jsonl"
-check "an answered wait and a finished turn: Victor's move" '[ "$out" = " · kettle · 🔨 0/3 · ✋ your turn" ]'
+check "an answered wait and a finished turn with nothing out: idle" '[ "$out" = " · kettle · 🔨 0/3 · 💤 idle" ]'
 { printf '{"type":"custom-title","customTitle":"kettle","sessionId":"sess-a"}\n'; answered typed 2020-01-01T00:00:00.000Z; } > "$tmp/t.jsonl"
 run badge sess-a "$tmp/t.jsonl"
 check "a session named after the plan leaves the name out" '[ "$out" = " · 🔨 0/3 · ✋ the merge of #121" ]'
@@ -207,9 +207,9 @@ run wait "$f" teapot: its merge first
 printf '{"type":"assistant","message":{"stop_reason":"end_turn"}}\n' > "$tmp/t.jsonl"
 run badge sess-a "$tmp/t.jsonl"
 check "a finished turn shows a wait on someone else" '[ "$out" = " · kettle · 🔨 0/3 · ⏳ teapot: its merge first" ]'
-printf '{"type":"assistant","message":{"stop_reason":"tool_use"}}\n' > "$tmp/t.jsonl"
+printf '{"type":"assistant","message":{"stop_reason":"tool_use","content":[{"type":"tool_use","name":"Bash"}]}}\n' > "$tmp/t.jsonl"
 run badge sess-a "$tmp/t.jsonl"
-check "a turn under way shows working over a wait on someone else" '[ "$out" = " · kettle · 🔨 0/3 · ⚙ working" ]'
+check "a turn under way shows what it runs over a wait on someone else" '[ "$out" = " · kettle · 🔨 0/3 · ⚙ shell" ]'
 run badge sess-a
 check "a wait on someone else is not on the badge" '[ "$out" = " · kettle · 🔨 0/3" ]'
 run go "$f"
