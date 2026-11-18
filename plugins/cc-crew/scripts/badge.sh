@@ -14,6 +14,6 @@ if bash "$here/chief-active.sh" "$transcript"; then
   session=$(basename "$transcript" .jsonl)
   plan=$(python3 "$here/plans.py" badge "$session" "$transcript" 2>/dev/null)
   orange=$'\e[38;5;208m'
-  printf '\e[1;94m⚓ chief%s\e[0m' "${plan/ · ✋/ · $orange✋}"
+  printf '\e[1;94m⚓ chief%s\e[0m' "${plan/ · ✋/ · ${orange}✋}"
 fi
 exit 0
