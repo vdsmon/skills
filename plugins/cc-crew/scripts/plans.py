@@ -867,58 +867,88 @@ def report(session, cwd=None):
 BADGE_PHASES = {"grilling": "🔥", "awaiting approval": "👀", "building": "🔨"}
 
 
+TURN_OVER = ("end_turn", "stop_sequence", "max_tokens")
+
+
+def turn_over(entry):
+    """True when this entry ends the session's turn, False when it shows the turn running, None when it says neither."""
+    kind = entry.get("type")
+    if kind == "system":
+        return True if entry.get("subtype") in ("stop_hook_summary", "turn_duration") else None
+    if kind == "assistant":
+        return (entry.get("message") or {}).get("stop_reason") in TURN_OVER
+    if kind == "user" and not entry.get("isMeta"):
+        return "[Request interrupted by user" in json.dumps((entry.get("message") or {}).get("content"))
+    return None
+
+
 def session_state(transcript):
-    """(epoch seconds of Victor's last typed prompt or AskUserQuestion answer or 0.0, the session's
-    current name or None) from the transcript, read from the end so a long one costs only its tail."""
-    answered, title = None, None
+    """From the transcript, read from the end so a long one costs only its tail:
+    (epoch seconds of Victor's last typed prompt or AskUserQuestion answer, or 0.0;
+     the session's current name, or None; whether its turn is over, or None when the transcript does not say)."""
+    answered = title = over = None
     try:
         with open(transcript, "rb") as fh:
             end = fh.seek(0, os.SEEK_END)
             carry = b""
-            while end > 0 and (answered is None or title is None):
+            while end > 0 and None in (answered, title, over):
                 start = max(0, end - (1 << 20))
                 fh.seek(start)
                 lines = (fh.read(end - start) + carry).split(b"\n")
                 carry = lines.pop(0) if start else b""
                 for raw in reversed(lines):
-                    wants_answer = answered is None and b'"type":"user"' in raw
-                    wants_title = title is None and b'"type":"custom-title"' in raw
-                    if not (wants_answer or wants_title):
+                    wanted = (title is None and b'"type":"custom-title"' in raw) or (
+                        answered is None and b'"type":"user"' in raw) or (
+                        over is None and (b'"type":"assistant"' in raw or b'"type":"system"' in raw or b'"type":"user"' in raw))
+                    if not wanted:
                         continue
                     try:
                         entry = json.loads(raw)
                     except ValueError:
                         continue
-                    if wants_title and entry.get("type") == "custom-title":
+                    kind = entry.get("type")
+                    if title is None and kind == "custom-title":
                         title = entry.get("customTitle") or ""
-                        continue
-                    origin, result = entry.get("origin"), entry.get("toolUseResult")
-                    if wants_answer and ((isinstance(origin, dict) and origin.get("kind") == "human") or (
-                            isinstance(result, dict) and "answers" in result)):
-                        answered = calendar.timegm(time.strptime(entry["timestamp"][:19], "%Y-%m-%dT%H:%M:%S"))
-                    if answered is not None and title is not None:
+                    if over is None:
+                        over = turn_over(entry)
+                    if answered is None and kind == "user":
+                        origin, result = entry.get("origin"), entry.get("toolUseResult")
+                        if (isinstance(origin, dict) and origin.get("kind") == "human") or (
+                                isinstance(result, dict) and "answers" in result):
+                            answered = calendar.timegm(time.strptime(entry["timestamp"][:19], "%Y-%m-%dT%H:%M:%S"))
+                    if None not in (answered, title, over):
                         break
                 end = start
     except (OSError, KeyError, TypeError, ValueError):
         pass
-    return answered or 0.0, title or None
+    return answered or 0.0, title or None, over
 
 
 def badge(session, transcript=None):
+    """The plan the session holds, where it stands, and what the session is doing now, each part after " · ".
+    The status comes last and starts with ✋ only when the move is Victor's, so badge.sh can color it."""
     plan = latest_held(session)
-    if plan is None:
-        return ""
-    answered, title = session_state(transcript) if transcript else (0.0, None)
-    # The session's name already shows the plan's name when cc-autotitle named the session after it.
-    parts = [] if title == plan.name else [plan.name]
-    phase, counts = plan.phase(), plan.counts()
-    if phase:
-        parts.append(BADGE_PHASES.get(phase[0], phase[0]) + (f" {counts[0]}/{counts[1]}" if counts else ""))
-    waiting = plan.waiting()
+    answered, title, over = session_state(transcript) if transcript else (0.0, None, None)
+    parts = []
+    if plan is not None:
+        # The session's name already shows the plan's name when cc-autotitle named the session after it.
+        if title != plan.name:
+            parts.append(plan.name)
+        phase, counts = plan.phase(), plan.counts()
+        if phase:
+            parts.append(BADGE_PHASES.get(phase[0], phase[0]) + (f" {counts[0]}/{counts[1]}" if counts else ""))
+    waiting = plan.waiting() if plan is not None else None
+    on_victor = bool(waiting and waiting[0].lower() == "victor" and waiting[1])
     # The chief clears a wait only when it gets to it, often at the end of its turn: once Victor has
     # answered since the plan was last written, the wait is his no longer.
-    if waiting and waiting[0].lower() == "victor" and waiting[1] and answered < mtime(plan.path):
+    if on_victor and answered < mtime(plan.path):
         parts.append(f"✋ {waiting[1]}")
+    elif over is False:
+        parts.append("⚙ working")
+    elif over and waiting and not on_victor:
+        parts.append(f"⏳ {waiting[0]}: {waiting[1]}")
+    elif over:
+        parts.append("✋ your turn")
     return "".join(f" · {p}" for p in parts)
 
 
