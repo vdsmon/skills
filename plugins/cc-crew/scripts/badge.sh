@@ -11,6 +11,6 @@ if bash "$here/chief-active.sh" "$transcript"; then
   printf '⚓ chief'
   # The transcript file is named by the session's id.
   session=$(basename "$transcript" .jsonl)
-  python3 "$here/plans.py" badge "$session" 2>/dev/null
+  python3 "$here/plans.py" badge "$session" "$transcript" 2>/dev/null
 fi
 exit 0

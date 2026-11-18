@@ -55,11 +55,11 @@ Experiments that run side by side are work items marked `Runs with:`, which the 
 ## 5. While it is built
 
 - Where a work item stands is written in the plan file: `plans.py item <plan.md> <n> <not started|under way|done> [note]` when it starts, at every handback and at the push. The note of a handback names its report and its commits; what the builder suggested, and what you did with it, goes under `## What the builders suggested`.
-- Whenever the plan cannot move, say who or what it waits on: `plans.py wait <plan.md> "<who or what>: <what for>"` (Victor's approval or answer, another plan's merge), and `plans.py go <plan.md>` when it moves again.
+- Whenever the plan cannot move, say who or what it waits on: `plans.py wait <plan.md> "<who or what>: <what for, in a few words>"` (Victor's approval or answer, another plan's merge), and `plans.py go <plan.md>` when it moves again.
 - Every change to the plan file is followed by the page script and a publish to the same link; the script draws the work's states from the phase and the Progress section. A hand-written page is kept, as section 3 says.
 - A comment on the page that shows something is unclear: change the plan file or the piece, republish, post nothing beyond the automatic reply, and resolve the thread.
 - Before the push, the combined diff goes to the reviewer: `review.sh diff <plan.md> <repo> <base> <head>`. A question about an answer goes through `review.sh follow-up <folder> <question-file>`.
-- Where Victor merges, the wait for his merge is part of shipping: `plans.py wait <plan.md> "Victor: the merge of pull request <n>"`, arm a watch on the pull request, and only then end your turn. A watch also wakes you when it is stuck or its check fails, so look at the pull request first: merged, `plans.py go <plan.md>` and finish what is left of shipping; not merged, leave the wait as it is and arm the watch again.
+- Where Victor merges, the wait for his merge is part of shipping: `plans.py wait <plan.md> "Victor: the merge of #<n>"`, arm a watch on the pull request, and only then end your turn. A watch also wakes you when it is stuck or its check fails, so look at the pull request first: merged, `plans.py go <plan.md>` and finish what is left of shipping; not merged, leave the wait as it is and arm the watch again.
 
 ## 6. The closing step
 

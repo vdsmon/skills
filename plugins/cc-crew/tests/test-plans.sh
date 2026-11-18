@@ -129,8 +129,8 @@ Phase: grilling.
 rm -rf "$CC_CREW_PLANS/cup"
 
 echo "--- wait and go"
-run wait "$f" Victor: the merge of pull request 121
-check "wait sets the line" '[ "$rc" -eq 0 ] && grep -qxF "Waiting on: Victor: the merge of pull request 121" "$f"'
+run wait "$f" "Victor: the merge of #121"
+check "wait sets the line" '[ "$rc" -eq 0 ] && grep -qxF "Waiting on: Victor: the merge of #121" "$f"'
 run wait "$f" nobody
 check "wait without a colon exits 2" '[ "$rc" -eq 2 ]'
 
@@ -141,7 +141,7 @@ cat > "$tmp/expected.md" <<EOF
 Repository: $tmp/work
 Held by: sess-a
 Phase: building.
-Waiting on: Victor: the merge of pull request 121
+Waiting on: Victor: the merge of #121
 Status: the old sentence, which nothing reads.
 
 ## Principle
@@ -175,13 +175,34 @@ echo "--- report and badge"
 run report
 check "report: this repository's plan, its work items, its wait and its holder" '[ "$out" = "<cc-crew-plans>
 Plans under way in $tmp/work:
-- kettle · building · 0 of 3 done · waiting on Victor: the merge of pull request 121 · held by this session
+- kettle · building · 0 of 3 done · waiting on Victor: the merge of #121 · held by this session
 </cc-crew-plans>" ]'
 run badge sess-a
-check "badge: name, phase, counts, and what waits on Victor" '[ "$out" = " · kettle · building 0/3 · waiting on you: the merge of pull request 121" ] && [ "$rc" -eq 0 ]'
+check "badge: name, phase, counts, and what waits on Victor" '[ "$out" = " · kettle · 🔨 0/3 · ⏳ the merge of #121" ] && [ "$rc" -eq 0 ]'
+run wait "$f" "Victor: his word on the spout, the lid and the handle"
+check "a long what-for is refused, so the status line shows it whole" '[ "$rc" -eq 2 ] && grep -qxF "Waiting on: Victor: the merge of #121" "$f"'
+answered() { # kind of entry, its time
+  if [ "$1" = typed ]; then printf '{"type":"user","origin":{"kind":"human"},"timestamp":"%s","message":{"role":"user","content":"yes"}}\n' "$2"
+  else printf '{"type":"user","timestamp":"%s","message":{"role":"user","content":[{"type":"tool_result"}]},"toolUseResult":{"answers":{"q":"a"}}}\n' "$2"; fi
+}
+{ answered typed 2020-01-01T00:00:00.000Z; printf '{"type":"user","origin":{"kind":"task-notification"},"timestamp":"2999-01-01T00:00:00.000Z"}\n'; } > "$tmp/t.jsonl"
+run badge sess-a "$tmp/t.jsonl"
+check "a wait set after Victor last spoke shows, whatever else came later" 'printf "%s" "$out" | grep -q "⏳"'
+answered typed 2999-01-01T00:00:00.000Z > "$tmp/t.jsonl"
+run badge sess-a "$tmp/t.jsonl"
+check "a typed prompt after the wait hides it" '[ "$out" = " · kettle · 🔨 0/3" ]'
+answered asked 2999-01-01T00:00:00.000Z > "$tmp/t.jsonl"
+run badge sess-a "$tmp/t.jsonl"
+check "an answered question after the wait hides it" '[ "$out" = " · kettle · 🔨 0/3" ]'
+{ printf '{"type":"custom-title","customTitle":"kettle","sessionId":"sess-a"}\n'; answered typed 2020-01-01T00:00:00.000Z; } > "$tmp/t.jsonl"
+run badge sess-a "$tmp/t.jsonl"
+check "a session named after the plan leaves the name out" '[ "$out" = " · 🔨 0/3 · ⏳ the merge of #121" ]'
+printf '{"type":"custom-title","customTitle":"kettle"}\n{"type":"custom-title","customTitle":"teapot"}\n' > "$tmp/t.jsonl"
+run badge sess-a "$tmp/t.jsonl"
+check "the session's latest name counts" 'printf "%s" "$out" | grep -q "^ · kettle · "'
 run wait "$f" teapot: its merge first
 run badge sess-a
-check "a wait on someone else is not on the badge" '[ "$out" = " · kettle · building 0/3" ]'
+check "a wait on someone else is not on the badge" '[ "$out" = " · kettle · 🔨 0/3" ]'
 run go "$f"
 check "go removes the line" '[ "$rc" -eq 0 ] && ! grep -q "^Waiting on:" "$f"'
 run go "$f"
@@ -302,10 +323,10 @@ touch -t 202601010000 "$CC_CREW_PLANS/pot/plan.md" 2>/dev/null
 run item "$f" 1 under way
 check "after a write the session carries the plan it wrote to last" '[ "$(cat "$held/sess-a")" = kettle ]'
 run badge sess-a
-check "the badge shows the same plan" '[ "$out" = " · kettle · building 0/3" ]'
+check "the badge shows the same plan" '[ "$out" = " · kettle · 🔨 0/3" ]'
 [ -f "$CC_CREW_PLANS/pot/plan.md" ] && {
   run phase "$CC_CREW_PLANS/pot/plan.md" building
-  check "writing another held plan moves the name to it" '[ "$(cat "$held/sess-a")" = pot ] && [ "$(python3 "$plans" badge sess-a)" = " · pot · building" ]'
+  check "writing another held plan moves the name to it" '[ "$(cat "$held/sess-a")" = pot ] && [ "$(python3 "$plans" badge sess-a)" = " · pot · 🔨" ]'
   CLAUDE_CODE_SESSION_ID=sess-z run hold "$CC_CREW_PLANS/pot/plan.md"
   check "a takeover: the new holder carries the name, the old holder goes back to its other plan" '[ "$rc" -eq 0 ] && [ "$(cat "$held/sess-z")" = pot ] && [ "$(cat "$held/sess-a")" = kettle ] && printf "%s" "$out" | grep -q "taken over from sess-a"'
 }
