@@ -26,9 +26,22 @@ Page: <the page's link>
 
 <What every builder on this plan needs beyond the builder's own text: shared limits, who else is working where. May be empty.>
 
-## Work
+## The ladder
 
-Order: <what depends on what, and what runs side by side>.
+- Rung 1 <name>
+  - Runs: <what it runs>
+  - Mocks or skips: <what it mocks or skips>
+  - Cannot tell: <what it cannot tell>
+  - Time and cost: <measured, or "not measured yet">
+  - Built by: <Work item n; leave this line out when the rung exists>
+- Rung 2 <name>
+  - <...>
+
+Done means: Rung <n>.
+
+<Or, for a plan with no ladder, the section is this one line: None, because <reason>.>
+
+## Work
 
 ### Work item 1 <title> (builder)
 
@@ -38,7 +51,8 @@ Order: <what depends on what, and what runs side by side>.
 - Work, in order:
   1. <step>
 - Limits: <each limit, with its reason>.
-- Done when: <what passes, and what cannot be known yet, with its fallback>.
+- Done when: <the rung this builder must pass, or, when the ladder is none, what passes; and what cannot be known yet, with its fallback>.
+- After: <the work items this one waits on, as "Work item <n>", or nothing>.
 - Runs with: <the items built at the same time, or none>.
 
 ### Work item 2 Ship (chief engineer)
@@ -47,6 +61,7 @@ Order: <what depends on what, and what runs side by side>.
 - Where: <...>
 - Work, in order: <the combined diff to the reviewer; the push; the pull request and its checks; the merge, by the repository's rule; what the repository needs after it>.
 - Done when: <...>
+- After: Work item 1.
 
 ## Progress
 
@@ -64,4 +79,7 @@ It does not cover: <what the user will approve separately>.
 
 ## Sign-off
 
-<The chief engineer stands behind this plan, or names what it does not agree with, and what it is least sure of.>
+<The chief engineer stands behind this plan, or names what it does not agree with, and what it is least sure of. A draft has no Signed line; the Approved line is added once he approves.>
+
+- Signed: the chief engineer, <YYYY-MM-DD HH:MM>.
+- Approved: Victor, <YYYY-MM-DD HH:MM>. "<his words>"

@@ -27,6 +27,16 @@ A fourth cold run, the real one that morning, missed it too. All six filled the 
 
 What this does not show: which ingredient did it. The briefs differ in tone and in saying outright what to do when the plan is wrong. Three runs per brief on one task is a small sample; a difference this large shows at that size, a subtle one would not.
 
+## The ladder and the page
+
+`ladder/` holds what measured cc-crew 0.13.0 (rows 62 to 66 of `docs/experiments.md`). Each script takes the plugin's folder and spends tokens.
+
+- `preapproval-quoted.sh`, `preapproval-second-turn.sh`, `preapproval-after-wake.sh`, `preapproval-role-loads.sh`, `preapproval-other-script.sh`: short Haiku sessions with user settings off. They show how far the role's `allowed-tools` reach: both quotings of a script's path, a second message, the role's own opening report, not past a wake by a background task, and not to another repository's script of the same name.
+- `trial.sh <plugin-dir> <result-dir>`: one Fable session, about half an hour, that takes a settled design to a plan file and a page. Read the plan file it leaves for its ladder and its "Done when" lines, and its folder for `page.html`.
+- `sequence.py <out.jsonl>`: the order of a print-mode session's tool calls, each allowed or denied, with the system events between them.
+
+Run the short ones again after an upgrade of Claude Code: what they measure is the harness, not the crew's text.
+
 ## The advisor rule
 
 `advisor-rule.sh [plugin-dir] [runs]` checks that the role text still keeps the chief engineer from calling the advisor (DEC33). Each run is one short Fable session with the advisor on, given a one-line fix; the script prints the advisor calls of each run, and of one control run on a copy of the plugin with the rule's line removed. Every run should print 0 and the control should not: a control at 0 means the advisor was not there to call, and the script says the result is void. Run it after any reword of that line or of the role text around it; the first measurement is row 51 of `docs/experiments.md`.
