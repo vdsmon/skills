@@ -178,7 +178,7 @@ Plans under way in $tmp/work:
 - kettle · building · 0 of 3 done · waiting on Victor: the merge of #121 · held by this session
 </cc-crew-plans>" ]'
 run badge sess-a
-check "badge: name, phase, counts, and what waits on Victor" '[ "$out" = " · kettle · 🔨 0/3 · ⏳ the merge of #121" ] && [ "$rc" -eq 0 ]'
+check "badge: name, phase, counts, and what waits on Victor" '[ "$out" = " · kettle · 🔨 0/3 · ✋ the merge of #121" ] && [ "$rc" -eq 0 ]'
 run wait "$f" "Victor: his word on the spout, the lid and the handle"
 check "a long what-for is refused, so the status line shows it whole" '[ "$rc" -eq 2 ] && grep -qxF "Waiting on: Victor: the merge of #121" "$f"'
 answered() { # kind of entry, its time
@@ -187,7 +187,7 @@ answered() { # kind of entry, its time
 }
 { answered typed 2020-01-01T00:00:00.000Z; printf '{"type":"user","origin":{"kind":"task-notification"},"timestamp":"2999-01-01T00:00:00.000Z"}\n'; } > "$tmp/t.jsonl"
 run badge sess-a "$tmp/t.jsonl"
-check "a wait set after Victor last spoke shows, whatever else came later" 'printf "%s" "$out" | grep -q "⏳"'
+check "a wait set after Victor last spoke shows, whatever else came later" 'printf "%s" "$out" | grep -q "✋"'
 answered typed 2999-01-01T00:00:00.000Z > "$tmp/t.jsonl"
 run badge sess-a "$tmp/t.jsonl"
 check "a typed prompt after the wait hides it" '[ "$out" = " · kettle · 🔨 0/3" ]'
@@ -196,7 +196,7 @@ run badge sess-a "$tmp/t.jsonl"
 check "an answered question after the wait hides it" '[ "$out" = " · kettle · 🔨 0/3" ]'
 { printf '{"type":"custom-title","customTitle":"kettle","sessionId":"sess-a"}\n'; answered typed 2020-01-01T00:00:00.000Z; } > "$tmp/t.jsonl"
 run badge sess-a "$tmp/t.jsonl"
-check "a session named after the plan leaves the name out" '[ "$out" = " · 🔨 0/3 · ⏳ the merge of #121" ]'
+check "a session named after the plan leaves the name out" '[ "$out" = " · 🔨 0/3 · ✋ the merge of #121" ]'
 printf '{"type":"custom-title","customTitle":"kettle"}\n{"type":"custom-title","customTitle":"teapot"}\n' > "$tmp/t.jsonl"
 run badge sess-a "$tmp/t.jsonl"
 check "the session's latest name counts" 'printf "%s" "$out" | grep -q "^ · kettle · "'

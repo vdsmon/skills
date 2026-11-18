@@ -42,7 +42,7 @@ got=$(holds)
 if [ "$got" = "⚓ chief" ]; then echo "ok   a session that holds no plan shows the role alone"; else echo "FAIL no plan: got '$got'"; fails=$((fails + 1)); fi
 printf '# kettle\n\nPhase: building.\nWaiting on: Victor: the merge\nHeld by: sess-k\n\n## Progress\n\n- Work item 1: done.\n- Work item 2: under way.\n' > "$CC_CREW_PLANS/kettle/plan.md"
 got=$(holds)
-want="⚓ chief · kettle · 🔨 1/2 · ⏳ the merge"
+want="⚓ chief · kettle · 🔨 1/2 · ✋ the merge"
 if [ "$got" = "$want" ]; then echo "ok   the held plan follows the role"; else echo "FAIL held plan: got '$got'"; fails=$((fails + 1)); fi
 got=$(printf '{"transcript_path":"%s"}' "$tmp/t.jsonl" | bash "$badge")
 if [ -z "$got" ]; then echo "ok   no plan shown without the role"; else echo "FAIL plan without the role: got '$got'"; fails=$((fails + 1)); fi
