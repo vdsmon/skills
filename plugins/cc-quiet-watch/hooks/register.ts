@@ -23,6 +23,7 @@ const TRACK_SYSTEM =
 const timers = new Map<string, Timer>()
 let isInteractive = true
 
+// cc-crew's status line badge reads this key from the store file to show what a session waits on.
 const keyOf = async ($: EngineInterface) => `watches:${await $.session.id()}`
 
 async function load($: EngineInterface): Promise<Watch[]> {

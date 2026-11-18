@@ -924,6 +924,19 @@ def session_state(transcript):
     return answered or 0.0, title or None, over
 
 
+def armed_watches(session):
+    """Names of the job watches this session has armed with cc-quiet-watch, from the mod's store.
+    Trackers are left out: they run until Victor stops them, so the session does not wait on them."""
+    names = []
+    for store in sorted((Path.home() / ".claude" / "plugins" / "store").glob("cc-quiet-watch_*.json")):
+        try:
+            watches = json.loads(store.read_text(encoding="utf-8")).get(f"watches:{session}") or []
+            names += [w["name"] for w in watches if not w.get("keep")]
+        except (OSError, ValueError, AttributeError, TypeError, KeyError):
+            continue
+    return names
+
+
 def badge(session, transcript=None):
     """The plan the session holds, where it stands, and what the session is doing now, each part after " · ".
     The status comes last and starts with ✋ only when the move is Victor's, so badge.sh can color it."""
@@ -947,6 +960,8 @@ def badge(session, transcript=None):
         parts.append("⚙ working")
     elif over and waiting and not on_victor:
         parts.append(f"⏳ {waiting[0]}: {waiting[1]}")
+    elif over and (watches := armed_watches(session)):
+        parts.append(f"⏳ {watches[0]}" + (f" +{len(watches) - 1}" if len(watches) > 1 else ""))
     elif over:
         parts.append("✋ your turn")
     return "".join(f" · {p}" for p in parts)
