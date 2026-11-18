@@ -40,6 +40,15 @@ check "an interrupted turn is Victor's move" "⚓ chief · ✋ your turn" "$type
 check "a tool call is the turn under way" "⚓ chief · ⚙ working" "$typed
 {\"type\":\"assistant\",\"message\":{\"stop_reason\":\"tool_use\"}}
 {\"type\":\"attachment\"}"
+store=$HOME/.claude/plugins/store
+mkdir -p "$store"
+printf '{"watches:t":[{"name":"pr-121-checks","keep":false},{"name":"slack-thread","keep":true}],"watches:other":[{"name":"elsewhere"}]}' > "$store/cc-quiet-watch_x-1.json"
+check "a finished turn with a watch armed waits on the watch, not on Victor" "⚓ chief · ⏳ pr-121-checks" "$typed
+{\"type\":\"assistant\",\"message\":{\"stop_reason\":\"end_turn\"}}"
+printf '{"watches:t":[{"name":"batch-720"}]}' > "$store/cc-quiet-watch_y-2.json"
+check "watches from every store count" "⚓ chief · ⏳ pr-121-checks +1" "$typed
+{\"type\":\"assistant\",\"message\":{\"stop_reason\":\"end_turn\"}}"
+rm -r "$store"
 check "prints nothing without a transcript" "" -
 missing=$(printf '{"transcript_path":"%s/none.jsonl"}' "$tmp" | bash "$badge"; echo "exit=$?")
 if [ "$missing" = "exit=0" ]; then echo "ok   missing transcript exits 0 quietly"; else echo "FAIL missing transcript: $missing"; fails=$((fails + 1)); fi
