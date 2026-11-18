@@ -1,9 +1,9 @@
 #!/bin/bash
 # Status line badge: prints "⚓ chief" when /cc-crew:chief-engineer was typed in this session, nothing otherwise,
-# followed by the plan the session holds and where it stands (plans.py badge).
+# followed by the plan the session holds, where it stands and what the session is doing now (plans.py badge).
 # Reads Claude Code's status line JSON on stdin, so it works as a ccstatusline custom-command widget (with preserve colors on)
 # or from any statusLine command.
-# Prints its own colors: bold bright blue, and a wait on Victor in orange so it stands out from the rest.
+# Prints its own colors: bold bright blue, and the status in orange when the move is Victor's (✋).
 # Fails quiet: no input, no transcript or no match all print nothing.
 set -u
 

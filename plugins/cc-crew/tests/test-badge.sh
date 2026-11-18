@@ -27,11 +27,19 @@ compacted='{"type":"system","subtype":"compact_boundary"}'
 quoted='{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"<command-name>/cc-crew:chief-engineer</command-name>"}]}}'
 other='{"type":"user","message":{"role":"user","content":"<command-message>idea:idea</command-message>\n<command-name>/idea:idea</command-name>"}}'
 
-check "shows after the command" "⚓ chief" "$typed"
-check "stays on after a compaction" "⚓ chief" "$typed
+check "shows after the command, with the turn under way" "⚓ chief · ⚙ working" "$typed"
+check "stays on after a compaction" "⚓ chief · ⚙ working" "$typed
 $compacted"
 check "ignores a quote of the command" "" "$quoted"
 check "ignores other commands" "" "$other"
+check "a finished turn is Victor's move" "⚓ chief · ✋ your turn" "$typed
+{\"type\":\"assistant\",\"message\":{\"stop_reason\":\"end_turn\"}}
+{\"type\":\"system\",\"subtype\":\"stop_hook_summary\"}"
+check "an interrupted turn is Victor's move" "⚓ chief · ✋ your turn" "$typed
+{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"[Request interrupted by user]\"}]}}"
+check "a tool call is the turn under way" "⚓ chief · ⚙ working" "$typed
+{\"type\":\"assistant\",\"message\":{\"stop_reason\":\"tool_use\"}}
+{\"type\":\"attachment\"}"
 check "prints nothing without a transcript" "" -
 missing=$(printf '{"transcript_path":"%s/none.jsonl"}' "$tmp" | bash "$badge"; echo "exit=$?")
 if [ "$missing" = "exit=0" ]; then echo "ok   missing transcript exits 0 quietly"; else echo "FAIL missing transcript: $missing"; fails=$((fails + 1)); fi
@@ -41,7 +49,7 @@ mkdir -p "$HOME" "$CC_CREW_PLANS/kettle"
 printf '%s\n' "$typed" > "$tmp/sess-k.jsonl"
 holds() { printf '{"session_id":"x","transcript_path":"%s"}' "$tmp/sess-k.jsonl" | bash "$badge" | plain; }
 got=$(holds)
-if [ "$got" = "⚓ chief" ]; then echo "ok   a session that holds no plan shows the role alone"; else echo "FAIL no plan: got '$got'"; fails=$((fails + 1)); fi
+if [ "$got" = "⚓ chief · ⚙ working" ]; then echo "ok   a session that holds no plan shows the role and its status"; else echo "FAIL no plan: got '$got'"; fails=$((fails + 1)); fi
 printf '# kettle\n\nPhase: building.\nWaiting on: Victor: the merge\nHeld by: sess-k\n\n## Progress\n\n- Work item 1: done.\n- Work item 2: under way.\n' > "$CC_CREW_PLANS/kettle/plan.md"
 got=$(holds)
 want="⚓ chief · kettle · 🔨 1/2 · ✋ the merge"
@@ -49,6 +57,7 @@ if [ "$got" = "$want" ]; then echo "ok   the held plan follows the role"; else e
 got=$(printf '{"transcript_path":"%s"}' "$tmp/sess-k.jsonl" | bash "$badge")
 want=$'\e[1;94m⚓ chief · kettle · 🔨 1/2 · \e[38;5;208m✋ the merge\e[0m'
 if [ "$got" = "$want" ]; then echo "ok   bold bright blue, the wait on Victor in orange"; else echo "FAIL colors: got '$got'"; fails=$((fails + 1)); fi
+printf "%s\n" "$other" > "$tmp/t.jsonl"
 got=$(printf '{"transcript_path":"%s"}' "$tmp/t.jsonl" | bash "$badge")
 if [ -z "$got" ]; then echo "ok   no plan shown without the role"; else echo "FAIL plan without the role: got '$got'"; fails=$((fails + 1)); fi
 
