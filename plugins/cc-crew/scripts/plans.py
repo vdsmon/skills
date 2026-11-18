@@ -918,7 +918,7 @@ def badge(session, transcript=None):
     # The chief clears a wait only when it gets to it, often at the end of its turn: once Victor has
     # answered since the plan was last written, the wait is his no longer.
     if waiting and waiting[0].lower() == "victor" and waiting[1] and answered < mtime(plan.path):
-        parts.append(f"⏳ {waiting[1]}")
+        parts.append(f"✋ {waiting[1]}")
     return "".join(f" · {p}" for p in parts)
 
 
